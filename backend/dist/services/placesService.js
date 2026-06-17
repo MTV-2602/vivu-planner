@@ -80,6 +80,154 @@ const MOCK_PLACES_LIBRARY = {
             { name: 'Thuê xe máy Sài Gòn Biketown', rating: 4.6, price_level: 1, address: '152 Bùi Viện, Phạm Ngũ Lão, Quận 1, TP. HCM' },
             { name: 'Thuê xe du lịch Hùng Dũng', rating: 4.7, price_level: 2, address: '68 Huỳnh Tấn Phát, Tân Thuận Đông, Quận 7, TP. HCM' }
         ]
+    },
+    'da lat': {
+        accommodation: [
+            { name: 'Ana Mandara Villas Dalat Resort & Spa', rating: 4.7, price_level: 3, address: 'Lê Lai, Phường 5, Đà Lạt' },
+            { name: 'Dalat Palace Heritage Hotel', rating: 4.8, price_level: 4, address: '2 Trần Phú, Phường 3, Đà Lạt' },
+            { name: 'Lalaland Homestay Dalat', rating: 4.5, price_level: 1, address: '10A Triệu Việt Vương, Phường 3, Đà Lạt' }
+        ],
+        dining: [
+            { name: 'Lẩu gà lá é Tao Ngộ', rating: 4.4, price_level: 1, address: '5 Đường 3/4, Phường 3, Đà Lạt' },
+            { name: 'Bánh ướt lòng gà Long', rating: 4.3, price_level: 1, address: 'Hẻm 202 Phan Đình Phùng, Phường 2, Đà Lạt' },
+            { name: 'Nhà hàng Léguda (Lẩu rau)', rating: 4.5, price_level: 2, address: 'Đồi Robin, Phường 3, Đà Lạt' },
+            { name: 'Quán nướng Chu', rating: 4.4, price_level: 2, address: '3 Phạm Ngũ Lão, Phường 3, Đà Lạt' }
+        ],
+        attraction: [
+            { name: 'Hồ Xuân Hương & Vườn hoa Thành phố', rating: 4.7, price_level: 1, address: 'Trần Quốc Toản, Phường 1, Đà Lạt' },
+            { name: 'Thung lũng Tình Yêu', rating: 4.5, price_level: 2, address: '3 - 5 - 7 Mai Anh Đào, Phường 8, Đà Lạt' },
+            { name: 'Thác Datanla & Máng trượt', rating: 4.6, price_level: 2, address: 'Quốc lộ 20, Phường 3, Đà Lạt' },
+            { name: 'Ga Đà Lạt cổ', rating: 4.4, price_level: 1, address: 'Quang Trung, Phường 9, Đà Lạt' }
+        ],
+        rental: [
+            { name: 'Thuê xe máy Khánh Đoan Đà Lạt', rating: 4.6, price_level: 1, address: '15 Trần Bình Trọng, Phường 5, Đà Lạt' },
+            { name: 'Thuê xe tự lái Đà Lạt Happy Car', rating: 4.7, price_level: 2, address: '22 Bùi Thị Xuân, Phường 2, Đà Lạt' }
+        ]
+    },
+    'sapa': {
+        accommodation: [
+            { name: 'Hotel de la Coupole - MGallery', rating: 4.8, price_level: 4, address: '1 Hoàng Liên, Sa Pa' },
+            { name: 'Sapa Jade Hill Resort & Spa', rating: 4.6, price_level: 3, address: 'Mường Hoa, Lao Chải, Sa Pa' },
+            { name: 'Mountain River Homestay Sapa', rating: 4.5, price_level: 1, address: 'Tả Van, Sa Pa' }
+        ],
+        dining: [
+            { name: 'Nhà hàng Ô Quý Hồ Sapa', rating: 4.4, price_level: 2, address: '8 Thạch Sơn, Sa Pa' },
+            { name: 'Quán ẩm thực Tây Bắc A Phủ', rating: 4.3, price_level: 2, address: '15 Fansipan, Sa Pa' },
+            { name: 'Lẩu cá hồi cá tầm Xuân Viên', rating: 4.2, price_level: 2, address: '39 Xuân Viên, Sa Pa' }
+        ],
+        attraction: [
+            { name: 'Đỉnh Fansipan (Cáp treo Sun World)', rating: 4.8, price_level: 4, address: 'Đường Nguyễn Chí Thanh, Sa Pa' },
+            { name: 'Bản du lịch Cát Cát', rating: 4.5, price_level: 1, address: 'San Sả Hồ, Sa Pa' },
+            { name: 'Thung lũng Mường Hoa', rating: 4.6, price_level: 1, address: 'Mường Hoa, Lao Chải, Sa Pa' }
+        ],
+        rental: [
+            { name: 'Thuê xe máy Motorbike Sapa 365', rating: 4.7, price_level: 1, address: '02 Cầu Mây, Sa Pa' }
+        ]
+    },
+    'hoi an': {
+        accommodation: [
+            { name: 'Anantara Hoi An Resort', rating: 4.8, price_level: 4, address: '1 Phạm Hồng Thái, Cẩm Châu, Hội An' },
+            { name: 'Little Riverside Hoi An Luxury Hotel', rating: 4.7, price_level: 3, address: '09 Phan Bội Châu, Cẩm Châu, Hội An' }
+        ],
+        dining: [
+            { name: 'Cơm gà Bà Buội Hội An', rating: 4.3, price_level: 2, address: '22 Phan Chu Trinh, Minh An, Hội An' },
+            { name: 'Bánh mì Phượng', rating: 4.4, price_level: 1, address: '2B Phan Chu Trinh, Cẩm Châu, Hội An' },
+            { name: 'Nước Mót Hội An (Trà thảo mộc)', rating: 4.6, price_level: 1, address: '150 Trần Phú, Minh An, Hội An' }
+        ],
+        attraction: [
+            { name: 'Phố cổ Hội An & Chùa Cầu', rating: 4.8, price_level: 1, address: 'Trần Phú, Minh An, Hội An' },
+            { name: 'Khu sinh thái Rừng dừa Bảy Mẫu', rating: 4.5, price_level: 2, address: 'Vạn Lăng, Cẩm Thanh, Hội An' }
+        ],
+        rental: [
+            { name: 'Hoi An Motorbike Rental', rating: 4.6, price_level: 1, address: '111 Hùng Vương, Cẩm Phô, Hội An' }
+        ]
+    },
+    'hue': {
+        accommodation: [
+            { name: 'Azerai La Residence Hue', rating: 4.8, price_level: 4, address: '5 Lê Lợi, Vĩnh Ninh, Huế' },
+            { name: 'Silk Path Grand Hue Hotel', rating: 4.7, price_level: 3, address: '2 Lê Lợi, Vĩnh Ninh, Huế' }
+        ],
+        dining: [
+            { name: 'Bún bò Huế O Lâm', rating: 4.4, price_level: 1, address: '71 Nguyễn Công Trứ, Phú Hội, Huế' },
+            { name: 'Bánh bèo nậm lọc bà Đỏ', rating: 4.2, price_level: 1, address: '8 Nguyễn Bỉnh Khiêm, Phú Cát, Huế' }
+        ],
+        attraction: [
+            { name: 'Đại Nội Huế (Hoàng Thành cổ)', rating: 4.7, price_level: 2, address: 'Đường 23 Tháng 8, Thuận Hòa, Huế' },
+            { name: 'Lăng vua Khải Định', rating: 4.8, price_level: 2, address: 'Thủy Bằng, Hương Thủy, Thừa Thiên Huế' },
+            { name: 'Chùa Thiên Mụ', rating: 4.6, price_level: 1, address: 'Kim Long, Hương Long, Huế' }
+        ],
+        rental: [
+            { name: 'Thuê xe máy Motorbike Rental Hue', rating: 4.6, price_level: 1, address: '29 Chu Văn An, Phú Hội, Huế' }
+        ]
+    },
+    'nha trang': {
+        accommodation: [
+            { name: 'Vinpearl Resort & Spa Nha Trang Bay', rating: 4.8, price_level: 4, address: 'Đảo Hòn Tre, Nha Trang' },
+            { name: 'Sheraton Nha Trang Hotel & Spa', rating: 4.7, price_level: 3, address: '26-28 Trần Phú, Lộc Thọ, Nha Trang' }
+        ],
+        dining: [
+            { name: 'Bún sứa Năm Beo Chợ Đầm', rating: 4.3, price_level: 1, address: 'B2 Chung cư Phan Bội Châu, Xương Huân, Nha Trang' },
+            { name: 'Nem nướng Đặng Văn Quyên', rating: 4.2, price_level: 2, address: '16A Lãn Ông, Xương Huân, Nha Trang' }
+        ],
+        attraction: [
+            { name: 'VinWonders Nha Trang Amusement Park', rating: 4.8, price_level: 4, address: 'Đảo Hòn Tre, Vĩnh Nguyên, Nha Trang' },
+            { name: 'Khu di tích Tháp Bà Ponagar', rating: 4.6, price_level: 1, address: '2 Tháng 4, Vĩnh Phước, Nha Trang' }
+        ],
+        rental: [
+            { name: 'Thuê xe máy Nha Trang San Hô Việt', rating: 4.7, price_level: 1, address: '114/23 Hoàng Hoa Thám, Lộc Thọ, Nha Trang' }
+        ]
+    },
+    'phu quoc': {
+        accommodation: [
+            { name: 'JW Marriott Phu Quoc Emerald Bay Resort', rating: 4.9, price_level: 4, address: 'Bãi Khem, An Thới, Phú Quốc' },
+            { name: 'Sol by Meliá Phu Quoc', rating: 4.6, price_level: 3, address: 'Đường Bào, Dương Tơ, Phú Quốc' }
+        ],
+        dining: [
+            { name: 'Bún quậy Kiến Xây Bạch Đằng', rating: 4.4, price_level: 1, address: '28 Bạch Đằng, Dương Đông, Phú Quốc' },
+            { name: 'Nhà hàng hải sản Xin Chào', rating: 4.3, price_level: 3, address: '66 Trần Hưng Đạo, Dương Đông, Phú Quốc' }
+        ],
+        attraction: [
+            { name: 'Cáp treo Hòn Thơm Sun World', rating: 4.8, price_level: 3, address: 'Bãi Đất Đỏ, An Thới, Phú Quốc' },
+            { name: 'Grand World Phú Quốc (Thành phố không ngủ)', rating: 4.6, price_level: 2, address: 'Gành Dầu, Phú Quốc' }
+        ],
+        rental: [
+            { name: 'Thuê xe máy Phú Quốc Minh Thư', rating: 4.7, price_level: 1, address: 'Đường Trần Hưng Đạo, Dương Đông, Phú Quốc' }
+        ]
+    },
+    'ninh binh': {
+        accommodation: [
+            { name: 'Emeralda Resort Ninh Binh', rating: 4.7, price_level: 3, address: 'Khu bảo tồn Vân Long, Gia Vân, Gia Viễn, Ninh Bình' },
+            { name: 'Tam Coc Garden Resort', rating: 4.8, price_level: 4, address: 'Hải Nham, Ninh Hải, Hoa Lư, Ninh Bình' }
+        ],
+        dining: [
+            { name: 'Thịt dê cơm cháy Thăng Long Ninh Bình', rating: 4.4, price_level: 2, address: 'Tràng An, Trường Yên, Hoa Lư, Ninh Bình' },
+            { name: 'Nhà hàng Đức Dê Ninh Bình', rating: 4.2, price_level: 2, address: '446 Nguyễn Huệ, Nam Bình, Ninh Bình' }
+        ],
+        attraction: [
+            { name: 'Khu du lịch sinh thái Tràng An', rating: 4.8, price_level: 2, address: 'Tràng An, Trường Yên, Hoa Lư, Ninh Bình' },
+            { name: 'Chùa Bái Đính cổ và mới', rating: 4.7, price_level: 1, address: 'Gia Sinh, Gia Viễn, Ninh Bình' },
+            { name: 'Tuyệt Tình Cốc & Động Am Tiên', rating: 4.5, price_level: 1, address: 'Trường Yên, Hoa Lư, Ninh Bình' }
+        ],
+        rental: [
+            { name: 'Thuê xe máy Ninh Bình Khánh Chi', rating: 4.7, price_level: 1, address: '80 Lương Văn Tụy, Tân Thành, Ninh Bình' }
+        ]
+    },
+    'vung tau': {
+        accommodation: [
+            { name: 'The Imperial Hotel Vung Tau', rating: 4.7, price_level: 3, address: '159 Thùy Vân, Thắng Tam, Vũng Tàu' },
+            { name: 'Marina Bay Vung Tau Resort & Spa', rating: 4.6, price_level: 3, address: '115 Trần Phú, Phường 5, Vũng Tàu' }
+        ],
+        dining: [
+            { name: 'Bánh khọt Gốc Vú Sữa', rating: 4.2, price_level: 1, address: '14 Nguyễn Trường Tộ, Phường 2, Vũng Tàu' },
+            { name: 'Bánh khọt Cô Ba Vũng Tàu', rating: 4.4, price_level: 2, address: '1 Hoàng Hoa Thám, Phường 3, Vũng Tàu' }
+        ],
+        attraction: [
+            { name: 'Tượng Chúa Kitô Vua Vũng Tàu', rating: 4.7, price_level: 1, address: 'Thùy Vân, Phường 2, Vũng Tàu' },
+            { name: 'Ngọn Hải Đăng Vũng Tàu', rating: 4.6, price_level: 1, address: 'Núi Nhỏ, Phường 2, Vũng Tàu' }
+        ],
+        rental: [
+            { name: 'Thuê xe máy Vũng Tàu giá rẻ Minh Đức', rating: 4.7, price_level: 1, address: '18 Lương Văn Can, Phường 2, Vũng Tàu' }
+        ]
     }
 };
 const VIETNAM_PROVINCES = {
