@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Compass, Plus, LogOut, Calendar, MapPin, DollarSign, Wallet, RefreshCw, User, GitFork } from 'lucide-react';
+import { Compass, Plus, LogOut, Calendar, MapPin, DollarSign, Wallet, RefreshCw, User, GitFork, Shield } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { apiClient } from '../lib/apiClient';
 import Reveal from '../components/Reveal';
@@ -89,6 +89,15 @@ export function Dashboard() {
           </Link>
 
           <div className="flex items-center gap-4">
+            {['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'].includes(userEmail) && (
+              <Link
+                to="/admin"
+                className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg text-brand-accent bg-brand-accent/10 hover:bg-brand-accent/25 transition"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                Quản trị
+              </Link>
+            )}
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-surface border border-brand-line/30 text-brand-textSoft text-xs font-semibold">
               <User className="w-3.5 h-3.5" />
               {userEmail}

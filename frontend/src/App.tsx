@@ -6,6 +6,7 @@ import Auth from './pages/Auth';
 import Dashboard from './pages/Dashboard';
 import TripWizard from './pages/TripWizard';
 import TripDetail from './pages/TripDetail';
+import Admin from './pages/Admin';
 
 // Protected Route wrapper component
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -82,6 +83,14 @@ export function App() {
         element={
           <ProtectedRoute>
             <TripDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <Admin />
           </ProtectedRoute>
         }
       />
