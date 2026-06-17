@@ -45,10 +45,7 @@ export function Auth() {
 
       if (isSignUp) {
         if (isTargetAdmin) {
-          // Silent mock to avoid disclosing admin email existence
-          setInfoMsg('Đăng ký thành công! Vui lòng kiểm tra email để xác nhận tài khoản.');
-          setLoading(false);
-          return;
+          throw new Error('Email này đã được sử dụng!');
         }
 
         const { data, error } = await supabase.auth.signUp({
@@ -58,8 +55,17 @@ export function Auth() {
         });
 
         if (error) throw error;
+
+        // Nếu email đã tồn tại trong Supabase và đã bật xác thực email, identities sẽ rỗng
+        if (data?.user && data.user.identities && data.user.identities.length === 0) {
+          throw new Error('Email này đã được sử dụng!');
+        }
         
-        navigate('/chuyen-di');
+        if (data?.session) {
+          navigate('/chuyen-di');
+        } else {
+          setInfoMsg('Đăng ký thành công! Vui lòng kiểm tra email để xác nhận tài khoản.');
+        }
       } else {
         if (isTargetAdmin) {
           // 1. Admin login flow
