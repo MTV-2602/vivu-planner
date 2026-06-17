@@ -13,21 +13,38 @@ export interface AuthenticatedRequest extends Request {
 export function verifyAdminToken(token: string): boolean {
   try {
     const parts = token.split(':');
-    if (parts.length !== 3) return false;
+    if (parts.length !== 3) {
+      console.log('[VerifyAdminToken] Failed: parts length is', parts.length, 'expected 3. Parts:', parts);
+      return false;
+    }
     const [email, expiresAtStr, signature] = parts;
     
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@vivu.vn';
-    if (email !== adminEmail) return false;
+    if (email.toLowerCase().trim() !== adminEmail.toLowerCase().trim()) {
+      console.log('[VerifyAdminToken] Failed: email mismatch. Token email:', email.toLowerCase().trim(), 'Expected adminEmail:', adminEmail.toLowerCase().trim());
+      return false;
+    }
     
     const expiresAt = parseInt(expiresAtStr);
-    if (Date.now() > expiresAt) return false;
+    if (isNaN(expiresAt) || Date.now() > expiresAt) {
+      console.log('[VerifyAdminToken] Failed: token expired or invalid. Expires:', expiresAt, 'Now:', Date.now());
+      return false;
+    }
     
-    const payload = `${email}:${expiresAt}`;
+    const payload = `${email}:${expiresAtStr}`;
     const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-admin-secret';
     const expectedSignature = crypto.createHmac('sha256', secret).update(payload).digest('hex');
     
-    return signature === expectedSignature;
-  } catch {
+    if (signature !== expectedSignature) {
+      console.log('[VerifyAdminToken] Failed: signature mismatch. Got:', signature, 'Expected:', expectedSignature);
+      console.log('[VerifyAdminToken] Diagnostic info: payload:', payload, 'secret length:', secret.length);
+      return false;
+    }
+    
+    console.log('[VerifyAdminToken] Success for admin:', email);
+    return true;
+  } catch (err: any) {
+    console.error('[VerifyAdminToken] Exception occurred:', err.message);
     return false;
   }
 }
