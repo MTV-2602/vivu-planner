@@ -8,7 +8,7 @@ const axios_1 = __importDefault(require("axios"));
 async function getWeatherForecast(lat, lng, startDate, endDate) {
     try {
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&start_date=${startDate}&end_date=${endDate}`;
-        const response = await axios_1.default.get(url);
+        const response = await axios_1.default.get(url, { timeout: 3000 });
         const daily = response.data?.daily;
         if (!daily || !daily.time) {
             throw new Error('Invalid weather API response format');

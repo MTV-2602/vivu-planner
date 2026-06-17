@@ -295,13 +295,16 @@ export function TripWizard() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {travelerType !== 'solo' && travelerType !== 'couple' ? (
                     <div>
-                      <label className="block text-sm font-bold text-brand-textSoft mb-1.5">Số lượng khách</label>
+                      <label className="block text-sm font-bold text-brand-textSoft mb-1.5">Số lượng khách (Tối thiểu 3)</label>
                       <input
                         type="number"
-                        min="1"
+                        min="3"
                         max="50"
                         value={travelerCount}
-                        onChange={(e) => setTravelerCount(parseInt(e.target.value) || 1)}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 3;
+                          setTravelerCount(val < 3 ? 3 : val);
+                        }}
                         className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold"
                       />
                     </div>

@@ -156,6 +156,7 @@ async function searchPlaces(query, category, lat, lng) {
                 }
             }
         }, {
+            timeout: 3500,
             headers: {
                 'Content-Type': 'application/json',
                 'X-Goog-Api-Key': apiKey,

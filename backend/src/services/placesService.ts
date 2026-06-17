@@ -184,6 +184,7 @@ export async function searchPlaces(
         }
       },
       {
+        timeout: 3500,
         headers: {
           'Content-Type': 'application/json',
           'X-Goog-Api-Key': apiKey,

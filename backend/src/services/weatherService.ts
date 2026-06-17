@@ -16,7 +16,7 @@ export async function getWeatherForecast(
 ): Promise<WeatherForecast[]> {
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&start_date=${startDate}&end_date=${endDate}`;
-    const response = await axios.get(url);
+    const response = await axios.get(url, { timeout: 3000 });
     const daily = response.data?.daily;
 
     if (!daily || !daily.time) {
