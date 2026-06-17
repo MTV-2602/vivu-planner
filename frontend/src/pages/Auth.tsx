@@ -40,10 +40,15 @@ export function Auth() {
     setInfoMsg('');
 
     try {
+      const adminEmails = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'];
+      const isTargetAdmin = adminEmails.includes(email.toLowerCase().trim());
+
       if (isSignUp) {
-        const adminEmails = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'];
-        if (adminEmails.includes(email.toLowerCase().trim())) {
-          throw new Error('Email này dành riêng cho quản trị viên, không thể đăng ký tài khoản thông thường!');
+        if (isTargetAdmin) {
+          // Silent mock to avoid disclosing admin email existence
+          setInfoMsg('Đăng ký thành công! Vui lòng kiểm tra email để xác nhận tài khoản.');
+          setLoading(false);
+          return;
         }
 
         const { data, error } = await supabase.auth.signUp({
@@ -62,37 +67,34 @@ export function Auth() {
           navigate('/chuyen-di');
         }
       } else {
-        // 1. Attempt admin login first
-        try {
-          const res = await apiClient.post('/admin/login', { email, password });
-          if (res.data && res.data.token) {
-            localStorage.setItem('vivu_admin_token', res.data.token);
-            localStorage.setItem('vivu_mock_user', JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: res.data.email }));
-            localStorage.setItem('vivu_mock_token', res.data.token);
-            navigate('/chuyen-di');
-            return;
-          }
-        } catch (adminErr: any) {
-          console.log('[Auth] Admin login skipped, falling back to Supabase:', adminErr);
-          // If the server responded with a credentials error (401 or 403), show it directly
-          if (adminErr.response) {
-            const status = adminErr.response.status;
-            const errorData = adminErr.response.data;
-            if (status === 401 || status === 403) {
-              throw new Error(errorData?.error || 'Sai tài khoản hoặc mật khẩu quản trị viên!');
+        if (isTargetAdmin) {
+          // 1. Admin login flow
+          try {
+            const res = await apiClient.post('/admin/login', { email, password });
+            if (res.data && res.data.token) {
+              localStorage.setItem('vivu_admin_token', res.data.token);
+              localStorage.setItem('vivu_mock_user', JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: res.data.email }));
+              localStorage.setItem('vivu_mock_token', res.data.token);
+              navigate('/chuyen-di');
+              return;
             }
+          } catch (adminErr: any) {
+            console.log('[Auth] Admin login failed:', adminErr);
+            throw new Error('Email hoặc mật khẩu không chính xác!');
           }
+        } else {
+          // 2. Regular Supabase login flow
+          const { error } = await supabase.auth.signInWithPassword({
+            email,
+            password
+          });
+
+          if (error) {
+            throw new Error('Email hoặc mật khẩu không chính xác!');
+          }
+          localStorage.removeItem('vivu_admin_token');
+          navigate('/chuyen-di');
         }
-
-        // 2. Regular Supabase login
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password
-        });
-
-        if (error) throw error;
-        localStorage.removeItem('vivu_admin_token');
-        navigate('/chuyen-di');
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Có lỗi xảy ra trong quá trình xử lý');
