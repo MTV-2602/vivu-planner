@@ -9,6 +9,7 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const trips_1 = __importDefault(require("./routes/trips"));
 const places_1 = __importDefault(require("./routes/places"));
 const weather_1 = __importDefault(require("./routes/weather"));
+const dev_1 = __importDefault(require("./routes/dev"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = process.env.PORT || 4000;
@@ -33,6 +34,7 @@ app.get('/', (req, res) => {
 app.use('/api/trips', trips_1.default);
 app.use('/api/places', places_1.default);
 app.use('/api/weather', weather_1.default);
+app.use('/api/dev', dev_1.default);
 // Catch-all 404 handler
 app.use((req, res) => {
     res.status(404).json({ error: 'Endpoint not found' });

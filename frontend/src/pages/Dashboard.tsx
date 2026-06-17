@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Compass, Plus, LogOut, Calendar, MapPin, DollarSign, Wallet, RefreshCw, User } from 'lucide-react';
+import { Compass, Plus, LogOut, Calendar, MapPin, DollarSign, Wallet, RefreshCw, User, GitFork } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { apiClient } from '../lib/apiClient';
 import Reveal from '../components/Reveal';
@@ -22,6 +22,24 @@ interface Trip {
 export function Dashboard() {
   const navigate = useNavigate();
   const [userEmail, setUserEmail] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState('');
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult('');
+    try {
+      const res = await apiClient.post('/dev/sync-repositories');
+      alert(res.data.message);
+      setSyncResult(res.data.message);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.details || err.response?.data?.error || err.message;
+      alert('Lỗi đồng bộ: ' + errorMsg);
+      setSyncResult('Lỗi: ' + errorMsg);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }: any) => {
@@ -92,13 +110,32 @@ export function Dashboard() {
             <p className="text-sm text-brand-textSoft mt-1">Quản lý và tạo lịch trình du lịch cá nhân hóa bằng AI</p>
           </div>
 
-          <Link
-            to="/chuyen-di/moi"
-            className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-accent hover:bg-brand-accentStrong text-white font-bold transition shadow-md hover:shadow-brand-accent/20"
-          >
-            <Plus className="w-4 h-4" />
-            Tạo chuyến đi mới
-          </Link>
+          <div className="flex gap-3">
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-primary hover:bg-brand-primaryStrong text-white font-bold transition shadow-md disabled:opacity-50 text-sm"
+            >
+              {syncing ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Đang đồng bộ...
+                </>
+              ) : (
+                <>
+                  <GitFork className="w-4 h-4" />
+                  Đồng bộ Git (TK1 ➔ TK2)
+                </>
+              )}
+            </button>
+            <Link
+              to="/chuyen-di/moi"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-accent hover:bg-brand-accentStrong text-white font-bold transition shadow-md hover:shadow-brand-accent/20 text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Tạo chuyến đi mới
+            </Link>
+          </div>
         </header>
 
         {/* Dashboard grid */}
