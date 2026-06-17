@@ -176,4 +176,102 @@ router.delete('/trips/:id', async (req: AuthenticatedRequest, res: Response) => 
   }
 });
 
+// GET /api/admin/keys - Retrieve all API keys in the pool
+router.get('/keys', async (req: AuthenticatedRequest, res: Response) => {
+  if (isDbMocked) {
+    return res.json([
+      { id: '1', key_value: 'AIzaSyBHPaLXoSL8vXh0r0u8nYypHngALsO-ARo', is_active: true, status: 'active', created_at: new Date().toISOString() },
+      { id: '2', key_value: 'AIzaSyDh0DV2-y4tIjDQOWvisQNWTwfPgDjENeg', is_active: true, status: 'active', created_at: new Date().toISOString() }
+    ]);
+  }
+
+  try {
+    const { data: keys, error } = await supabaseAdmin
+      .from('gemini_api_keys')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return res.json(keys);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to retrieve API keys', details: err.message });
+  }
+});
+
+// POST /api/admin/keys - Add a new API key (supports single or bulk import)
+router.post('/keys', async (req: AuthenticatedRequest, res: Response) => {
+  const { key_value, key_values } = req.body;
+
+  if (isDbMocked) {
+    return res.json({ success: true, message: 'Mock key added successfully' });
+  }
+
+  try {
+    let rowsToInsert: any[] = [];
+
+    if (key_values && Array.isArray(key_values)) {
+      rowsToInsert = key_values.map(k => ({ key_value: k.trim(), is_active: true, status: 'active' }));
+    } else if (key_value) {
+      rowsToInsert = [{ key_value: key_value.trim(), is_active: true, status: 'active' }];
+    } else {
+      return res.status(400).json({ error: 'Missing parameter key_value or key_values' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('gemini_api_keys')
+      .insert(rowsToInsert)
+      .select();
+
+    if (error) throw error;
+    return res.json({ success: true, message: 'API key(s) added successfully', data });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to add API key(s)', details: err.message });
+  }
+});
+
+// PUT /api/admin/keys/:id - Update status/active state of a key
+router.put('/keys/:id', async (req: AuthenticatedRequest, res: Response) => {
+  const keyId = req.params.id;
+  const { is_active, status } = req.body;
+
+  if (isDbMocked) {
+    return res.json({ success: true, message: `Mock updated key ${keyId}` });
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('gemini_api_keys')
+      .update({ is_active, status })
+      .eq('id', keyId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return res.json({ success: true, message: 'API key updated successfully', data });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to update API key', details: err.message });
+  }
+});
+
+// DELETE /api/admin/keys/:id - Delete an API key
+router.delete('/keys/:id', async (req: AuthenticatedRequest, res: Response) => {
+  const keyId = req.params.id;
+
+  if (isDbMocked) {
+    return res.json({ success: true, message: `Mock deleted key ${keyId}` });
+  }
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('gemini_api_keys')
+      .delete()
+      .eq('id', keyId);
+
+    if (error) throw error;
+    return res.json({ success: true, message: 'API key deleted successfully' });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to delete API key', details: err.message });
+  }
+});
+
 export default router;

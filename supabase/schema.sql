@@ -133,3 +133,15 @@ create table public.places_cache (
 );
 alter table public.places_cache enable row level security;
 create policy "places_cache_public_select" on public.places_cache for select using (true);
+
+-- ===== 8. gemini_api_keys =====
+create table public.gemini_api_keys (
+  id uuid primary key default gen_random_uuid(),
+  key_value text unique not null,
+  is_active boolean default true,
+  status text default 'active', -- 'active', 'rate_limited', 'invalid'
+  last_used_at timestamptz,
+  created_at timestamptz default now()
+);
+alter table public.gemini_api_keys enable row level security;
+-- No public policies, as only service role (backend admin client) queries this table.

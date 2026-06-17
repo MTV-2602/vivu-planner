@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Compass, Users, Map, Trash2, ArrowLeft, Shield, BarChart3, AlertTriangle, RefreshCw, Calendar, MapPin, Wallet, Mail } from 'lucide-react';
+import { Compass, Users, Map, Trash2, ArrowLeft, Shield, BarChart3, AlertTriangle, RefreshCw, Calendar, MapPin, Wallet, Mail, Key, Check, X, ToggleLeft, ToggleRight } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { apiClient } from '../lib/apiClient';
 import Reveal from '../components/Reveal';
@@ -32,6 +32,15 @@ interface TripRecord {
   created_at: string;
 }
 
+interface ApiKeyRecord {
+  id: string;
+  key_value: string;
+  is_active: boolean;
+  status: string;
+  last_used_at: string | null;
+  created_at: string;
+}
+
 const ADMIN_EMAILS = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'];
 
 export function Admin() {
@@ -39,7 +48,9 @@ export function Admin() {
   const queryClient = useQueryClient();
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingAdmin, setCheckingAdmin] = useState(true);
-  const [activeTab, setActiveTab] = useState<'users' | 'trips'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'trips' | 'keys'>('users');
+  const [bulkKeysText, setBulkKeysText] = useState('');
+  const [addingKeys, setAddingKeys] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }: any) => {
@@ -70,7 +81,7 @@ export function Admin() {
   });
 
   // Fetch all users
-  const { data: users, isLoading: usersLoading, refetch: refetchUsers } = useQuery<UserRecord[]>({
+  const { data: users, isLoading: usersLoading } = useQuery<UserRecord[]>({
     queryKey: ['adminUsers'],
     queryFn: async () => {
       const res = await apiClient.get('/admin/users');
@@ -80,10 +91,20 @@ export function Admin() {
   });
 
   // Fetch all trips
-  const { data: trips, isLoading: tripsLoading, refetch: refetchTrips } = useQuery<TripRecord[]>({
+  const { data: trips, isLoading: tripsLoading } = useQuery<TripRecord[]>({
     queryKey: ['adminTrips'],
     queryFn: async () => {
       const res = await apiClient.get('/admin/trips');
+      return res.data;
+    },
+    enabled: isAdmin
+  });
+
+  // Fetch all API keys
+  const { data: apiKeys, isLoading: keysLoading } = useQuery<ApiKeyRecord[]>({
+    queryKey: ['adminKeys'],
+    queryFn: async () => {
+      const res = await apiClient.get('/admin/keys');
       return res.data;
     },
     enabled: isAdmin
@@ -119,6 +140,53 @@ export function Admin() {
     }
   });
 
+  // Add Keys Mutation
+  const addKeysMutation = useMutation({
+    mutationFn: async (keyValues: string[]) => {
+      await apiClient.post('/admin/keys', { key_values: keyValues });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminKeys'] });
+      queryClient.invalidateQueries({ queryKey: ['adminStats'] });
+      setBulkKeysText('');
+      alert('Đã thêm danh sách API Key thành công!');
+    },
+    onError: (err: any) => {
+      alert('Lỗi khi thêm API Key: ' + (err.response?.data?.error || err.message));
+    },
+    onSettled: () => {
+      setAddingKeys(false);
+    }
+  });
+
+  // Update Key Mutation
+  const updateKeyMutation = useMutation({
+    mutationFn: async ({ id, is_active, status }: { id: string; is_active: boolean; status: string }) => {
+      await apiClient.put(`/admin/keys/${id}`, { is_active, status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminKeys'] });
+    },
+    onError: (err: any) => {
+      alert('Lỗi khi cập nhật API Key: ' + (err.response?.data?.error || err.message));
+    }
+  });
+
+  // Delete Key Mutation
+  const deleteKeyMutation = useMutation({
+    mutationFn: async (keyId: string) => {
+      await apiClient.delete(`/admin/keys/${keyId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminKeys'] });
+      queryClient.invalidateQueries({ queryKey: ['adminStats'] });
+      alert('Đã xóa API Key thành công!');
+    },
+    onError: (err: any) => {
+      alert('Lỗi khi xóa API Key: ' + (err.response?.data?.error || err.message));
+    }
+  });
+
   const handleDeleteUser = (id: string, email: string) => {
     if (confirm(`Bạn có chắc chắn muốn xóa tài khoản ${email}? Hành động này sẽ xóa toàn bộ các chuyến đi liên quan!`)) {
       deleteUserMutation.mutate(id);
@@ -131,6 +199,48 @@ export function Admin() {
     }
   };
 
+  const handleToggleKey = (keyRecord: ApiKeyRecord) => {
+    updateKeyMutation.mutate({
+      id: keyRecord.id,
+      is_active: !keyRecord.is_active,
+      status: keyRecord.status
+    });
+  };
+
+  const handleResetKeyStatus = (keyRecord: ApiKeyRecord) => {
+    updateKeyMutation.mutate({
+      id: keyRecord.id,
+      is_active: true,
+      status: 'active'
+    });
+  };
+
+  const handleDeleteKey = (id: string, value: string) => {
+    const masked = value.substring(0, 8) + '...' + value.substring(value.length - 4);
+    if (confirm(`Bạn có chắc chắn muốn xóa API Key ${masked}?`)) {
+      deleteKeyMutation.mutate(id);
+    }
+  };
+
+  const handleAddBulkKeys = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bulkKeysText.trim()) return;
+
+    // Split text by newlines, filter empty lines
+    const parsedKeys = bulkKeysText
+      .split('\n')
+      .map(k => k.trim())
+      .filter(k => k.length > 10 && k.startsWith('AIzaSy'));
+
+    if (parsedKeys.length === 0) {
+      alert('Không tìm thấy API Key hợp lệ (mỗi key bắt đầu bằng AIzaSy và dài hơn 10 ký tự)');
+      return;
+    }
+
+    setAddingKeys(true);
+    addKeysMutation.mutate(parsedKeys);
+  };
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const d = String(date.getDate()).padStart(2, '0');
@@ -141,6 +251,11 @@ export function Admin() {
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+  };
+
+  const maskApiKey = (value: string) => {
+    if (value.length <= 15) return value;
+    return `${value.substring(0, 8)}...${value.substring(value.length - 5)}`;
   };
 
   if (checkingAdmin || !isAdmin) {
@@ -178,7 +293,7 @@ export function Admin() {
               <Shield className="w-8 h-8 text-brand-primary" />
               Quản Trị Hệ Thống
             </h1>
-            <p className="text-sm text-brand-textSoft">Giám sát người dùng, chuyến đi và dữ liệu AI</p>
+            <p className="text-sm text-brand-textSoft">Giám sát người dùng, chuyến đi và xoay vòng API Key</p>
           </div>
           <Link
             to="/chuyen-di"
@@ -229,10 +344,10 @@ export function Admin() {
 
             <div className="glass-panel p-5 rounded-2xl border border-brand-line/40 flex items-center gap-4">
               <div className="w-12 h-12 rounded-xl bg-brand-gold/10 flex items-center justify-center text-brand-gold shrink-0">
-                <BarChart3 className="w-6 h-6" />
+                <Key className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-xs text-brand-textSoft font-semibold uppercase tracking-wider">Địa điểm lưu</p>
+                <p className="text-xs text-brand-textSoft font-semibold uppercase tracking-wider">Bể API Keys</p>
                 <h3 className="text-2xl font-bold font-display mt-0.5">
                   {statsLoading ? '...' : stats?.totalPlacesCached}
                 </h3>
@@ -263,11 +378,21 @@ export function Admin() {
           >
             Quản lý Chuyến đi
           </button>
+          <button
+            onClick={() => setActiveTab('keys')}
+            className={`px-5 py-3 font-bold text-sm border-b-2 transition ${
+              activeTab === 'keys'
+                ? 'border-brand-primary text-brand-primary'
+                : 'border-transparent text-brand-textSoft hover:text-brand-text'
+            }`}
+          >
+            Bể xoay Gemini Keys
+          </button>
         </div>
 
         {/* Main Content Area */}
         <div className="glass-panel border border-brand-line/40 rounded-3xl overflow-hidden bg-white/40">
-          {activeTab === 'users' ? (
+          {activeTab === 'users' && (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -322,7 +447,9 @@ export function Admin() {
                 </tbody>
               </table>
             </div>
-          ) : (
+          )}
+
+          {activeTab === 'trips' && (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -398,6 +525,136 @@ export function Admin() {
                   )}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {activeTab === 'keys' && (
+            <div className="p-6 space-y-8">
+              {/* Add Key Form */}
+              <Reveal>
+                <form onSubmit={handleAddBulkKeys} className="glass-panel p-5 rounded-2xl border border-brand-line/45 space-y-4">
+                  <div className="space-y-1">
+                    <h3 className="text-base font-bold flex items-center gap-2">
+                      <Key className="w-4 h-4 text-brand-primary" /> Thêm nhanh Gemini API Keys
+                    </h3>
+                    <p className="text-xs text-brand-textSoft">Dán danh sách API Keys của bạn bên dưới (mỗi key nằm trên một dòng riêng biệt)</p>
+                  </div>
+                  <textarea
+                    rows={4}
+                    value={bulkKeysText}
+                    onChange={(e) => setBulkKeysText(e.target.value)}
+                    placeholder="AIzaSyBHPaLXoSL8vXh0r0...&#10;AIzaSyDh0DV2-y4tIjDQOWvi..."
+                    className="w-full text-xs font-mono p-3 rounded-xl border border-brand-line/50 focus:border-brand-primary outline-none bg-brand-bg/50 resize-y"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={addingKeys || !bulkKeysText.trim()}
+                      className="px-5 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primaryStrong text-white text-xs font-bold transition shadow-sm disabled:opacity-50"
+                    >
+                      {addingKeys ? 'Đang thêm...' : 'Thêm danh sách Keys'}
+                    </button>
+                  </div>
+                </form>
+              </Reveal>
+
+              {/* Keys Table */}
+              <div className="space-y-3">
+                <h3 className="text-base font-bold flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-brand-primary" /> Danh sách Keys đang xoay vòng
+                </h3>
+                <div className="border border-brand-line/40 rounded-2xl overflow-hidden bg-brand-bg/25">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-brand-surfaceStrong/5 border-b border-brand-line/40 text-xs font-bold text-brand-textSoft uppercase">
+                        <th className="p-4 pl-5">API Key (Đã che)</th>
+                        <th className="p-4">Trạng thái</th>
+                        <th className="p-4">Dùng lần cuối</th>
+                        <th className="p-4">Xoay vòng</th>
+                        <th className="p-4 pr-5 text-right">Xóa</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-brand-line/20 text-sm">
+                      {keysLoading ? (
+                        <tr>
+                          <td colSpan={5} className="p-10 text-center text-brand-textSoft">
+                            <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-brand-primary" />
+                            Đang tải bể API Keys...
+                          </td>
+                        </tr>
+                      ) : apiKeys && apiKeys.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="p-10 text-center text-brand-textSoft">
+                            Chưa có API Key nào trong hệ thống. Hãy thêm key ở trên!
+                          </td>
+                        </tr>
+                      ) : (
+                        apiKeys?.map(k => (
+                          <tr key={k.id} className="hover:bg-brand-surfaceStrong/5 transition">
+                            <td className="p-4 pl-5 font-mono text-xs">{maskApiKey(k.key_value)}</td>
+                            <td className="p-4">
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider ${
+                                k.status === 'active'
+                                  ? 'bg-brand-primary/10 text-brand-primary'
+                                  : k.status === 'rate_limited'
+                                  ? 'bg-brand-gold/25 text-brand-primaryStrong'
+                                  : 'bg-brand-danger/10 text-brand-danger'
+                              }`}>
+                                {k.status === 'active' ? (
+                                  <>
+                                    <Check className="w-3 h-3" /> Hoạt động
+                                  </>
+                                ) : k.status === 'rate_limited' ? (
+                                  <>
+                                    <AlertTriangle className="w-3 h-3" /> Hạn chế (429)
+                                  </>
+                                ) : (
+                                  <>
+                                    <X className="w-3 h-3" /> Không hợp lệ
+                                  </>
+                                )}
+                              </span>
+                              {k.status !== 'active' && (
+                                <button
+                                  onClick={() => handleResetKeyStatus(k)}
+                                  className="ml-2 text-[10px] text-brand-primary hover:underline font-bold"
+                                >
+                                  Đặt lại
+                                </button>
+                              )}
+                            </td>
+                            <td className="p-4 text-brand-textSoft text-xs">
+                              {k.last_used_at ? formatDate(k.last_used_at) + ' ' + new Date(k.last_used_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'Chưa sử dụng'}
+                            </td>
+                            <td className="p-4">
+                              <button
+                                onClick={() => handleToggleKey(k)}
+                                className="text-brand-textSoft hover:text-brand-primary transition"
+                                title={k.is_active ? 'Tạm dừng xoay' : 'Kích hoạt xoay'}
+                              >
+                                {k.is_active ? (
+                                  <ToggleRight className="w-8 h-8 text-brand-primary" />
+                                ) : (
+                                  <ToggleLeft className="w-8 h-8 text-brand-textSoft/50" />
+                                )}
+                              </button>
+                            </td>
+                            <td className="p-4 pr-5 text-right">
+                              <button
+                                onClick={() => handleDeleteKey(k.id, k.key_value)}
+                                className="p-2 rounded-lg text-brand-danger bg-brand-danger/10 hover:bg-brand-danger/25 transition"
+                                title="Xóa API Key"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
         </div>

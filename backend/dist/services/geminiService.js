@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateItinerary = generateItinerary;
 exports.adaptItinerary = adaptItinerary;
 const genai_1 = require("@google/genai");
+const keyManagerService_1 = require("./keyManagerService");
 const ITINERARY_JSON_SCHEMA = {
     type: 'object',
     properties: {
@@ -50,12 +51,6 @@ const ITINERARY_JSON_SCHEMA = {
     required: ['days', 'budget_summary']
 };
 async function generateItinerary(tripData, weatherForecast, candidatePlaces) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        console.warn('GEMINI_API_KEY is missing. Generating a mock itinerary programmatically.');
-        return generateMockItinerary(tripData, weatherForecast, candidatePlaces);
-    }
-    const ai = new genai_1.GoogleGenAI({ apiKey });
     const systemPrompt = `Bạn là trợ lý lập kế hoạch du lịch chuyên về Việt Nam. 
 Bạn CHỈ được chọn địa điểm trong danh sách "candidate_places" được cung cấp — không tự tạo thêm địa điểm nào ngoài danh sách này (ngoại trừ loại di chuyển "transport" hoặc trải nghiệm "experience" tự do). 
 Bạn phải tôn trọng ngân sách, tình trạng sức khỏe, và sở thích của khách. 
@@ -81,33 +76,36 @@ Trả lời CHỈ bằng JSON hợp lệ đúng schema được cung cấp, khô
         }
     });
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: ITINERARY_JSON_SCHEMA
-            }
-        });
-        const text = response.text;
-        if (!text) {
-            throw new Error('Gemini returned empty response text');
-        }
-        const parsed = JSON.parse(text);
-        // Validate google_place_ids to prevent hallucinations
-        const validIds = new Set();
-        Object.values(candidatePlaces).forEach(list => {
-            list.forEach(place => validIds.add(place.google_place_id));
-        });
-        parsed.days.forEach(day => {
-            day.items.forEach(item => {
-                if (item.google_place_id && !validIds.has(item.google_place_id)) {
-                    console.warn(`Filtering hallucinated place id: ${item.google_place_id} for item: ${item.title}`);
-                    delete item.google_place_id;
+        return await (0, keyManagerService_1.executeWithApiKeyRotation)(async (apiKey) => {
+            const ai = new genai_1.GoogleGenAI({ apiKey });
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
+                config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: ITINERARY_JSON_SCHEMA
                 }
             });
+            const text = response.text;
+            if (!text) {
+                throw new Error('Gemini returned empty response text');
+            }
+            const parsed = JSON.parse(text);
+            // Validate google_place_ids to prevent hallucinations
+            const validIds = new Set();
+            Object.values(candidatePlaces).forEach(list => {
+                list.forEach(place => validIds.add(place.google_place_id));
+            });
+            parsed.days.forEach(day => {
+                day.items.forEach(item => {
+                    if (item.google_place_id && !validIds.has(item.google_place_id)) {
+                        console.warn(`Filtering hallucinated place id: ${item.google_place_id} for item: ${item.title}`);
+                        delete item.google_place_id;
+                    }
+                });
+            });
+            return parsed;
         });
-        return parsed;
     }
     catch (error) {
         console.error(`Gemini generation failed: ${error.message}. Falling back to programmatic generation.`);
@@ -115,12 +113,6 @@ Trả lời CHỈ bằng JSON hợp lệ đúng schema được cung cấp, khô
     }
 }
 async function adaptItinerary(tripData, currentItinerary, disruptionType, disruptionDescription, weatherForecast, candidatePlaces) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        console.warn('GEMINI_API_KEY is missing. Adjusting itinerary via programmatic fallback.');
-        return adaptMockItinerary(currentItinerary, disruptionType, disruptionDescription, candidatePlaces);
-    }
-    const ai = new genai_1.GoogleGenAI({ apiKey });
     const systemPrompt = `Bạn là trợ lý lập kế hoạch du lịch chuyên về Việt Nam. 
 Bạn cần điều chỉnh lịch trình du lịch hiện tại do có sự cố xảy ra. 
 Bạn CHỈ được điều chỉnh các ngày hoặc hoạt động từ thời điểm xảy ra sự cố trở đi (dữ liệu truyền vào sẽ chỉ ra phần cần chỉnh sửa). Giữ nguyên các hoạt động đã hoàn thành trước đó. 
@@ -138,21 +130,23 @@ Trả lời CHỈ bằng JSON hợp lệ đúng schema được cung cấp.`;
         candidate_places: candidatePlaces
     });
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: ITINERARY_JSON_SCHEMA
-            }
+        return await (0, keyManagerService_1.executeWithApiKeyRotation)(async (apiKey) => {
+            const ai = new genai_1.GoogleGenAI({ apiKey });
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
+                config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: ITINERARY_JSON_SCHEMA
+                }
+            });
+            const text = response.text;
+            if (!text)
+                throw new Error('Gemini response is empty');
+            const parsed = JSON.parse(text);
+            const diff = generateItineraryDiff(currentItinerary, parsed, disruptionType);
+            return { itinerary: parsed, diff };
         });
-        const text = response.text;
-        if (!text)
-            throw new Error('Gemini response is empty');
-        const parsed = JSON.parse(text);
-        // Generate a simple human-readable diff text summarizing the changes
-        const diff = generateItineraryDiff(currentItinerary, parsed, disruptionType);
-        return { itinerary: parsed, diff };
     }
     catch (error) {
         console.error(`Gemini adaptation failed: ${error.message}. Using fallback.`);
