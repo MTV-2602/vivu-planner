@@ -53,21 +53,14 @@ export function Admin() {
   const [addingKeys, setAddingKeys] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }: any) => {
-      if (!user) {
-        navigate('/dang-nhap');
-        return;
-      }
-
-      const email = user.email || '';
-      if (!ADMIN_EMAILS.includes(email)) {
-        alert('Bạn không có quyền truy cập trang quản trị!');
-        navigate('/chuyen-di');
-      } else {
-        setIsAdmin(true);
-      }
-      setCheckingAdmin(false);
-    });
+    const isAdminToken = !!localStorage.getItem('vivu_admin_token');
+    if (!isAdminToken) {
+      alert('Bạn không có quyền truy cập trang quản trị!');
+      navigate('/chuyen-di');
+    } else {
+      setIsAdmin(true);
+    }
+    setCheckingAdmin(false);
   }, [navigate]);
 
   // Fetch admin stats

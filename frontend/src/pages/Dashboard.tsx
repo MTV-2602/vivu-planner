@@ -92,7 +92,7 @@ export function Dashboard() {
           </Link>
 
           <div className="flex items-center gap-4">
-            {['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'].includes(userEmail) && (
+            {localStorage.getItem('vivu_admin_token') && (
               <Link
                 to="/admin"
                 className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg text-brand-accent bg-brand-accent/10 hover:bg-brand-accent/25 transition"

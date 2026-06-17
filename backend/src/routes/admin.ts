@@ -7,12 +7,12 @@ const ADMIN_EMAILS = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@v
 
 import crypto from 'crypto';
 
-// Admin middleware to verify email
+// Admin middleware to verify admin token
 function adminMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@vivu.vn';
-  const isAuthorized = req.user && req.user.email && (ADMIN_EMAILS.includes(req.user.email) || req.user.email === adminEmail);
+  // Only the special admin ID (assigned by verifyAdminToken in authMiddleware) is allowed
+  const isAuthorized = req.user && req.user.id === '00000000-0000-0000-0000-000000000001';
   if (!isAuthorized) {
-    return res.status(403).json({ error: 'Forbidden: Access denied' });
+    return res.status(403).json({ error: 'Forbidden: Access denied. Admin token required.' });
   }
   next();
 }

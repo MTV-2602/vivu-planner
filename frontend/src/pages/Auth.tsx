@@ -41,6 +41,11 @@ export function Auth() {
 
     try {
       if (isSignUp) {
+        const adminEmails = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'];
+        if (adminEmails.includes(email.toLowerCase().trim())) {
+          throw new Error('Email này dành riêng cho quản trị viên, không thể đăng ký tài khoản thông thường!');
+        }
+
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
