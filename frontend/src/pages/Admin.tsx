@@ -427,7 +427,7 @@ export function Admin() {
                         <td className="p-4 pr-6 text-right">
                           <button
                             onClick={() => handleDeleteUser(u.id, u.email)}
-                            disabled={u.email === 'mockuser@vivu.vn' || ADMIN_EMAILS.includes(u.email) && u.email !== 'mockuser@vivu.vn'}
+                            disabled={u.email === 'mockuser@vivu.vn'}
                             className="p-2 rounded-lg text-brand-danger bg-brand-danger/10 hover:bg-brand-danger/25 transition disabled:opacity-30 disabled:cursor-not-allowed"
                             title="Xóa người dùng"
                           >
