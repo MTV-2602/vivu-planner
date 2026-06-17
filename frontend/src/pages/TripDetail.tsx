@@ -166,6 +166,21 @@ export function TripDetail() {
   };
 
   const formatDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    if (dateStr.includes('T')) {
+      const date = new Date(dateStr);
+      const formatter = new Intl.DateTimeFormat('vi-VN', {
+        day: '2-digit',
+        month: '2-digit',
+        timeZone: 'Asia/Ho_Chi_Minh'
+      });
+      return formatter.format(date);
+    } else {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}`;
+      }
+    }
     const date = new Date(dateStr);
     const d = String(date.getDate()).padStart(2, '0');
     const m = String(date.getMonth() + 1).padStart(2, '0');

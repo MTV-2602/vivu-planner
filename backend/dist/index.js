@@ -12,6 +12,7 @@ const weather_1 = __importDefault(require("./routes/weather"));
 const dev_1 = __importDefault(require("./routes/dev"));
 const admin_1 = __importDefault(require("./routes/admin"));
 const auth_1 = __importDefault(require("./routes/auth"));
+process.env.TZ = 'Asia/Ho_Chi_Minh';
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = process.env.PORT || 4000;

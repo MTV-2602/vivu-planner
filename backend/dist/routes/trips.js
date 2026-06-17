@@ -7,6 +7,19 @@ const placesService_1 = require("../services/placesService");
 const weatherService_1 = require("../services/weatherService");
 const geminiService_1 = require("../services/geminiService");
 const router = (0, express_1.Router)();
+function formatTimeForDb(timeStr) {
+    if (!timeStr)
+        return null;
+    const clean = timeStr.trim();
+    const parts = clean.split(':');
+    if (parts.length >= 2) {
+        const hh = parts[0].padStart(2, '0');
+        const mm = parts[1].padStart(2, '0');
+        const ss = parts.length >= 3 ? parts[2].substring(0, 2).padStart(2, '0') : '00';
+        return `${hh}:${mm}:${ss}`;
+    }
+    return null;
+}
 // GET /api/trips - List all trips of the current user
 router.get('/', authMiddleware_1.authMiddleware, async (req, res) => {
     const client = (0, supabaseAdmin_1.getSupabaseUserClient)(req.token);
@@ -166,8 +179,8 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
                     item_type: item.item_type,
                     title: item.title,
                     description: item.description || itemAddress || '',
-                    start_time: item.start_time ? `${item.start_time}:00` : null,
-                    end_time: item.end_time ? `${item.end_time}:00` : null,
+                    start_time: formatTimeForDb(item.start_time),
+                    end_time: formatTimeForDb(item.end_time),
                     location_name: item.title,
                     location_lat: itemLat,
                     location_lng: itemLng,
@@ -370,8 +383,8 @@ router.post('/:id/disruptions', authMiddleware_1.authMiddleware, async (req, res
                         item_type: item.item_type,
                         title: item.title,
                         description: item.description,
-                        start_time: item.start_time ? `${item.start_time}:00` : null,
-                        end_time: item.end_time ? `${item.end_time}:00` : null,
+                        start_time: formatTimeForDb(item.start_time),
+                        end_time: formatTimeForDb(item.end_time),
                         location_name: item.title,
                         location_lat: itemLat,
                         location_lng: itemLng,

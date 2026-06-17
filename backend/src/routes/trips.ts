@@ -7,6 +7,19 @@ import { generateItinerary, adaptItinerary } from '../services/geminiService';
 
 const router = Router();
 
+function formatTimeForDb(timeStr?: string | null): string | null {
+  if (!timeStr) return null;
+  const clean = timeStr.trim();
+  const parts = clean.split(':');
+  if (parts.length >= 2) {
+    const hh = parts[0].padStart(2, '0');
+    const mm = parts[1].padStart(2, '0');
+    const ss = parts.length >= 3 ? parts[2].substring(0, 2).padStart(2, '0') : '00';
+    return `${hh}:${mm}:${ss}`;
+  }
+  return null;
+}
+
 // GET /api/trips - List all trips of the current user
 router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const client = getSupabaseUserClient(req.token!);
@@ -200,8 +213,8 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
           item_type: item.item_type,
           title: item.title,
           description: item.description || itemAddress || '',
-          start_time: item.start_time ? `${item.start_time}:00` : null,
-          end_time: item.end_time ? `${item.end_time}:00` : null,
+          start_time: formatTimeForDb(item.start_time),
+          end_time: formatTimeForDb(item.end_time),
           location_name: item.title,
           location_lat: itemLat,
           location_lng: itemLng,
@@ -433,8 +446,8 @@ router.post('/:id/disruptions', authMiddleware, async (req: AuthenticatedRequest
             item_type: item.item_type,
             title: item.title,
             description: item.description,
-            start_time: item.start_time ? `${item.start_time}:00` : null,
-            end_time: item.end_time ? `${item.end_time}:00` : null,
+            start_time: formatTimeForDb(item.start_time),
+            end_time: formatTimeForDb(item.end_time),
             location_name: item.title,
             location_lat: itemLat,
             location_lng: itemLng,

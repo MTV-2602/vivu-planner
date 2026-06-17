@@ -8,6 +8,7 @@ import devRouter from './routes/dev';
 import adminRouter from './routes/admin';
 import authRouter from './routes/auth';
 
+process.env.TZ = 'Asia/Ho_Chi_Minh';
 dotenv.config();
 
 const app = express();
