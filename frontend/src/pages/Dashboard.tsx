@@ -76,6 +76,8 @@ export function Dashboard() {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
   };
 
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
   return (
     <div className="min-h-screen bg-brand-bg font-label">
       {/* Top Navbar */}
@@ -111,23 +113,25 @@ export function Dashboard() {
           </div>
 
           <div className="flex gap-3">
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-primary hover:bg-brand-primaryStrong text-white font-bold transition shadow-md disabled:opacity-50 text-sm"
-            >
-              {syncing ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Đang đồng bộ...
-                </>
-              ) : (
-                <>
-                  <GitFork className="w-4 h-4" />
-                  Đồng bộ Git (TK1 ➔ TK2)
-                </>
-              )}
-            </button>
+            {isLocalhost && (
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-primary hover:bg-brand-primaryStrong text-white font-bold transition shadow-md disabled:opacity-50 text-sm"
+              >
+                {syncing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Đang đồng bộ...
+                  </>
+                ) : (
+                  <>
+                    <GitFork className="w-4 h-4" />
+                    Đồng bộ Git (TK1 ➔ TK2)
+                  </>
+                )}
+              </button>
+            )}
             <Link
               to="/chuyen-di/moi"
               className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-accent hover:bg-brand-accentStrong text-white font-bold transition shadow-md hover:shadow-brand-accent/20 text-sm"
