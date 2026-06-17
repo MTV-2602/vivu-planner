@@ -102,6 +102,38 @@ const VIETNAM_PROVINCES: Record<string, { lat: number; lng: number }> = {
   'vung tau': { lat: 10.3460, lng: 107.0843 }
 };
 
+function getMockPlaces(
+  category: 'accommodation' | 'dining' | 'attraction' | 'rental',
+  lat: number,
+  lng: number
+): PlaceCandidate[] {
+  let matchedCity = 'da nang';
+  
+  // Check closest city in coordinates
+  let minDistance = Infinity;
+  for (const [cityName, coords] of Object.entries(VIETNAM_PROVINCES)) {
+    const dist = Math.pow(coords.lat - lat, 2) + Math.pow(coords.lng - lng, 2);
+    if (dist < minDistance) {
+      minDistance = dist;
+      matchedCity = cityName;
+    }
+  }
+
+  const cityKey = MOCK_PLACES_LIBRARY[matchedCity] ? matchedCity : 'da nang';
+  const mockList = MOCK_PLACES_LIBRARY[cityKey][category] || [];
+  
+  return mockList.map((item, idx) => ({
+    google_place_id: `mock-${category}-${cityKey}-${idx}`,
+    name: item.name!,
+    category,
+    lat: lat + (Math.random() - 0.5) * 0.05,
+    lng: lng + (Math.random() - 0.5) * 0.05,
+    rating: item.rating || 4.5,
+    price_level: item.price_level || 2,
+    address: item.address || 'Địa chỉ thực tế tại Việt Nam'
+  }));
+}
+
 export function getCityCoordinates(city: string): { lat: number; lng: number } {
   const normalized = city.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   for (const key of Object.keys(VIETNAM_PROVINCES)) {
@@ -122,33 +154,7 @@ export async function searchPlaces(
 
   if (!apiKey) {
     console.warn(`GOOGLE_MAPS_API_KEY is missing. Generating mock places for category: ${category}`);
-    // Extract matching city mock data
-    let matchedCity = 'da nang';
-    const currentCoordinates = { lat, lng };
-    
-    // Check closest city in coordinates
-    let minDistance = Infinity;
-    for (const [cityName, coords] of Object.entries(VIETNAM_PROVINCES)) {
-      const dist = Math.pow(coords.lat - lat, 2) + Math.pow(coords.lng - lng, 2);
-      if (dist < minDistance) {
-        minDistance = dist;
-        matchedCity = cityName;
-      }
-    }
-
-    const cityKey = MOCK_PLACES_LIBRARY[matchedCity] ? matchedCity : 'da nang';
-    const mockList = MOCK_PLACES_LIBRARY[cityKey][category] || [];
-    
-    return mockList.map((item, idx) => ({
-      google_place_id: `mock-${category}-${cityKey}-${idx}`,
-      name: item.name!,
-      category,
-      lat: lat + (Math.random() - 0.5) * 0.05,
-      lng: lng + (Math.random() - 0.5) * 0.05,
-      rating: item.rating || 4.5,
-      price_level: item.price_level || 2,
-      address: item.address || 'Địa chỉ thực tế tại Việt Nam'
-    }));
+    return getMockPlaces(category, lat, lng);
   }
 
   try {
@@ -237,7 +243,7 @@ export async function searchPlaces(
     return candidates;
   } catch (error: any) {
     console.error(`Google Places API failure: ${error.response?.data?.error?.message || error.message}. Returning mock data.`);
-    // Fallback to mock data on error
-    return searchPlaces(query, category, lat, lng); // recursion will trigger apiKey missing check
+    // Fallback to mock data on error safely without recursive call
+    return getMockPlaces(category, lat, lng);
   }
 }

@@ -244,9 +244,23 @@ router.post('/keys', async (req: AuthenticatedRequest, res: Response) => {
       return res.status(400).json({ error: 'Missing parameter key_value or key_values' });
     }
 
+    // Fetch existing keys to prevent unique constraint violation
+    const { data: existingKeys, error: fetchError } = await supabaseAdmin
+      .from('gemini_api_keys')
+      .select('key_value');
+      
+    if (fetchError) throw fetchError;
+
+    const existingKeySet = new Set((existingKeys || []).map(k => k.key_value));
+    const uniqueRowsToInsert = rowsToInsert.filter(row => !existingKeySet.has(row.key_value));
+
+    if (uniqueRowsToInsert.length === 0) {
+      return res.json({ success: true, message: 'Tất cả các key gửi lên đã tồn tại trong cơ sở dữ liệu.' });
+    }
+
     const { data, error } = await supabaseAdmin
       .from('gemini_api_keys')
-      .insert(rowsToInsert)
+      .insert(uniqueRowsToInsert)
       .select();
 
     if (error) throw error;

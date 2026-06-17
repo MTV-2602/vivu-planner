@@ -6,9 +6,12 @@ let fallbackIndex = 0;
 
 export async function getNextGeminiApiKey(): Promise<string> {
   if (isDbMocked) {
-    const key = PRE_SEEDED_KEYS[fallbackIndex];
-    fallbackIndex = (fallbackIndex + 1) % PRE_SEEDED_KEYS.length;
-    return key || process.env.GEMINI_API_KEY || '';
+    if (PRE_SEEDED_KEYS.length > 0) {
+      const key = PRE_SEEDED_KEYS[fallbackIndex];
+      fallbackIndex = (fallbackIndex + 1) % PRE_SEEDED_KEYS.length;
+      return key;
+    }
+    return process.env.GEMINI_API_KEY || '';
   }
 
   try {
@@ -26,9 +29,12 @@ export async function getNextGeminiApiKey(): Promise<string> {
       const envKey = process.env.GEMINI_API_KEY;
       if (envKey) return envKey;
 
-      const key = PRE_SEEDED_KEYS[fallbackIndex];
-      fallbackIndex = (fallbackIndex + 1) % PRE_SEEDED_KEYS.length;
-      return key || '';
+      if (PRE_SEEDED_KEYS.length > 0) {
+        const key = PRE_SEEDED_KEYS[fallbackIndex];
+        fallbackIndex = (fallbackIndex + 1) % PRE_SEEDED_KEYS.length;
+        return key;
+      }
+      return '';
     }
 
     const selectedKeyRecord = keys[0];
