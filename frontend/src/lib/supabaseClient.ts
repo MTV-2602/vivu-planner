@@ -114,6 +114,56 @@ if (isMockMode) {
   };
 } else {
   supabaseInstance = createClient(supabaseUrl, supabaseAnonKey);
+  
+  // Wrap auth methods to support credentials-based Admin session
+  const auth = supabaseInstance.auth;
+  const originalGetSession = auth.getSession.bind(auth);
+  const originalGetUser = auth.getUser.bind(auth);
+  const originalOnAuthStateChange = auth.onAuthStateChange.bind(auth);
+  const originalSignOut = auth.signOut.bind(auth);
+
+  auth.getSession = async () => {
+    const adminToken = localStorage.getItem('vivu_admin_token');
+    const adminUserStr = localStorage.getItem('vivu_mock_user');
+    if (adminToken && adminUserStr) {
+      const user = JSON.parse(adminUserStr);
+      return { data: { session: { access_token: adminToken, user } }, error: null };
+    }
+    return originalGetSession();
+  };
+
+  auth.getUser = async (jwt?: string) => {
+    const adminToken = localStorage.getItem('vivu_admin_token');
+    const adminUserStr = localStorage.getItem('vivu_mock_user');
+    if (adminToken && adminUserStr) {
+      return { data: { user: JSON.parse(adminUserStr) }, error: null };
+    }
+    return originalGetUser(jwt);
+  };
+
+  auth.onAuthStateChange = (callback: any) => {
+    const adminToken = localStorage.getItem('vivu_admin_token');
+    const adminUserStr = localStorage.getItem('vivu_mock_user');
+    if (adminToken && adminUserStr) {
+      const user = JSON.parse(adminUserStr);
+      callback('SIGNED_IN', { access_token: adminToken, user });
+      return {
+        data: {
+          subscription: {
+            unsubscribe: () => {}
+          }
+        }
+      };
+    }
+    return originalOnAuthStateChange(callback);
+  };
+
+  auth.signOut = async () => {
+    localStorage.removeItem('vivu_admin_token');
+    localStorage.removeItem('vivu_mock_user');
+    localStorage.removeItem('vivu_mock_token');
+    return originalSignOut();
+  };
 }
 
 export const supabase = supabaseInstance;
