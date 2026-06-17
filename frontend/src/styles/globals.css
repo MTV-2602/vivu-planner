@@ -1,0 +1,187 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Nền & bề mặt — giấy/cát ấm thay vì đen lạnh */
+  --bg: #FBF5EA;
+  --bg-alt: #F3ECDC;
+  --surface: rgba(31, 111, 84, 0.06);
+  --surface-strong: rgba(31, 111, 84, 0.12);
+
+  /* Văn bản */
+  --text: #1B2420;
+  --text-soft: #3F4F45;
+  --text-muted: #6E7B70;
+  --line: rgba(27, 36, 32, 0.12);
+
+  /* Theme tối — dùng cho hero/footer */
+  --bg-dark: #14201B;
+  --text-dark: #F3ECDC;
+
+  /* Màu thương hiệu — Jade rừng (chính) + Terracotta hoàng hôn (CTA) + Vàng cát (highlight) */
+  --primary: #1F6F54;
+  --primary-strong: #134A37;
+  --accent: #E2703A;
+  --accent-strong: #C75A29;
+  --gold: #F0B255;
+  --danger: #B23B3B;  /* riêng cho cảnh báo sự cố */
+
+  --font-display: "Be Vietnam Pro", system-ui, sans-serif;
+  --font-label: "Be Vietnam Pro", system-ui, sans-serif;
+  --font-serif: "Lora", Georgia, serif;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-label);
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* SECTION-BASED THEME SWITCHING */
+.theme-dark {
+  background-color: var(--bg-dark);
+  color: var(--text-dark);
+  --text: var(--text-dark);
+  --text-soft: #A2B0A6;
+  --line: rgba(243, 236, 220, 0.12);
+  --surface: rgba(255, 255, 255, 0.08);
+  --surface-strong: rgba(255, 255, 255, 0.14);
+}
+
+.theme-paper {
+  background-color: var(--bg-alt);
+  color: var(--text);
+}
+
+/* PREMIUM VISUAL EFFECTS */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(31, 111, 84, 0.08);
+}
+
+.theme-dark .glass-panel {
+  background: rgba(20, 32, 27, 0.65);
+  border: 1px solid rgba(243, 236, 220, 0.08);
+}
+
+/* Glow Background */
+.neon-glow-bg {
+  background:
+    radial-gradient(circle at 10% 20%, rgba(31, 111, 84, 0.08), transparent 35%),
+    radial-gradient(circle at 90% 40%, rgba(226, 112, 58, 0.1), transparent 30%),
+    var(--bg);
+}
+
+.theme-dark.neon-glow-bg {
+  background:
+    radial-gradient(circle at 15% 25%, rgba(31, 111, 84, 0.15), transparent 35%),
+    radial-gradient(circle at 85% 35%, rgba(226, 112, 58, 0.12), transparent 30%),
+    var(--bg-dark);
+}
+
+/* Noise overlay */
+.noise-overlay {
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  background-image: radial-gradient(circle, var(--text-soft) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: linear-gradient(to bottom, black, transparent);
+  pointer-events: none;
+}
+
+/* SCROLL REVEAL ANIMATIONS */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 700ms cubic-bezier(0.16, 1, 0.3, 1), transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* STAGGERED TAB ITEMS ANIMATIONS */
+.stagger-item {
+  opacity: 0;
+  transform: translateY(12px);
+  animation: staggerFadeIn 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes staggerFadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* PREFERS-REDUCED-MOTION SUPPORT */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .stagger-item {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+  }
+}
+
+/* Scrollbar customization */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-strong);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* Form inputs styling */
+input, select, textarea {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-family: inherit;
+  transition: all 200ms ease;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  background: #fff;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(31, 111, 84, 0.15);
+}
+
+.theme-dark input, .theme-dark select, .theme-dark textarea {
+  background: rgba(20, 32, 27, 0.5);
+  border-color: var(--line);
+}
+
+.theme-dark input:focus, .theme-dark select:focus, .theme-dark textarea:focus {
+  background: rgba(20, 32, 27, 0.8);
+  border-color: var(--primary);
+}

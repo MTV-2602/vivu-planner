@@ -1,0 +1,135 @@
+create extension if not exists "pgcrypto";
+
+-- ===== ENUMS =====
+create type traveler_type as enum ('solo','couple','family','friends','other');
+create type trip_status as enum ('draft','active','completed','cancelled');
+create type item_type as enum ('accommodation','transport','dining','attraction','rental','experience');
+create type item_status as enum ('planned','confirmed','skipped','replaced');
+create type disruption_type as enum ('delay','budget_shortage','health_issue','weather_change','other');
+
+-- ===== 1. profiles =====
+create table public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  full_name text,
+  phone text,
+  avatar_url text,
+  created_at timestamptz default now()
+);
+alter table public.profiles enable row level security;
+create policy "profiles_select_own" on public.profiles for select using (auth.uid() = id);
+create policy "profiles_update_own" on public.profiles for update using (auth.uid() = id);
+create policy "profiles_insert_own" on public.profiles for insert with check (auth.uid() = id);
+
+-- ===== 2. trips =====
+create table public.trips (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  title text not null,
+  destination_city text not null,
+  destination_province text,
+  start_date date not null,
+  end_date date not null,
+  budget_total numeric not null,
+  budget_currency text default 'VND',
+  traveler_count int default 1,
+  traveler_type traveler_type default 'solo',
+  preferences jsonb default '{}'::jsonb,
+  health_conditions text,
+  special_requirements text,
+  status trip_status default 'draft',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table public.trips enable row level security;
+create policy "trips_owner_all" on public.trips
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ===== 3. itinerary_days =====
+create table public.itinerary_days (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  day_number int not null,
+  date date not null,
+  weather_summary jsonb,
+  notes text,
+  unique (trip_id, day_number)
+);
+alter table public.itinerary_days enable row level security;
+create policy "days_owner_all" on public.itinerary_days
+  for all using (exists (select 1 from public.trips t where t.id = trip_id and t.user_id = auth.uid()))
+  with check (exists (select 1 from public.trips t where t.id = trip_id and t.user_id = auth.uid()));
+
+-- ===== 4. itinerary_items =====
+create table public.itinerary_items (
+  id uuid primary key default gen_random_uuid(),
+  day_id uuid not null references public.itinerary_days(id) on delete cascade,
+  item_type item_type not null,
+  title text not null,
+  description text,
+  start_time time,
+  end_time time,
+  location_name text,
+  location_lat double precision,
+  location_lng double precision,
+  google_place_id text,
+  estimated_cost numeric,
+  booking_url text,
+  order_index int default 0,
+  status item_status default 'planned',
+  created_at timestamptz default now()
+);
+alter table public.itinerary_items enable row level security;
+create policy "items_owner_all" on public.itinerary_items
+  for all using (exists (
+    select 1 from public.itinerary_days d join public.trips t on t.id = d.trip_id
+    where d.id = day_id and t.user_id = auth.uid()
+  )) with check (exists (
+    select 1 from public.itinerary_days d join public.trips t on t.id = d.trip_id
+    where d.id = day_id and t.user_id = auth.uid()
+  ));
+
+-- ===== 5. disruption_events =====
+create table public.disruption_events (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  day_id uuid references public.itinerary_days(id) on delete set null,
+  disruption_type disruption_type not null,
+  description text,
+  detected_at timestamptz default now(),
+  resolved boolean default false,
+  resolution_summary text
+);
+alter table public.disruption_events enable row level security;
+create policy "disruptions_owner_all" on public.disruption_events
+  for all using (exists (select 1 from public.trips t where t.id = trip_id and t.user_id = auth.uid()))
+  with check (exists (select 1 from public.trips t where t.id = trip_id and t.user_id = auth.uid()));
+
+-- ===== 6. itinerary_revisions =====
+create table public.itinerary_revisions (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  disruption_event_id uuid references public.disruption_events(id) on delete set null,
+  previous_snapshot jsonb not null,
+  new_snapshot jsonb not null,
+  created_at timestamptz default now()
+);
+alter table public.itinerary_revisions enable row level security;
+create policy "revisions_owner_select" on public.itinerary_revisions
+  for select using (exists (select 1 from public.trips t where t.id = trip_id and t.user_id = auth.uid()));
+
+-- ===== 7. places_cache =====
+create table public.places_cache (
+  id uuid primary key default gen_random_uuid(),
+  google_place_id text unique not null,
+  name text,
+  category text,
+  lat double precision,
+  lng double precision,
+  rating numeric,
+  price_level int,
+  address text,
+  raw_data jsonb,
+  cached_at timestamptz default now()
+);
+alter table public.places_cache enable row level security;
+create policy "places_cache_public_select" on public.places_cache for select using (true);
