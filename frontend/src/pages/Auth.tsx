@@ -59,13 +59,7 @@ export function Auth() {
 
         if (error) throw error;
         
-        if (isMockAuth) {
-          navigate('/chuyen-di');
-        } else if (data?.user && !data.session) {
-          setInfoMsg('Đăng ký thành công! Vui lòng kiểm tra email để xác nhận tài khoản.');
-        } else {
-          navigate('/chuyen-di');
-        }
+        navigate('/chuyen-di');
       } else {
         if (isTargetAdmin) {
           // 1. Admin login flow
