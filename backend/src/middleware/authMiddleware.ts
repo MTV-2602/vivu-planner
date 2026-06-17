@@ -64,10 +64,50 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
   req.token = token;
 
   // 1. Check if token is a valid cryptographically signed admin token
-  if (verifyAdminToken(token)) {
+  const tokenClean = token.trim();
+  const isLooksLikeAdmin = tokenClean.includes('@') && tokenClean.split(':').length === 3;
+  if (isLooksLikeAdmin) {
+    const parts = tokenClean.split(':');
+    const [email, expiresAtStr, signature] = parts;
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@vivu.vn';
+    const expiresAt = parseInt(expiresAtStr);
+    const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-admin-secret';
+    
+    if (email.toLowerCase().trim() !== adminEmail.toLowerCase().trim()) {
+      return res.status(401).json({
+        error: 'Admin authentication failed',
+        reason: 'Email mismatch',
+        tokenEmail: email,
+        configEmail: adminEmail
+      });
+    }
+    
+    if (isNaN(expiresAt) || Date.now() > expiresAt) {
+      return res.status(401).json({
+        error: 'Admin authentication failed',
+        reason: 'Token expired or invalid time',
+        expiresAt,
+        now: Date.now()
+      });
+    }
+    
+    const payload = `${email}:${expiresAtStr}`;
+    const expectedSignature = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+    if (signature !== expectedSignature) {
+      return res.status(401).json({
+        error: 'Admin authentication failed',
+        reason: 'Signature mismatch',
+        payload,
+        secretLength: secret.length,
+        secretPrefix: secret.substring(0, 5),
+        gotSignature: signature,
+        expectedSignature
+      });
+    }
+    
     req.user = {
       id: '00000000-0000-0000-0000-000000000001', // Special Admin ID
-      email: process.env.ADMIN_EMAIL || 'admin@vivu.vn'
+      email: adminEmail
     };
     return next();
   }
