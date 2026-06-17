@@ -69,5 +69,13 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ## 5. Vinh Pro
 - Always write "Vinh Pro" at the end of the response when completing or applying these guidelines (skills) to prove you have read and followed them.
 
-## 6. Push Git
-- After successfully completing any changes and verifying that they run stably, always perform a Vietnamese commit and push the changes to the Git repository of this project.
+## 6. Auto Git Push & Synchronization (Tự Động Push & Đồng Bộ Dự Án)
+- **Tự động Push:** Sau khi hoàn thành bất kỳ thay đổi nào và kiểm tra hoạt động ổn định, luôn thực hiện commit bằng tiếng Việt và push thay đổi lên Git repository của dự án.
+- **Quy trình Đồng bộ (TK1 & TK2):**
+  1. Thực hiện commit và push các thay đổi tại thư mục `TK1` lên remote repository của nó.
+  2. Đồng bộ các thay đổi từ `TK1` sang `TK2` (nằm tại `TK2/vivu-planner`) bằng cách sao chép toàn bộ các tệp tin (ngoại trừ thư mục `.git`).
+  3. Tại thư mục `TK2/vivu-planner`, cấu hình thông tin Git:
+     - `git config user.name "vinh-not-bot"`
+     - `git config user.email "vinhvip4508@gmail.com"`
+  4. Thực hiện commit và push các thay đổi tại `TK2/vivu-planner` lên remote repository của nó.
+  5. Có thể chạy file script `d:\ki7\EXE\dong_bo_project.bat` để tự động hóa toàn bộ quy trình đồng bộ và push sang TK2 này.
