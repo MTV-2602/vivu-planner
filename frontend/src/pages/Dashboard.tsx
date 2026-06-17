@@ -61,6 +61,9 @@ export function Dashboard() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    localStorage.removeItem('vivu_admin_token');
+    localStorage.removeItem('vivu_mock_user');
+    localStorage.removeItem('vivu_mock_token');
     navigate('/dang-nhap');
   };
 

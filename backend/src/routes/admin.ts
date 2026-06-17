@@ -5,13 +5,40 @@ import { supabaseAdmin, isDbMocked } from '../services/supabaseAdmin';
 const router = Router();
 const ADMIN_EMAILS = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'];
 
+import crypto from 'crypto';
+
 // Admin middleware to verify email
 function adminMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  if (!req.user || !req.user.email || !ADMIN_EMAILS.includes(req.user.email)) {
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@vivu.vn';
+  const isAuthorized = req.user && req.user.email && (ADMIN_EMAILS.includes(req.user.email) || req.user.email === adminEmail);
+  if (!isAuthorized) {
     return res.status(403).json({ error: 'Forbidden: Access denied' });
   }
   next();
 }
+
+// POST /api/admin/login - Authenticate admin using Vercel env credentials
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@vivu.vn';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+
+  if (email === adminEmail && password === adminPassword) {
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    const payload = `${email}:${expiresAt}`;
+    const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-admin-secret';
+    const signature = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+    const token = `${payload}:${signature}`;
+
+    return res.json({
+      success: true,
+      email,
+      token
+    });
+  }
+
+  return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu quản trị viên!' });
+});
 
 router.use(authMiddleware);
 router.use(adminMiddleware);

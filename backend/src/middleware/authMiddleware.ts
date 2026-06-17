@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { supabase } from '../services/supabaseAdmin';
+import crypto from 'crypto';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -7,6 +8,28 @@ export interface AuthenticatedRequest extends Request {
     email?: string;
   };
   token?: string;
+}
+
+export function verifyAdminToken(token: string): boolean {
+  try {
+    const parts = token.split(':');
+    if (parts.length !== 3) return false;
+    const [email, expiresAtStr, signature] = parts;
+    
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@vivu.vn';
+    if (email !== adminEmail) return false;
+    
+    const expiresAt = parseInt(expiresAtStr);
+    if (Date.now() > expiresAt) return false;
+    
+    const payload = `${email}:${expiresAt}`;
+    const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-admin-secret';
+    const expectedSignature = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+    
+    return signature === expectedSignature;
+  } catch {
+    return false;
+  }
 }
 
 export async function authMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -22,6 +45,15 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
 
   const token = parts[1];
   req.token = token;
+
+  // 1. Check if token is a valid cryptographically signed admin token
+  if (verifyAdminToken(token)) {
+    req.user = {
+      id: '00000000-0000-0000-0000-000000000001', // Special Admin ID
+      email: process.env.ADMIN_EMAIL || 'admin@vivu.vn'
+    };
+    return next();
+  }
 
   // Helper check: if Supabase variables are not set, allow mock-token for local testing
   const isSupabaseMissing = !process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY;

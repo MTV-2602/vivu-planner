@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Compass, Sparkles, AlertCircle, ArrowRight } from 'lucide-react';
 import { supabase, isMockAuth } from '../lib/supabaseClient';
+import { apiClient } from '../lib/apiClient';
 
 export function Auth() {
   const navigate = useNavigate();
@@ -56,12 +57,28 @@ export function Auth() {
           navigate('/chuyen-di');
         }
       } else {
+        // 1. Attempt admin login first
+        try {
+          const res = await apiClient.post('/admin/login', { email, password });
+          if (res.data && res.data.token) {
+            localStorage.setItem('vivu_admin_token', res.data.token);
+            localStorage.setItem('vivu_mock_user', JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: res.data.email }));
+            localStorage.setItem('vivu_mock_token', res.data.token);
+            navigate('/chuyen-di');
+            return;
+          }
+        } catch (adminErr: any) {
+          console.log('[Auth] Admin login skipped, falling back to Supabase:', adminErr.message);
+        }
+
+        // 2. Regular Supabase login
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password
         });
 
         if (error) throw error;
+        localStorage.removeItem('vivu_admin_token');
         navigate('/chuyen-di');
       }
     } catch (err: any) {

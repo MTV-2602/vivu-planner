@@ -17,16 +17,21 @@ export const apiClient = axios.create({
 apiClient.interceptors.request.use(
   async (config) => {
     try {
-      const { data } = await supabase.auth.getSession();
-      const session = data?.session;
-      
-      if (session?.access_token) {
-        config.headers.Authorization = `Bearer ${session.access_token}`;
+      const adminToken = localStorage.getItem('vivu_admin_token');
+      if (adminToken) {
+        config.headers.Authorization = `Bearer ${adminToken}`;
       } else {
-        // Fallback for mock client state
-        const localMockToken = localStorage.getItem('vivu_mock_token');
-        if (localMockToken) {
-          config.headers.Authorization = `Bearer ${localMockToken}`;
+        const { data } = await supabase.auth.getSession();
+        const session = data?.session;
+        
+        if (session?.access_token) {
+          config.headers.Authorization = `Bearer ${session.access_token}`;
+        } else {
+          // Fallback for mock client state
+          const localMockToken = localStorage.getItem('vivu_mock_token');
+          if (localMockToken) {
+            config.headers.Authorization = `Bearer ${localMockToken}`;
+          }
         }
       }
     } catch (error) {
