@@ -6,6 +6,7 @@ import placesRouter from './routes/places';
 import weatherRouter from './routes/weather';
 import devRouter from './routes/dev';
 import adminRouter from './routes/admin';
+import authRouter from './routes/auth';
 
 dotenv.config();
 
@@ -38,6 +39,7 @@ app.use('/api/places', placesRouter);
 app.use('/api/weather', weatherRouter);
 app.use('/api/dev', devRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/auth', authRouter);
 
 // Catch-all 404 handler
 app.use((req, res) => {

@@ -135,9 +135,10 @@ function getMockPlaces(
 }
 
 export function getCityCoordinates(city: string): { lat: number; lng: number } {
-  const normalized = city.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const normalized = city.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '');
   for (const key of Object.keys(VIETNAM_PROVINCES)) {
-    if (normalized.includes(key)) {
+    const keyNormalized = key.replace(/\s+/g, '');
+    if (normalized.includes(keyNormalized)) {
       return VIETNAM_PROVINCES[key];
     }
   }

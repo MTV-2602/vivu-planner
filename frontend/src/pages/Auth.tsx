@@ -48,23 +48,46 @@ export function Auth() {
           throw new Error('Email này đã được sử dụng!');
         }
 
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: fullName ? { data: { full_name: fullName } } : undefined
-        });
+        if (isMockAuth) {
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: fullName ? { data: { full_name: fullName } } : undefined
+          });
 
-        if (error) throw error;
+          if (error) throw error;
 
-        // Nếu email đã tồn tại trong Supabase và đã bật xác thực email, identities sẽ rỗng
-        if (data?.user && data.user.identities && data.user.identities.length === 0) {
-          throw new Error('Email này đã được sử dụng!');
-        }
-        
-        if (data?.session) {
-          navigate('/chuyen-di');
+          // Nếu email đã tồn tại trong Supabase và đã bật xác thực email, identities sẽ rỗng
+          if (data?.user && data.user.identities && data.user.identities.length === 0) {
+            throw new Error('Email này đã được sử dụng!');
+          }
+          
+          if (data?.session) {
+            navigate('/chuyen-di');
+          } else {
+            setInfoMsg('Đăng ký thành công! Vui lòng kiểm tra email để xác nhận tài khoản.');
+          }
         } else {
-          setInfoMsg('Đăng ký thành công! Vui lòng kiểm tra email để xác nhận tài khoản.');
+          // Gửi yêu cầu đăng ký lên Backend để tạo và tự động xác thực email bằng Supabase Admin
+          try {
+            await apiClient.post('/auth/signup', { email, password, fullName });
+          } catch (signUpErr: any) {
+            const backendErrorMsg = signUpErr.response?.data?.error || signUpErr.message;
+            throw new Error(backendErrorMsg || 'Có lỗi xảy ra trong quá trình xử lý');
+          }
+
+          // Đăng nhập tự động ngay sau khi đăng ký thành công
+          const { error: loginErr } = await supabase.auth.signInWithPassword({
+            email,
+            password
+          });
+
+          if (loginErr) {
+            throw new Error('Đăng ký thành công nhưng đăng nhập thất bại. Vui lòng đăng nhập lại.');
+          }
+
+          localStorage.removeItem('vivu_admin_token');
+          navigate('/chuyen-di');
         }
       } else {
         if (isTargetAdmin) {

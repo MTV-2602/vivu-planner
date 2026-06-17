@@ -10,21 +10,34 @@ const crypto_1 = __importDefault(require("crypto"));
 function verifyAdminToken(token) {
     try {
         const parts = token.split(':');
-        if (parts.length !== 3)
+        if (parts.length !== 3) {
+            console.log('[VerifyAdminToken] Failed: parts length is', parts.length, 'expected 3. Parts:', parts);
             return false;
+        }
         const [email, expiresAtStr, signature] = parts;
         const adminEmail = process.env.ADMIN_EMAIL || 'admin@vivu.vn';
-        if (email !== adminEmail)
+        if (email.toLowerCase().trim() !== adminEmail.toLowerCase().trim()) {
+            console.log('[VerifyAdminToken] Failed: email mismatch. Token email:', email.toLowerCase().trim(), 'Expected adminEmail:', adminEmail.toLowerCase().trim());
             return false;
+        }
         const expiresAt = parseInt(expiresAtStr);
-        if (Date.now() > expiresAt)
+        if (isNaN(expiresAt) || Date.now() > expiresAt) {
+            console.log('[VerifyAdminToken] Failed: token expired or invalid. Expires:', expiresAt, 'Now:', Date.now());
             return false;
-        const payload = `${email}:${expiresAt}`;
+        }
+        const payload = `${email}:${expiresAtStr}`;
         const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-admin-secret';
         const expectedSignature = crypto_1.default.createHmac('sha256', secret).update(payload).digest('hex');
-        return signature === expectedSignature;
+        if (signature !== expectedSignature) {
+            console.log('[VerifyAdminToken] Failed: signature mismatch. Got:', signature, 'Expected:', expectedSignature);
+            console.log('[VerifyAdminToken] Diagnostic info: payload:', payload, 'secret length:', secret.length);
+            return false;
+        }
+        console.log('[VerifyAdminToken] Success for admin:', email);
+        return true;
     }
-    catch {
+    catch (err) {
+        console.error('[VerifyAdminToken] Exception occurred:', err.message);
         return false;
     }
 }
@@ -40,10 +53,46 @@ async function authMiddleware(req, res, next) {
     const token = parts[1];
     req.token = token;
     // 1. Check if token is a valid cryptographically signed admin token
-    if (verifyAdminToken(token)) {
+    const tokenClean = token.trim();
+    const isLooksLikeAdmin = tokenClean.includes('@') && tokenClean.split(':').length === 3;
+    if (isLooksLikeAdmin) {
+        const parts = tokenClean.split(':');
+        const [email, expiresAtStr, signature] = parts;
+        const adminEmail = process.env.ADMIN_EMAIL || 'admin@vivu.vn';
+        const expiresAt = parseInt(expiresAtStr);
+        const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-admin-secret';
+        if (email.toLowerCase().trim() !== adminEmail.toLowerCase().trim()) {
+            return res.status(401).json({
+                error: 'Admin authentication failed',
+                reason: 'Email mismatch',
+                tokenEmail: email,
+                configEmail: adminEmail
+            });
+        }
+        if (isNaN(expiresAt) || Date.now() > expiresAt) {
+            return res.status(401).json({
+                error: 'Admin authentication failed',
+                reason: 'Token expired or invalid time',
+                expiresAt,
+                now: Date.now()
+            });
+        }
+        const payload = `${email}:${expiresAtStr}`;
+        const expectedSignature = crypto_1.default.createHmac('sha256', secret).update(payload).digest('hex');
+        if (signature !== expectedSignature) {
+            return res.status(401).json({
+                error: 'Admin authentication failed',
+                reason: 'Signature mismatch',
+                payload,
+                secretLength: secret.length,
+                secretPrefix: secret.substring(0, 5),
+                gotSignature: signature,
+                expectedSignature
+            });
+        }
         req.user = {
             id: '00000000-0000-0000-0000-000000000001', // Special Admin ID
-            email: process.env.ADMIN_EMAIL || 'admin@vivu.vn'
+            email: adminEmail
         };
         return next();
     }

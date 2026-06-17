@@ -69,6 +69,11 @@ exports.supabase = supabaseInstance;
 exports.supabaseAdmin = supabaseAdminInstance;
 // Helper to create a request-scoped client using the user's JWT
 function getSupabaseUserClient(token) {
+    const tokenClean = token.trim();
+    const isLooksLikeAdmin = tokenClean.includes('@') && tokenClean.split(':').length === 3;
+    if (isLooksLikeAdmin) {
+        return supabaseAdminInstance;
+    }
     if (isSupabaseConfigured) {
         return (0, supabase_js_1.createClient)(supabaseUrl, supabaseAnonKey, {
             auth: {
@@ -77,7 +82,7 @@ function getSupabaseUserClient(token) {
             },
             global: {
                 headers: {
-                    Authorization: `Bearer ${token}`
+                    Authorization: `Bearer ${tokenClean}`
                 }
             }
         });
