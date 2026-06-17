@@ -60,6 +60,19 @@ export function TripWizard() {
     );
   };
 
+  const handleTravelerTypeChange = (value: string) => {
+    setTravelerType(value);
+    if (value === 'solo') {
+      setTravelerCount(1);
+    } else if (value === 'couple') {
+      setTravelerCount(2);
+    } else {
+      if (travelerCount <= 2) {
+        setTravelerCount(4);
+      }
+    }
+  };
+
   const handleNext = () => {
     if (step === 1) {
       if (!startDate || !endDate) {
@@ -279,29 +292,41 @@ export function TripWizard() {
               <h2 className="text-2xl font-display font-extrabold text-brand-text">Đoàn đi và Ngân sách</h2>
               
               <div className="space-y-5">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-brand-textSoft mb-1.5">Số lượng khách</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="50"
-                      value={travelerCount}
-                      onChange={(e) => setTravelerCount(parseInt(e.target.value) || 1)}
-                      className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold"
-                    />
-                  </div>
-                  <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {travelerType !== 'solo' && travelerType !== 'couple' ? (
+                    <div>
+                      <label className="block text-sm font-bold text-brand-textSoft mb-1.5">Số lượng khách</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="50"
+                        value={travelerCount}
+                        onChange={(e) => setTravelerCount(parseInt(e.target.value) || 1)}
+                        className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold"
+                      />
+                    </div>
+                  ) : null}
+                  <div className={travelerType === 'solo' || travelerType === 'couple' ? "col-span-2" : ""}>
                     <label className="block text-sm font-bold text-brand-textSoft mb-1.5">Loại thành viên</label>
                     <select
                       value={travelerType}
-                      onChange={(e) => setTravelerType(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold"
+                      onChange={(e) => handleTravelerTypeChange(e.target.value)}
+                      className="w-full px-4 py-3.5 rounded-xl border border-brand-line text-sm font-semibold cursor-pointer"
                     >
                       {TRAVELER_TYPES.map(t => (
                         <option key={t.value} value={t.value}>{t.label}</option>
                       ))}
                     </select>
+                    {travelerType === 'solo' && (
+                      <span className="text-[11px] font-semibold text-brand-primary mt-1.5 block">
+                        ℹ️ Hệ thống đã tự động thiết lập số lượng khách là 1 người (Solo).
+                      </span>
+                    )}
+                    {travelerType === 'couple' && (
+                      <span className="text-[11px] font-semibold text-brand-primary mt-1.5 block">
+                        ℹ️ Hệ thống đã tự động thiết lập số lượng khách là 2 người (Couple).
+                      </span>
+                    )}
                   </div>
                 </div>
 
