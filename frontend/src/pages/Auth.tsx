@@ -68,7 +68,15 @@ export function Auth() {
             return;
           }
         } catch (adminErr: any) {
-          console.log('[Auth] Admin login skipped, falling back to Supabase:', adminErr.message);
+          console.log('[Auth] Admin login skipped, falling back to Supabase:', adminErr);
+          // If the server responded with a credentials error (401 or 403), show it directly
+          if (adminErr.response) {
+            const status = adminErr.response.status;
+            const errorData = adminErr.response.data;
+            if (status === 401 || status === 403) {
+              throw new Error(errorData?.error || 'Sai tài khoản hoặc mật khẩu quản trị viên!');
+            }
+          }
         }
 
         // 2. Regular Supabase login

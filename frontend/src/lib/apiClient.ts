@@ -1,10 +1,24 @@
 import axios from 'axios';
 import { supabase } from './supabaseClient';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-    ? 'http://localhost:4000/api' 
-    : '/api');
+const getApiBaseUrl = () => {
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  
+  // Safeguard: If envUrl points to localhost but we are running in production, ignore it
+  if (envUrl && envUrl.includes('localhost') && !isLocalhost) {
+    return '/api';
+  }
+  
+  if (envUrl) {
+    return envUrl;
+  }
+  
+  return isLocalhost ? 'http://localhost:4000/api' : '/api';
+};
+
+const apiBaseUrl = getApiBaseUrl();
+
 
 export const apiClient = axios.create({
   baseURL: apiBaseUrl,
