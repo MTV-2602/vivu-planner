@@ -1,0 +1,67 @@
+{
+  "expo": {
+    "name": "ViVu Planner",
+    "slug": "vivu-planner",
+    "version": "1.0.0",
+    "scheme": "vivuplanner",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FBF5EA"
+    },
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vivuplanner.app"
+    },
+    "android": {
+      "package": "com.vivuplanner.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#FBF5EA",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      "expo-updates",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#1B2420"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "url": "https://u.expo.dev/384e063a-1a82-4628-82a8-b33eeb875df6"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "384e063a-1a82-4628-82a8-b33eeb875df6"
+      }
+    },
+    "owner": "tinascott2005"
+  }
+}

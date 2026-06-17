@@ -1,0 +1,55 @@
+# render.yaml — Render Blueprint for ViVu Planner Backend
+# Deploy backend to Render as a persistent Node.js web service
+
+services:
+  - type: web
+    name: vivu-planner-backend
+    runtime: node
+    region: singapore  # Gần Việt Nam nhất trên Render
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    plan: free
+
+    envVars:
+      # === Supabase ===
+      - key: SUPABASE_URL
+        sync: false  # Nhập thủ công trên Render dashboard
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+      # === AI ===
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # === Frontend CORS (Vercel domain) ===
+      - key: FRONTEND_ORIGIN
+        value: https://vivu-planner.vercel.app
+      - key: FRONTEND_URL
+        value: https://vivu-planner.vercel.app
+      - key: SITE_URL
+        value: https://vivu-planner.vercel.app
+
+      # === Payment ===
+      - key: PAYOS_CLIENT_ID
+        sync: false
+      - key: PAYOS_API_KEY
+        sync: false
+      - key: PAYOS_CHECKSUM_KEY
+        sync: false
+      - key: MOMO_PARTNER_CODE
+        sync: false
+      - key: MOMO_ACCESS_KEY
+        sync: false
+      - key: MOMO_SECRET_KEY
+        sync: false
+
+      # === Other ===
+      - key: NODE_ENV
+        value: production
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
