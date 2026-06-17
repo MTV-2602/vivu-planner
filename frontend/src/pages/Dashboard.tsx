@@ -5,6 +5,8 @@ import { Compass, Plus, LogOut, Calendar, MapPin, DollarSign, Wallet, RefreshCw,
 import { supabase } from '../lib/supabaseClient';
 import { apiClient } from '../lib/apiClient';
 import Reveal from '../components/Reveal';
+import SystemClock from '../components/SystemClock';
+
 
 interface Trip {
   id: string;
@@ -108,6 +110,7 @@ export function Dashboard() {
           </Link>
 
           <div className="flex items-center gap-4">
+            <SystemClock />
             {localStorage.getItem('vivu_admin_token') && (
               <Link
                 to="/admin"

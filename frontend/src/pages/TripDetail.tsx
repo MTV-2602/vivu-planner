@@ -4,11 +4,13 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { 
   Compass, ArrowLeft, AlertTriangle, Calendar, Wallet, MapPin, 
   Sparkles, Clock, Map, Star, Utensils, Home, Bike, Check, X, 
-  HelpCircle, ChevronRight, Activity, ThermometerSun 
+  HelpCircle, ChevronRight, Activity, ThermometerSun, Trash2, PenLine
 } from 'lucide-react';
 import { apiClient } from '../lib/apiClient';
 import Reveal from '../components/Reveal';
 import BackToTop from '../components/BackToTop';
+import SystemClock from '../components/SystemClock';
+
 
 interface ItineraryItem {
   id: string;
@@ -65,6 +67,31 @@ export function TripDetail() {
   const [disruptionDayId, setDisruptionDayId] = useState('');
   const [adaptationDiff, setAdaptationDiff] = useState<string>('');
 
+  // AI Preview & Selection State
+  const [proposedItinerary, setProposedItinerary] = useState<any>(null);
+  const [proposedDiff, setProposedDiff] = useState<string>('');
+  const [previousSnapshot, setPreviousSnapshot] = useState<any>(null);
+  const [selectedProposedItems, setSelectedProposedItems] = useState<any[]>([]);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+
+  // Manual Edit State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+  const [editCost, setEditCost] = useState<number>(0);
+  const [editStatus, setEditStatus] = useState<'planned' | 'confirmed' | 'skipped' | 'replaced'>('planned');
+  const [editItemType, setEditItemType] = useState<string>('attraction');
+
+  // AI Replacement States
+  const [isAiReplaceModalOpen, setIsAiReplaceModalOpen] = useState(false);
+  const [aiReplaceItem, setAiReplaceItem] = useState<any | null>(null);
+  const [aiAlternatives, setAiAlternatives] = useState<any[]>([]);
+  const [aiReplaceRequirement, setAiReplaceRequirement] = useState('');
+  const [isFetchingAlternatives, setIsFetchingAlternatives] = useState(false);
+
   const { data: trip, isLoading, isError, refetch } = useQuery<TripDetailData>({
     queryKey: ['trip', id],
     queryFn: async () => {
@@ -83,18 +110,137 @@ export function TripDetail() {
     }
   }, [trip, activeTabId]);
 
-  const adaptMutation = useMutation({
+  const previewMutation = useMutation({
     mutationFn: async (payload: any) => {
-      const res = await apiClient.post(`/trips/${id}/disruptions`, payload);
+      const res = await apiClient.post(`/trips/${id}/disruptions/preview`, payload);
       return res.data;
     },
     onSuccess: (data) => {
-      setAdaptationDiff(data.diff);
+      setProposedItinerary(data.adaptedItinerary);
+      setProposedDiff(data.diff);
+      setPreviousSnapshot(data.previousSnapshot);
+
+      // Select all proposed items by default
+      const allNewItems: any[] = [];
+      data.adaptedItinerary.days.forEach((day: any) => {
+        let affectedDayNumber = 1;
+        if (disruptionDayId) {
+          const matchedDay = trip?.days.find(d => d.id === disruptionDayId);
+          if (matchedDay) affectedDayNumber = matchedDay.day_number;
+        }
+        if (Number(day.day_number) >= affectedDayNumber) {
+          day.items.forEach((item: any, idx: number) => {
+            allNewItems.push({
+              ...item,
+              day_number: day.day_number,
+              temp_id: `temp-${day.day_number}-${idx}`
+            });
+          });
+        }
+      });
+      setSelectedProposedItems(allNewItems);
+
       setIsDisruptionModalOpen(false);
-      setDisruptionDesc('');
-      refetch();
+      setIsPreviewModalOpen(true);
+    },
+    onError: (err: any) => {
+      alert('Lỗi phân tích sự cố: ' + (err.response?.data?.error || err.message));
     }
   });
+
+  const applyMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await apiClient.post(`/trips/${id}/disruptions/apply`, payload);
+      return res.data;
+    },
+    onSuccess: () => {
+      setIsPreviewModalOpen(false);
+      setDisruptionDesc('');
+      setProposedItinerary(null);
+      setProposedDiff('');
+      setSelectedProposedItems([]);
+      setAdaptationDiff('Lịch trình đã được điều chỉnh thành công theo lựa chọn của bạn!');
+      refetch();
+    },
+    onError: (err: any) => {
+      alert('Lỗi áp dụng lịch trình: ' + (err.response?.data?.error || err.message));
+    }
+  });
+
+  const editMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await apiClient.put(`/trips/items/${editingItem.id}`, payload);
+      return res.data;
+    },
+    onSuccess: () => {
+      setIsEditModalOpen(false);
+      refetch();
+    },
+    onError: (err: any) => {
+      alert('Lỗi cập nhật hoạt động: ' + (err.response?.data?.error || err.message));
+    }
+  });
+
+  const aiReplaceMutation = useMutation({
+    mutationFn: async ({ itemId, payload }: { itemId: string; payload: any }) => {
+      const res = await apiClient.put(`/trips/items/${itemId}`, payload);
+      return res.data;
+    },
+    onSuccess: () => {
+      setIsAiReplaceModalOpen(false);
+      setAiReplaceItem(null);
+      setAiAlternatives([]);
+      setAiReplaceRequirement('');
+      refetch();
+    },
+    onError: (err: any) => {
+      alert('Lỗi áp dụng gợi ý AI: ' + (err.response?.data?.error || err.message));
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (itemId: string) => {
+      await apiClient.delete(`/trips/items/${itemId}`);
+    },
+    onSuccess: () => {
+      refetch();
+    },
+    onError: (err: any) => {
+      alert('Lỗi khi xóa hoạt động: ' + (err.response?.data?.error || err.message));
+    }
+  });
+
+  const handleEditClick = (item: any) => {
+    setEditingItem(item);
+    setEditTitle(item.title);
+    setEditDesc(item.description || '');
+    setEditStartTime(item.start_time ? item.start_time.substring(0, 5) : '');
+    setEditEndTime(item.end_time ? item.end_time.substring(0, 5) : '');
+    setEditCost(Number(item.estimated_cost) || 0);
+    setEditStatus(item.status);
+    setEditItemType(item.item_type);
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTitle) return;
+    editMutation.mutate({
+      title: editTitle,
+      description: editDesc,
+      start_time: editStartTime || null,
+      end_time: editEndTime || null,
+      estimated_cost: editCost,
+      status: editStatus,
+      item_type: editItemType
+    });
+  };
+
+  const handleDeleteClick = (itemId: string, itemTitle: string) => {
+    if (confirm(`Bạn có chắc chắn muốn xóa hoạt động "${itemTitle}"?`)) {
+      deleteMutation.mutate(itemId);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -134,7 +280,7 @@ export function TripDetail() {
     e.preventDefault();
     if (!disruptionDesc) return;
     
-    adaptMutation.mutate({
+    previewMutation.mutate({
       disruption_type: disruptionType,
       description: disruptionDesc,
       day_id: disruptionDayId || null
@@ -199,9 +345,12 @@ export function TripDetail() {
           >
             <ArrowLeft className="w-4 h-4" /> Bảng điều khiển
           </Link>
-          <div className="flex items-center gap-2">
-            <Compass className="w-6 h-6 text-brand-primary" />
-            <span className="font-display font-extrabold text-lg text-brand-primary">ViVu Planner</span>
+          <div className="flex items-center gap-4">
+            <SystemClock />
+            <div className="flex items-center gap-2">
+              <Compass className="w-6 h-6 text-brand-primary" />
+              <span className="font-display font-extrabold text-lg text-brand-primary">ViVu Planner</span>
+            </div>
           </div>
         </div>
       </nav>
@@ -376,8 +525,8 @@ export function TripDetail() {
 
                         {/* Content Card */}
                         <div className="p-4 rounded-2xl bg-brand-bgAlt border border-brand-line/40 group-hover:border-brand-primary/50 transition">
-                          <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
-                            <div className="space-y-1.5">
+                          <div className="flex flex-col sm:flex-row justify-between items-start gap-2 w-full">
+                            <div className="space-y-1.5 flex-grow">
                               {/* Header tags */}
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-[10px] font-bold uppercase tracking-wider text-brand-primary flex items-center gap-1 bg-white border border-brand-line/40 px-2 py-0.5 rounded">
@@ -406,15 +555,54 @@ export function TripDetail() {
                               </p>
                             </div>
 
-                            {/* Estimated Cost */}
-                            {item.estimated_cost !== undefined && (
-                              <div className="text-right shrink-0">
-                                <span className="text-[10px] text-brand-textMuted font-bold block uppercase tracking-wider">Dự tính</span>
-                                <span className="text-xs font-extrabold text-brand-text">
-                                  {item.estimated_cost === 0 ? 'Miễn phí' : `${item.estimated_cost.toLocaleString('vi-VN')}đ`}
-                                </span>
+                            {/* Actions & Cost Area */}
+                            <div className="text-right shrink-0 flex flex-col items-end justify-between gap-3 h-full min-h-[50px]">
+                              {item.estimated_cost !== undefined ? (
+                                <div>
+                                  <span className="text-[10px] text-brand-textMuted font-bold block uppercase tracking-wider">Dự tính</span>
+                                  <span className="text-xs font-extrabold text-brand-text">
+                                    {item.estimated_cost === 0 ? 'Miễn phí' : `${item.estimated_cost.toLocaleString('vi-VN')}đ`}
+                                  </span>
+                                </div>
+                              ) : <div />}
+
+                              {/* Manual edit, delete and AI replacement buttons */}
+                              <div className="flex gap-2 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    setAiReplaceItem(item);
+                                    setIsAiReplaceModalOpen(true);
+                                    setAiAlternatives([]);
+                                    setAiReplaceRequirement('');
+                                  }}
+                                  className="p-1 rounded bg-brand-accent/10 hover:bg-brand-accent/25 text-brand-accent transition"
+                                  title="AI thay thế hoạt động"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    handleEditClick(item);
+                                  }}
+                                  className="p-1 rounded bg-brand-primary/10 hover:bg-brand-primary/25 text-brand-primary transition"
+                                  title="Sửa hoạt động"
+                                >
+                                  <PenLine className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    handleDeleteClick(item.id, item.title);
+                                  }}
+                                  className="p-1 rounded bg-brand-danger/10 hover:bg-brand-danger/25 text-brand-danger transition"
+                                  title="Xóa hoạt động"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
                               </div>
-                            )}
+                            </div>
                           </div>
                         </div>
 
@@ -501,13 +689,13 @@ export function TripDetail() {
                 </button>
                 <button
                   type="submit"
-                  disabled={adaptMutation.isPending}
+                  disabled={previewMutation.isPending}
                   className="px-5 py-3 rounded-xl bg-brand-danger hover:bg-brand-danger/90 text-white text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  {adaptMutation.isPending ? (
+                  {previewMutation.isPending ? (
                     <>
                       <Loader2Icon className="w-4 h-4 animate-spin" />
-                      AI đang xử lý...
+                      AI đang phân tích...
                     </>
                   ) : (
                     <>
@@ -519,6 +707,439 @@ export function TripDetail() {
               </div>
             </form>
           </Reveal>
+        </div>
+      )}
+
+      {/* AI PREVIEW & SELECTION MODAL */}
+      {isPreviewModalOpen && proposedItinerary && (
+        <div className="fixed inset-0 bg-brand-bgDark/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fadeIn font-label">
+          <div className="bg-brand-bg p-8 rounded-3xl max-w-2xl w-full shadow-2xl border border-brand-line/50 space-y-6 max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-brand-line/35 pb-4">
+              <h3 className="text-lg font-display font-extrabold text-brand-text flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-brand-primary" /> Đề xuất lịch trình từ AI
+              </h3>
+              <button
+                onClick={() => setIsPreviewModalOpen(false)}
+                className="p-1 rounded bg-brand-line/10 hover:bg-brand-line/25 text-brand-textSoft transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {proposedDiff && (
+                <div className="p-4 rounded-xl bg-brand-primary/5 border border-brand-primary/20 text-xs text-brand-textSoft font-serif italic whitespace-pre-line">
+                  <strong>Các thay đổi dự kiến:</strong><br />
+                  {proposedDiff}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <label className="block text-sm font-bold text-brand-textSoft">
+                  Chọn các hoạt động thay thế bạn muốn áp dụng:
+                </label>
+                
+                <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-2">
+                  {proposedItinerary.days.map((day: any) => {
+                    let affectedDayNumber = 1;
+                    if (disruptionDayId) {
+                      const matchedDay = trip?.days.find(d => d.id === disruptionDayId);
+                      if (matchedDay) affectedDayNumber = matchedDay.day_number;
+                    }
+                    if (Number(day.day_number) < affectedDayNumber) return null;
+
+                    return (
+                      <div key={day.day_number} className="space-y-2">
+                        <h4 className="text-xs font-bold text-brand-primary uppercase tracking-wider">
+                          Ngày {day.day_number} ({formatDate(day.date)})
+                        </h4>
+                        
+                        <div className="space-y-2">
+                          {day.items.map((item: any, idx: number) => {
+                            const tempId = `temp-${day.day_number}-${idx}`;
+                            const isChecked = selectedProposedItems.some(i => i.temp_id === tempId);
+                            return (
+                              <label
+                                key={tempId}
+                                className={`flex items-start gap-3 p-3.5 rounded-xl border transition cursor-pointer select-none ${
+                                  isChecked
+                                    ? 'bg-brand-primary/5 border-brand-primary/45'
+                                    : 'bg-brand-bgAlt/50 border-brand-line/30 opacity-70'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    if (isChecked) {
+                                      setSelectedProposedItems(prev => prev.filter(i => i.temp_id !== tempId));
+                                    } else {
+                                      setSelectedProposedItems(prev => [...prev, { ...item, day_number: day.day_number, temp_id: tempId }]);
+                                    }
+                                  }}
+                                  className="mt-1 w-4 h-4 rounded text-brand-primary focus:ring-brand-primary"
+                                />
+                                <div className="space-y-1 text-xs">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-brand-text">{item.title}</span>
+                                    <span className="text-[9px] uppercase bg-brand-primary/10 text-brand-primary px-1.5 py-0.5 rounded font-bold">
+                                      {item.item_type}
+                                    </span>
+                                    {item.start_time && (
+                                      <span className="text-[10px] text-brand-textSoft">
+                                        ({item.start_time.substring(0, 5)})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-brand-textSoft font-serif">{item.description}</p>
+                                  {item.estimated_cost !== undefined && (
+                                    <p className="text-[10px] font-bold text-brand-textMuted">
+                                      Chi phí dự tính: {item.estimated_cost === 0 ? 'Miễn phí' : `${item.estimated_cost.toLocaleString('vi-VN')}đ`}
+                                    </p>
+                                  )}
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-brand-line/35">
+              <button
+                type="button"
+                onClick={() => setIsPreviewModalOpen(false)}
+                className="px-4 py-2.5 rounded-lg border border-brand-line text-xs font-bold text-brand-textSoft hover:bg-brand-surface transition"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  applyMutation.mutate({
+                    disruption_type: disruptionType,
+                    description: disruptionDesc,
+                    day_id: disruptionDayId || null,
+                    selected_items: selectedProposedItems.map(i => ({
+                      item_type: i.item_type,
+                      title: i.title,
+                      description: i.description,
+                      start_time: i.start_time,
+                      end_time: i.end_time,
+                      estimated_cost: i.estimated_cost,
+                      order_index: i.order_index,
+                      day_number: i.day_number
+                    })),
+                    previous_snapshot: previousSnapshot
+                  });
+                }}
+                disabled={applyMutation.isPending}
+                className="px-5 py-3 rounded-xl bg-brand-primary hover:bg-brand-primaryStrong text-white text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {applyMutation.isPending ? (
+                  <>
+                    <Loader2Icon className="w-4 h-4 animate-spin" />
+                    Đang áp dụng...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Áp dụng lịch trình đã chọn
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MANUAL EDIT MODAL */}
+      {isEditModalOpen && editingItem && (
+        <div className="fixed inset-0 bg-brand-bgDark/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fadeIn font-label">
+          <div className="bg-brand-bg p-8 rounded-3xl max-w-md w-full shadow-2xl border border-brand-line/50 space-y-6">
+            <div className="flex justify-between items-center border-b border-brand-line/35 pb-4">
+              <h3 className="text-lg font-display font-extrabold text-brand-text flex items-center gap-2">
+                <PenLine className="w-5 h-5 text-brand-primary" /> Chỉnh sửa hoạt động
+              </h3>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-1 rounded bg-brand-line/10 hover:bg-brand-line/25 text-brand-textSoft transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-brand-textSoft mb-1.5">Tên hoạt động</label>
+                <input
+                  type="text"
+                  required
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-brand-textSoft mb-1.5">Mô tả hoạt động</label>
+                <textarea
+                  rows={2}
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-brand-textSoft mb-1.5">Giờ bắt đầu</label>
+                  <input
+                    type="time"
+                    value={editStartTime}
+                    onChange={(e) => setEditStartTime(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-brand-textSoft mb-1.5">Giờ kết thúc</label>
+                  <input
+                    type="time"
+                    value={editEndTime}
+                    onChange={(e) => setEditEndTime(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-brand-textSoft mb-1.5">Chi phí (VND)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="10000"
+                    value={editCost}
+                    onChange={(e) => setEditCost(parseInt(e.target.value) || 0)}
+                    className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-brand-textSoft mb-1.5">Trạng thái</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e: any) => setEditStatus(e.target.value)}
+                    className="w-full px-4 py-3.5 rounded-xl border border-brand-line text-sm font-semibold cursor-pointer"
+                  >
+                    <option value="planned">Đang lên lịch (Planned)</option>
+                    <option value="confirmed">Đã xác nhận (Confirmed)</option>
+                    <option value="skipped">Bỏ qua (Skipped)</option>
+                    <option value="replaced">Đã thay thế (Replaced)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-brand-textSoft mb-1.5">Loại hoạt động</label>
+                <select
+                  value={editItemType}
+                  onChange={(e: any) => setEditItemType(e.target.value)}
+                  className="w-full px-4 py-3.5 rounded-xl border border-brand-line text-sm font-semibold cursor-pointer"
+                >
+                  <option value="accommodation">Chỗ nghỉ</option>
+                  <option value="transport">Di chuyển</option>
+                  <option value="dining">Ăn uống</option>
+                  <option value="attraction">Tham quan</option>
+                  <option value="rental">Thuê xe</option>
+                  <option value="experience">Trải nghiệm</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-brand-line/35">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2.5 rounded-lg border border-brand-line text-xs font-bold text-brand-textSoft hover:bg-brand-surface transition"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={editMutation.isPending}
+                  className="px-5 py-3 rounded-xl bg-brand-primary hover:bg-brand-primaryStrong text-white text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {editMutation.isPending ? (
+                    <>
+                      <Loader2Icon className="w-4 h-4 animate-spin" />
+                      Đang lưu...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Lưu thay đổi
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* AI SINGLE ITEM REPLACE MODAL */}
+      {isAiReplaceModalOpen && aiReplaceItem && (
+        <div className="fixed inset-0 bg-brand-bgDark/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fadeIn font-label">
+          <div className="bg-brand-bg p-8 rounded-3xl max-w-xl w-full shadow-2xl border border-brand-line/50 space-y-6 max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-brand-line/35 pb-4">
+              <div className="space-y-1">
+                <h3 className="text-lg font-display font-extrabold text-brand-text flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-brand-accent animate-pulse" /> AI Thay Thế Hoạt Động
+                </h3>
+                <p className="text-xs text-brand-textSoft">
+                  Đề xuất hoạt động thay thế cho: <strong className="text-brand-text">"{aiReplaceItem.title}"</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setIsAiReplaceModalOpen(false)}
+                className="p-1 rounded bg-brand-line/10 hover:bg-brand-line/25 text-brand-textSoft transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-brand-textSoft mb-1.5">
+                  Bạn có yêu cầu đặc thù nào cho địa điểm thay thế không? (Tùy chọn)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Ví dụ: Đổi quán chay, Điểm tham quan trong nhà, Tiết kiệm chi phí..."
+                    value={aiReplaceRequirement}
+                    onChange={(e) => setAiReplaceRequirement(e.target.value)}
+                    className="flex-1 px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setIsFetchingAlternatives(true);
+                      try {
+                        const res = await apiClient.post(`/trips/items/${aiReplaceItem.id}/ai-replace`, {
+                          user_requirement: aiReplaceRequirement
+                        });
+                        setAiAlternatives(res.data.alternatives || []);
+                      } catch (err: any) {
+                        alert('Lỗi lấy gợi ý từ AI: ' + (err.response?.data?.error || err.message));
+                      } finally {
+                        setIsFetchingAlternatives(false);
+                      }
+                    }}
+                    disabled={isFetchingAlternatives}
+                    className="px-5 py-3 rounded-xl bg-brand-accent hover:bg-brand-accentStrong text-white text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isFetchingAlternatives ? (
+                      <>
+                        <Loader2Icon className="w-4 h-4 animate-spin" />
+                        Đang quét...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Gợi ý
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Alternatives List */}
+              {isFetchingAlternatives ? (
+                <div className="py-12 text-center space-y-3">
+                  <div className="w-8 h-8 rounded-full border-2 border-brand-accent/20 border-t-brand-accent animate-spin mx-auto" />
+                  <p className="text-xs text-brand-textSoft font-semibold">Gemini đang đề xuất các lựa chọn tốt nhất...</p>
+                </div>
+              ) : aiAlternatives.length > 0 ? (
+                <div className="space-y-3">
+                  <label className="block text-sm font-bold text-brand-textSoft">
+                    Chọn 1 trong 3 đề xuất dưới đây từ AI:
+                  </label>
+                  <div className="space-y-3">
+                    {aiAlternatives.map((alt, idx) => (
+                      <div
+                        key={idx}
+                        className="p-4 rounded-2xl border border-brand-line/50 bg-brand-bgAlt hover:border-brand-accent/50 transition duration-200 space-y-2.5 flex flex-col justify-between"
+                      >
+                        <div className="space-y-1.5 text-xs">
+                          <div className="flex justify-between items-start gap-2">
+                            <h4 className="font-extrabold text-sm text-brand-text flex items-center gap-1.5">
+                              {alt.title}
+                            </h4>
+                            <span className="text-[9px] font-bold uppercase bg-brand-accent/10 text-brand-accent px-1.5 py-0.5 rounded">
+                              {alt.item_type}
+                            </span>
+                          </div>
+                          
+                          <p className="text-brand-textSoft font-serif leading-relaxed">{alt.description}</p>
+                          
+                          <div className="flex gap-4 text-[10px] font-semibold text-brand-textMuted">
+                            <span>⏱️ {alt.start_time.substring(0,5)} - {alt.end_time.substring(0,5)}</span>
+                            <span>💰 {alt.estimated_cost === 0 ? 'Miễn phí' : `${alt.estimated_cost.toLocaleString('vi-VN')}đ`}</span>
+                          </div>
+
+                          <div className="p-2.5 rounded-lg bg-brand-accent/5 border border-brand-accent/20 text-[10px] text-brand-accentStrong font-semibold mt-2">
+                            💡 Lý do gợi ý: {alt.reason}
+                          </div>
+                        </div>
+
+                        <div className="pt-2.5 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              aiReplaceMutation.mutate({
+                                itemId: aiReplaceItem.id,
+                                payload: {
+                                  title: alt.title,
+                                  description: alt.description,
+                                  start_time: alt.start_time,
+                                  end_time: alt.end_time,
+                                  estimated_cost: alt.estimated_cost,
+                                  item_type: alt.item_type,
+                                  status: 'planned'
+                                }
+                              });
+                            }}
+                            disabled={aiReplaceMutation.isPending}
+                            className="px-4 py-2 rounded-xl bg-brand-primary hover:bg-brand-primaryStrong text-white text-xs font-bold transition flex items-center gap-1"
+                          >
+                            {aiReplaceMutation.isPending ? 'Đang áp dụng...' : 'Áp dụng đề xuất này'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="py-6 text-center border border-dashed border-brand-line rounded-2xl bg-brand-bgAlt/50">
+                  <p className="text-xs text-brand-textSoft font-semibold">Bấm nút "Gợi ý" để AI đề xuất các hoạt động thay thế</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-4 border-t border-brand-line/35">
+              <button
+                type="button"
+                onClick={() => setIsAiReplaceModalOpen(false)}
+                className="px-4 py-2.5 rounded-lg border border-brand-line text-xs font-bold text-brand-textSoft hover:bg-brand-surface transition"
+              >
+                Hủy bỏ
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

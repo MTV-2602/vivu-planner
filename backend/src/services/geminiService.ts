@@ -418,3 +418,130 @@ function generateItineraryDiff(
     ? diffs.join('\n') 
     : `Điều chỉnh lịch trình thành công cho phù hợp với loại sự cố: ${disruptionType}.`;
 }
+
+export interface AlternativeItem {
+  item_type: 'accommodation' | 'transport' | 'dining' | 'attraction' | 'rental' | 'experience';
+  title: string;
+  description: string;
+  start_time: string;
+  end_time: string;
+  estimated_cost: number;
+  reason: string;
+  google_place_id?: string;
+}
+
+const ALTERNATIVES_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    alternatives: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          item_type: {
+            type: 'string',
+            enum: ['accommodation', 'transport', 'dining', 'attraction', 'rental', 'experience']
+          },
+          title: { type: 'string' },
+          description: { type: 'string' },
+          start_time: { type: 'string' },
+          end_time: { type: 'string' },
+          estimated_cost: { type: 'number' },
+          reason: { type: 'string' },
+          google_place_id: { type: 'string' }
+        },
+        required: ['item_type', 'title', 'description', 'start_time', 'end_time', 'reason']
+      }
+    }
+  },
+  required: ['alternatives']
+};
+
+export async function generateAlternatives(
+  tripData: any,
+  originalItem: any,
+  userRequirement: string,
+  candidatePlaces: PlaceCandidate[]
+): Promise<AlternativeItem[]> {
+  const systemPrompt = `Bạn là trợ lý AI lập lịch trình du lịch Việt Nam.
+Hãy đề xuất đúng 3 hoạt động thay thế (alternatives) cho hoạt động gốc được cung cấp, dựa trên yêu cầu đặc thù của người dùng.
+Bạn phải tận dụng danh sách candidate_places được cung cấp ở dưới để lấy tên và google_place_id cho các hoạt động ăn uống/chỗ nghỉ/tham quan/thuê xe (nếu phù hợp).
+Giờ bắt đầu và kết thúc của hoạt động thay thế nên khớp hoặc gần khớp với hoạt động gốc (${originalItem.start_time || '08:00'} - ${originalItem.end_time || '10:00'}), nhưng có thể thay đổi nhẹ nếu cần.
+Trả về định dạng JSON hợp lệ theo đúng schema được cấu hình. Không thêm markdown, giải thích hay định dạng khác.`;
+
+  const userPrompt = JSON.stringify({
+    trip: {
+      destination_city: tripData.destination_city,
+      preferences: tripData.preferences,
+      budget_total: tripData.budget_total
+    },
+    original_item: {
+      title: originalItem.title,
+      description: originalItem.description,
+      item_type: originalItem.item_type,
+      start_time: originalItem.start_time,
+      end_time: originalItem.end_time,
+      estimated_cost: originalItem.estimated_cost
+    },
+    user_requirement: userRequirement || "Tìm địa điểm thay thế tương tự hoặc tốt hơn phù hợp với lịch trình.",
+    candidate_places: candidatePlaces.map(p => ({
+      name: p.name,
+      google_place_id: p.google_place_id,
+      address: p.address,
+      rating: p.rating,
+      price_level: p.price_level
+    }))
+  });
+
+  try {
+    return await executeWithApiKeyRotation(async (apiKey) => {
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: ALTERNATIVES_JSON_SCHEMA as any
+        }
+      });
+
+      const text = response.text;
+      if (!text) throw new Error('Empty response from Gemini');
+      const parsed = JSON.parse(text);
+      return parsed.alternatives || [];
+    });
+  } catch (error: any) {
+    console.error('Gemini generateAlternatives failed:', error.message);
+    // Fallback Mock alternatives
+    return [
+      {
+        item_type: originalItem.item_type,
+        title: `[Gợi ý AI 1] ${originalItem.title} thay thế`,
+        description: `Phương án thay thế đề xuất 1 cho "${originalItem.title}". Phù hợp với tiêu chuẩn dịch vụ và thời gian của bạn.`,
+        start_time: originalItem.start_time || '08:00',
+        end_time: originalItem.end_time || '10:00',
+        estimated_cost: originalItem.estimated_cost || 50000,
+        reason: 'Phù hợp nhất với lịch trình hiện tại và vị trí địa lý.'
+      },
+      {
+        item_type: originalItem.item_type,
+        title: `[Gợi ý AI 2] ${originalItem.title} - Phương án 2`,
+        description: `Phương án thay thế đề xuất 2. Phục vụ nhu cầu trải nghiệm đa dạng và chi phí hợp lý.`,
+        start_time: originalItem.start_time || '08:00',
+        end_time: originalItem.end_time || '10:00',
+        estimated_cost: Math.round((originalItem.estimated_cost || 50000) * 0.9),
+        reason: 'Chi phí tối ưu hơn và có nhiều đánh giá tích cực.'
+      },
+      {
+        item_type: originalItem.item_type,
+        title: `[Gợi ý AI 3] ${originalItem.title} - Phương án 3`,
+        description: `Phương án thay thế đề xuất 3. Mang tính chất khám phá thư giãn, nhẹ nhàng.`,
+        start_time: originalItem.start_time || '08:00',
+        end_time: originalItem.end_time || '10:00',
+        estimated_cost: Math.round((originalItem.estimated_cost || 50000) * 1.2),
+        reason: 'Không gian đẹp mắt, dịch vụ chất lượng cao hơn.'
+      }
+    ];
+  }
+}
+

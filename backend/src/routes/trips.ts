@@ -3,7 +3,7 @@ import { authMiddleware, AuthenticatedRequest } from '../middleware/authMiddlewa
 import { getSupabaseUserClient, supabaseAdmin } from '../services/supabaseAdmin';
 import { getCityCoordinates, searchPlaces } from '../services/placesService';
 import { getWeatherForecast } from '../services/weatherService';
-import { generateItinerary, adaptItinerary } from '../services/geminiService';
+import { generateItinerary, adaptItinerary, generateAlternatives } from '../services/geminiService';
 
 const router = Router();
 
@@ -185,7 +185,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     // 7. Save itinerary items
     const itemsToInsert: any[] = [];
     itinerary.days.forEach(day => {
-      const dbDay = dbDays.find(d => d.day_number === day.day_number);
+      const dbDay = dbDays.find(d => Number(d.day_number) === Number(day.day_number));
       if (!dbDay) return;
 
       day.items.forEach(item => {
@@ -296,8 +296,8 @@ router.delete('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Res
   }
 });
 
-// POST /api/trips/:id/disruptions - Report a disruption and trigger AI adjustment
-router.post('/:id/disruptions', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+// 1. POST /api/trips/:id/disruptions/preview - Gợi ý lịch trình thích ứng (Chưa lưu DB)
+router.post('/:id/disruptions/preview', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const client = getSupabaseUserClient(req.token!);
   const tripId = req.params.id;
   const { disruption_type, description, day_id } = req.body;
@@ -307,7 +307,7 @@ router.post('/:id/disruptions', authMiddleware, async (req: AuthenticatedRequest
   }
 
   try {
-    // 1. Fetch trip and current itinerary
+    // A. Lấy thông tin chuyến đi và lịch trình hiện tại
     const { data: trip, error: tripError } = await client.from('trips').select('*').eq('id', tripId).single();
     if (tripError || !trip) return res.status(404).json({ error: 'Trip not found' });
 
@@ -332,14 +332,7 @@ router.post('/:id/disruptions', authMiddleware, async (req: AuthenticatedRequest
       return res.status(400).json({ error: 'No itinerary items found' });
     }
 
-    // 2. Determine affected starting day
-    let affectedDayNumber = 1;
-    if (day_id) {
-      const matchedDay = dbDays.find(d => d.id === day_id);
-      if (matchedDay) affectedDayNumber = matchedDay.day_number;
-    }
-
-    // 3. Build snapshot JSON of the current itinerary
+    // B. Xây dựng snapshot hiện tại
     const previousSnapshot = {
       days: dbDays.map(d => ({
         day_number: d.day_number,
@@ -352,22 +345,7 @@ router.post('/:id/disruptions', authMiddleware, async (req: AuthenticatedRequest
       }
     };
 
-    // 4. Save disruption event row
-    const { data: disruptionEvent, error: disError } = await client
-      .from('disruption_events')
-      .insert({
-        trip_id: tripId,
-        day_id: day_id || null,
-        disruption_type,
-        description,
-        resolved: false
-      })
-      .select()
-      .single();
-
-    if (disError || !disruptionEvent) throw disError || new Error('Failed to save disruption event');
-
-    // 5. Fetch weather and places candidates to feed into adaptation
+    // C. Gọi AI để lấy các phương án thay thế đề xuất
     const { lat, lng } = getCityCoordinates(trip.destination_city);
     const weatherForecast = await getWeatherForecast(lat, lng, trip.start_date, trip.end_date);
     
@@ -379,7 +357,6 @@ router.post('/:id/disruptions', authMiddleware, async (req: AuthenticatedRequest
     ]);
     const candidatePlaces = { accommodation: accommodations, dining, attraction: attractions, rental: rentals };
 
-    // 6. Call adaptation service
     const { itinerary: adaptedItinerary, diff } = await adaptItinerary(
       trip,
       previousSnapshot as any,
@@ -389,25 +366,87 @@ router.post('/:id/disruptions', authMiddleware, async (req: AuthenticatedRequest
       candidatePlaces
     );
 
-    // 7. Save itinerary revision using admin client (bypasses RLS since revision writing is restricted)
-    const { error: revError } = await supabaseAdmin
+    return res.json({
+      success: true,
+      adaptedItinerary,
+      diff,
+      previousSnapshot
+    });
+  } catch (error: any) {
+    console.error('Preview adaptation failed:', error);
+    return res.status(500).json({ error: 'Failed to adapt itinerary preview', details: error.message });
+  }
+});
+
+// 2. POST /api/trips/:id/disruptions/apply - Lưu các hoạt động thay thế đã chọn
+router.post('/:id/disruptions/apply', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  const client = getSupabaseUserClient(req.token!);
+  const tripId = req.params.id;
+  const { disruption_type, description, day_id, selected_items, previous_snapshot } = req.body;
+
+  if (!disruption_type || !description || !selected_items || !previous_snapshot) {
+    return res.status(400).json({ error: 'Missing required parameters' });
+  }
+
+  try {
+    // A. Lấy thông tin ngày trong database
+    const { data: dbDays, error: daysError } = await client
+      .from('itinerary_days')
+      .select('*')
+      .eq('trip_id', tripId)
+      .order('day_number', { ascending: true });
+
+    if (daysError || !dbDays || dbDays.length === 0) {
+      return res.status(400).json({ error: 'No itinerary days found' });
+    }
+
+    // B. Xác định ngày bắt đầu bị ảnh hưởng
+    let affectedDayNumber = 1;
+    if (day_id) {
+      const matchedDay = dbDays.find(d => d.id === day_id);
+      if (matchedDay) affectedDayNumber = matchedDay.day_number;
+    }
+
+    // C. Lưu sự kiện sự cố (Resolved = true)
+    const { data: disruptionEvent, error: disError } = await client
+      .from('disruption_events')
+      .insert({
+        trip_id: tripId,
+        day_id: day_id || null,
+        disruption_type,
+        description,
+        resolved: true,
+        resolution_summary: `Đã áp dụng các hoạt động thay thế được người dùng chọn.`
+      })
+      .select()
+      .single();
+
+    if (disError || !disruptionEvent) throw disError || new Error('Failed to save disruption event');
+
+    // D. Ghi nhật ký revision
+    const newSnapshot = {
+      days: dbDays.map(d => ({
+        day_number: d.day_number,
+        date: d.date,
+        weather_note: d.weather_summary?.note || '',
+        items: selected_items.filter((item: any) => Number(item.day_number) === Number(d.day_number))
+      }))
+    };
+
+    await supabaseAdmin
       .from('itinerary_revisions')
       .insert({
         trip_id: tripId,
         disruption_event_id: disruptionEvent.id,
-        previous_snapshot: previousSnapshot,
-        new_snapshot: adaptedItinerary
+        previous_snapshot,
+        new_snapshot: newSnapshot
       });
 
-    if (revError) console.error('Failed to log revision history:', revError.message);
-
-    // 8. Apply changes to itinerary_items in Supabase
-    // Gather day IDs of affected days (day_number >= affectedDayNumber)
-    const affectedDays = dbDays.filter(d => d.day_number >= affectedDayNumber);
+    // E. Đánh dấu hoạt động cũ là replaced
+    const affectedDays = dbDays.filter(d => Number(d.day_number) >= affectedDayNumber);
     const affectedDayIds = affectedDays.map(d => d.id);
 
     if (affectedDayIds.length > 0) {
-      // Step A: Mark existing planned items on affected days as replaced
       const { error: updateError } = await client
         .from('itinerary_items')
         .update({ status: 'replaced' })
@@ -415,79 +454,182 @@ router.post('/:id/disruptions', authMiddleware, async (req: AuthenticatedRequest
         .eq('status', 'planned');
 
       if (updateError) throw updateError;
-
-      // Step B: Insert new items generated by AI for those days
-      const itemsToInsert: any[] = [];
-      adaptedItinerary.days.forEach(day => {
-        if (day.day_number < affectedDayNumber) return; // Skip days before the disruption
-
-        const dbDay = dbDays.find(d => d.day_number === day.day_number);
-        if (!dbDay) return;
-
-        day.items.forEach(item => {
-          let itemLat = lat;
-          let itemLng = lng;
-
-          if (item.google_place_id) {
-            const matched = [
-              ...accommodations,
-              ...dining,
-              ...attractions,
-              ...rentals
-            ].find(c => c.google_place_id === item.google_place_id);
-            if (matched) {
-              itemLat = matched.lat;
-              itemLng = matched.lng;
-            }
-          }
-
-          itemsToInsert.push({
-            day_id: dbDay.id,
-            item_type: item.item_type,
-            title: item.title,
-            description: item.description,
-            start_time: formatTimeForDb(item.start_time),
-            end_time: formatTimeForDb(item.end_time),
-            location_name: item.title,
-            location_lat: itemLat,
-            location_lng: itemLng,
-            google_place_id: item.google_place_id || null,
-            estimated_cost: item.estimated_cost || 0,
-            order_index: item.order_index,
-            status: 'planned'
-          });
-        });
-      });
-
-      if (itemsToInsert.length > 0) {
-        const { error: insertError } = await client
-          .from('itinerary_items')
-          .insert(itemsToInsert);
-
-        if (insertError) throw insertError;
-      }
     }
 
-    // 9. Mark disruption resolved
-    const { error: resolveError } = await client
-      .from('disruption_events')
-      .update({
-        resolved: true,
-        resolution_summary: diff
-      })
-      .eq('id', disruptionEvent.id);
+    // F. Lấy tọa độ để fallback
+    const { data: trip } = await client.from('trips').select('destination_city').eq('id', tripId).single();
+    const city = trip?.destination_city || 'Da Nang';
+    const { lat, lng } = getCityCoordinates(city);
 
-    if (resolveError) console.error('Failed to mark disruption resolved in DB:', resolveError.message);
+    // G. Chèn các hoạt động thay thế đã chọn
+    const itemsToInsert: any[] = [];
+    selected_items.forEach((item: any) => {
+      // Tìm đúng ngày trong database
+      const dbDay = dbDays.find(d => Number(d.day_number) === Number(item.day_number));
+      if (!dbDay) return;
+
+      itemsToInsert.push({
+        day_id: dbDay.id,
+        item_type: item.item_type,
+        title: item.title,
+        description: item.description || '',
+        start_time: formatTimeForDb(item.start_time),
+        end_time: formatTimeForDb(item.end_time),
+        location_name: item.title,
+        location_lat: item.location_lat || lat,
+        location_lng: item.location_lng || lng,
+        google_place_id: item.google_place_id || null,
+        estimated_cost: item.estimated_cost || 0,
+        order_index: item.order_index,
+        status: 'planned'
+      });
+    });
+
+    if (itemsToInsert.length > 0) {
+      const { error: insertError } = await client
+        .from('itinerary_items')
+        .insert(itemsToInsert);
+
+      if (insertError) throw insertError;
+    }
 
     return res.json({
       success: true,
-      message: 'Itinerary adapted successfully',
-      diff,
-      itinerary: adaptedItinerary
+      message: 'Itinerary adapted and applied successfully'
     });
   } catch (error: any) {
-    console.error('Adaptation route failed:', error);
-    return res.status(500).json({ error: 'Failed to adapt itinerary', details: error.message });
+    console.error('Apply adaptation failed:', error);
+    return res.status(500).json({ error: 'Failed to apply adapted itinerary', details: error.message });
+  }
+});
+
+// 3. PUT /api/trips/items/:itemId - Sửa hoạt động thủ công (Sửa tay)
+router.put('/items/:itemId', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  const client = getSupabaseUserClient(req.token!);
+  const itemId = req.params.itemId;
+  const { title, description, start_time, end_time, estimated_cost, status, item_type } = req.body;
+
+  try {
+    const updateData: any = {};
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (start_time !== undefined) updateData.start_time = formatTimeForDb(start_time);
+    if (end_time !== undefined) updateData.end_time = formatTimeForDb(end_time);
+    if (estimated_cost !== undefined) updateData.estimated_cost = estimated_cost ? parseFloat(estimated_cost) : 0;
+    if (status !== undefined) updateData.status = status;
+    if (item_type !== undefined) updateData.item_type = item_type;
+
+    const { data: updatedItem, error } = await client
+      .from('itinerary_items')
+      .update(updateData)
+      .eq('id', itemId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return res.json(updatedItem);
+  } catch (error: any) {
+    console.error('[Update Item Route] Error:', error.message);
+    return res.status(500).json({ error: 'Failed to update itinerary item', details: error.message });
+  }
+});
+
+// 4. DELETE /api/trips/items/:itemId - Xóa hoạt động thủ công
+router.delete('/items/:itemId', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  const client = getSupabaseUserClient(req.token!);
+  const itemId = req.params.itemId;
+
+  try {
+    const { error } = await client
+      .from('itinerary_items')
+      .delete()
+      .eq('id', itemId);
+
+    if (error) throw error;
+    return res.json({ success: true, message: 'Item deleted successfully' });
+  } catch (error: any) {
+    console.error('[Delete Item Route] Error:', error.message);
+    return res.status(500).json({ error: 'Failed to delete itinerary item', details: error.message });
+  }
+});
+
+// 5. POST /api/trips/items/:itemId/ai-replace - AI gợi ý thay thế một hoạt động cụ thể
+router.post('/items/:itemId/ai-replace', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  const client = getSupabaseUserClient(req.token!);
+  const itemId = req.params.itemId;
+  const { user_requirement } = req.body;
+
+  try {
+    // A. Lấy thông tin hoạt động gốc
+    const { data: item, error: itemError } = await client
+      .from('itinerary_items')
+      .select('*')
+      .eq('id', itemId)
+      .single();
+
+    if (itemError || !item) {
+      return res.status(404).json({ error: 'Itinerary item not found' });
+    }
+
+    // B. Lấy thông tin ngày và chuyến đi
+    const { data: day, error: dayError } = await client
+      .from('itinerary_days')
+      .select('*')
+      .eq('id', item.day_id)
+      .single();
+
+    if (dayError || !day) {
+      return res.status(404).json({ error: 'Itinerary day not found' });
+    }
+
+    const { data: trip, error: tripError } = await client
+      .from('trips')
+      .select('*')
+      .eq('id', day.trip_id)
+      .single();
+
+    if (tripError || !trip) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+
+    // C. Tìm địa điểm gợi ý theo địa danh
+    const { lat, lng } = getCityCoordinates(trip.destination_city);
+    
+    // Tùy thuộc vào loại hoạt động gốc hoặc yêu cầu đặc thù để tìm kiếm địa điểm phù hợp
+    let searchQuery = 'địa điểm tham quan';
+    let category: 'accommodation' | 'dining' | 'attraction' | 'rental' = 'attraction';
+
+    if (item.item_type === 'accommodation') {
+      searchQuery = 'khách sạn';
+      category = 'accommodation';
+    } else if (item.item_type === 'dining') {
+      searchQuery = 'quán ăn ngon đặc sản';
+      category = 'dining';
+    } else if (item.item_type === 'rental') {
+      searchQuery = 'thuê xe máy';
+      category = 'rental';
+    } else {
+      searchQuery = 'địa điểm du lịch';
+      category = 'attraction';
+    }
+
+    // Nếu người dùng có yêu cầu cụ thể, bổ sung vào từ khóa tìm kiếm
+    if (user_requirement) {
+      searchQuery = `${user_requirement} ${searchQuery}`;
+    }
+
+    const candidatePlaces = await searchPlaces(searchQuery, category, lat, lng);
+
+    // D. Gọi AI để tạo 3 phương án thay thế
+    const alternatives = await generateAlternatives(trip, item, user_requirement, candidatePlaces);
+
+    return res.json({
+      success: true,
+      alternatives
+    });
+  } catch (error: any) {
+    console.error('[AI Replace Item Route] Error:', error.message);
+    return res.status(500).json({ error: 'Failed to generate AI replacement alternatives', details: error.message });
   }
 });
 
