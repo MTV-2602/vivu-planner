@@ -142,20 +142,34 @@ if (isMockMode) {
   };
 
   auth.onAuthStateChange = (callback: any) => {
+    // If admin is logged in, trigger SIGNED_IN state immediately for this listener
     const adminToken = localStorage.getItem('vivu_admin_token');
     const adminUserStr = localStorage.getItem('vivu_mock_user');
     if (adminToken && adminUserStr) {
-      const user = JSON.parse(adminUserStr);
-      callback('SIGNED_IN', { access_token: adminToken, user });
-      return {
-        data: {
-          subscription: {
-            unsubscribe: () => {}
-          }
-        }
-      };
+      try {
+        const user = JSON.parse(adminUserStr);
+        callback('SIGNED_IN', { access_token: adminToken, user });
+      } catch (e) {
+        console.error('[ViVu Auth Wrapper] Error parsing admin user:', e);
+      }
     }
-    return originalOnAuthStateChange(callback);
+    
+    // Register it with the original listener too, but wrap the callback to maintain admin session
+    const wrappedCallback = (event: any, session: any) => {
+      const activeAdminToken = localStorage.getItem('vivu_admin_token');
+      const activeAdminUserStr = localStorage.getItem('vivu_mock_user');
+      if (activeAdminToken && activeAdminUserStr) {
+        try {
+          const user = JSON.parse(activeAdminUserStr);
+          return callback('SIGNED_IN', { access_token: activeAdminToken, user });
+        } catch (e) {
+          console.error('[ViVu Auth Wrapper] Error parsing admin user in event:', e);
+        }
+      }
+      return callback(event, session);
+    };
+
+    return originalOnAuthStateChange(wrappedCallback);
   };
 
   auth.signOut = async () => {
