@@ -118,9 +118,9 @@ function getMinimumEstimatedCost(item: ItineraryItem, travelerCount: number, tot
     case 'dining':
       return 50000 * travelerCount;
     case 'transport':
-      return Math.max(30000, travelerCount * 15000);
+      return 0;
     case 'rental':
-      return 120000 * Math.max(1, Math.ceil(travelerCount / 2));
+      return 100000 * Math.max(1, Math.ceil(travelerCount / 2));
     case 'accommodation':
       return totalNights > 0 ? 100000 * totalNights * rooms : 0;
     default:
@@ -290,9 +290,10 @@ QUY TẮC CỐT LÕI:
    - ĐẢM BẢO CHI PHÍ ĂN UỐNG (DINING): Mỗi ngày bắt buộc phải có ít nhất 2 bữa ăn chính (trưa và tối) sử dụng các quán ăn thực tế trong danh sách. Chi phí ăn uống mỗi ngày phải được cân đối kỹ lưỡng sao cho phù hợp với phần ngân sách còn lại sau khi đã trừ tiền phòng.
    - QUY TẮC GIÁ TỐI THIỂU (BẮT BUỘC):
      * "estimated_cost" luôn là VND cho toàn bộ nhóm khách (traveler_count), không phải giá mỗi người.
-     * Tuyệt đối KHÔNG đặt "estimated_cost" = 0 hoặc ghi "Miễn phí" cho ăn uống, di chuyển, thuê xe hoặc lưu trú. Phở, bún, bánh mì, cà phê sáng đều phải có giá thực tế.
+     * Tuyệt đối KHÔNG đặt "estimated_cost" = 0 hoặc ghi "Miễn phí" cho ăn uống, thuê xe hoặc lưu trú. Phở, bún, bánh mì, cà phê sáng đều phải có giá thực tế.
      * Ăn uống: tối thiểu 50.000đ/người/bữa, kể cả bữa sáng; bữa chính nên trong khoảng 50.000đ - 150.000đ/người. Ví dụ 1 khách ăn Phở Thìn Lò Đúc thì estimated_cost tối thiểu 50.000đ, không bao giờ là miễn phí.
-     * Di chuyển nội thành bằng Grab/taxi/xe ôm phải tối thiểu 30.000đ/lượt cho nhóm nhỏ. Thuê xe máy tối thiểu 120.000đ/ngày/xe.
+     * Di chuyển nội thành KHÔNG có giá tối thiểu cố định: nếu đi bộ hoặc không phát sinh phương tiện trả phí thì có thể là 0đ; nếu dùng Grab/taxi/xe ôm thì phải ước tính linh hoạt theo quãng đường, thời tiết, khung giờ và số người.
+     * Thuê xe máy dùng khung giá thực tế khoảng 100.000đ - 150.000đ/ngày/xe tùy địa phương và loại xe; không khóa cứng một mức giá duy nhất.
      * Chỉ các điểm tham quan/trải nghiệm thật sự miễn phí như đi bộ quanh hồ, công viên công cộng mới được đặt estimated_cost = 0. Nếu không chắc chắn miễn phí, hãy ước tính ít nhất 20.000đ/người.
      * Nếu chuyến đi trong ngày (số đêm = 0, ví dụ start_date trùng end_date), KHÔNG thêm mục lưu trú. Nếu chuyến đi có qua đêm, phải có mục lưu trú ở Ngày 1 với chi phí cho toàn bộ số đêm.
    - KHÔNG DÙNG PLACEHOLDER CHUNG CHUNG: Tất cả khách sạn, quán ăn, điểm tham quan đều phải chọn địa điểm cụ thể trong danh sách "candidate_places". Tuyệt đối không ghi chung chung "Ăn tối tự do", "Khách sạn tự chọn".
@@ -390,8 +391,10 @@ YÊU CẦU ĐIỀU CHỈNH CHẶT CHẼ:
      * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và chưa rõ sở thích lưu trú của khách, hãy đặt câu hỏi làm rõ trong "missing_info_questions" xem họ muốn ở cố định 1 chỗ hay muốn thay đổi nhiều chỗ ở.
    - ĐẢM BẢO CHI PHÍ ĂN UỐNG (DINING): Mỗi ngày phải có tối thiểu 2 bữa ăn chính (trưa và tối) ở các quán ăn thực tế trong danh sách. Không được để tiền phòng quá cao bóp nghẹt ngân sách ăn uống đặc sản ẩm thực địa phương.
    - QUY TẮC GIÁ TỐI THIỂU (BẮT BUỘC):
-     * "estimated_cost" luôn là VND cho toàn bộ nhóm khách (traveler_count). Không đặt 0đ/"Miễn phí" cho ăn uống, di chuyển, thuê xe hoặc lưu trú.
-     * Ăn uống tối thiểu 50.000đ/người/bữa, kể cả bữa sáng như phở/bún/bánh mì/cà phê. Di chuyển nội thành tối thiểu 30.000đ/lượt; thuê xe máy tối thiểu 120.000đ/ngày/xe.
+     * "estimated_cost" luôn là VND cho toàn bộ nhóm khách (traveler_count). Không đặt 0đ/"Miễn phí" cho ăn uống, thuê xe hoặc lưu trú.
+     * Ăn uống tối thiểu 50.000đ/người/bữa, kể cả bữa sáng như phở/bún/bánh mì/cà phê.
+     * Di chuyển nội thành không có giá tối thiểu cố định: đi bộ/không phát sinh phương tiện trả phí có thể là 0đ; nếu dùng Grab/taxi/xe ôm thì ước tính linh hoạt theo quãng đường, thời tiết, khung giờ và số người.
+     * Thuê xe máy dùng khung giá thực tế khoảng 100.000đ - 150.000đ/ngày/xe tùy địa phương và loại xe.
      * Chỉ điểm tham quan/trải nghiệm công cộng thật sự miễn phí mới được đặt 0đ. Nếu không chắc miễn phí, hãy ước tính ít nhất 20.000đ/người.
      * Chuyến đi trong ngày (0 đêm) không có mục lưu trú; chuyến có qua đêm phải giữ 1 mục lưu trú ở Ngày 1 trừ khi khách yêu cầu đổi chỗ rõ ràng.
    - Nếu xảy ra sự cố hụt ngân sách ("budget_shortage"), bạn phải chủ động hạ chi phí lưu trú xuống mức tối thiểu bằng cách chọn homestay/hostel giá rẻ nhất, đổi các hoạt động tham quan có phí thành miễn phí hoặc chi phí thấp, và ăn uống tại các quán ăn bình dân local.
