@@ -88,6 +88,57 @@ const ITINERARY_JSON_SCHEMA = {
   required: ['days', 'budget_summary']
 };
 
+function calculateEstimatedTotal(days: ItineraryDay[]): number {
+  return days.reduce((sum, day) => {
+    return sum + day.items.reduce((daySum, item) => daySum + (item.estimated_cost || 0), 0);
+  }, 0);
+}
+
+function enforceBudgetLimit(itinerary: GeneratedItinerary, budgetTotal: number): GeneratedItinerary {
+  const normalizedBudget = Number.isFinite(budgetTotal) && budgetTotal > 0 ? budgetTotal : 0;
+  let estimatedTotal = calculateEstimatedTotal(itinerary.days);
+
+  if (normalizedBudget > 0 && estimatedTotal > normalizedBudget) {
+    const costedItems = itinerary.days.flatMap(day => {
+      return day.items.filter(item => (item.estimated_cost || 0) > 0);
+    });
+
+    if (costedItems.length > 0) {
+      const ratio = normalizedBudget / estimatedTotal;
+      costedItems.forEach(item => {
+        item.estimated_cost = Math.max(0, Math.floor((item.estimated_cost || 0) * ratio));
+      });
+
+      estimatedTotal = calculateEstimatedTotal(itinerary.days);
+      if (estimatedTotal > normalizedBudget) {
+        const overflow = estimatedTotal - normalizedBudget;
+        const lastCostedItem = [...costedItems].reverse().find(item => (item.estimated_cost || 0) > 0);
+        if (lastCostedItem) {
+          lastCostedItem.estimated_cost = Math.max(0, (lastCostedItem.estimated_cost || 0) - overflow);
+        }
+        estimatedTotal = calculateEstimatedTotal(itinerary.days);
+      }
+    }
+
+    itinerary.warning_notes = [
+      ...(itinerary.warning_notes || []),
+      'Chi phí đã được tự động cân đối để không vượt ngân sách tổng của chuyến đi.'
+    ];
+  }
+
+  itinerary.budget_summary = {
+    estimated_total: normalizedBudget > 0 ? Math.min(estimatedTotal, normalizedBudget) : estimatedTotal,
+    remaining: normalizedBudget > 0 ? Math.max(0, normalizedBudget - estimatedTotal) : 0
+  };
+
+  return itinerary;
+}
+
+function hasExplicitAccommodationPreference(specialRequirements: any): boolean {
+  const text = String(specialRequirements || '').toLowerCase();
+  return /(đổi|doi|thay đổi|thay doi|nhiều nơi|nhieu noi|nhiều chỗ|nhieu cho|cố định|co dinh|một chỗ|mot cho|1 chỗ|1 cho|khách sạn thứ|khach san thu|ngày 3|ngay 3)/i.test(text);
+}
+
 export async function generateItinerary(
   tripData: any,
   weatherForecast: WeatherForecast[],
@@ -100,20 +151,20 @@ QUY TẮC CỐT LÕI:
 1. Bạn CHỈ được chọn địa điểm trong danh sách "candidate_places" được cung cấp — tuyệt đối không tự tạo thêm địa điểm nào ngoài danh sách này (ngoại trừ loại di chuyển "transport" hoặc trải nghiệm "experience" tự do).
 2. Hãy phân tích kỹ sở thích, ngân sách, và đặc biệt là tình trạng sức khỏe, giới hạn thể lực của khách để chọn hoạt động phù hợp nhất.
 3. PHÂN BỔ NGÂN SÁCH THÔNG MINH & KIỂM SOÁT NGÂN SÁCH CHẶT CHẼ (RÀNG BUỘC BẮT BUỘC):
-   - Bạn phải tính toán cộng nhẩm tổng chi phí ước tính (estimated_total) của tất cả các hoạt động trong toàn bộ lịch trình và đảm bảo: TỔNG CHI PHÍ NÀY TUYỆT ĐỐI KHÔNG ĐƯỢC VƯỢT QUÁ NGÂN SÁCH TỔNG ("budget_total") CỦA KHÁCH HÀNG. Không được để xảy ra tình trạng tổng chi phí vượt quá ngân sách của khách.
+   - Bạn phải tính toán cộng nhẩm tổng chi phí ước tính (estimated_total) của tất cả hoạt động trong toàn bộ lịch trình và đảm bảo: TỔNG CHI PHÍ NÀY TUYỆT ĐỐI KHÔNG ĐƯỢC VƯỢT QUÁ NGÂN SÁCH TỔNG ("budget_total") CỦA KHÁCH HÀNG.
    - QUY TẮC LƯU TRÚ LINH HOẠT (ACCOMMODATION):
-     * MẶC ĐỊNH: Chỉ đặt DUY NHẤT 1 khách sạn/nơi lưu trú cho cả chuyến đi tại cùng 1 thành phố. Xếp vật phẩm chỗ nghỉ này duy nhất vào Ngày 1 (mốc giờ 14:00 - 15:00). KHÔNG ĐƯỢC thêm chỗ nghỉ mới hay check-in mới ở các ngày tiếp theo (Ngày 2, Ngày 3, Ngày 4...).
-     * CHI PHÍ CHỖ NGHỈ: Chi phí của vật phẩm chỗ nghỉ duy nhất này phải được nhân lên theo số đêm ở thực tế. Nghĩa là: estimated_cost = (Giá 1 đêm của khách sạn) * (Số ngày - 1). Ví dụ: chuyến đi 4 ngày 3 đêm, giá phòng homestay 400.000đ/đêm, thì vật phẩm chỗ nghỉ ở Ngày 1 phải có estimated_cost là 1.200.000đ. Các ngày tiếp theo không ghi thêm chi phí phòng nghỉ.
+     * MẶC ĐỊNH: Chỉ đặt DUY NHẤT 1 khách sạn/nơi lưu trú cho cả chuyến đi tại cùng 1 thành phố. Xếp mục chỗ nghỉ này duy nhất vào Ngày 1 (mốc giờ 14:00 - 15:00). KHÔNG ĐƯỢC thêm chỗ nghỉ mới hay check-in mới ở các ngày tiếp theo (Ngày 2, Ngày 3, Ngày 4...).
+     * CHI PHÍ CHỖ NGHỈ: Chi phí của mục chỗ nghỉ duy nhất này phải được nhân lên theo số đêm thực tế: estimated_cost = (giá 1 đêm của khách sạn) * (số ngày - 1). Ví dụ: chuyến đi 4 ngày 3 đêm, giá phòng homestay 400.000đ/đêm, thì mục chỗ nghỉ ở Ngày 1 phải có estimated_cost là 1.200.000đ. Các ngày tiếp theo không ghi thêm chi phí phòng.
      * NGOẠI LỆ: Chỉ khi khách hàng có yêu cầu đặc biệt muốn thay đổi khách sạn (ghi ở "special_requirements" hoặc qua câu trả lời làm rõ), bạn mới được chia lịch trình thành nhiều chỗ nghỉ khác nhau.
      * GIỚI HẠN CHI PHÍ: Tổng tiền lưu trú cho cả chuyến đi tuyệt đối không vượt quá 30% tổng ngân sách ("budget_total") đối với ngân sách eo hẹp (dưới 1.500.000đ/ngày/người). Hãy chọn homestay, nhà nghỉ bình dân hoặc hostel giá rẻ trong danh sách "candidate_places" phù hợp.
-     * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và khách chưa nêu rõ yêu cầu lưu trú, bạn bắt buộc phải đặt câu hỏi làm rõ trong "missing_info_questions": "Bạn muốn ở cố định tại 1 khách sạn để tiện di chuyển sinh hoạt hay muốn thay đổi nhiều nơi ở khác nhau để trải nghiệm?"
+     * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và khách chưa nêu rõ yêu cầu lưu trú, bạn bắt buộc phải đặt câu hỏi làm rõ trong "missing_info_questions": "Bạn muốn ở 1 chỗ nghỉ cố định hay muốn thay đổi nhiều nơi trong chuyến đi này?"
    - ĐẢM BẢO CHI PHÍ ĂN UỐNG (DINING): Mỗi ngày bắt buộc phải có ít nhất 2 bữa ăn chính (trưa và tối) sử dụng các quán ăn thực tế trong danh sách. Chi phí ăn uống mỗi ngày phải được cân đối kỹ lưỡng sao cho phù hợp với phần ngân sách còn lại sau khi đã trừ tiền phòng.
    - KHÔNG DÙNG PLACEHOLDER CHUNG CHUNG: Tất cả khách sạn, quán ăn, điểm tham quan đều phải chọn địa điểm cụ thể trong danh sách "candidate_places". Tuyệt đối không ghi chung chung "Ăn tối tự do", "Khách sạn tự chọn".
    - CẢNH BÁO: Nếu ngân sách tổng quá thấp (dưới 400.000đ/ngày/người) hoặc yêu cầu của khách mâu thuẫn (muốn ở resort sang trọng nhưng ngân sách thấp), hãy cảnh báo nguy cơ thiếu hụt ngân sách tại "warning_notes" và đưa ra câu hỏi làm rõ đề xuất nâng ngân sách tại "missing_info_questions".
 4. Trong kết quả JSON, hãy cung cấp:
-   - "expert_advice": Lời khuyên/tư vấn chi tiết từ góc nhìn chuyên gia du lịch, giải thích rõ lý do tại sao thiết kế lịch trình và phân bổ ngân sách như vậy.
-   - "warning_notes": Các lưu ý an toàn và cảnh báo ngân sách quan trọng.
-   - "missing_info_questions": Các câu hỏi làm rõ cụ thể để khách cung cấp thêm thông tin nhằm điều chỉnh lịch trình chuẩn xác hơn.
+   - "expert_advice": Lời khuyên/tư vấn chi tiết từ góc nhìn chuyên gia du lịch, giải thích rõ lý do tại sao lịch trình này được thiết kế như vậy để phù hợp nhất với sở thích/sức khỏe/ngân sách của khách.
+   - "warning_notes": Các lưu ý an toàn quan trọng (ví dụ: cảnh báo thời tiết xấu, đường đèo hiểm trở, hoặc lưu ý bảo quản hành lý, sức khỏe).
+   - "missing_info_questions": Nếu dữ liệu đầu vào của khách quá mơ hồ hoặc thiếu, hãy đưa ra các câu hỏi làm rõ cụ thể để người dùng cung cấp thêm thông tin nhằm điều chỉnh lịch trình chuẩn xác hơn. Nếu thông tin đã rất đầy đủ, để danh sách này trống.
 
 Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp. Không viết thêm markdown, không thêm giải thích ngoài JSON.`;
 
@@ -172,7 +223,7 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
         });
       });
 
-      return parsed;
+      return enforceBudgetLimit(parsed, Number(tripData.budget_total));
     });
   } catch (error: any) {
     console.error(`Gemini generation failed: ${error.message}. Falling back to programmatic generation.`);
@@ -197,18 +248,18 @@ YÊU CẦU ĐIỀU CHỈNH CHẶT CHẼ:
 3. PHÂN BỔ NGÂN SÁCH THÔNG MINH & KIỂM SOÁT NGÂN SÁCH CHẶT CHẼ (RÀNG BUỘC BẮT BUỘC):
    - Tổng chi phí ước tính (estimated_total) của lịch trình mới sau khi điều chỉnh tuyệt đối không được vượt quá ngân sách ban đầu của khách hàng ("budget_total").
    - QUY TẮC LƯU TRÚ LINH HOẠT (ACCOMMODATION):
-     * MẶC ĐỊNH: Chỉ đặt DUY NHẤT 1 khách sạn/nơi lưu trú cho cả chuyến đi tại cùng 1 thành phố và đặt ở Ngày 1. KHÔNG ĐƯỢC thêm chỗ nghỉ mới ở các ngày tiếp theo. Chi phí chỗ nghỉ được tính bằng: estimated_cost = (Giá 1 đêm) * (Số ngày - 1). Các ngày sau không ghi thêm chi phí phòng.
-     * NGOẠI LỆ: Chỉ chia thành nhiều khách sạn khi khách hàng có yêu cầu thay đổi rõ ràng.
+     * MẶC ĐỊNH: Chỉ đặt DUY NHẤT 1 khách sạn/nơi lưu trú cho cả chuyến đi tại cùng 1 thành phố và đặt ở Ngày 1. KHÔNG ĐƯỢC thêm chỗ nghỉ mới ở các ngày tiếp theo. Chi phí chỗ nghỉ được tính bằng: estimated_cost = (giá 1 đêm) * (số ngày - 1). Các ngày sau không ghi thêm chi phí phòng.
+     * NGOẠI LỆ: Chỉ chia thành nhiều khách sạn khi khách hàng có yêu cầu thay đổi rõ ràng trong "special_requirements" hoặc câu trả lời làm rõ.
      * GIỚI HẠN CHI PHÍ: Tổng tiền lưu trú cho cả chuyến đi tuyệt đối không vượt quá 30% tổng ngân sách ("budget_total") đối với ngân sách eo hẹp. Hãy ưu tiên chọn homestay, hostel hoặc nhà nghỉ bình dân giá rẻ trong danh sách "candidate_places".
-     * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và chưa rõ sở thích lưu trú của khách, hãy đặt câu hỏi làm rõ trong "missing_info_questions" xem họ muốn ở cố định 1 chỗ hay muốn thay đổi chỗ ở.
-   - ĐẢM BẢO CHI PHÍ ĂN UỐNG (DINING): Mỗi ngày phải có tối thiểu 2 bữa ăn chính (trưa và tối) ở các quán ăn thực tế trong danh sách. Không được để tiền phòng quá cao bóp nghẹt ngân sách ăn uống đặc sản ẩm thực địa phương ngon miệng.
-   - Nếu xảy ra sự cố hụt ngân sách ("budget_shortage"), bạn phải chủ động hạ chi phí lưu trú xuống mức tối thiểu (chọn homestay/hostel rẻ nhất), chuyển các hoạt động có phí thành miễn phí hoặc chi phí thấp, và ăn uống tại các quán ăn bình dân local.
+     * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và chưa rõ sở thích lưu trú của khách, hãy đặt câu hỏi làm rõ trong "missing_info_questions" xem họ muốn ở cố định 1 chỗ hay muốn thay đổi nhiều chỗ ở.
+   - ĐẢM BẢO CHI PHÍ ĂN UỐNG (DINING): Mỗi ngày phải có tối thiểu 2 bữa ăn chính (trưa và tối) ở các quán ăn thực tế trong danh sách. Không được để tiền phòng quá cao bóp nghẹt ngân sách ăn uống đặc sản ẩm thực địa phương.
+   - Nếu xảy ra sự cố hụt ngân sách ("budget_shortage"), bạn phải chủ động hạ chi phí lưu trú xuống mức tối thiểu bằng cách chọn homestay/hostel giá rẻ nhất, đổi các hoạt động tham quan có phí thành miễn phí hoặc chi phí thấp, và ăn uống tại các quán ăn bình dân local.
 4. Giữ nguyên tính logic của lịch trình:
    - Các hoạt động trong ngày phải có sự liên kết về mặt di chuyển (ví dụ: các địa điểm nên nằm gần nhau trong cùng buổi để giảm thời gian đi lại).
    - Đảm bảo thời gian ăn uống (trưa, tối), nghỉ ngơi và di chuyển hợp lý.
    - CHỈ được điều chỉnh các ngày hoặc hoạt động từ thời điểm xảy ra sự cố trở đi. Giữ nguyên các hoạt động đã hoàn thành trước đó.
 5. Thích ứng thông minh theo các yếu tố bên ngoài:
-   - Thời tiết: Đọc kỹ "weather_forecast" cho từng ngày để điều chỉnh hoạt động. Nếu dự báo có mưa lớn vào buổi chiều, hãy chuyển các hoạt động ngoài trời lên buổi sáng hoặc đổi sang điểm tham quan trong nhà.
+   - Thời tiết: Đọc kỹ "weather_forecast" cho từng ngày để điều chỉnh hoạt động. Nếu dự báo có mưa lớn vào buổi chiều, hãy chuyển các hoạt động ngoài trời lên buổi sáng (nếu trời hửng nắng) hoặc đổi sang điểm tham quan trong nhà. Tránh tuyệt đối các rủi ro nguy hiểm (như leo núi, đi đèo dốc hiểm trở hay đi thuyền khi có giông bão).
 6. Cung cấp đầy đủ phân tích chuyên môn của bạn ở trường "expert_advice" để khách hiểu rõ lý do của các thay đổi và các cảnh báo an toàn ở trường "warning_notes".
 7. Nếu thông tin báo sự cố của khách quá mơ hồ hoặc không đủ để lập kế hoạch an toàn (ví dụ: chỉ ghi "sự cố sức khỏe" mà không rõ là mệt mỏi hay chấn thương nghiêm trọng, hoặc ghi "mưa" mà không rõ mưa to hay nhỏ), hãy đưa ra các câu hỏi làm rõ cụ thể ở trường "missing_info_questions" để khách cung cấp thêm nhằm đưa ra phương án tối ưu nhất.
 
@@ -241,9 +292,11 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
       if (!text) throw new Error('Gemini response is empty');
 
       const parsed = JSON.parse(text) as GeneratedItinerary;
-      const diff = generateItineraryDiff(currentItinerary, parsed, disruptionType);
+      const budgetTotal = Number(tripData.budget_total) || currentItinerary.budget_summary.estimated_total + currentItinerary.budget_summary.remaining;
+      const normalizedItinerary = enforceBudgetLimit(parsed, budgetTotal);
+      const diff = generateItineraryDiff(currentItinerary, normalizedItinerary, disruptionType);
 
-      return { itinerary: parsed, diff };
+      return { itinerary: normalizedItinerary, diff };
     });
   } catch (error: any) {
     console.error(`Gemini adaptation failed: ${error.message}. Using fallback.`);
@@ -266,8 +319,13 @@ function generateMockItinerary(
   const daysCount = weatherForecast.length || 1;
   const dailyBudget = budget_total / daysCount;
   const totalNights = Math.max(0, daysCount - 1);
+  const selectedAccommodation = accommodations.reduce<PlaceCandidate | undefined>((cheapest, place) => {
+    if (!cheapest) return place;
+    return place.price_level < cheapest.price_level ? place : cheapest;
+  }, accommodations[0]);
+  const shouldAskAccommodationPreference = daysCount >= 3 && !hasExplicitAccommodationPreference(tripData.special_requirements);
 
-  // Lodging max 30% of total budget for tight budgets, min 100k
+  // Lodging max 30% of total budget for tight budgets.
   const maxTotalLodgingCost = budget_total * 0.30;
   const maxLodgingCostPerNight = totalNights > 0 ? maxTotalLodgingCost / totalNights : 0;
 
@@ -275,15 +333,15 @@ function generateMockItinerary(
     const dayNumber = index + 1;
     const items: ItineraryItem[] = [];
 
-    // Accommodation (Only check-in on the first day, for the entire trip length)
-    if (accommodations.length > 0 && index === 0 && daysCount > 1) {
-      const hotel = accommodations[index % accommodations.length];
-      const hotelCostPerNight = Math.min(hotel.price_level * 350000 + 150000, maxLodgingCostPerNight);
+    // Accommodation is booked once on Day 1 for the whole trip by default.
+    if (selectedAccommodation && index === 0 && totalNights > 0) {
+      const hotel = selectedAccommodation;
+      const hotelCostPerNight = Math.min(hotel.price_level * 250000 + 100000, maxLodgingCostPerNight);
       const totalHotelCost = hotelCostPerNight * totalNights;
       items.push({
         item_type: 'accommodation',
         title: `Nhận phòng lưu trú tại ${hotel.name}`,
-        description: `Chỗ nghỉ tiện nghi được đặt cố định cho toàn bộ chuyến đi (${totalNights} đêm). Đánh giá: ${hotel.rating}⭐. Địa chỉ: ${hotel.address}`,
+        description: `Chỗ nghỉ được đặt cố định cho toàn bộ chuyến đi (${totalNights} đêm). Đánh giá: ${hotel.rating}⭐. Địa chỉ: ${hotel.address}`,
         start_time: '14:00',
         end_time: '15:00',
         google_place_id: hotel.google_place_id,
@@ -387,11 +445,9 @@ function generateMockItinerary(
     };
   });
 
-  const estimated_total = days.reduce((sum, day) => {
-    return sum + day.items.reduce((daySum, item) => daySum + (item.estimated_cost || 0), 0);
-  }, 0);
+  const estimated_total = calculateEstimatedTotal(days);
 
-  return {
+  const itinerary: GeneratedItinerary = {
     days,
     budget_summary: {
       estimated_total,
@@ -399,8 +455,12 @@ function generateMockItinerary(
     },
     expert_advice: "Lịch trình đề xuất được tạo tự động dựa trên sở thích và thông tin chuyến đi của bạn.",
     warning_notes: ["Hãy luôn theo dõi dự báo thời tiết trước khi di chuyển ngoài trời."],
-    missing_info_questions: []
+    missing_info_questions: shouldAskAccommodationPreference
+      ? [`Bạn muốn ở 1 chỗ nghỉ cố định hay muốn thay đổi nhiều nơi trong ${daysCount} ngày này?`]
+      : []
   };
+
+  return enforceBudgetLimit(itinerary, budget_total);
 }
 
 // Programmatic mock disruption adaptation
