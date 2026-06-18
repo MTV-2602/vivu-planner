@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Compass, Users, Map, Trash2, ArrowLeft, Shield, BarChart3, AlertTriangle, RefreshCw, Calendar, MapPin, Wallet, Mail, Key, Check, X, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Compass, Users, Map, Trash2, ArrowLeft, Shield, BarChart3, AlertTriangle, RefreshCw, Calendar, MapPin, Wallet, Mail, Key, Check, X, ToggleLeft, ToggleRight, Eye, LogOut } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { apiClient } from '../lib/apiClient';
 import Reveal from '../components/Reveal';
@@ -10,7 +10,7 @@ interface AdminStats {
   totalUsers: number;
   totalTrips: number;
   totalDisruptions: number;
-  totalPlacesCached: number;
+  totalApiKeys: number;
 }
 
 interface UserRecord {
@@ -18,6 +18,7 @@ interface UserRecord {
   email: string;
   full_name: string;
   created_at: string;
+  banned_until?: string | null;
 }
 
 interface TripRecord {
@@ -51,6 +52,7 @@ export function Admin() {
   const [activeTab, setActiveTab] = useState<'users' | 'trips' | 'keys'>('users');
   const [bulkKeysText, setBulkKeysText] = useState('');
   const [addingKeys, setAddingKeys] = useState(false);
+  const [visibleKeyIds, setVisibleKeyIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const isAdminToken = !!localStorage.getItem('vivu_admin_token');
@@ -62,6 +64,14 @@ export function Admin() {
     }
     setCheckingAdmin(false);
   }, [navigate]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    localStorage.removeItem('vivu_admin_token');
+    localStorage.removeItem('vivu_mock_user');
+    localStorage.removeItem('vivu_mock_token');
+    navigate('/dang-nhap');
+  };
 
   // Fetch admin stats
   const { data: stats, isLoading: statsLoading } = useQuery<AdminStats>({
@@ -117,7 +127,19 @@ export function Admin() {
       alert('Lỗi khi xóa người dùng: ' + (err.response?.data?.error || err.message));
     }
   });
-
+  // Toggle Ban User Mutation
+  const toggleBanUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      await apiClient.put(`/admin/users/${userId}/toggle-ban`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
+      alert('Thay đổi trạng thái hoạt động của người dùng thành công!');
+    },
+    onError: (err: any) => {
+      alert('Lỗi thay đổi trạng thái người dùng: ' + (err.response?.data?.error || err.message));
+    }
+  });
   // Delete Trip Mutation
   const deleteTripMutation = useMutation({
     mutationFn: async (tripId: string) => {
@@ -223,10 +245,10 @@ export function Admin() {
     const parsedKeys = bulkKeysText
       .split('\n')
       .map(k => k.trim())
-      .filter(k => k.length > 10 && k.startsWith('AIzaSy'));
+      .filter(k => k.length > 10 && (k.startsWith('AIzaSy') || k.startsWith('AQ') || k.startsWith('AO')));
 
     if (parsedKeys.length === 0) {
-      alert('Không tìm thấy API Key hợp lệ (mỗi key bắt đầu bằng AIzaSy và dài hơn 10 ký tự)');
+      alert('Không tìm thấy API Key hợp lệ (mỗi key bắt đầu bằng AIzaSy, AQ hoặc AO và dài hơn 10 ký tự)');
       return;
     }
 
@@ -267,13 +289,22 @@ export function Admin() {
       {/* Top Navbar */}
       <nav className="glass-panel border-b border-brand-line/40 sticky top-0 z-30 px-6 py-4">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
-          <Link to="/chuyen-di" className="flex items-center gap-2">
+          <Link to="/admin" className="flex items-center gap-2">
             <Compass className="w-7 h-7 text-brand-primary" />
             <span className="font-display font-bold text-xl text-brand-primary">ViVu Planner</span>
           </Link>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-accent/10 border border-brand-accent/30 text-brand-accent text-xs font-bold uppercase tracking-wider">
-            <Shield className="w-3.5 h-3.5" />
-            Trang Quản Trị
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-accent/10 border border-brand-accent/30 text-brand-accent text-xs font-bold uppercase tracking-wider">
+              <Shield className="w-3.5 h-3.5" />
+              Trang Quản Trị
+            </div>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg text-brand-danger bg-brand-danger/10 hover:bg-brand-danger/25 transition cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Đăng xuất
+            </button>
           </div>
         </div>
       </nav>
@@ -288,12 +319,6 @@ export function Admin() {
             </h1>
             <p className="text-sm text-brand-textSoft">Giám sát người dùng, chuyến đi và xoay vòng API Key</p>
           </div>
-          <Link
-            to="/chuyen-di"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-brand-line hover:bg-brand-surfaceStrong/10 font-bold transition text-xs"
-          >
-            <ArrowLeft className="w-4 h-4" /> Quay lại bảng điều khiển
-          </Link>
         </header>
 
         {/* Stats Grid */}
@@ -342,7 +367,7 @@ export function Admin() {
               <div>
                 <p className="text-xs text-brand-textSoft font-semibold uppercase tracking-wider">Bể API Keys</p>
                 <h3 className="text-2xl font-bold font-display mt-0.5">
-                  {statsLoading ? '...' : stats?.totalPlacesCached}
+                  {statsLoading ? '...' : stats?.totalApiKeys}
                 </h3>
               </div>
             </div>
@@ -393,20 +418,21 @@ export function Admin() {
                     <th className="p-4 pl-6">Họ tên / Email</th>
                     <th className="p-4">Ngày đăng ký</th>
                     <th className="p-4">User ID</th>
+                    <th className="p-4">Trạng thái</th>
                     <th className="p-4 pr-6 text-right">Hành động</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-brand-line/20 text-sm">
                   {usersLoading ? (
                     <tr>
-                      <td colSpan={4} className="p-10 text-center text-brand-textSoft">
+                      <td colSpan={5} className="p-10 text-center text-brand-textSoft">
                         <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-brand-primary" />
                         Đang tải danh sách thành viên...
                       </td>
                     </tr>
                   ) : users && users.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="p-10 text-center text-brand-textSoft">
+                      <td colSpan={5} className="p-10 text-center text-brand-textSoft">
                         Chưa có người dùng nào.
                       </td>
                     </tr>
@@ -424,6 +450,31 @@ export function Admin() {
                         </td>
                         <td className="p-4 text-brand-textSoft">{formatDate(u.created_at)}</td>
                         <td className="p-4 font-mono text-xs text-brand-textSoft">{u.id}</td>
+                        <td className="p-4">
+                          {u.email === 'mockuser@vivu.vn' || ADMIN_EMAILS.includes(u.email) ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider bg-brand-accent/10 text-brand-accent">
+                              Hệ thống
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => toggleBanUserMutation.mutate(u.id)}
+                              className="text-brand-textSoft hover:text-brand-primary transition flex items-center gap-1"
+                              title={u.banned_until ? 'Kích hoạt lại tài khoản' : 'Khóa tài khoản'}
+                            >
+                              {u.banned_until ? (
+                                <>
+                                  <ToggleLeft className="w-7 h-7 text-brand-danger" />
+                                  <span className="text-xs text-brand-danger font-semibold">Bị khóa</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ToggleRight className="w-7 h-7 text-brand-primary" />
+                                  <span className="text-xs text-brand-primary font-semibold">Hoạt động</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </td>
                         <td className="p-4 pr-6 text-right">
                           <button
                             onClick={() => handleDeleteUser(u.id, u.email)}
@@ -505,6 +556,13 @@ export function Admin() {
                           </span>
                         </td>
                         <td className="p-4 pr-6 text-right">
+                          <Link
+                            to={`/chuyen-di/${t.id}`}
+                            className="p-2 rounded-lg text-brand-primary bg-brand-primary/10 hover:bg-brand-primary/25 transition inline-block mr-2"
+                            title="Xem chi tiết hành trình"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Link>
                           <button
                             onClick={() => handleDeleteTrip(t.id, t.title)}
                             className="p-2 rounded-lg text-brand-danger bg-brand-danger/10 hover:bg-brand-danger/25 transition"
@@ -536,7 +594,7 @@ export function Admin() {
                     rows={4}
                     value={bulkKeysText}
                     onChange={(e) => setBulkKeysText(e.target.value)}
-                    placeholder="AIzaSyBHPaLXoSL8vXh0r0...&#10;AIzaSyDh0DV2-y4tIjDQOWvi..."
+                    placeholder="AIzaSyBHPaLXoSL8vXh0r0...&#10;AQ.Ab8RN6KCHEwv9Xa...&#10;AO.Ab8RN6IIWn40..."
                     className="w-full text-xs font-mono p-3 rounded-xl border border-brand-line/50 focus:border-brand-primary outline-none bg-brand-bg/50 resize-y"
                   />
                   <div className="flex justify-end">
@@ -560,7 +618,8 @@ export function Admin() {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-brand-surfaceStrong/5 border-b border-brand-line/40 text-xs font-bold text-brand-textSoft uppercase">
-                        <th className="p-4 pl-5">API Key (Đã che)</th>
+                        <th className="p-4 pl-5">API Key (Tích hợp Xem/Ẩn)</th>
+                        <th className="p-4">Ngày thêm</th>
                         <th className="p-4">Trạng thái</th>
                         <th className="p-4">Dùng lần cuối</th>
                         <th className="p-4">Xoay vòng</th>
@@ -570,21 +629,34 @@ export function Admin() {
                     <tbody className="divide-y divide-brand-line/20 text-sm">
                       {keysLoading ? (
                         <tr>
-                          <td colSpan={5} className="p-10 text-center text-brand-textSoft">
+                          <td colSpan={6} className="p-10 text-center text-brand-textSoft">
                             <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-brand-primary" />
                             Đang tải bể API Keys...
                           </td>
                         </tr>
                       ) : apiKeys && apiKeys.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="p-10 text-center text-brand-textSoft">
+                          <td colSpan={6} className="p-10 text-center text-brand-textSoft">
                             Chưa có API Key nào trong hệ thống. Hãy thêm key ở trên!
                           </td>
                         </tr>
                       ) : (
                         apiKeys?.map(k => (
                           <tr key={k.id} className="hover:bg-brand-surfaceStrong/5 transition">
-                            <td className="p-4 pl-5 font-mono text-xs">{maskApiKey(k.key_value)}</td>
+                            <td className="p-4 pl-5 font-mono text-xs">
+                              <div className="flex items-center gap-2">
+                                <span>{visibleKeyIds[k.id] ? k.key_value : maskApiKey(k.key_value)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setVisibleKeyIds(prev => ({ ...prev, [k.id]: !prev[k.id] }))}
+                                  className="p-1 rounded bg-brand-line/10 hover:bg-brand-line/25 text-brand-textSoft transition"
+                                  title={visibleKeyIds[k.id] ? "Ẩn key" : "Xem key"}
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="p-4 text-brand-textSoft text-xs">{formatDate(k.created_at)}</td>
                             <td className="p-4">
                               <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider ${
                                 k.status === 'active'

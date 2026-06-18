@@ -37,6 +37,13 @@ const PREFERENCE_OPTIONS = [
 
 export function TripWizard() {
   const navigate = useNavigate();
+  
+  React.useEffect(() => {
+    if (localStorage.getItem('vivu_admin_token')) {
+      navigate('/admin');
+    }
+  }, [navigate]);
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState(0);

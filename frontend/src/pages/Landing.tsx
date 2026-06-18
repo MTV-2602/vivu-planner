@@ -1,8 +1,31 @@
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Compass, Sparkles, AlertTriangle, MapPin, Calendar, Heart, ShieldAlert } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
 import Reveal from '../components/Reveal';
 
 export function Landing() {
+  const navigate = useNavigate();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    // Check admin token
+    const adminToken = localStorage.getItem('vivu_admin_token');
+    if (adminToken) {
+      setIsLoggedIn(true);
+      setIsAdmin(true);
+      return;
+    }
+
+    // Check user session
+    supabase.auth.getSession().then(({ data: { session } }: any) => {
+      if (session) {
+        setIsLoggedIn(true);
+      }
+    });
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col font-label">
       {/* Hero Section - Warm Glow */}
@@ -19,12 +42,37 @@ export function Landing() {
               </span>
             </div>
             <div>
-              <Link
-                to="/dang-nhap"
-                className="px-5 py-2.5 rounded-lg border border-brand-primary text-brand-primary hover:bg-brand-primary/10 transition font-semibold text-sm"
-              >
-                Đăng Nhập
-              </Link>
+              {isLoggedIn ? (
+                <div className="flex items-center gap-3">
+                  <Link
+                    to={isAdmin ? "/admin" : "/chuyen-di"}
+                    className="px-5 py-2.5 rounded-lg bg-brand-primary text-white hover:bg-brand-primaryStrong transition font-semibold text-sm"
+                  >
+                    {isAdmin ? "Trang quản trị" : "Bảng điều khiển"}
+                  </Link>
+                  <button
+                    onClick={async () => {
+                      await supabase.auth.signOut();
+                      localStorage.removeItem('vivu_admin_token');
+                      localStorage.removeItem('vivu_mock_user');
+                      localStorage.removeItem('vivu_mock_token');
+                      setIsLoggedIn(false);
+                      setIsAdmin(false);
+                      navigate('/');
+                    }}
+                    className="px-4 py-2.5 rounded-lg border border-brand-line text-brand-textSoft hover:bg-brand-surfaceStrong/15 transition font-semibold text-sm cursor-pointer"
+                  >
+                    Đăng xuất
+                  </button>
+                </div>
+              ) : (
+                <Link
+                  to="/dang-nhap"
+                  className="px-5 py-2.5 rounded-lg border border-brand-primary text-brand-primary hover:bg-brand-primary/10 transition font-semibold text-sm"
+                >
+                  Đăng Nhập
+                </Link>
+              )}
             </div>
           </div>
 
@@ -53,10 +101,10 @@ export function Landing() {
               <Reveal delay={300}>
                 <div className="flex flex-col sm:flex-row gap-4 pt-4">
                   <Link
-                    to="/dang-ky"
+                    to={isLoggedIn ? (isAdmin ? "/admin" : "/chuyen-di") : "/dang-ky"}
                     className="px-8 py-4 rounded-xl bg-brand-accent hover:bg-brand-accentStrong text-white font-bold text-center transition shadow-lg hover:shadow-brand-accent/20 transform hover:-translate-y-0.5"
                   >
-                    Bắt đầu hành trình miễn phí
+                    {isLoggedIn ? "Đến bảng điều khiển" : "Bắt đầu hành trình miễn phí"}
                   </Link>
                   <a
                     href="#tinh-nang"

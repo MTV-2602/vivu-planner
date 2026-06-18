@@ -50,7 +50,7 @@ router.get('/stats', async (req: AuthenticatedRequest, res: Response) => {
       totalUsers: 3,
       totalTrips: 5,
       totalDisruptions: 2,
-      totalPlacesCached: 12
+      totalApiKeys: 12
     });
   }
 
@@ -71,17 +71,17 @@ router.get('/stats', async (req: AuthenticatedRequest, res: Response) => {
       .select('*', { count: 'exact', head: true });
     if (disruptionsError) throw disruptionsError;
 
-    // 4. Get total places cached
-    const { count: placesCount, error: placesError } = await supabaseAdmin
-      .from('places_cache')
+    // 4. Get total API keys in pool
+    const { count: keysCount, error: keysError } = await supabaseAdmin
+      .from('gemini_api_keys')
       .select('*', { count: 'exact', head: true });
-    if (placesError) throw placesError;
+    if (keysError) throw keysError;
 
     return res.json({
       totalUsers: users?.length || 0,
       totalTrips: tripsCount || 0,
       totalDisruptions: disruptionsCount || 0,
-      totalPlacesCached: placesCount || 0
+      totalApiKeys: keysCount || 0
     });
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to retrieve stats', details: err.message });
@@ -92,9 +92,9 @@ router.get('/stats', async (req: AuthenticatedRequest, res: Response) => {
 router.get('/users', async (req: AuthenticatedRequest, res: Response) => {
   if (isDbMocked) {
     return res.json([
-      { id: '00000000-0000-0000-0000-000000000000', email: 'mockuser@vivu.vn', full_name: 'Vinh Pro', created_at: new Date().toISOString() },
-      { id: '11111111-1111-1111-1111-111111111111', email: 'team89a6@gmail.com', full_name: 'MTV-2602 Admin', created_at: new Date().toISOString() },
-      { id: '22222222-2222-2222-2222-222222222222', email: 'vinhvip4508@gmail.com', full_name: 'Vinh VIP', created_at: new Date().toISOString() }
+      { id: '00000000-0000-0000-0000-000000000000', email: 'mockuser@vivu.vn', full_name: 'Vinh Pro', created_at: new Date().toISOString(), banned_until: null },
+      { id: '11111111-1111-1111-1111-111111111111', email: 'team89a6@gmail.com', full_name: 'MTV-2602 Admin', created_at: new Date().toISOString(), banned_until: null },
+      { id: '22222222-2222-2222-2222-222222222222', email: 'vinhvip4508@gmail.com', full_name: 'Vinh VIP', created_at: new Date().toISOString(), banned_until: new Date(Date.now() + 10000000).toISOString() }
     ]);
   }
 
@@ -107,7 +107,8 @@ router.get('/users', async (req: AuthenticatedRequest, res: Response) => {
       email: u.email,
       full_name: u.user_metadata?.full_name || '',
       created_at: u.created_at,
-      last_sign_in_at: u.last_sign_in_at
+      last_sign_in_at: u.last_sign_in_at,
+      banned_until: u.banned_until || null
     }));
 
     return res.json(formattedUsers);
@@ -133,6 +134,42 @@ router.delete('/users/:id', async (req: AuthenticatedRequest, res: Response) => 
     return res.status(500).json({ error: 'Failed to delete user', details: err.message });
   }
 });
+
+// PUT /api/admin/users/:id/toggle-ban - Bật/tắt hoạt động của người dùng (Banned / Active)
+router.put('/users/:id/toggle-ban', async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.params.id;
+
+  if (isDbMocked) {
+    return res.json({ success: true, message: `Mock toggled ban for user ${userId}` });
+  }
+
+  try {
+    // 1. Lấy thông tin user hiện tại
+    const { data: { user }, error: fetchError } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (fetchError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const isBanned = !!(user.banned_until && new Date(user.banned_until) > new Date());
+    
+    // 2. Nếu đang bị ban -> unban. Nếu chưa bị ban -> ban 10 năm (87600h)
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      ban_duration: isBanned ? 'none' : '87600h'
+    });
+
+    if (updateError) throw updateError;
+
+    return res.json({
+      success: true,
+      isBanned: !isBanned,
+      message: isBanned ? 'Đã mở khóa hoạt động người dùng!' : 'Đã khóa hoạt động người dùng thành công!'
+    });
+  } catch (err: any) {
+    console.error('[Admin Toggle Ban] Error:', err.message);
+    return res.status(500).json({ error: 'Failed to toggle user ban status', details: err.message });
+  }
+});
+
 
 // GET /api/admin/trips - List all trips across all users
 router.get('/trips', async (req: AuthenticatedRequest, res: Response) => {

@@ -44,6 +44,10 @@ export function Dashboard() {
   };
 
   useEffect(() => {
+    if (localStorage.getItem('vivu_admin_token')) {
+      navigate('/admin');
+      return;
+    }
     supabase.auth.getUser().then(({ data: { user } }: any) => {
       if (!user) {
         navigate('/dang-nhap');

@@ -27,6 +27,9 @@ export interface GeneratedItinerary {
     estimated_total: number;
     remaining: number;
   };
+  expert_advice?: string;
+  warning_notes?: string[];
+  missing_info_questions?: string[];
 }
 
 const ITINERARY_JSON_SCHEMA = {
@@ -71,6 +74,15 @@ const ITINERARY_JSON_SCHEMA = {
         remaining: { type: 'number' }
       },
       required: ['estimated_total', 'remaining']
+    },
+    expert_advice: { type: 'string' },
+    warning_notes: {
+      type: 'array',
+      items: { type: 'string' }
+    },
+    missing_info_questions: {
+      type: 'array',
+      items: { type: 'string' }
     }
   },
   required: ['days', 'budget_summary']
@@ -81,10 +93,24 @@ export async function generateItinerary(
   weatherForecast: WeatherForecast[],
   candidatePlaces: Record<string, PlaceCandidate[]>
 ): Promise<GeneratedItinerary> {
-  const systemPrompt = `Bạn là trợ lý lập kế hoạch du lịch chuyên về Việt Nam. 
-Bạn CHỈ được chọn địa điểm trong danh sách "candidate_places" được cung cấp — không tự tạo thêm địa điểm nào ngoài danh sách này (ngoại trừ loại di chuyển "transport" hoặc trải nghiệm "experience" tự do). 
-Bạn phải tôn trọng ngân sách, tình trạng sức khỏe, và sở thích của khách. 
-Trả lời CHỈ bằng JSON hợp lệ đúng schema được cung cấp, không thêm markdown, không thêm giải thích.`;
+  const systemPrompt = `Bạn là một chuyên gia lập kế hoạch du lịch (Travel Expert) chuyên nghiệp tại Việt Nam.
+Nhiệm vụ của bạn là xây dựng lịch trình du lịch tối ưu, an toàn và cá nhân hóa sâu sắc dựa trên thông tin yêu cầu của khách hàng.
+
+QUY TẮC CỐT LÕI:
+1. Bạn CHỈ được chọn địa điểm trong danh sách "candidate_places" được cung cấp — tuyệt đối không tự tạo thêm địa điểm nào ngoài danh sách này (ngoại trừ loại di chuyển "transport" hoặc trải nghiệm "experience" tự do).
+2. Hãy phân tích kỹ sở thích, ngân sách, và đặc biệt là tình trạng sức khỏe, giới hạn thể lực của khách để chọn hoạt động phù hợp nhất.
+3. PHÂN BỔ NGÂN SÁCH THÔNG MINH & TIẾT KIỆM (RÀNG BUỘC BẮT BUỘC):
+   - Bạn phải phân bổ ngân sách cực kỳ khoa học, tuyệt đối không tập trung quá nhiều tiền vào một hạng mục để bóp nghẹt các hạng mục còn lại.
+   - GIỚI HẠN TIỀN PHÒNG (ACCOMMODATION): Tổng chi phí lưu trú ( accommodation ) cho toàn bộ chuyến đi KHÔNG ĐƯỢC VƯỢT QUÁ 30% tổng ngân sách chuyến đi ("budget_total") nếu ngân sách eo hẹp (dưới 1.500.000đ/ngày/người). Ví dụ: với chuyến đi tổng ngân sách 2.000.000đ, toàn bộ tiền chỗ nghỉ cho cả chuyến đi tối đa chỉ được 600.000đ. Bạn phải chọn homestay, nhà nghỉ bình dân hoặc hostel có giá rẻ trong danh sách "candidate_places". Tuyệt đối không chọn khách sạn đắt tiền vượt quá 30% tổng ngân sách chuyến đi. Chỗ nghỉ chỉ được xếp vào các ngày đầu và giữa chuyến đi (tối đa bằng số đêm = số ngày - 1), tuyệt đối không check-in khách sạn vào ngày cuối cùng khi chuẩn bị đi về.
+   - ĐẢM BẢO CHI PHÍ ĂN UỐNG (DINING): Mỗi ngày bắt buộc phải có ít nhất 2 bữa ăn chính (trưa và tối). Chi phí mỗi bữa ăn chính cho mỗi khách phải hợp lý (từ 50.000đ đến 150.000đ/người ở quán bình dân hoặc đặc sản local). Tổng chi phí ăn uống mỗi ngày phải đảm bảo tối thiểu 15% - 25% ngân sách ngày để khách có thể thưởng thức đặc sản ẩm thực địa phương đầy đủ.
+   - KHÔNG DÙNG PLACEHOLDER CHUNG CHUNG: Tất cả các quán ăn, khách sạn, điểm tham quan đều phải chọn địa điểm thực tế và cụ thể từ danh sách "candidate_places" được cung cấp. Tuyệt đối không ghi chung chung "Ăn tối tự do", "Khách sạn tự chọn".
+   - CẢNH BÁO & CÂU HỎI LÀM RÕ: Nếu ngân sách tổng quá thấp (dưới 400.000đ/ngày/người) hoặc các yêu cầu đầu vào mâu thuẫn/mơ hồ (ví dụ: muốn ở resort 5 sao nhưng ngân sách 2 triệu, hoặc không rõ tình trạng sức khỏe), hãy đưa ra cảnh báo nguy cơ thiếu hụt ngân sách tại "warning_notes" và liệt kê cụ thể các câu hỏi làm rõ tại "missing_info_questions" để hỏi lại khách hàng.
+4. Trong kết quả JSON, hãy cung cấp:
+   - "expert_advice": Lời khuyên/tư vấn chi tiết từ góc nhìn chuyên gia du lịch, giải thích rõ lý do tại sao lịch trình này được thiết kế như vậy để phù hợp nhất với sở thích/sức khỏe/ngân sách của khách.
+   - "warning_notes": Các lưu ý an toàn quan trọng (ví dụ: cảnh báo thời tiết xấu, đường đèo hiểm trở, hoặc lưu ý bảo quản hành lý, sức khỏe).
+   - "missing_info_questions": Nếu dữ liệu đầu vào của khách quá mơ hồ hoặc thiếu, hãy đưa ra các câu hỏi làm rõ cụ thể để người dùng cung cấp thêm thông tin nhằm điều chỉnh lịch trình chuẩn xác hơn. Nếu thông tin đã rất đầy đủ, để danh sách này trống.
+
+Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp. Không viết thêm markdown, không thêm giải thích ngoài JSON.`;
 
   const userPrompt = JSON.stringify({
     trip: {
@@ -157,12 +183,27 @@ export async function adaptItinerary(
   weatherForecast: WeatherForecast[],
   candidatePlaces: Record<string, PlaceCandidate[]>
 ): Promise<{ itinerary: GeneratedItinerary; diff: string }> {
-  const systemPrompt = `Bạn là trợ lý lập kế hoạch du lịch chuyên về Việt Nam. 
-Bạn cần điều chỉnh lịch trình du lịch hiện tại do có sự cố xảy ra. 
-Bạn CHỈ được điều chỉnh các ngày hoặc hoạt động từ thời điểm xảy ra sự cố trở đi (dữ liệu truyền vào sẽ chỉ ra phần cần chỉnh sửa). Giữ nguyên các hoạt động đã hoàn thành trước đó. 
-Bạn phải điều chỉnh để phù hợp với sự cố mới (về thời tiết, ngân sách, sức khỏe, hoặc thời gian). 
-Chọn địa điểm từ danh sách "candidate_places" được cung cấp nếu cần thay thế địa điểm. 
-Trả lời CHỈ bằng JSON hợp lệ đúng schema được cung cấp.`;
+  const systemPrompt = `Bạn là một chuyên gia lập kế hoạch và xử lý sự cố du lịch (Senior Travel Planner & Disruption Specialist) chuyên nghiệp tại Việt Nam.
+Nhiệm vụ của bạn là điều chỉnh lịch trình hiện tại ("current_itinerary") khi có sự cố phát sinh thành một lịch trình mới hoàn chỉnh và logic nhất.
+
+YÊU CẦU ĐIỀU CHỈNH CHẶT CHẼ:
+1. Bạn phải phân tích toàn diện các yếu tố: lịch trình cũ ("current_itinerary"), giới hạn ngân sách còn lại, điều kiện thời tiết thực tế từ "weather_forecast", và thông tin sự cố phát sinh.
+2. Tuyệt đối không đưa ra các gợi ý bâng quơ hoặc chung chung (như "Ăn uống tự do", "Đi chơi chỗ khác" mà không có tên địa điểm). Bạn phải chọn các địa điểm cụ thể và thực tế từ danh sách "candidate_places" được cung cấp để thay thế hoàn chỉnh.
+3. PHÂN BỔ NGÂN SÁCH THÔNG MINH & TIẾT KIỆM (RÀNG BUỘC BẮT BUỘC):
+   - Bạn phải tính toán chi phí cẩn thận, đảm bảo tổng chi phí sau khi điều chỉnh không vượt quá ngân sách ban đầu của khách hàng ("budget_total").
+   - GIỚI HẠN TIỀN PHÒNG (ACCOMMODATION): Tổng chi phí lưu trú (accommodation) cho toàn bộ chuyến đi KHÔNG ĐƯỢC VƯỢT QUÁ 30% tổng ngân sách chuyến đi ("budget_total") nếu ngân sách eo hẹp (dưới 1.500.000đ/ngày/người). Hãy ưu tiên chọn các homestay, hostel hoặc nhà nghỉ bình dân giá rẻ trong danh sách "candidate_places". Chỗ nghỉ chỉ xuất hiện ở ngày đầu/giữa (tối đa bằng số ngày - 1 đêm), tuyệt đối không check-in khách sạn vào ngày cuối cùng của chuyến đi.
+   - ĐẢM BẢO CHI PHÍ ĂN UỐNG (DINING): Mỗi ngày phải có tối thiểu 2 bữa ăn chính (trưa và tối) ở các quán ăn thực tế trong danh sách. Không được để xảy ra tình trạng tiền phòng quá cao dẫn đến khách không có tiền ăn uống, thưởng thức các món đặc sản ẩm thực địa phương ngon miệng.
+   - Nếu xảy ra sự cố hụt ngân sách ("budget_shortage"), bạn phải chủ động hạ chi phí lưu trú xuống mức tối thiểu bằng cách chọn homestay/hostel giá rẻ nhất, đổi các hoạt động tham quan có phí thành miễn phí hoặc chi phí thấp, và ăn uống tại các quán ăn bình dân local.
+4. Giữ nguyên tính logic của lịch trình:
+   - Các hoạt động trong ngày phải có sự liên kết về mặt di chuyển (ví dụ: các địa điểm nên nằm gần nhau trong cùng buổi để giảm thời gian đi lại).
+   - Đảm bảo thời gian ăn uống (trưa, tối), nghỉ ngơi và di chuyển hợp lý.
+   - CHỈ được điều chỉnh các ngày hoặc hoạt động từ thời điểm xảy ra sự cố trở đi. Giữ nguyên các hoạt động đã hoàn thành trước đó.
+5. Thích ứng thông minh theo các yếu tố bên ngoài:
+   - Thời tiết: Đọc kỹ "weather_forecast" cho từng ngày để điều chỉnh hoạt động. Nếu dự báo có mưa lớn vào buổi chiều, hãy chuyển các hoạt động ngoài trời lên buổi sáng (nếu trời hửng nắng) hoặc đổi sang điểm tham quan trong nhà. Tránh tuyệt đối các rủi ro nguy hiểm (như leo núi, đi đèo dốc hiểm trở hay đi thuyền khi có giông bão).
+6. Cung cấp đầy đủ phân tích chuyên môn của bạn ở trường "expert_advice" để khách hiểu rõ lý do của các thay đổi và các cảnh báo an toàn ở trường "warning_notes".
+7. Nếu thông tin báo sự cố của khách quá mơ hồ hoặc không đủ để lập kế hoạch an toàn (ví dụ: chỉ ghi "sự cố sức khỏe" mà không rõ là mệt mỏi hay chấn thương nghiêm trọng, hoặc ghi "mưa" mà không rõ mưa to hay nhỏ), hãy đưa ra các câu hỏi làm rõ cụ thể ở trường "missing_info_questions" để khách cung cấp thêm nhằm đưa ra phương án tối ưu nhất.
+
+Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp. Không viết thêm markdown, không thêm giải thích ngoài JSON.`;
 
   const userPrompt = JSON.stringify({
     trip: tripData,
@@ -212,25 +253,35 @@ function generateMockItinerary(
   const attractions = candidatePlaces.attraction || [];
   const rentals = candidatePlaces.rental || [];
 
+  const budget_total = Number(tripData.budget_total) || 5000000;
+  const daysCount = weatherForecast.length || 1;
+  const dailyBudget = budget_total / daysCount;
+  const totalNights = Math.max(0, daysCount - 1);
+
+  // Lodging max 30% of total budget for tight budgets, min 100k
+  const maxTotalLodgingCost = budget_total * 0.30;
+  const maxLodgingCostPerNight = totalNights > 0 ? maxTotalLodgingCost / totalNights : 0;
+
   const days: ItineraryDay[] = weatherForecast.map((weather, index) => {
     const dayNumber = index + 1;
     const items: ItineraryItem[] = [];
 
-    // Accommodation (Place 1)
-    if (accommodations.length > 0) {
+    // Accommodation (Only for days before the last day)
+    if (accommodations.length > 0 && index < daysCount - 1) {
       const hotel = accommodations[index % accommodations.length];
+      const hotelCost = Math.min(hotel.price_level * 350000 + 150000, maxLodgingCostPerNight);
       items.push({
         item_type: 'accommodation',
         title: `Nhận phòng / Nghỉ ngơi tại ${hotel.name}`,
-        description: `Chỗ nghỉ tiện nghi, nằm tại trung tâm. Đánh giá: ${hotel.rating}⭐.`,
+        description: `Chỗ nghỉ tiện nghi, giá cả hợp lý theo ngân sách của bạn. Đánh giá: ${hotel.rating}⭐. Địa chỉ: ${hotel.address}`,
         start_time: '14:00',
         end_time: '15:00',
         google_place_id: hotel.google_place_id,
-        estimated_cost: hotel.price_level * 500000,
+        estimated_cost: Math.round(hotelCost),
         order_index: 0
       });
     }
-
+    
     // Transport (Place 2)
     items.push({
       item_type: 'transport',
@@ -238,7 +289,7 @@ function generateMockItinerary(
       description: 'Lựa chọn phương tiện linh hoạt để tham quan các địa điểm.',
       start_time: '08:00',
       end_time: '08:30',
-      estimated_cost: 50000,
+      estimated_cost: Math.round(Math.min(50000, dailyBudget * 0.05)),
       order_index: 1
     });
 
@@ -252,7 +303,7 @@ function generateMockItinerary(
         start_time: '09:00',
         end_time: '11:30',
         google_place_id: site.google_place_id,
-        estimated_cost: site.price_level * 80000,
+        estimated_cost: Math.round(Math.min(site.price_level * 80000, dailyBudget * 0.1)),
         order_index: 2
       });
     }
@@ -260,14 +311,17 @@ function generateMockItinerary(
     // Dining (Lunch)
     if (dining.length > 0) {
       const rest = dining[(index * 2) % dining.length];
+      // Dining max 15% of daily budget per meal to save, but min 50k
+      const maxMealCost = Math.max(50000, dailyBudget * 0.15);
+      const mealCost = Math.min(rest.price_level * 80000 + 40000, maxMealCost);
       items.push({
         item_type: 'dining',
         title: `Ăn trưa tại ${rest.name}`,
-        description: `Thưởng thức các món ngon đặc sản. Đánh giá: ${rest.rating}⭐.`,
+        description: `Thưởng thức các món đặc sản địa phương ngon và nổi tiếng. Đánh giá: ${rest.rating}⭐. Địa chỉ: ${rest.address}`,
         start_time: '12:00',
         end_time: '13:00',
         google_place_id: rest.google_place_id,
-        estimated_cost: rest.price_level * 150000,
+        estimated_cost: Math.round(mealCost),
         order_index: 3
       });
     }
@@ -282,8 +336,25 @@ function generateMockItinerary(
         start_time: '15:00',
         end_time: '17:30',
         google_place_id: site.google_place_id,
-        estimated_cost: site.price_level * 50000,
+        estimated_cost: Math.round(Math.min(site.price_level * 50000, dailyBudget * 0.08)),
         order_index: 4
+      });
+    }
+
+    // Dining (Dinner)
+    if (dining.length > 0) {
+      const rest = dining[(index * 2 + 1) % dining.length];
+      const maxMealCost = Math.max(50000, dailyBudget * 0.15);
+      const mealCost = Math.min(rest.price_level * 80000 + 40000, maxMealCost);
+      items.push({
+        item_type: 'dining',
+        title: `Ăn tối tại ${rest.name}`,
+        description: `Thưởng thức ẩm thực tối đặc sắc của địa phương. Đánh giá: ${rest.rating}⭐. Địa chỉ: ${rest.address}`,
+        start_time: '18:30',
+        end_time: '20:00',
+        google_place_id: rest.google_place_id,
+        estimated_cost: Math.round(mealCost),
+        order_index: 5
       });
     }
 
@@ -292,10 +363,10 @@ function generateMockItinerary(
       item_type: 'experience',
       title: 'Dạo chơi phố cổ / Chợ đêm',
       description: 'Hòa mình vào không khí nhộn nhịp về đêm của thành phố, thưởng thức ẩm thực đường phố.',
-      start_time: '19:00',
-      end_time: '21:30',
-      estimated_cost: 100000,
-      order_index: 5
+      start_time: '20:30',
+      end_time: '22:00',
+      estimated_cost: Math.round(Math.min(60000, dailyBudget * 0.08)),
+      order_index: 6
     });
 
     return {
@@ -310,14 +381,15 @@ function generateMockItinerary(
     return sum + day.items.reduce((daySum, item) => daySum + (item.estimated_cost || 0), 0);
   }, 0);
 
-  const budget_total = Number(tripData.budget_total) || 5000000;
-
   return {
     days,
     budget_summary: {
       estimated_total,
       remaining: Math.max(0, budget_total - estimated_total)
-    }
+    },
+    expert_advice: "Lịch trình đề xuất được tạo tự động dựa trên sở thích và thông tin chuyến đi của bạn.",
+    warning_notes: ["Hãy luôn theo dõi dự báo thời tiết trước khi di chuyển ngoài trời."],
+    missing_info_questions: []
   };
 }
 
@@ -385,6 +457,10 @@ function adaptMockItinerary(
   const diff = diffMessages.length > 0 
     ? diffMessages.join('\n') 
     : `Lịch trình được tối ưu hóa lại để phù hợp với sự cố: ${disruptionDescription}.`;
+
+  newItinerary.expert_advice = "Lịch trình đã được điều chỉnh tự động để ứng phó với sự cố phát sinh.";
+  newItinerary.warning_notes = ["Chú ý an toàn trong quá trình di chuyển thời tiết xấu."];
+  newItinerary.missing_info_questions = [];
 
   return { itinerary: newItinerary, diff };
 }

@@ -4,7 +4,8 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { 
   Compass, ArrowLeft, AlertTriangle, Calendar, Wallet, MapPin, 
   Sparkles, Clock, Map, Star, Utensils, Home, Bike, Check, X, 
-  HelpCircle, ChevronRight, Activity, ThermometerSun, Trash2, PenLine
+  HelpCircle, ChevronRight, Activity, ThermometerSun, Trash2, PenLine,
+  Shield
 } from 'lucide-react';
 import { apiClient } from '../lib/apiClient';
 import Reveal from '../components/Reveal';
@@ -58,6 +59,7 @@ interface TripDetailData {
 export function TripDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isAdmin = !!localStorage.getItem('vivu_admin_token');
   const [activeTabId, setActiveTabId] = useState<string>('');
   const [isDisruptionModalOpen, setIsDisruptionModalOpen] = useState(false);
 
@@ -73,6 +75,7 @@ export function TripDetail() {
   const [previousSnapshot, setPreviousSnapshot] = useState<any>(null);
   const [selectedProposedItems, setSelectedProposedItems] = useState<any[]>([]);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [questionAnswers, setQuestionAnswers] = useState<Record<number, string>>({});
 
   // Manual Edit State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -142,6 +145,7 @@ export function TripDetail() {
 
       setIsDisruptionModalOpen(false);
       setIsPreviewModalOpen(true);
+      setQuestionAnswers({});
     },
     onError: (err: any) => {
       alert('Lỗi phân tích sự cố: ' + (err.response?.data?.error || err.message));
@@ -261,10 +265,10 @@ export function TripDetail() {
           <h2 className="text-2xl font-bold text-brand-text">Không tìm thấy chuyến đi</h2>
           <p className="text-sm text-brand-textSoft">Lịch trình này không tồn tại hoặc bạn không có quyền truy cập.</p>
           <Link
-            to="/chuyen-di"
+            to={isAdmin ? "/admin" : "/chuyen-di"}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-brand-primary text-white font-bold"
           >
-            <ArrowLeft className="w-4 h-4" /> Quay lại danh sách
+            <ArrowLeft className="w-4 h-4" /> Quay lại {isAdmin ? "Trang quản trị" : "danh sách"}
           </Link>
         </div>
       </div>
@@ -283,6 +287,31 @@ export function TripDetail() {
     previewMutation.mutate({
       disruption_type: disruptionType,
       description: disruptionDesc,
+      day_id: disruptionDayId || null
+    });
+  };
+
+  const handleResubmitWithAnswers = () => {
+    if (!proposedItinerary?.missing_info_questions) return;
+    
+    const answersStr = proposedItinerary.missing_info_questions
+      .map((quest: string, idx: number) => {
+        const ans = questionAnswers[idx] || '';
+        return ans.trim() ? `- Q: ${quest}\n  A: ${ans.trim()}` : '';
+      })
+      .filter((text: string) => text !== '')
+      .join('\n');
+
+    if (!answersStr) {
+      alert('Vui lòng điền câu trả lời cho các câu hỏi trước khi gửi lại.');
+      return;
+    }
+
+    const fullDescription = `${disruptionDesc}\n\n[Thông tin bổ sung trả lời câu hỏi AI]:\n${answersStr}`;
+    
+    previewMutation.mutate({
+      disruption_type: disruptionType,
+      description: fullDescription,
       day_id: disruptionDayId || null
     });
   };
@@ -340,10 +369,10 @@ export function TripDetail() {
       <nav className="glass-panel border-b border-brand-line/40 sticky top-0 z-30 px-6 py-4">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <Link
-            to="/chuyen-di"
+            to={isAdmin ? "/admin" : "/chuyen-di"}
             className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-textSoft hover:text-brand-primary transition"
           >
-            <ArrowLeft className="w-4 h-4" /> Bảng điều khiển
+            <ArrowLeft className="w-4 h-4" /> {isAdmin ? "Trang quản trị" : "Bảng điều khiển"}
           </Link>
           <div className="flex items-center gap-4">
             <SystemClock />
@@ -357,6 +386,12 @@ export function TripDetail() {
 
       {/* Main Content Area */}
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+        {isAdmin && (
+          <div className="p-4 rounded-2xl border border-brand-accent/30 bg-brand-accent/5 text-brand-accentStrong text-xs font-bold flex items-center justify-center gap-2">
+            <Shield className="w-4.5 h-4.5" />
+            Bạn đang xem chi tiết chuyến đi này với tư cách Quản trị viên (Chế độ chỉ đọc).
+          </div>
+        )}
         
         {/* Banner: AI adjustment notify log */}
         {adaptationDiff && (
@@ -399,13 +434,15 @@ export function TripDetail() {
             </div>
           </div>
 
-          <button
-            onClick={() => setIsDisruptionModalOpen(true)}
-            className="flex items-center gap-2 px-5 py-3.5 rounded-xl bg-brand-danger hover:bg-brand-danger/90 text-white font-bold transition shadow-lg hover:shadow-brand-danger/25 transform hover:-translate-y-0.5 shrink-0"
-          >
-            <AlertTriangle className="w-4 h-4" />
-            Báo sự cố chuyến đi
-          </button>
+          {!isAdmin && (
+            <button
+              onClick={() => setIsDisruptionModalOpen(true)}
+              className="flex items-center gap-2 px-5 py-3.5 rounded-xl bg-brand-danger hover:bg-brand-danger/90 text-white font-bold transition shadow-lg hover:shadow-brand-danger/25 transform hover:-translate-y-0.5 shrink-0"
+            >
+              <AlertTriangle className="w-4 h-4" />
+              Báo sự cố chuyến đi
+            </button>
+          )}
         </header>
 
         {/* Itinerary body */}
@@ -567,41 +604,43 @@ export function TripDetail() {
                               ) : <div />}
 
                               {/* Manual edit, delete and AI replacement buttons */}
-                              <div className="flex gap-2 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    setAiReplaceItem(item);
-                                    setIsAiReplaceModalOpen(true);
-                                    setAiAlternatives([]);
-                                    setAiReplaceRequirement('');
-                                  }}
-                                  className="p-1 rounded bg-brand-accent/10 hover:bg-brand-accent/25 text-brand-accent transition"
-                                  title="AI thay thế hoạt động"
-                                >
-                                  <Sparkles className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    handleEditClick(item);
-                                  }}
-                                  className="p-1 rounded bg-brand-primary/10 hover:bg-brand-primary/25 text-brand-primary transition"
-                                  title="Sửa hoạt động"
-                                >
-                                  <PenLine className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    handleDeleteClick(item.id, item.title);
-                                  }}
-                                  className="p-1 rounded bg-brand-danger/10 hover:bg-brand-danger/25 text-brand-danger transition"
-                                  title="Xóa hoạt động"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                              {!isAdmin && (
+                                <div className="flex gap-2 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      setAiReplaceItem(item);
+                                      setIsAiReplaceModalOpen(true);
+                                      setAiAlternatives([]);
+                                      setAiReplaceRequirement('');
+                                    }}
+                                    className="p-1 rounded bg-brand-accent/10 hover:bg-brand-accent/25 text-brand-accent transition"
+                                    title="AI thay thế hoạt động"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      handleEditClick(item);
+                                    }}
+                                    className="p-1 rounded bg-brand-primary/10 hover:bg-brand-primary/25 text-brand-primary transition"
+                                    title="Sửa hoạt động"
+                                  >
+                                    <PenLine className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      handleDeleteClick(item.id, item.title);
+                                    }}
+                                    className="p-1 rounded bg-brand-danger/10 hover:bg-brand-danger/25 text-brand-danger transition"
+                                    title="Xóa hoạt động"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -731,6 +770,88 @@ export function TripDetail() {
                 <div className="p-4 rounded-xl bg-brand-primary/5 border border-brand-primary/20 text-xs text-brand-textSoft font-serif italic whitespace-pre-line">
                   <strong>Các thay đổi dự kiến:</strong><br />
                   {proposedDiff}
+                </div>
+              )}
+
+              {/* Expert Travel Guide Advice */}
+              {proposedItinerary.expert_advice && (
+                <div className="p-4 rounded-2xl bg-brand-primary/10 border border-brand-primary/30 text-xs text-brand-text flex gap-3 items-start">
+                  <Sparkles className="w-5 h-5 text-brand-primary shrink-0 mt-0.5 animate-pulse" />
+                  <div>
+                    <span className="font-extrabold text-brand-primary block mb-1 uppercase tracking-wider text-[10px]">Tư vấn chuyên gia:</span>
+                    <p className="font-serif italic leading-relaxed whitespace-pre-line text-brand-textSoft">
+                      {proposedItinerary.expert_advice}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Travel Safety Warnings */}
+              {proposedItinerary.warning_notes && proposedItinerary.warning_notes.length > 0 && (
+                <div className="p-4 rounded-2xl bg-brand-danger/10 border border-brand-danger/30 text-xs text-brand-danger flex gap-3 items-start">
+                  <AlertTriangle className="w-5 h-5 text-brand-danger shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-extrabold text-brand-danger block mb-1 uppercase tracking-wider text-[10px]">Cảnh báo an toàn du lịch:</span>
+                    <ul className="list-disc list-inside space-y-1 font-semibold leading-relaxed">
+                      {proposedItinerary.warning_notes.map((note: string, idx: number) => (
+                        <li key={idx}>{note}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {/* Clarifying / Missing Information Questions */}
+              {proposedItinerary.missing_info_questions && proposedItinerary.missing_info_questions.length > 0 && (
+                <div className="p-5 rounded-2xl bg-brand-gold/15 border border-brand-gold/40 text-xs text-brand-primaryStrong flex gap-3 items-start">
+                  <HelpCircle className="w-5 h-5 text-brand-gold shrink-0 mt-0.5 animate-bounce" />
+                  <div className="w-full space-y-3">
+                    <div>
+                      <span className="font-extrabold text-brand-primaryStrong block mb-1 uppercase tracking-wider text-[10px]">Thông tin cần bổ sung để kế hoạch tốt hơn:</span>
+                      <p className="text-brand-textSoft mb-3">Đề xuất này sẽ chuẩn xác và an toàn hơn nếu bạn bổ sung câu trả lời cho các câu hỏi dưới đây:</p>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      {proposedItinerary.missing_info_questions.map((quest: string, idx: number) => (
+                        <div key={idx} className="space-y-1.5">
+                          <label className="block font-semibold text-brand-text text-xs">
+                            {idx + 1}. {quest}
+                          </label>
+                          <textarea
+                            rows={2}
+                            placeholder="Nhập câu trả lời của bạn..."
+                            value={questionAnswers[idx] || ''}
+                            onChange={(e) => setQuestionAnswers(prev => ({ ...prev, [idx]: e.target.value }))}
+                            className="w-full px-3.5 py-2 rounded-xl border border-brand-line bg-white/70 text-brand-text text-xs focus:ring-1 focus:ring-brand-primary focus:border-brand-primary"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                      <span className="text-[9px] text-brand-textMuted font-serif italic max-w-sm leading-relaxed">
+                        (* Hệ thống sẽ tự động ghép các câu trả lời này vào mô tả sự cố để AI phân tích lại lịch trình mới tối ưu nhất cho bạn.)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleResubmitWithAnswers}
+                        disabled={previewMutation.isPending}
+                        className="px-4 py-2.5 rounded-xl bg-brand-primary text-white text-[11px] font-bold shadow-md hover:bg-brand-primaryStrong transition flex items-center gap-1.5 disabled:opacity-50 self-end"
+                      >
+                        {previewMutation.isPending ? (
+                          <>
+                            <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
+                            Đang gửi lại...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-3.5 h-3.5" />
+                            Gửi lại cho AI phân tích
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 

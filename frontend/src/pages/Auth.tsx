@@ -98,7 +98,7 @@ export function Auth() {
               localStorage.setItem('vivu_admin_token', res.data.token);
               localStorage.setItem('vivu_mock_user', JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: res.data.email }));
               localStorage.setItem('vivu_mock_token', res.data.token);
-              navigate('/chuyen-di');
+              navigate('/admin');
               return;
             }
           } catch (adminErr: any) {
