@@ -94,38 +94,167 @@ function calculateEstimatedTotal(days: ItineraryDay[]): number {
   }, 0);
 }
 
-function enforceBudgetLimit(itinerary: GeneratedItinerary, budgetTotal: number): GeneratedItinerary {
+function getTravelerCount(tripData?: any): number {
+  const count = Number(tripData?.traveler_count);
+  return Number.isFinite(count) && count > 0 ? Math.ceil(count) : 1;
+}
+
+function getTripNightCount(tripData: any, daysCount: number): number {
+  const startDate = tripData?.start_date ? new Date(tripData.start_date) : null;
+  const endDate = tripData?.end_date ? new Date(tripData.end_date) : null;
+
+  if (startDate && endDate && !Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
+    const diffMs = endDate.getTime() - startDate.getTime();
+    return Math.max(0, Math.round(diffMs / 86400000));
+  }
+
+  return Math.max(0, daysCount - 1);
+}
+
+function getMinimumEstimatedCost(item: ItineraryItem, travelerCount: number, totalNights: number): number {
+  const rooms = Math.max(1, Math.ceil(travelerCount / 2));
+
+  switch (item.item_type) {
+    case 'dining':
+      return 50000 * travelerCount;
+    case 'transport':
+      return Math.max(30000, travelerCount * 15000);
+    case 'rental':
+      return 120000 * Math.max(1, Math.ceil(travelerCount / 2));
+    case 'accommodation':
+      return totalNights > 0 ? 100000 * totalNights * rooms : 0;
+    default:
+      return 0;
+  }
+}
+
+function normalizeAccommodationItems(itinerary: GeneratedItinerary, tripData: any, totalNights: number): void {
+  if (totalNights <= 0) {
+    let removedAccommodation = false;
+    itinerary.days.forEach(day => {
+      const originalCount = day.items.length;
+      day.items = day.items.filter(item => item.item_type !== 'accommodation');
+      removedAccommodation = removedAccommodation || day.items.length !== originalCount;
+    });
+
+    if (removedAccommodation) {
+      itinerary.warning_notes = [
+        ...(itinerary.warning_notes || []),
+        'Chuyến đi trong ngày không có lưu trú qua đêm nên đã bỏ mục chỗ nghỉ.'
+      ];
+    }
+    return;
+  }
+
+  if (hasExplicitAccommodationPreference(tripData?.special_requirements)) return;
+
+  const accommodationEntries: Array<{ dayIndex: number; item: ItineraryItem }> = [];
+  itinerary.days.forEach((day, dayIndex) => {
+    day.items.forEach(item => {
+      if (item.item_type === 'accommodation') {
+        accommodationEntries.push({ dayIndex, item });
+      }
+    });
+  });
+
+  if (accommodationEntries.length === 0) return;
+
+  const firstAccommodation = { ...accommodationEntries[0].item, order_index: 0 };
+  if (accommodationEntries.length > 1) {
+    firstAccommodation.estimated_cost = accommodationEntries.reduce((sum, entry) => {
+      return sum + (entry.item.estimated_cost || 0);
+    }, 0);
+  }
+
+  if (accommodationEntries.length > 1 || accommodationEntries[0].dayIndex !== 0) {
+    itinerary.days.forEach(day => {
+      day.items = day.items.filter(item => item.item_type !== 'accommodation');
+    });
+    itinerary.days[0]?.items.unshift(firstAccommodation);
+  }
+}
+
+function normalizeMinimumCosts(itinerary: GeneratedItinerary, travelerCount: number, totalNights: number): void {
+  itinerary.days.forEach(day => {
+    day.items.forEach(item => {
+      const minimumCost = getMinimumEstimatedCost(item, travelerCount, totalNights);
+      const currentCost = Number(item.estimated_cost);
+
+      if (minimumCost > 0 && (!Number.isFinite(currentCost) || currentCost < minimumCost)) {
+        item.estimated_cost = minimumCost;
+      } else if (Number.isFinite(currentCost) && currentCost >= 0) {
+        item.estimated_cost = Math.round(currentCost);
+      }
+    });
+  });
+}
+
+function enforceBudgetLimit(itinerary: GeneratedItinerary, budgetTotal: number, tripData?: any): GeneratedItinerary {
   const normalizedBudget = Number.isFinite(budgetTotal) && budgetTotal > 0 ? budgetTotal : 0;
+  const travelerCount = getTravelerCount(tripData);
+  const totalNights = getTripNightCount(tripData, itinerary.days.length);
+
+  normalizeAccommodationItems(itinerary, tripData, totalNights);
+  normalizeMinimumCosts(itinerary, travelerCount, totalNights);
+
   let estimatedTotal = calculateEstimatedTotal(itinerary.days);
 
   if (normalizedBudget > 0 && estimatedTotal > normalizedBudget) {
     const costedItems = itinerary.days.flatMap(day => {
       return day.items.filter(item => (item.estimated_cost || 0) > 0);
     });
+    const costFloorByItem = new Map<ItineraryItem, number>();
 
-    if (costedItems.length > 0) {
+    costedItems.forEach(item => {
+      costFloorByItem.set(item, getMinimumEstimatedCost(item, travelerCount, totalNights));
+    });
+
+    const floorTotal = costedItems.reduce((sum, item) => sum + (costFloorByItem.get(item) || 0), 0);
+
+    if (costedItems.length > 0 && floorTotal <= normalizedBudget) {
+      const adjustableTotal = Math.max(1, estimatedTotal - floorTotal);
+      const targetReduction = estimatedTotal - normalizedBudget;
+
+      costedItems.forEach(item => {
+        const currentCost = item.estimated_cost || 0;
+        const floorCost = costFloorByItem.get(item) || 0;
+        const adjustableCost = Math.max(0, currentCost - floorCost);
+        const reduction = Math.floor(targetReduction * (adjustableCost / adjustableTotal));
+        item.estimated_cost = Math.max(floorCost, currentCost - reduction);
+      });
+
+      estimatedTotal = calculateEstimatedTotal(itinerary.days);
+      let overflow = estimatedTotal - normalizedBudget;
+      if (overflow > 0) {
+        for (const item of [...costedItems].reverse()) {
+          const floorCost = costFloorByItem.get(item) || 0;
+          const currentCost = item.estimated_cost || 0;
+          const availableReduction = Math.max(0, currentCost - floorCost);
+          const reduction = Math.min(availableReduction, overflow);
+          item.estimated_cost = currentCost - reduction;
+          overflow -= reduction;
+          if (overflow <= 0) break;
+        }
+      }
+    } else if (costedItems.length > 0) {
       const ratio = normalizedBudget / estimatedTotal;
       costedItems.forEach(item => {
         item.estimated_cost = Math.max(0, Math.floor((item.estimated_cost || 0) * ratio));
       });
-
-      estimatedTotal = calculateEstimatedTotal(itinerary.days);
-      if (estimatedTotal > normalizedBudget) {
-        const overflow = estimatedTotal - normalizedBudget;
-        const lastCostedItem = [...costedItems].reverse().find(item => (item.estimated_cost || 0) > 0);
-        if (lastCostedItem) {
-          lastCostedItem.estimated_cost = Math.max(0, (lastCostedItem.estimated_cost || 0) - overflow);
-        }
-        estimatedTotal = calculateEstimatedTotal(itinerary.days);
-      }
+      itinerary.warning_notes = [
+        ...(itinerary.warning_notes || []),
+        'Ngân sách quá thấp so với mức chi phí tối thiểu thực tế, nên hệ thống phải co chi phí xuống dưới mức khuyến nghị.'
+      ];
     }
 
+    estimatedTotal = calculateEstimatedTotal(itinerary.days);
     itinerary.warning_notes = [
       ...(itinerary.warning_notes || []),
       'Chi phí đã được tự động cân đối để không vượt ngân sách tổng của chuyến đi.'
     ];
   }
 
+  estimatedTotal = calculateEstimatedTotal(itinerary.days);
   itinerary.budget_summary = {
     estimated_total: normalizedBudget > 0 ? Math.min(estimatedTotal, normalizedBudget) : estimatedTotal,
     remaining: normalizedBudget > 0 ? Math.max(0, normalizedBudget - estimatedTotal) : 0
@@ -159,6 +288,13 @@ QUY TẮC CỐT LÕI:
      * GIỚI HẠN CHI PHÍ: Tổng tiền lưu trú cho cả chuyến đi tuyệt đối không vượt quá 30% tổng ngân sách ("budget_total") đối với ngân sách eo hẹp (dưới 1.500.000đ/ngày/người). Hãy chọn homestay, nhà nghỉ bình dân hoặc hostel giá rẻ trong danh sách "candidate_places" phù hợp.
      * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và khách chưa nêu rõ yêu cầu lưu trú, bạn bắt buộc phải đặt câu hỏi làm rõ trong "missing_info_questions": "Bạn muốn ở 1 chỗ nghỉ cố định hay muốn thay đổi nhiều nơi trong chuyến đi này?"
    - ĐẢM BẢO CHI PHÍ ĂN UỐNG (DINING): Mỗi ngày bắt buộc phải có ít nhất 2 bữa ăn chính (trưa và tối) sử dụng các quán ăn thực tế trong danh sách. Chi phí ăn uống mỗi ngày phải được cân đối kỹ lưỡng sao cho phù hợp với phần ngân sách còn lại sau khi đã trừ tiền phòng.
+   - QUY TẮC GIÁ TỐI THIỂU (BẮT BUỘC):
+     * "estimated_cost" luôn là VND cho toàn bộ nhóm khách (traveler_count), không phải giá mỗi người.
+     * Tuyệt đối KHÔNG đặt "estimated_cost" = 0 hoặc ghi "Miễn phí" cho ăn uống, di chuyển, thuê xe hoặc lưu trú. Phở, bún, bánh mì, cà phê sáng đều phải có giá thực tế.
+     * Ăn uống: tối thiểu 50.000đ/người/bữa, kể cả bữa sáng; bữa chính nên trong khoảng 50.000đ - 150.000đ/người. Ví dụ 1 khách ăn Phở Thìn Lò Đúc thì estimated_cost tối thiểu 50.000đ, không bao giờ là miễn phí.
+     * Di chuyển nội thành bằng Grab/taxi/xe ôm phải tối thiểu 30.000đ/lượt cho nhóm nhỏ. Thuê xe máy tối thiểu 120.000đ/ngày/xe.
+     * Chỉ các điểm tham quan/trải nghiệm thật sự miễn phí như đi bộ quanh hồ, công viên công cộng mới được đặt estimated_cost = 0. Nếu không chắc chắn miễn phí, hãy ước tính ít nhất 20.000đ/người.
+     * Nếu chuyến đi trong ngày (số đêm = 0, ví dụ start_date trùng end_date), KHÔNG thêm mục lưu trú. Nếu chuyến đi có qua đêm, phải có mục lưu trú ở Ngày 1 với chi phí cho toàn bộ số đêm.
    - KHÔNG DÙNG PLACEHOLDER CHUNG CHUNG: Tất cả khách sạn, quán ăn, điểm tham quan đều phải chọn địa điểm cụ thể trong danh sách "candidate_places". Tuyệt đối không ghi chung chung "Ăn tối tự do", "Khách sạn tự chọn".
    - CẢNH BÁO: Nếu ngân sách tổng quá thấp (dưới 400.000đ/ngày/người) hoặc yêu cầu của khách mâu thuẫn (muốn ở resort sang trọng nhưng ngân sách thấp), hãy cảnh báo nguy cơ thiếu hụt ngân sách tại "warning_notes" và đưa ra câu hỏi làm rõ đề xuất nâng ngân sách tại "missing_info_questions".
 4. Trong kết quả JSON, hãy cung cấp:
@@ -223,7 +359,7 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
         });
       });
 
-      return enforceBudgetLimit(parsed, Number(tripData.budget_total));
+      return enforceBudgetLimit(parsed, Number(tripData.budget_total), tripData);
     });
   } catch (error: any) {
     console.error(`Gemini generation failed: ${error.message}. Falling back to programmatic generation.`);
@@ -253,6 +389,11 @@ YÊU CẦU ĐIỀU CHỈNH CHẶT CHẼ:
      * GIỚI HẠN CHI PHÍ: Tổng tiền lưu trú cho cả chuyến đi tuyệt đối không vượt quá 30% tổng ngân sách ("budget_total") đối với ngân sách eo hẹp. Hãy ưu tiên chọn homestay, hostel hoặc nhà nghỉ bình dân giá rẻ trong danh sách "candidate_places".
      * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và chưa rõ sở thích lưu trú của khách, hãy đặt câu hỏi làm rõ trong "missing_info_questions" xem họ muốn ở cố định 1 chỗ hay muốn thay đổi nhiều chỗ ở.
    - ĐẢM BẢO CHI PHÍ ĂN UỐNG (DINING): Mỗi ngày phải có tối thiểu 2 bữa ăn chính (trưa và tối) ở các quán ăn thực tế trong danh sách. Không được để tiền phòng quá cao bóp nghẹt ngân sách ăn uống đặc sản ẩm thực địa phương.
+   - QUY TẮC GIÁ TỐI THIỂU (BẮT BUỘC):
+     * "estimated_cost" luôn là VND cho toàn bộ nhóm khách (traveler_count). Không đặt 0đ/"Miễn phí" cho ăn uống, di chuyển, thuê xe hoặc lưu trú.
+     * Ăn uống tối thiểu 50.000đ/người/bữa, kể cả bữa sáng như phở/bún/bánh mì/cà phê. Di chuyển nội thành tối thiểu 30.000đ/lượt; thuê xe máy tối thiểu 120.000đ/ngày/xe.
+     * Chỉ điểm tham quan/trải nghiệm công cộng thật sự miễn phí mới được đặt 0đ. Nếu không chắc miễn phí, hãy ước tính ít nhất 20.000đ/người.
+     * Chuyến đi trong ngày (0 đêm) không có mục lưu trú; chuyến có qua đêm phải giữ 1 mục lưu trú ở Ngày 1 trừ khi khách yêu cầu đổi chỗ rõ ràng.
    - Nếu xảy ra sự cố hụt ngân sách ("budget_shortage"), bạn phải chủ động hạ chi phí lưu trú xuống mức tối thiểu bằng cách chọn homestay/hostel giá rẻ nhất, đổi các hoạt động tham quan có phí thành miễn phí hoặc chi phí thấp, và ăn uống tại các quán ăn bình dân local.
 4. Giữ nguyên tính logic của lịch trình:
    - Các hoạt động trong ngày phải có sự liên kết về mặt di chuyển (ví dụ: các địa điểm nên nằm gần nhau trong cùng buổi để giảm thời gian đi lại).
@@ -293,7 +434,7 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
 
       const parsed = JSON.parse(text) as GeneratedItinerary;
       const budgetTotal = Number(tripData.budget_total) || currentItinerary.budget_summary.estimated_total + currentItinerary.budget_summary.remaining;
-      const normalizedItinerary = enforceBudgetLimit(parsed, budgetTotal);
+      const normalizedItinerary = enforceBudgetLimit(parsed, budgetTotal, tripData);
       const diff = generateItineraryDiff(currentItinerary, normalizedItinerary, disruptionType);
 
       return { itinerary: normalizedItinerary, diff };
@@ -460,7 +601,7 @@ function generateMockItinerary(
       : []
   };
 
-  return enforceBudgetLimit(itinerary, budget_total);
+  return enforceBudgetLimit(itinerary, budget_total, tripData);
 }
 
 // Programmatic mock disruption adaptation
