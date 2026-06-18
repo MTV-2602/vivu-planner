@@ -20,6 +20,15 @@ function formatTimeForDb(timeStr?: string | null): string | null {
   return null;
 }
 
+function parseOptionalCost(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null;
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+
+  return Math.max(0, Math.round(parsed));
+}
+
 // GET /api/trips - List all trips of the current user
 router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const client = getSupabaseUserClient(req.token!);
@@ -219,7 +228,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
           location_lat: itemLat,
           location_lng: itemLng,
           google_place_id: item.google_place_id || null,
-          estimated_cost: item.estimated_cost || 0,
+          estimated_cost: parseOptionalCost(item.estimated_cost),
           order_index: item.order_index,
           status: 'planned'
         });
@@ -479,7 +488,7 @@ router.post('/:id/disruptions/apply', authMiddleware, async (req: AuthenticatedR
         location_lat: item.location_lat || lat,
         location_lng: item.location_lng || lng,
         google_place_id: item.google_place_id || null,
-        estimated_cost: item.estimated_cost || 0,
+        estimated_cost: parseOptionalCost(item.estimated_cost),
         order_index: item.order_index,
         status: 'planned'
       });
@@ -515,7 +524,7 @@ router.put('/items/:itemId', authMiddleware, async (req: AuthenticatedRequest, r
     if (description !== undefined) updateData.description = description;
     if (start_time !== undefined) updateData.start_time = formatTimeForDb(start_time);
     if (end_time !== undefined) updateData.end_time = formatTimeForDb(end_time);
-    if (estimated_cost !== undefined) updateData.estimated_cost = estimated_cost ? parseFloat(estimated_cost) : 0;
+    if (estimated_cost !== undefined) updateData.estimated_cost = parseOptionalCost(estimated_cost);
     if (status !== undefined) updateData.status = status;
     if (item_type !== undefined) updateData.item_type = item_type;
 

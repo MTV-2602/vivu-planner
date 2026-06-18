@@ -24,7 +24,7 @@ interface ItineraryItem {
   location_lat?: number;
   location_lng?: number;
   google_place_id?: string;
-  estimated_cost?: number;
+  estimated_cost?: number | null;
   status: 'planned' | 'confirmed' | 'skipped' | 'replaced';
   order_index: number;
 }
@@ -84,7 +84,7 @@ export function TripDetail() {
   const [editDesc, setEditDesc] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
-  const [editCost, setEditCost] = useState<number>(0);
+  const [editCost, setEditCost] = useState('');
   const [editStatus, setEditStatus] = useState<'planned' | 'confirmed' | 'skipped' | 'replaced'>('planned');
   const [editItemType, setEditItemType] = useState<string>('attraction');
 
@@ -220,7 +220,7 @@ export function TripDetail() {
     setEditDesc(item.description || '');
     setEditStartTime(item.start_time ? item.start_time.substring(0, 5) : '');
     setEditEndTime(item.end_time ? item.end_time.substring(0, 5) : '');
-    setEditCost(Number(item.estimated_cost) || 0);
+    setEditCost(item.estimated_cost === undefined || item.estimated_cost === null ? '' : String(item.estimated_cost));
     setEditStatus(item.status);
     setEditItemType(item.item_type);
     setIsEditModalOpen(true);
@@ -234,7 +234,7 @@ export function TripDetail() {
       description: editDesc,
       start_time: editStartTime || null,
       end_time: editEndTime || null,
-      estimated_cost: editCost,
+      estimated_cost: editCost.trim() === '' ? null : Number(editCost),
       status: editStatus,
       item_type: editItemType
     });
@@ -360,6 +360,16 @@ export function TripDetail() {
     const d = String(date.getDate()).padStart(2, '0');
     const m = String(date.getMonth() + 1).padStart(2, '0');
     return `${d}/${m}`;
+  };
+
+  const hasOfficialCost = (cost?: number | null) => {
+    return cost !== undefined && cost !== null && Number.isFinite(Number(cost));
+  };
+
+  const formatEstimatedCost = (cost?: number | null) => {
+    if (!hasOfficialCost(cost)) return 'C\u1ea7n x\u00e1c nh\u1eadn gi\u00e1';
+    const normalizedCost = Number(cost);
+    return normalizedCost === 0 ? 'Mi\u1ec5n ph\u00ed' : `${normalizedCost.toLocaleString('vi-VN')}\u0111`;
   };
 
   return (
@@ -594,14 +604,19 @@ export function TripDetail() {
 
                             {/* Actions & Cost Area */}
                             <div className="text-right shrink-0 flex flex-col items-end justify-between gap-3 h-full min-h-[50px]">
-                              {item.estimated_cost !== undefined ? (
+                              {hasOfficialCost(item.estimated_cost) ? (
                                 <div>
                                   <span className="text-[10px] text-brand-textMuted font-bold block uppercase tracking-wider">Dự tính</span>
                                   <span className="text-xs font-extrabold text-brand-text">
-                                    {item.estimated_cost === 0 ? 'Miễn phí' : `${item.estimated_cost.toLocaleString('vi-VN')}đ`}
+                                    {formatEstimatedCost(item.estimated_cost)}
                                   </span>
                                 </div>
-                              ) : <div />}
+                              ) : (
+                                <div>
+                                  <span className="text-[10px] text-brand-textMuted font-bold block uppercase tracking-wider">Dự tính</span>
+                                  <span className="text-xs font-extrabold text-brand-text">{'C\u1ea7n x\u00e1c nh\u1eadn gi\u00e1'}</span>
+                                </div>
+                              )}
 
                               {/* Manual edit, delete and AI replacement buttons */}
                               {!isAdmin && (
@@ -913,9 +928,13 @@ export function TripDetail() {
                                     )}
                                   </div>
                                   <p className="text-brand-textSoft font-serif">{item.description}</p>
-                                  {item.estimated_cost !== undefined && (
+                                  {hasOfficialCost(item.estimated_cost) ? (
                                     <p className="text-[10px] font-bold text-brand-textMuted">
-                                      Chi phí dự tính: {item.estimated_cost === 0 ? 'Miễn phí' : `${item.estimated_cost.toLocaleString('vi-VN')}đ`}
+                                      Chi phí dự tính: {formatEstimatedCost(item.estimated_cost)}
+                                    </p>
+                                  ) : (
+                                    <p className="text-[10px] font-bold text-brand-textMuted">
+                                      Chi phí dự tính: {'C\u1ea7n x\u00e1c nh\u1eadn gi\u00e1'}
                                     </p>
                                   )}
                                 </div>
@@ -951,7 +970,7 @@ export function TripDetail() {
                       description: i.description,
                       start_time: i.start_time,
                       end_time: i.end_time,
-                      estimated_cost: i.estimated_cost,
+                      estimated_cost: i.estimated_cost ?? null,
                       order_index: i.order_index,
                       day_number: i.day_number
                     })),
@@ -1045,7 +1064,8 @@ export function TripDetail() {
                     min="0"
                     step="10000"
                     value={editCost}
-                    onChange={(e) => setEditCost(parseInt(e.target.value) || 0)}
+                    onChange={(e) => setEditCost(e.target.value)}
+                    placeholder={'\u0110\u1ec3 tr\u1ed1ng n\u1ebfu ch\u01b0a c\u00f3 gi\u00e1 ch\u00ednh th\u1ee9c'}
                     className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold"
                   />
                 </div>
@@ -1209,7 +1229,7 @@ export function TripDetail() {
                           
                           <div className="flex gap-4 text-[10px] font-semibold text-brand-textMuted">
                             <span>⏱️ {alt.start_time.substring(0,5)} - {alt.end_time.substring(0,5)}</span>
-                            <span>💰 {alt.estimated_cost === 0 ? 'Miễn phí' : `${alt.estimated_cost.toLocaleString('vi-VN')}đ`}</span>
+                            <span>💰 {formatEstimatedCost(alt.estimated_cost)}</span>
                           </div>
 
                           <div className="p-2.5 rounded-lg bg-brand-accent/5 border border-brand-accent/20 text-[10px] text-brand-accentStrong font-semibold mt-2">
@@ -1228,7 +1248,7 @@ export function TripDetail() {
                                   description: alt.description,
                                   start_time: alt.start_time,
                                   end_time: alt.end_time,
-                                  estimated_cost: alt.estimated_cost,
+                                  estimated_cost: alt.estimated_cost ?? null,
                                   item_type: alt.item_type,
                                   status: 'planned'
                                 }
