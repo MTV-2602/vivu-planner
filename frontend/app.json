@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "ViVu Planner",
+    "slug": "vivu-planner",
+    "version": "1.0.0",
+    "scheme": "vivuplanner",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vivuplanner.app"
+    },
+    "android": {
+      "package": "com.vivuplanner.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#FBF5EA",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
