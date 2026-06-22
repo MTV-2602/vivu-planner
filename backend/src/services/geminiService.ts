@@ -238,7 +238,7 @@ function enforceBudgetLimit(itinerary: GeneratedItinerary, budgetTotal: number, 
 
 function hasExplicitAccommodationPreference(specialRequirements: any): boolean {
   const text = String(specialRequirements || '').toLowerCase();
-  return /(đổi|doi|thay đổi|thay doi|nhiều nơi|nhieu noi|nhiều chỗ|nhieu cho|cố định|co dinh|một chỗ|mot cho|1 chỗ|1 cho|khách sạn thứ|khach san thu|ngày 3|ngay 3)/i.test(text);
+  return /(đổi|doi|thay đổi|thay doi|nhiều nơi|nhieu noi|nhiều chỗ|nhieu cho|khách sạn thứ|khach san thu|ngày 2|ngay 2|ngày 3|ngay 3)/i.test(text);
 }
 
 export async function generateItinerary(

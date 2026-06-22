@@ -167,6 +167,7 @@ export default function TripWizard() {
   const [selectedPrefs, setSelectedPrefs] = useState<string[]>([]);
   const [healthConditions, setHealthConditions] = useState('');
   const [specialRequirements, setSpecialRequirements] = useState('');
+  const [lodgingPreference, setLodgingPreference] = useState<'single' | 'multiple'>('single');
 
   const handlePrefToggle = (id: string) => {
     setSelectedPrefs(prev =>
@@ -218,6 +219,13 @@ export default function TripWizard() {
       return acc;
     }, {} as Record<string, boolean>);
 
+    const fullSpecialRequirements = [
+      specialRequirements,
+      lodgingPreference === 'single'
+        ? 'Sở thích lưu trú: Ở cố định một chỗ'
+        : 'Sở thích lưu trú: Đổi nhiều khách sạn để trải nghiệm'
+    ].filter(Boolean).join('\n');
+
     try {
       const res = await apiClient.post('/trips', {
         title: title || `Du hí ${destinationCity}`,
@@ -229,7 +237,7 @@ export default function TripWizard() {
         traveler_type: travelerType,
         preferences: formattedPrefs,
         health_conditions: healthConditions,
-        special_requirements: specialRequirements,
+        special_requirements: fullSpecialRequirements,
       });
       clearInterval(stageInterval);
       // Invalidate trips cache + schedule reminder notification
@@ -431,6 +439,42 @@ export default function TripWizard() {
                     </View>
                     <Text className="text-[10px] text-brand-textMuted">
                       Gợi ý: Tối thiểu ~1,500,000đ/ngày để có trải nghiệm tốt.
+                    </Text>
+                  </View>
+
+                  {/* Lodging Preference */}
+                  <View className="gap-2 mt-2">
+                    <Text className="text-sm font-bold text-brand-textSoft">Sở thích lưu trú</Text>
+                    <View className="flex-row gap-3">
+                      <Pressable
+                        onPress={() => setLodgingPreference('single')}
+                        className={`flex-1 px-4 py-3 rounded-xl border ${lodgingPreference === 'single'
+                          ? 'bg-brand-primary border-brand-primary'
+                          : 'bg-brand-bg border-brand-line'}`}
+                      >
+                        <Text
+                          className={`text-xs font-bold text-center ${lodgingPreference === 'single' ? 'text-white' : 'text-brand-textSoft'}`}
+                        >
+                          Ở cố định 1 chỗ
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setLodgingPreference('multiple')}
+                        className={`flex-1 px-4 py-3 rounded-xl border ${lodgingPreference === 'multiple'
+                          ? 'bg-brand-primary border-brand-primary'
+                          : 'bg-brand-bg border-brand-line'}`}
+                      >
+                        <Text
+                          className={`text-xs font-bold text-center ${lodgingPreference === 'multiple' ? 'text-white' : 'text-brand-textSoft'}`}
+                        >
+                          Đổi nhiều nơi
+                        </Text>
+                      </Pressable>
+                    </View>
+                    <Text className="text-[10px] text-brand-textMuted">
+                      {lodgingPreference === 'single'
+                        ? 'Gợi ý: Ở cố định giúp tối ưu hóa chi phí lưu trú và di chuyển thuận tiện hơn.'
+                        : 'Lưu ý: Thay đổi chỗ ở có thể tăng chi phí và công sức nhận/trả phòng.'}
                     </Text>
                   </View>
                 </View>
