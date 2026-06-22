@@ -66,14 +66,19 @@ export default function AuthScreen({ mode }: Props) {
         if (loginErr) throw new Error('Đăng ký thành công nhưng đăng nhập thất bại. Vui lòng đăng nhập lại.');
         router.replace('/chuyen-di');
       } else {
+        if (isAdmin && Platform.OS === 'web') {
+          const res = await apiClient.post('/admin/login', { email, password });
+          if (res.data?.token) {
+            localStorage.setItem('vivu_admin_token', res.data.token);
+            localStorage.setItem('vivu_mock_user', JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: res.data.email }));
+            router.replace('/admin');
+            return;
+          }
+        }
+
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw new Error('Email hoặc mật khẩu không chính xác!');
-        
-        if (isAdmin && Platform.OS === 'web') {
-          router.replace('/admin');
-        } else {
-          router.replace('/chuyen-di');
-        }
+        router.replace('/chuyen-di');
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Có lỗi xảy ra trong quá trình xử lý');
