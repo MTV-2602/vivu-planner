@@ -2,6 +2,8 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 import { supabase } from './supabaseClient';
 
+const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
+
 function getApiBaseUrl(): string {
   const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
   if (envUrl) return envUrl;
@@ -22,8 +24,16 @@ export const apiClient = axios.create({
 apiClient.interceptors.request.use(
   async (config) => {
     try {
+      const adminToken = canUseLocalStorage ? localStorage.getItem('vivu_admin_token') : null;
+      const mockToken = canUseLocalStorage ? localStorage.getItem('vivu_mock_token') : null;
+
+      if (adminToken) {
+        config.headers.Authorization = `Bearer ${adminToken}`;
+        return config;
+      }
+
       const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token;
+      const token = data?.session?.access_token || mockToken;
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }

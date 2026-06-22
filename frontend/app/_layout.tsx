@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import {
   useFonts,
   BeVietnamPro_400Regular,
@@ -9,7 +9,28 @@ import {
   BeVietnamPro_800ExtraBold,
 } from '@expo-google-fonts/be-vietnam-pro';
 import { Lora_400Regular, Lora_700Bold } from '@expo-google-fonts/lora';
+import {
+  Roboto_400Regular,
+  Roboto_400Regular_Italic,
+  Roboto_500Medium,
+  Roboto_700Bold,
+} from '@expo-google-fonts/roboto';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import '../global.css';
+
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
+
+const queryClient = new QueryClient();
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -19,6 +40,10 @@ export default function RootLayout() {
     BeVietnamPro_800ExtraBold,
     Lora_400Regular,
     Lora_700Bold,
+    Roboto_400Regular,
+    Roboto_400Regular_Italic,
+    Roboto_500Medium,
+    Roboto_700Bold,
   });
 
   if (!fontsLoaded) {
@@ -30,6 +55,8 @@ export default function RootLayout() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }} />
+    <QueryClientProvider client={queryClient}>
+      <Stack screenOptions={{ headerShown: false }} />
+    </QueryClientProvider>
   );
 }
