@@ -2,9 +2,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
-export const isMockAuth = !supabaseUrl || !supabaseAnonKey;
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+export const isMockAuth = false;
 
 // Native: SecureStore | Web browser: localStorage | SSR (Node.js): no-op
 const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
@@ -95,7 +95,7 @@ const mockSupabase = {
   },
 };
 
-const realSupabase = isMockAuth ? null : createClient(supabaseUrl, supabaseAnonKey, {
+const realSupabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: SecureStoreAdapter,
     autoRefreshToken: true,
@@ -104,4 +104,4 @@ const realSupabase = isMockAuth ? null : createClient(supabaseUrl, supabaseAnonK
   },
 });
 
-export const supabase = (realSupabase || mockSupabase) as unknown as SupabaseClient;
+export const supabase = realSupabase;

@@ -5,7 +5,7 @@ import { supabase } from './supabaseClient';
 const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
 
 function getApiBaseUrl(): string {
-  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.API_BASE_URL;
   if (envUrl) return envUrl;
 
   if (__DEV__) {
@@ -13,6 +13,7 @@ function getApiBaseUrl(): string {
     return 'http://localhost:4000/api';
   }
 
+  if (Platform.OS === 'web') return '/api';
   return 'https://vivu-planner-backend.vercel.app/api';
 }
 

@@ -59,15 +59,42 @@ export default function Admin() {
   const [visibleKeys, setVisibleKeys] = useState<Record<string,boolean>>({});
 
   useEffect(() => {
-    if (!canUseLocalStorage || !localStorage.getItem('vivu_admin_token')) {
-      Alert.alert('Từ chối truy cập', 'Bạn không có quyền truy cập trang quản trị!', [
-        { text: 'OK', onPress: () => router.replace('/chuyen-di') },
-      ]);
-      setChecking(false);
-    } else {
-      setIsAdmin(true);
-      setChecking(false);
-    }
+    const checkAdmin = async () => {
+      const hasAdminToken = canUseLocalStorage && !!localStorage.getItem('vivu_admin_token');
+      if (hasAdminToken) {
+        setIsAdmin(true);
+        setChecking(false);
+        return;
+      }
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const email = session?.user?.email;
+        const allAdminEmails = [
+          ...ADMIN_EMAILS,
+          process.env.EXPO_PUBLIC_ADMIN_EMAIL
+        ].filter(Boolean).map(e => e!.toLowerCase().trim());
+
+        const isUserAdmin = email && allAdminEmails.includes(email.toLowerCase().trim());
+
+        if (isUserAdmin) {
+          setIsAdmin(true);
+          setChecking(false);
+        } else {
+          Alert.alert('Từ chối truy cập', 'Bạn không có quyền truy cập trang quản trị!', [
+            { text: 'OK', onPress: () => router.replace('/chuyen-di') },
+          ]);
+          setChecking(false);
+        }
+      } catch (err) {
+        Alert.alert('Từ chối truy cập', 'Bạn không có quyền truy cập trang quản trị!', [
+          { text: 'OK', onPress: () => router.replace('/chuyen-di') },
+        ]);
+        setChecking(false);
+      }
+    };
+
+    checkAdmin();
   }, []);
 
   const handleLogout = async () => {

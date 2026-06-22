@@ -51,39 +51,29 @@ export default function AuthScreen({ mode }: Props) {
     setInfoMsg('');
 
     try {
-      const adminEmails = ['team89a6@gmail.com', 'vinhvip4508@gmail.com'];
+      const adminEmails = [
+        'team89a6@gmail.com',
+        'vinhvip4508@gmail.com',
+        process.env.EXPO_PUBLIC_ADMIN_EMAIL
+      ].filter(Boolean).map(e => e!.toLowerCase().trim());
       const isAdmin = adminEmails.includes(email.toLowerCase().trim());
 
       if (isSignUp) {
         if (isAdmin) throw new Error('Email này đã được sử dụng!');
 
-        if (isMockAuth) {
-          const { data, error } = await supabase.auth.signUp({ email, password });
-          if (error) throw error;
-          if (data?.session) {
-            router.replace('/chuyen-di');
-          } else {
-            setInfoMsg('Đăng ký thành công! Vui lòng kiểm tra email để xác nhận tài khoản.');
-          }
-        } else {
-          await apiClient.post('/auth/signup', { email, password, fullName });
-          const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password });
-          if (loginErr) throw new Error('Đăng ký thành công nhưng đăng nhập thất bại. Vui lòng đăng nhập lại.');
-          router.replace('/chuyen-di');
-        }
+        await apiClient.post('/auth/signup', { email, password, fullName });
+        const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password });
+        if (loginErr) throw new Error('Đăng ký thành công nhưng đăng nhập thất bại. Vui lòng đăng nhập lại.');
+        router.replace('/chuyen-di');
       } else {
-        if (isAdmin && Platform.OS === 'web') {
-          const res = await apiClient.post('/admin/login', { email, password });
-          if (res.data?.token) {
-            localStorage.setItem('vivu_admin_token', res.data.token);
-            localStorage.setItem('vivu_mock_user', JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: res.data.email }));
-            router.replace('/admin');
-            return;
-          }
-        }
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw new Error('Email hoặc mật khẩu không chính xác!');
-        router.replace('/chuyen-di');
+        
+        if (isAdmin && Platform.OS === 'web') {
+          router.replace('/admin');
+        } else {
+          router.replace('/chuyen-di');
+        }
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Có lỗi xảy ra trong quá trình xử lý');
@@ -220,20 +210,6 @@ export default function AuthScreen({ mode }: Props) {
             </Text>
           </View>
 
-          {/* Demo badge */}
-          {isMockAuth && (
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20,
-              padding: 12, borderRadius: 12,
-              backgroundColor: `${BRAND_COLORS.gold}14`,
-              borderWidth: 1, borderColor: `${BRAND_COLORS.gold}35`,
-            }}>
-              <Sparkles size={14} color={BRAND_COLORS.gold} />
-              <Text style={{ fontFamily: F.regular, fontSize: 12, color: BRAND_COLORS.textSoft, flex: 1 }}>
-                Chế độ Demo — nhập bất kỳ email/pass hợp lệ
-              </Text>
-            </View>
-          )}
 
           {/* Error alert */}
           {!!errorMsg && (

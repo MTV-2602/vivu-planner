@@ -9,10 +9,11 @@ import crypto from 'crypto';
 
 // Admin middleware to verify admin token
 function adminMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  // Only the special admin ID (assigned by verifyAdminToken in authMiddleware) is allowed
-  const isAuthorized = req.user && req.user.id === '00000000-0000-0000-0000-000000000001';
-  if (!isAuthorized) {
-    return res.status(403).json({ error: 'Forbidden: Access denied. Admin token required.' });
+  const isSpecialAdminId = req.user && req.user.id === '00000000-0000-0000-0000-000000000001';
+  const isEmailAdmin = req.user && req.user.email && ADMIN_EMAILS.map(e => e.toLowerCase().trim()).includes(req.user.email.toLowerCase().trim());
+
+  if (!isSpecialAdminId && !isEmailAdmin) {
+    return res.status(403).json({ error: 'Forbidden: Access denied. Admin rights required.' });
   }
   next();
 }
