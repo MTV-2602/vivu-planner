@@ -268,7 +268,7 @@ function getMockPlaces(category, lat, lng) {
     }));
 }
 function getCityCoordinates(city) {
-    const normalized = city.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '');
+    const normalized = city.toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '');
     for (const key of Object.keys(VIETNAM_PROVINCES)) {
         const keyNormalized = key.replace(/\s+/g, '');
         if (normalized.includes(keyNormalized)) {

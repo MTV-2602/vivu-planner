@@ -47,15 +47,184 @@ const ITINERARY_JSON_SCHEMA = {
                 remaining: { type: 'number' }
             },
             required: ['estimated_total', 'remaining']
+        },
+        expert_advice: { type: 'string' },
+        warning_notes: {
+            type: 'array',
+            items: { type: 'string' }
+        },
+        missing_info_questions: {
+            type: 'array',
+            items: { type: 'string' }
         }
     },
     required: ['days', 'budget_summary']
 };
+function calculateEstimatedTotal(days) {
+    return days.reduce((sum, day) => {
+        return sum + day.items.reduce((daySum, item) => {
+            const cost = Number(item.estimated_cost);
+            return daySum + (Number.isFinite(cost) ? cost : 0);
+        }, 0);
+    }, 0);
+}
+function appendUniqueMessage(messages, message) {
+    return Array.from(new Set([...(messages || []), message]));
+}
+function getTripNightCount(tripData, daysCount) {
+    const startDate = tripData?.start_date ? new Date(tripData.start_date) : null;
+    const endDate = tripData?.end_date ? new Date(tripData.end_date) : null;
+    if (startDate && endDate && !Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
+        const diffMs = endDate.getTime() - startDate.getTime();
+        return Math.max(0, Math.round(diffMs / 86400000));
+    }
+    return Math.max(0, daysCount - 1);
+}
+function hasConfirmedCost(item) {
+    return item.estimated_cost !== undefined && item.estimated_cost !== null && Number.isFinite(Number(item.estimated_cost));
+}
+function normalizeConfirmedCosts(itinerary) {
+    itinerary.days.forEach(day => {
+        day.items.forEach(item => {
+            if (!hasConfirmedCost(item)) {
+                delete item.estimated_cost;
+                return;
+            }
+            item.estimated_cost = Math.max(0, Math.round(Number(item.estimated_cost)));
+        });
+    });
+}
+function appendMissingOfficialPriceQuestions(itinerary) {
+    const questions = new Set(itinerary.missing_info_questions || []);
+    itinerary.days.forEach(day => {
+        day.items.forEach(item => {
+            if (hasConfirmedCost(item))
+                return;
+            // Only prompt for official price confirmation on major paid items (accommodation, rental, or paid attractions with google_place_id)
+            if (item.item_type === 'accommodation' || item.item_type === 'rental' || (item.item_type === 'attraction' && item.google_place_id)) {
+                const timeLabel = item.start_time ? ` lúc ${item.start_time}` : "";
+                questions.add(`Vui lòng xác nhận giá chính thức cho "${item.title}" ở Ngày ${day.day_number}${timeLabel}. Nếu mục này miễn phí thật sự, hãy trả lời 0đ.`);
+            }
+        });
+    });
+    itinerary.missing_info_questions = Array.from(questions);
+}
+function normalizeAccommodationItems(itinerary, tripData, totalNights) {
+    if (totalNights <= 0) {
+        let removedAccommodation = false;
+        itinerary.days.forEach(day => {
+            const originalCount = day.items.length;
+            day.items = day.items.filter(item => item.item_type !== 'accommodation');
+            removedAccommodation = removedAccommodation || day.items.length !== originalCount;
+        });
+        if (removedAccommodation) {
+            itinerary.warning_notes = [
+                ...(itinerary.warning_notes || []),
+                'Chuyến đi trong ngày không có lưu trú qua đêm nên đã bỏ mục chỗ nghỉ.'
+            ];
+        }
+        return;
+    }
+    if (hasExplicitAccommodationPreference(tripData?.special_requirements))
+        return;
+    const accommodationEntries = [];
+    itinerary.days.forEach((day, dayIndex) => {
+        day.items.forEach(item => {
+            if (item.item_type === 'accommodation') {
+                accommodationEntries.push({ dayIndex, item });
+            }
+        });
+    });
+    if (accommodationEntries.length === 0)
+        return;
+    const firstAccommodation = { ...accommodationEntries[0].item, order_index: 0 };
+    if (accommodationEntries.length > 1) {
+        const allCostsConfirmed = accommodationEntries.every(entry => hasConfirmedCost(entry.item));
+        if (allCostsConfirmed) {
+            firstAccommodation.estimated_cost = accommodationEntries.reduce((sum, entry) => {
+                return sum + Number(entry.item.estimated_cost || 0);
+            }, 0);
+        }
+        else {
+            delete firstAccommodation.estimated_cost;
+        }
+    }
+    if (accommodationEntries.length > 1 || accommodationEntries[0].dayIndex !== 0) {
+        itinerary.days.forEach(day => {
+            day.items = day.items.filter(item => item.item_type !== 'accommodation');
+        });
+        itinerary.days[0]?.items.unshift(firstAccommodation);
+    }
+}
+function enforceBudgetLimit(itinerary, budgetTotal, tripData) {
+    const normalizedBudget = Number.isFinite(budgetTotal) && budgetTotal > 0 ? budgetTotal : 0;
+    const totalNights = getTripNightCount(tripData, itinerary.days.length);
+    normalizeAccommodationItems(itinerary, tripData, totalNights);
+    normalizeConfirmedCosts(itinerary);
+    appendMissingOfficialPriceQuestions(itinerary);
+    const missingOfficialPriceCount = itinerary.days.reduce((sum, day) => {
+        return sum + day.items.filter(item => {
+            if (hasConfirmedCost(item))
+                return false;
+            return item.item_type === 'accommodation' || item.item_type === 'rental' || (item.item_type === 'attraction' && item.google_place_id);
+        }).length;
+    }, 0);
+    if (missingOfficialPriceCount > 0) {
+        itinerary.warning_notes = appendUniqueMessage(itinerary.warning_notes, 'Một số hạng mục chưa có giá chính thức nên tổng chi phí hiện tại chỉ tính phần đã xác nhận. Cần trả lời các câu hỏi giá còn thiếu trước khi chốt ngân sách.');
+    }
+    const estimatedTotal = calculateEstimatedTotal(itinerary.days);
+    if (normalizedBudget > 0 && estimatedTotal > normalizedBudget) {
+        itinerary.warning_notes = [
+            ...(itinerary.warning_notes || []),
+            'Tổng các giá chính thức đã xác nhận đang vượt ngân sách. Cần chọn phương án rẻ hơn hoặc điều chỉnh ngân sách, hệ thống không tự bóp méo giá chính thức.'
+        ];
+        itinerary.missing_info_questions = [
+            ...(itinerary.missing_info_questions || []),
+            'Một số giá chính thức đã xác nhận vượt ngân sách tổng. Bạn muốn giảm hạng mục nào hoặc tăng ngân sách bao nhiêu?'
+        ];
+    }
+    itinerary.budget_summary = {
+        estimated_total: estimatedTotal,
+        remaining: normalizedBudget > 0 ? Math.max(0, normalizedBudget - estimatedTotal) : 0
+    };
+    return itinerary;
+}
+function hasExplicitAccommodationPreference(specialRequirements) {
+    const text = String(specialRequirements || '').toLowerCase();
+    return /(đổi|doi|thay đổi|thay doi|nhiều nơi|nhieu noi|nhiều chỗ|nhieu cho|khách sạn thứ|khach san thu|ngày 2|ngay 2|ngày 3|ngay 3)/i.test(text);
+}
 async function generateItinerary(tripData, weatherForecast, candidatePlaces) {
-    const systemPrompt = `Bạn là trợ lý lập kế hoạch du lịch chuyên về Việt Nam. 
-Bạn CHỈ được chọn địa điểm trong danh sách "candidate_places" được cung cấp — không tự tạo thêm địa điểm nào ngoài danh sách này (ngoại trừ loại di chuyển "transport" hoặc trải nghiệm "experience" tự do). 
-Bạn phải tôn trọng ngân sách, tình trạng sức khỏe, và sở thích của khách. 
-Trả lời CHỈ bằng JSON hợp lệ đúng schema được cung cấp, không thêm markdown, không thêm giải thích.`;
+    const systemPrompt = `Bạn là một chuyên gia lập kế hoạch du lịch (Travel Expert) chuyên nghiệp tại Việt Nam.
+Nhiệm vụ của bạn là xây dựng lịch trình du lịch tối ưu, an toàn và cá nhân hóa sâu sắc dựa trên thông tin yêu cầu của khách hàng.
+
+QUY TẮC CỐT LÕI:
+1. Bạn CHỈ được chọn địa điểm trong danh sách "candidate_places" được cung cấp — tuyệt đối không tự tạo thêm địa điểm nào ngoài danh sách này (ngoại trừ loại di chuyển "transport" hoặc trải nghiệm "experience" tự do).
+2. Hãy phân tích kỹ sở thích, ngân sách, và đặc biệt là tình trạng sức khỏe, giới hạn thể lực của khách để chọn hoạt động phù hợp nhất.
+3. PHÂN BỔ NGÂN SÁCH THÔNG MINH & TỰ ĐỘNG ƯỚC LƯỢNG CHI PHÍ THỰC TẾ (RÀNG BUỘC BẮT BUỘC CỰC KỲ NGHIÊM NGẶT):
+    - Địa chỉ của tất cả địa điểm được chọn phải phù hợp với điều kiện kinh tế và khớp với phân bổ tổng chi phí cho tất cả các ngày.
+    - Bạn BẮT BUỘC phải điền giá cả ước lượng thực tế ("estimated_cost") cho toàn bộ hoạt động (ăn uống, đi lại, tham quan, lưu trú). Tuyệt đối không bỏ trống hay trả về null/undefined cho các hoạt động ăn uống, đi lại cơ bản.
+    - DỰ ĐOÁN CAO ĐIỂM / LỄ TẾT: Bạn phải kiểm tra "start_date" và "end_date". Hãy suy nghĩ chu toàn và dự đoán trước xem lịch trình này có trùng vào ngày lễ Tết lớn ở Việt Nam (như Tết Nguyên Đán, Giỗ tổ Hùng Vương, 30/4-1/5, Quốc khánh 2/9, Noel, Tết Dương lịch) hoặc cao điểm du lịch hè (tháng 6 đến tháng 8), hoặc dịp cuối tuần (Thứ 6, Thứ 7, Chủ Nhật) hay không. Nếu có, bắt buộc phải tăng mức giá phòng nghỉ và tiền xe cộ lên từ 20% đến 50% so với ngày thường để phản ánh thực tế tăng giá mùa lễ, đồng thời ghi rõ lý do và tổng chi phí bị ảnh hưởng bởi dịp lễ trong phần "expert_advice".
+    - Tổng chi phí ước lượng của toàn bộ lịch trình ("estimated_total") phải cân đối thông minh để khớp từ 80% đến 100% của ngân sách tổng ("budget_total"). Tuyệt đối không để tổng chi phí vượt quá ngân sách tổng.
+   - QUY TẮC LƯU TRÚ LINH HOẠT (ACCOMMODATION):
+     * MẶC ĐỊNH: Chỉ đặt DUY NHẤT 1 khách sạn/nơi lưu trú cho cả chuyến đi tại cùng 1 thành phố. Xếp mục chỗ nghỉ này duy nhất vào Ngày 1 (mốc giờ 14:00 - 15:00). KHÔNG ĐƯỢC thêm chỗ nghỉ mới hay check-in mới ở các ngày tiếp theo (Ngày 2, Ngày 3, Ngày 4...).
+     * CHI PHÍ CHỖ NGHỈ: Bạn phải tự tính toán và điền chi phí phòng cho cả chuyến đi vào "estimated_cost" của ngày đầu tiên: estimated_cost = (giá 1 đêm ước tính hợp lý của khách sạn) * (số ngày - 1). Mức giá 1 đêm phải khớp với phân khúc khách sạn/homestay được chọn dựa trên price_level (ví dụ: price_level 1: 200k-400k/đêm, level 2: 500k-900k/đêm, level 3: 1M-2M/đêm...).
+     * NGOẠI LỆ: Chỉ khi khách hàng có yêu cầu đặc biệt muốn thay đổi khách sạn (ghi ở "special_requirements" hoặc qua câu trả lời làm rõ), bạn mới được chia lịch trình thành nhiều chỗ nghỉ khác nhau.
+     * GIỚI HẠN CHI PHÍ: Tổng tiền lưu trú cho cả chuyến đi tuyệt đối không vượt quá 30% tổng ngân sách ("budget_total") đối với ngân sách eo hẹp (dưới 1.500.000đ/ngày/người). Hãy chọn homestay, nhà nghỉ bình dân hoặc hostel giá rẻ trong danh sách "candidate_places" phù hợp.
+     * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và khách chưa nêu rõ yêu cầu lưu trú, bạn bắt buộc phải đặt câu hỏi làm rõ trong "missing_info_questions": "Bạn muốn ở 1 chỗ nghỉ cố định hay muốn thay đổi nhiều nơi trong chuyến đi này?"
+   - ĐẢM BẢO CHI PHÍ ĂN UỐNG (DINING): Mỗi ngày bắt buộc phải có ít nhất 2 bữa ăn chính (trưa và tối) sử dụng các quán ăn thực tế trong danh sách. Chi phí ăn uống mỗi ngày phải được ước lượng cụ thể cho cả nhóm (ví dụ: bún/phở/bánh mì local giá từ 30k-60k/người; nhà hàng/quán ăn đặc sản giá từ 100k-250k/người) và cân đối kỹ lưỡng sao cho phù hợp với phần ngân sách còn lại sau khi đã trừ tiền phòng.
+   - QUY TẮC PHÍ DỊCH VỤ & DI CHUYỂN:
+     * "estimated_cost" luôn là VND cho toàn bộ nhóm khách (traveler_count), không phải giá mỗi người.
+      * Bạn PHẢI tự động ước lượng chi phí (VND) thực tế cho các mục ăn uống (ví dụ: 50.000đ-150.000đ/người/bữa), lưu trú, di chuyển và ghi vào "estimated_cost" của cả nhóm.
+      * Đối với các hoạt động miễn phí (như đi dạo công viên, bãi biển, chùa Linh Ứng, hoạt động tự do) hoặc các dịch vụ đã bao gồm trong chi phí khác (như ăn sáng tại khách sạn đã tính vào tiền phòng, thủ tục check-out), bạn PHẢI điền "estimated_cost" = 0 để hệ thống hiển thị là "Miễn phí".
+      * TUYỆT ĐỐI KHÔNG để trống "estimated_cost" hoặc trả về null/undefined cho các hoạt động ăn uống, đi lại cơ bản hoặc hoạt động miễn phí, vì hệ thống sẽ hiển thị là "Cần xác nhận giá" và tạo ra câu hỏi bắt người dùng phải xác nhận giá cực kỳ phiền toái. Chỉ để trống/để null khi thật sự cần người dùng xác nhận một dịch vụ trả phí lớn chưa rõ giá.
+   - KHÔNG DÙNG PLACEHOLDER CHUNG CHUNG: Tất cả khách sạn, quán ăn, điểm tham quan đều phải chọn địa điểm cụ thể trong danh sách "candidate_places". Tuyệt đối không ghi chung chung "Ăn tối tự do", "Khách sạn tự chọn".
+   - CẢNH BÁO: Nếu ngân sách tổng quá thấp (dưới 400.000đ/ngày/người) hoặc yêu cầu của khách mâu thuẫn (muốn ở resort sang trọng nhưng ngân sách thấp), hãy cảnh báo nguy cơ thiếu hụt ngân sách tại "warning_notes" và đưa ra câu hỏi làm rõ đề xuất nâng ngân sách tại "missing_info_questions".
+4. Trong kết quả JSON, hãy cung cấp:
+   - "expert_advice": Lời khuyên/tư vấn chi tiết từ góc nhìn chuyên gia du lịch, giải thích rõ lý do tại sao lịch trình này được thiết kế như vậy để phù hợp nhất với sở thích/sức khỏe/ngân sách của khách.
+   - "warning_notes": Các lưu ý an toàn quan trọng (ví dụ: cảnh báo thời tiết xấu, đường đèo hiểm trở, hoặc lưu ý bảo quản hành lý, sức khỏe).
+   - "missing_info_questions": Nếu dữ liệu đầu vào của khách quá mơ hồ hoặc thiếu, hãy đưa ra các câu hỏi làm rõ cụ thể để người dùng cung cấp thêm thông tin nhằm điều chỉnh lịch trình chuẩn xác hơn. Nếu thông tin đã rất đầy đủ, để danh sách này trống.
+
+Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp. Không viết thêm markdown, không thêm giải thích ngoài JSON.`;
     const userPrompt = JSON.stringify({
         trip: {
             destination_city: tripData.destination_city,
@@ -105,7 +274,7 @@ Trả lời CHỈ bằng JSON hợp lệ đúng schema được cung cấp, khô
                     }
                 });
             });
-            return parsed;
+            return enforceBudgetLimit(parsed, Number(tripData.budget_total), tripData);
         });
     }
     catch (error) {
@@ -114,12 +283,37 @@ Trả lời CHỈ bằng JSON hợp lệ đúng schema được cung cấp, khô
     }
 }
 async function adaptItinerary(tripData, currentItinerary, disruptionType, disruptionDescription, weatherForecast, candidatePlaces) {
-    const systemPrompt = `Bạn là trợ lý lập kế hoạch du lịch chuyên về Việt Nam. 
-Bạn cần điều chỉnh lịch trình du lịch hiện tại do có sự cố xảy ra. 
-Bạn CHỈ được điều chỉnh các ngày hoặc hoạt động từ thời điểm xảy ra sự cố trở đi (dữ liệu truyền vào sẽ chỉ ra phần cần chỉnh sửa). Giữ nguyên các hoạt động đã hoàn thành trước đó. 
-Bạn phải điều chỉnh để phù hợp với sự cố mới (về thời tiết, ngân sách, sức khỏe, hoặc thời gian). 
-Chọn địa điểm từ danh sách "candidate_places" được cung cấp nếu cần thay thế địa điểm. 
-Trả lời CHỈ bằng JSON hợp lệ đúng schema được cung cấp.`;
+    const systemPrompt = `Bạn là một chuyên gia lập kế hoạch và xử lý sự cố du lịch (Senior Travel Planner & Disruption Specialist) chuyên nghiệp tại Việt Nam.
+Nhiệm vụ của bạn là điều chỉnh lịch trình hiện tại ("current_itinerary") khi có sự cố phát sinh thành một lịch trình mới hoàn chỉnh và logic nhất.
+
+YÊU CẦU ĐIỀU CHỈNH CHẶT CHẼ:
+1. Bạn phải phân tích toàn diện các yếu tố: lịch trình cũ ("current_itinerary"), giới hạn ngân sách còn lại, điều kiện thời tiết thực tế từ "weather_forecast", và thông tin sự cố phát sinh.
+2. Tuyệt đối không đưa ra các gợi ý bâng quơ hoặc chung chung (như "Ăn uống tự do", "Đi chơi chỗ khác" mà không có tên địa điểm). Bạn phải chọn các địa điểm cụ thể và thực tế từ danh sách "candidate_places" được cung cấp để thay thế hoàn chỉnh.
+3. PHÂN BỔ NGÂN SÁCH THÔNG MINH & TỰ ĐỘNG ƯỚC LƯỢNG CHI PHÍ THỰC TẾ (RÀNG BUỘC BẮT BUỘC CỰC KỲ NGHIÊM NGẶT):
+    - Địa chỉ của tất cả địa điểm mới phải phù hợp với điều kiện kinh tế và khớp với phân bổ tổng chi phí cho tất cả các ngày.
+    - Bạn BẮT BUỘC phải điền giá cả ước lượng thực tế ("estimated_cost") cho toàn bộ hoạt động mới thay thế. Tuyệt đối không bỏ trống hay trả về null/undefined cho các hoạt động ăn uống, đi lại cơ bản.
+    - DỰ ĐOÁN CAO ĐIỂM / LỄ TẾT: Bạn phải kiểm tra "start_date" và "end_date". Hãy suy nghĩ chu toàn và dự đoán trước xem lịch trình này có trùng vào các ngày lễ Tết ở Việt Nam (như Tết Nguyên Đán, Giỗ tổ Hùng Vương, 30/4-1/5, Quốc khánh 2/9, Noel, Tết Dương lịch) hoặc cao điểm hè (tháng 6-8), hoặc dịp cuối tuần hay không. Nếu có, bắt buộc phải tăng mức giá phòng nghỉ và tiền xe cộ lên từ 20% đến 50% so với ngày thường để phản ánh thực tế tăng giá mùa lễ, đồng thời ghi rõ lý do và tổng chi phí bị ảnh hưởng bởi dịp lễ trong phần "expert_advice".
+    - Tổng chi phí ước lượng của toàn bộ lịch trình mới sau khi điều chỉnh ("estimated_total") phải cân đối thông minh để nằm trong giới hạn ngân sách ban đầu của khách hàng ("budget_total"). Tuyệt đối không để tổng chi phí vượt quá ngân sách tổng.
+   - QUY TẮC LƯU TRÚ LINH HOẠT (ACCOMMODATION):
+     * MẶC ĐỊNH: Chỉ đặt DUY NHẤT 1 khách sạn/nơi lưu trú cho cả chuyến đi tại cùng 1 thành phố và đặt ở Ngày 1. KHÔNG ĐƯỢC thêm chỗ nghỉ mới ở các ngày tiếp theo.
+     * CHI PHÍ CHỖ NGHỈ: Bạn phải tự ước lượng và điền chi phí phòng cho cả chuyến đi vào "estimated_cost" của ngày đầu tiên: estimated_cost = (giá 1 đêm ước tính hợp lý của khách sạn) * (số ngày - 1). Mức giá phòng nghỉ phải khớp với phân khúc homestay/khách sạn được chọn dựa trên price_level (ví dụ: price_level 1: 200k-400k/đêm, level 2: 500k-900k/đêm...).
+     * NGOẠI LỆ: Chỉ chia thành nhiều khách sạn khi khách hàng có yêu cầu thay đổi rõ ràng trong "special_requirements" hoặc câu trả lời làm rõ.
+     * GIỚI HẠN CHI PHÍ: Tổng tiền lưu trú cho cả chuyến đi tuyệt đối không vượt quá 30% tổng ngân sách ("budget_total") đối với ngân sách eo hẹp. Hãy ưu tiên chọn homestay, hostel hoặc nhà nghỉ bình dân giá rẻ trong danh sách "candidate_places".
+     * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và chưa rõ sở thích lưu trú của khách, hãy đặt câu hỏi làm rõ trong "missing_info_questions" xem họ muốn ở cố định 1 chỗ hay muốn thay đổi nhiều chỗ ở.
+      * Di chuyển nội thành: đi bộ/không phát sinh phương tiện trả phí bạn PHẢI ghi estimated_cost = 0; nếu dùng Grab/taxi/xe ôm bạn PHẢI tự ước lượng một mức chi phí thực tế cho cả nhóm (ví dụ: 50.000đ - 150.000đ).
+      * Thuê xe máy: nếu có, hãy điền ước lượng thực tế (ví dụ: 120.000đ/ngày/xe) thay vì để trống.
+      * Đối với bất kỳ hoạt động nào miễn phí (như bãi biển, chùa, dạo bộ, check-out) hoặc đã bao gồm trong dịch vụ khác (như ăn sáng tại khách sạn), bạn PHẢI điền "estimated_cost" = 0.
+      * TUYỆT ĐỐI KHÔNG để trống hoặc bỏ qua "estimated_cost" đối với các hoạt động cơ bản hoặc miễn phí để tránh hệ thống hiển thị là "Cần xác nhận giá" và sinh câu hỏi xác nhận giá phiền phức. Chỉ để trống/để null khi thật sự cần người dùng xác nhận một dịch vụ trả phí lớn chưa rõ giá.
+4. Giữ nguyên tính logic của lịch trình:
+   - Các hoạt động trong ngày phải có sự liên kết về mặt di chuyển (ví dụ: các địa điểm nên nằm gần nhau trong cùng buổi để giảm thời gian đi lại).
+   - Đảm bảo thời gian ăn uống (trưa, tối), nghỉ ngơi và di chuyển hợp lý.
+   - CHỈ được điều chỉnh các ngày hoặc hoạt động từ thời điểm xảy ra sự cố trở đi. Giữ nguyên các hoạt động đã hoàn thành trước đó.
+5. Thích ứng thông minh theo các yếu tố bên ngoài:
+   - Thời tiết: Đọc kỹ "weather_forecast" cho từng ngày để điều chỉnh hoạt động. Nếu dự báo có mưa lớn vào buổi chiều, hãy chuyển các hoạt động ngoài trời lên buổi sáng (nếu trời hửng nắng) hoặc đổi sang điểm tham quan trong nhà. Tránh tuyệt đối các rủi ro nguy hiểm (như leo núi, đi đèo dốc hiểm trở hay đi thuyền khi có giông bão).
+6. Cung cấp đầy đủ phân tích chuyên môn của bạn ở trường "expert_advice" để khách hiểu rõ lý do của các thay đổi và các cảnh báo an toàn ở trường "warning_notes".
+7. Nếu thông tin báo sự cố của khách quá mơ hồ hoặc không đủ để lập kế hoạch an toàn (ví dụ: chỉ ghi "sự cố sức khỏe" mà không rõ là mệt mỏi hay chấn thương nghiêm trọng, hoặc ghi "mưa" mà không rõ mưa to hay nhỏ), hãy đưa ra các câu hỏi làm rõ cụ thể ở trường "missing_info_questions" để khách cung cấp thêm nhằm đưa ra phương án tối ưu nhất.
+
+Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp. Không viết thêm markdown, không thêm giải thích ngoài JSON.`;
     const userPrompt = JSON.stringify({
         trip: tripData,
         current_itinerary: currentItinerary,
@@ -145,8 +339,10 @@ Trả lời CHỈ bằng JSON hợp lệ đúng schema được cung cấp.`;
             if (!text)
                 throw new Error('Gemini response is empty');
             const parsed = JSON.parse(text);
-            const diff = generateItineraryDiff(currentItinerary, parsed, disruptionType);
-            return { itinerary: parsed, diff };
+            const budgetTotal = Number(tripData.budget_total) || currentItinerary.budget_summary.estimated_total + currentItinerary.budget_summary.remaining;
+            const normalizedItinerary = enforceBudgetLimit(parsed, budgetTotal, tripData);
+            const diff = generateItineraryDiff(currentItinerary, normalizedItinerary, disruptionType);
+            return { itinerary: normalizedItinerary, diff };
         });
     }
     catch (error) {
@@ -159,21 +355,30 @@ function generateMockItinerary(tripData, weatherForecast, candidatePlaces) {
     const accommodations = candidatePlaces.accommodation || [];
     const dining = candidatePlaces.dining || [];
     const attractions = candidatePlaces.attraction || [];
-    const rentals = candidatePlaces.rental || [];
+    const budget_total = Number(tripData.budget_total) || 5000000;
+    const daysCount = weatherForecast.length || 1;
+    const totalNights = Math.max(0, daysCount - 1);
+    const selectedAccommodation = accommodations.reduce((cheapest, place) => {
+        if (!cheapest)
+            return place;
+        return place.price_level < cheapest.price_level ? place : cheapest;
+    }, accommodations[0]);
+    const shouldAskAccommodationPreference = daysCount >= 3 && !hasExplicitAccommodationPreference(tripData.special_requirements);
     const days = weatherForecast.map((weather, index) => {
         const dayNumber = index + 1;
         const items = [];
-        // Accommodation (Place 1)
-        if (accommodations.length > 0) {
-            const hotel = accommodations[index % accommodations.length];
+        // Accommodation is booked once on Day 1 for the whole trip by default.
+        if (selectedAccommodation && index === 0 && totalNights > 0) {
+            const hotel = selectedAccommodation;
+            const hotelCostPerNight = hotel.price_level === 0 ? 150000 : (hotel.price_level === 1 ? 300000 : (hotel.price_level === 2 ? 600000 : (hotel.price_level === 3 ? 1200000 : 2500000)));
             items.push({
                 item_type: 'accommodation',
-                title: `Nhận phòng / Nghỉ ngơi tại ${hotel.name}`,
-                description: `Chỗ nghỉ tiện nghi, nằm tại trung tâm. Đánh giá: ${hotel.rating}⭐.`,
+                title: `Nhận phòng lưu trú tại ${hotel.name}`,
+                description: `Chỗ nghỉ được đặt cố định cho toàn bộ chuyến đi (${totalNights} đêm). Đánh giá: ${hotel.rating}⭐. Địa chỉ: ${hotel.address}`,
                 start_time: '14:00',
                 end_time: '15:00',
                 google_place_id: hotel.google_place_id,
-                estimated_cost: hotel.price_level * 500000,
+                estimated_cost: hotelCostPerNight * totalNights,
                 order_index: 0
             });
         }
@@ -184,12 +389,13 @@ function generateMockItinerary(tripData, weatherForecast, candidatePlaces) {
             description: 'Lựa chọn phương tiện linh hoạt để tham quan các địa điểm.',
             start_time: '08:00',
             end_time: '08:30',
-            estimated_cost: 50000,
+            estimated_cost: 50000 * Math.max(1, Number(tripData.traveler_count || 1)),
             order_index: 1
         });
         // Attraction 1 (Morning)
         if (attractions.length > 0) {
             const site = attractions[(index * 2) % attractions.length];
+            const costPerPerson = site.price_level === 0 ? 0 : (site.price_level === 1 ? 30000 : (site.price_level === 2 ? 100000 : 250000));
             items.push({
                 item_type: 'attraction',
                 title: `Tham quan ${site.name}`,
@@ -197,27 +403,29 @@ function generateMockItinerary(tripData, weatherForecast, candidatePlaces) {
                 start_time: '09:00',
                 end_time: '11:30',
                 google_place_id: site.google_place_id,
-                estimated_cost: site.price_level * 80000,
+                estimated_cost: costPerPerson * Math.max(1, Number(tripData.traveler_count || 1)),
                 order_index: 2
             });
         }
         // Dining (Lunch)
         if (dining.length > 0) {
             const rest = dining[(index * 2) % dining.length];
+            const costPerPerson = rest.price_level === 0 ? 40000 : (rest.price_level === 1 ? 70000 : (rest.price_level === 2 ? 150000 : 350000));
             items.push({
                 item_type: 'dining',
                 title: `Ăn trưa tại ${rest.name}`,
-                description: `Thưởng thức các món ngon đặc sản. Đánh giá: ${rest.rating}⭐.`,
+                description: `Thưởng thức các món đặc sản địa phương ngon và nổi tiếng. Đánh giá: ${rest.rating}⭐. Địa chỉ: ${rest.address}`,
                 start_time: '12:00',
                 end_time: '13:00',
                 google_place_id: rest.google_place_id,
-                estimated_cost: rest.price_level * 150000,
+                estimated_cost: costPerPerson * Math.max(1, Number(tripData.traveler_count || 1)),
                 order_index: 3
             });
         }
         // Attraction 2 (Afternoon)
         if (attractions.length > 0) {
             const site = attractions[(index * 2 + 1) % attractions.length];
+            const costPerPerson = site.price_level === 0 ? 0 : (site.price_level === 1 ? 30000 : (site.price_level === 2 ? 100000 : 250000));
             items.push({
                 item_type: 'attraction',
                 title: `Trải nghiệm tại ${site.name}`,
@@ -225,19 +433,34 @@ function generateMockItinerary(tripData, weatherForecast, candidatePlaces) {
                 start_time: '15:00',
                 end_time: '17:30',
                 google_place_id: site.google_place_id,
-                estimated_cost: site.price_level * 50000,
+                estimated_cost: costPerPerson * Math.max(1, Number(tripData.traveler_count || 1)),
                 order_index: 4
+            });
+        }
+        // Dining (Dinner)
+        if (dining.length > 0) {
+            const rest = dining[(index * 2 + 1) % dining.length];
+            const costPerPerson = rest.price_level === 0 ? 50000 : (rest.price_level === 1 ? 90000 : (rest.price_level === 2 ? 200000 : 450000));
+            items.push({
+                item_type: 'dining',
+                title: `Ăn tối tại ${rest.name}`,
+                description: `Thưởng thức ẩm thực tối đặc sắc của địa phương. Đánh giá: ${rest.rating}⭐. Địa chỉ: ${rest.address}`,
+                start_time: '18:30',
+                end_time: '20:00',
+                google_place_id: rest.google_place_id,
+                estimated_cost: costPerPerson * Math.max(1, Number(tripData.traveler_count || 1)),
+                order_index: 5
             });
         }
         // Experience (Evening)
         items.push({
             item_type: 'experience',
             title: 'Dạo chơi phố cổ / Chợ đêm',
-            description: 'Hòa mình vào không khí nhộn nhịp về đêm của thành phố, thưởng thức ẩm thực đường phố.',
-            start_time: '19:00',
-            end_time: '21:30',
-            estimated_cost: 100000,
-            order_index: 5
+            description: 'Dạo bộ tự do để cảm nhận không khí về đêm của thành phố; mua sắm hoặc ăn vặt nếu có sẽ phát sinh chi phí riêng cần xác nhận.',
+            start_time: '20:30',
+            end_time: '22:00',
+            estimated_cost: 0,
+            order_index: 6
         });
         return {
             day_number: dayNumber,
@@ -246,17 +469,20 @@ function generateMockItinerary(tripData, weatherForecast, candidatePlaces) {
             items
         };
     });
-    const estimated_total = days.reduce((sum, day) => {
-        return sum + day.items.reduce((daySum, item) => daySum + (item.estimated_cost || 0), 0);
-    }, 0);
-    const budget_total = Number(tripData.budget_total) || 5000000;
-    return {
+    const estimated_total = calculateEstimatedTotal(days);
+    const itinerary = {
         days,
         budget_summary: {
             estimated_total,
             remaining: Math.max(0, budget_total - estimated_total)
-        }
+        },
+        expert_advice: "Lịch trình đề xuất được tạo tự động dựa trên sở thích và thông tin chuyến đi của bạn.",
+        warning_notes: ["Hãy luôn theo dõi dự báo thời tiết trước khi di chuyển ngoài trời."],
+        missing_info_questions: shouldAskAccommodationPreference
+            ? [`Bạn muốn ở 1 chỗ nghỉ cố định hay muốn thay đổi nhiều nơi trong ${daysCount} ngày này?`]
+            : []
     };
+    return enforceBudgetLimit(itinerary, budget_total, tripData);
 }
 // Programmatic mock disruption adaptation
 function adaptMockItinerary(currentItinerary, disruptionType, disruptionDescription, candidatePlaces) {
@@ -271,17 +497,17 @@ function adaptMockItinerary(currentItinerary, disruptionType, disruptionDescript
                 const oldTitle = item.title;
                 item.title = `[Thay đổi do thời tiết] Tham quan Bảo tàng / Điểm trong nhà`;
                 item.description = `Thay thế hoạt động ngoài trời tại ${oldTitle} bằng địa điểm trong nhà để tránh mưa bão. Ràng buộc: ${disruptionDescription}`;
-                item.estimated_cost = Math.round((item.estimated_cost || 50000) * 0.8);
+                delete item.estimated_cost;
                 diffMessages.push(`Ngày ${day.day_number}: Thay đổi điểm ngoài trời "${oldTitle}" thành điểm tham quan trong nhà.`);
             }
             // Disruption 2: Budget Shortage
             if (disruptionType === 'budget_shortage' && (item.item_type === 'attraction' || item.item_type === 'dining')) {
-                if ((item.estimated_cost || 0) > 100000) {
+                if (hasConfirmedCost(item) && Number(item.estimated_cost) > 100000) {
                     const oldCost = item.estimated_cost;
-                    item.estimated_cost = Math.round((item.estimated_cost || 0) * 0.4);
+                    delete item.estimated_cost;
                     item.title = `[Tiết kiệm] ${item.title}`;
                     item.description = `${item.description} (Đã chuyển sang phương án tiết kiệm chi phí do hạn chế ngân sách mới: ${disruptionDescription})`;
-                    diffMessages.push(`Ngày ${day.day_number}: Cắt giảm chi phí tại "${item.title.replace('[Tiết kiệm] ', '')}" từ ${oldCost?.toLocaleString('vi-VN')}đ xuống ${item.estimated_cost?.toLocaleString('vi-VN')}đ.`);
+                    diffMessages.push(`Ngày ${day.day_number}: Chuyển "${item.title.replace('[Tiết kiệm] ', '')}" từ mức ${oldCost?.toLocaleString('vi-VN')}đ sang phương án tiết kiệm cần xác nhận giá chính thức.`);
                 }
             }
             // Disruption 3: Health Issue
@@ -299,20 +525,23 @@ function adaptMockItinerary(currentItinerary, disruptionType, disruptionDescript
             }
         });
     });
-    const new_total = newItinerary.days.reduce((sum, day) => {
-        return sum + day.items.reduce((daySum, item) => daySum + (item.estimated_cost || 0), 0);
-    }, 0);
     const budget_total = currentItinerary.budget_summary.estimated_total + currentItinerary.budget_summary.remaining;
-    newItinerary.budget_summary = {
-        estimated_total: new_total,
-        remaining: Math.max(0, budget_total - new_total)
-    };
     const diff = diffMessages.length > 0
         ? diffMessages.join('\n')
         : `Lịch trình được tối ưu hóa lại để phù hợp với sự cố: ${disruptionDescription}.`;
-    return { itinerary: newItinerary, diff };
+    newItinerary.expert_advice = "Lịch trình đã được điều chỉnh tự động để ứng phó với sự cố phát sinh.";
+    newItinerary.warning_notes = ["Chú ý an toàn trong quá trình di chuyển thời tiết xấu."];
+    newItinerary.missing_info_questions = [];
+    return { itinerary: enforceBudgetLimit(newItinerary, budget_total), diff };
 }
 // Generate text diff comparing before and after
+function formatCostForText(cost) {
+    if (cost === undefined || cost === null || !Number.isFinite(Number(cost))) {
+        return 'Cần xác nhận giá';
+    }
+    const normalizedCost = Number(cost);
+    return normalizedCost === 0 ? 'Miễn phí' : `${normalizedCost.toLocaleString('vi-VN')}đ`;
+}
 function generateItineraryDiff(oldItinerary, newItinerary, disruptionType) {
     let diffs = [];
     newItinerary.days.forEach((day, dIdx) => {
@@ -326,7 +555,7 @@ function generateItineraryDiff(oldItinerary, newItinerary, disruptionType) {
                 return;
             }
             if (item.title !== oldItem.title || item.estimated_cost !== oldItem.estimated_cost) {
-                diffs.push(`Ngày ${day.day_number}: Thay đổi "${oldItem.title}" (${oldItem.estimated_cost?.toLocaleString('vi-VN')}đ) thành "${item.title}" (${item.estimated_cost?.toLocaleString('vi-VN')}đ)`);
+                diffs.push(`Ngày ${day.day_number}: Thay đổi "${oldItem.title}" (${formatCostForText(oldItem.estimated_cost)}) thành "${item.title}" (${formatCostForText(item.estimated_cost)})`);
             }
         });
     });
@@ -360,11 +589,28 @@ const ALTERNATIVES_JSON_SCHEMA = {
     },
     required: ['alternatives']
 };
+function normalizeAlternativeCosts(alternatives) {
+    return alternatives.map(alternative => {
+        const normalized = { ...alternative };
+        const cost = Number(normalized.estimated_cost);
+        if (!Number.isFinite(cost)) {
+            delete normalized.estimated_cost;
+        }
+        else {
+            normalized.estimated_cost = Math.max(0, Math.round(cost));
+        }
+        return normalized;
+    });
+}
 async function generateAlternatives(tripData, originalItem, userRequirement, candidatePlaces) {
     const systemPrompt = `Bạn là trợ lý AI lập lịch trình du lịch Việt Nam.
 Hãy đề xuất đúng 3 hoạt động thay thế (alternatives) cho hoạt động gốc được cung cấp, dựa trên yêu cầu đặc thù của người dùng.
 Bạn phải tận dụng danh sách candidate_places được cung cấp ở dưới để lấy tên và google_place_id cho các hoạt động ăn uống/chỗ nghỉ/tham quan/thuê xe (nếu phù hợp).
 Giờ bắt đầu và kết thúc của hoạt động thay thế nên khớp hoặc gần khớp với hoạt động gốc (${originalItem.start_time || '08:00'} - ${originalItem.end_time || '10:00'}), nhưng có thể thay đổi nhẹ nếu cần.
+Hãy ước lượng chi phí (VND) hợp lý và thực tế cho "estimated_cost" dựa trên price_level và giá trị trung bình ở Việt Nam cho hoạt động đó (ví dụ: ăn uống, vé tham quan, di chuyển...).
+Nếu hoạt động đó là miễn phí (như đi dạo công viên, chùa Linh Ứng, hoạt động tự do), hãy điền "estimated_cost" = 0 để hệ thống hiển thị là "Miễn phí".
+Tránh để trống "estimated_cost" trừ phi đó là dịch vụ trả phí lớn mà bạn không thể tự ước lượng được và bắt buộc cần người dùng nhập.
+0đ/Miễn phí chỉ dùng cho hoạt động thật sự miễn phí như đi bộ hoặc điểm công cộng miễn phí.
 Trả về định dạng JSON hợp lệ theo đúng schema được cấu hình. Không thêm markdown, giải thích hay định dạng khác.`;
     const userPrompt = JSON.stringify({
         trip: {
@@ -404,7 +650,7 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
             if (!text)
                 throw new Error('Empty response from Gemini');
             const parsed = JSON.parse(text);
-            return parsed.alternatives || [];
+            return normalizeAlternativeCosts(parsed.alternatives || []);
         });
     }
     catch (error) {
@@ -417,8 +663,7 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
                 description: `Phương án thay thế đề xuất 1 cho "${originalItem.title}". Phù hợp với tiêu chuẩn dịch vụ và thời gian của bạn.`,
                 start_time: originalItem.start_time || '08:00',
                 end_time: originalItem.end_time || '10:00',
-                estimated_cost: originalItem.estimated_cost || 50000,
-                reason: 'Phù hợp nhất với lịch trình hiện tại và vị trí địa lý.'
+                reason: 'Phù hợp với lịch trình hiện tại; cần xác nhận giá chính thức trước khi chốt ngân sách.'
             },
             {
                 item_type: originalItem.item_type,
@@ -426,8 +671,7 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
                 description: `Phương án thay thế đề xuất 2. Phục vụ nhu cầu trải nghiệm đa dạng và chi phí hợp lý.`,
                 start_time: originalItem.start_time || '08:00',
                 end_time: originalItem.end_time || '10:00',
-                estimated_cost: Math.round((originalItem.estimated_cost || 50000) * 0.9),
-                reason: 'Chi phí tối ưu hơn và có nhiều đánh giá tích cực.'
+                reason: 'Có tiềm năng tối ưu chi phí, nhưng vẫn cần xác nhận giá chính thức của địa điểm.'
             },
             {
                 item_type: originalItem.item_type,
@@ -435,8 +679,7 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
                 description: `Phương án thay thế đề xuất 3. Mang tính chất khám phá thư giãn, nhẹ nhàng.`,
                 start_time: originalItem.start_time || '08:00',
                 end_time: originalItem.end_time || '10:00',
-                estimated_cost: Math.round((originalItem.estimated_cost || 50000) * 1.2),
-                reason: 'Không gian đẹp mắt, dịch vụ chất lượng cao hơn.'
+                reason: 'Không gian phù hợp hơn; giá cần được xác nhận chính thức trước khi áp dụng.'
             }
         ];
     }

@@ -118,21 +118,92 @@ router.get('/users', async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
-// DELETE /api/admin/users/:id - Delete a user
+// DELETE /api/admin/users/:id - Delete a user and all related data cleanly
 router.delete('/users/:id', async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.params.id;
 
   if (isDbMocked) {
-    return res.json({ success: true, message: `Mock deleted user ${userId}` });
+    return res.json({ success: true, message: `Mock deleted user ${userId}`, deletedTripIds: [] });
   }
 
   try {
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
-    if (error) throw error;
+    // 1. Fetch all trip IDs of this user
+    const { data: userTrips, error: tripsError } = await supabaseAdmin
+      .from('trips')
+      .select('id')
+      .eq('user_id', userId);
+    
+    if (tripsError) throw tripsError;
+    const tripIds = (userTrips || []).map((t: any) => t.id);
 
-    return res.json({ success: true, message: 'User deleted successfully' });
+    // 2. Cascade delete records related to these trips
+    if (tripIds.length > 0) {
+      // Get all day IDs for these trips
+      const { data: days, error: daysError } = await supabaseAdmin
+        .from('itinerary_days')
+        .select('id')
+        .in('trip_id', tripIds);
+      
+      if (daysError) throw daysError;
+      const dayIds = (days || []).map((d: any) => d.id);
+
+      // Delete itinerary items
+      if (dayIds.length > 0) {
+        const { error: itemsDelError } = await supabaseAdmin
+          .from('itinerary_items')
+          .delete()
+          .in('day_id', dayIds);
+        if (itemsDelError) throw itemsDelError;
+      }
+
+      // Delete disruption events
+      const { error: disruptDelError } = await supabaseAdmin
+        .from('disruption_events')
+        .delete()
+        .in('trip_id', tripIds);
+      if (disruptDelError) throw disruptDelError;
+
+      // Delete itinerary revisions
+      const { error: revDelError } = await supabaseAdmin
+        .from('itinerary_revisions')
+        .delete()
+        .in('trip_id', tripIds);
+      if (revDelError) throw revDelError;
+
+      // Delete itinerary days
+      const { error: daysDelError } = await supabaseAdmin
+        .from('itinerary_days')
+        .delete()
+        .in('trip_id', tripIds);
+      if (daysDelError) throw daysDelError;
+
+      // Delete trips
+      const { error: tripsDelError } = await supabaseAdmin
+        .from('trips')
+        .delete()
+        .in('id', tripIds);
+      if (tripsDelError) throw tripsDelError;
+    }
+
+    // 3. Delete user profiles
+    const { error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .delete()
+      .eq('id', userId);
+    if (profileError) throw profileError;
+
+    // 4. Delete user from auth
+    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (authError) throw authError;
+
+    return res.json({ 
+      success: true, 
+      message: 'User and all related data deleted successfully',
+      deletedTripIds: tripIds
+    });
   } catch (err: any) {
-    return res.status(500).json({ error: 'Failed to delete user', details: err.message });
+    console.error('[Admin Delete User] Error:', err.message);
+    return res.status(500).json({ error: 'Failed to delete user and related data', details: err.message });
   }
 });
 
@@ -219,7 +290,7 @@ router.get('/trips', async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
-// DELETE /api/admin/trips/:id - Delete a trip
+// DELETE /api/admin/trips/:id - Delete a trip and related data cleanly
 router.delete('/trips/:id', async (req: AuthenticatedRequest, res: Response) => {
   const tripId = req.params.id;
 
@@ -228,16 +299,57 @@ router.delete('/trips/:id', async (req: AuthenticatedRequest, res: Response) => 
   }
 
   try {
-    const { error } = await supabaseAdmin
+    // 1. Fetch all day IDs for this trip
+    const { data: days, error: daysError } = await supabaseAdmin
+      .from('itinerary_days')
+      .select('id')
+      .eq('trip_id', tripId);
+    
+    if (daysError) throw daysError;
+    const dayIds = (days || []).map((d: any) => d.id);
+
+    // 2. Delete related itinerary items
+    if (dayIds.length > 0) {
+      const { error: itemsDelError } = await supabaseAdmin
+        .from('itinerary_items')
+        .delete()
+        .in('day_id', dayIds);
+      if (itemsDelError) throw itemsDelError;
+    }
+
+    // 3. Delete related disruption events
+    const { error: disruptDelError } = await supabaseAdmin
+      .from('disruption_events')
+      .delete()
+      .eq('trip_id', tripId);
+    if (disruptDelError) throw disruptDelError;
+
+    // 4. Delete related itinerary revisions
+    const { error: revDelError } = await supabaseAdmin
+      .from('itinerary_revisions')
+      .delete()
+      .eq('trip_id', tripId);
+    if (revDelError) throw revDelError;
+
+    // 5. Delete related itinerary days
+    const { error: daysDelError } = await supabaseAdmin
+      .from('itinerary_days')
+      .delete()
+      .eq('trip_id', tripId);
+    if (daysDelError) throw daysDelError;
+
+    // 6. Delete the trip itself
+    const { error: tripDelError } = await supabaseAdmin
       .from('trips')
       .delete()
       .eq('id', tripId);
 
-    if (error) throw error;
+    if (tripDelError) throw tripDelError;
 
-    return res.json({ success: true, message: 'Trip deleted successfully' });
+    return res.json({ success: true, message: 'Trip and related data deleted successfully' });
   } catch (err: any) {
-    return res.status(500).json({ error: 'Failed to delete trip', details: err.message });
+    console.error('[Admin Delete Trip] Error:', err.message);
+    return res.status(500).json({ error: 'Failed to delete trip and related data', details: err.message });
   }
 });
 

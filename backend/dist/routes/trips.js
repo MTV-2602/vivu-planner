@@ -20,6 +20,14 @@ function formatTimeForDb(timeStr) {
     }
     return null;
 }
+function parseOptionalCost(value) {
+    if (value === undefined || value === null || value === '')
+        return null;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed))
+        return null;
+    return Math.max(0, Math.round(parsed));
+}
 // GET /api/trips - List all trips of the current user
 router.get('/', authMiddleware_1.authMiddleware, async (req, res) => {
     const client = (0, supabaseAdmin_1.getSupabaseUserClient)(req.token);
@@ -185,7 +193,7 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
                     location_lat: itemLat,
                     location_lng: itemLng,
                     google_place_id: item.google_place_id || null,
-                    estimated_cost: item.estimated_cost || 0,
+                    estimated_cost: parseOptionalCost(item.estimated_cost),
                     order_index: item.order_index,
                     status: 'planned'
                 });
@@ -412,7 +420,7 @@ router.post('/:id/disruptions/apply', authMiddleware_1.authMiddleware, async (re
                 location_lat: item.location_lat || lat,
                 location_lng: item.location_lng || lng,
                 google_place_id: item.google_place_id || null,
-                estimated_cost: item.estimated_cost || 0,
+                estimated_cost: parseOptionalCost(item.estimated_cost),
                 order_index: item.order_index,
                 status: 'planned'
             });
@@ -450,7 +458,7 @@ router.put('/items/:itemId', authMiddleware_1.authMiddleware, async (req, res) =
         if (end_time !== undefined)
             updateData.end_time = formatTimeForDb(end_time);
         if (estimated_cost !== undefined)
-            updateData.estimated_cost = estimated_cost ? parseFloat(estimated_cost) : 0;
+            updateData.estimated_cost = parseOptionalCost(estimated_cost);
         if (status !== undefined)
             updateData.status = status;
         if (item_type !== undefined)

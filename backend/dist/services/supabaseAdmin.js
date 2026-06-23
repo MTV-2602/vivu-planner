@@ -24,46 +24,7 @@ if (isSupabaseConfigured) {
     });
 }
 else {
-    console.warn('WARNING: SUPABASE_URL, SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY are missing.');
-    console.warn('Backend is running in mock database mode.');
-    const mockDbQuery = {
-        select: () => ({
-            eq: () => ({
-                order: () => Promise.resolve({ data: [], error: null }),
-                single: () => Promise.resolve({ data: null, error: null }),
-                then: (cb) => cb({ data: [], error: null })
-            }),
-            order: () => Promise.resolve({ data: [], error: null }),
-            then: (cb) => cb({ data: [], error: null })
-        }),
-        insert: () => ({
-            select: () => ({
-                single: () => Promise.resolve({ data: { id: '00000000-0000-0000-0000-000000000000' }, error: null }),
-                then: (cb) => cb({ data: [{ id: '00000000-0000-0000-0000-000000000000', day_number: 1 }], error: null })
-            }),
-            then: (cb) => cb({ data: [{ id: '00000000-0000-0000-0000-000000000000' }], error: null })
-        }),
-        update: () => ({
-            eq: () => ({
-                eq: () => Promise.resolve({ data: {}, error: null }),
-                then: (cb) => cb({ data: {}, error: null })
-            }),
-            in: () => ({
-                eq: () => Promise.resolve({ data: {}, error: null }),
-                then: (cb) => cb({ data: {}, error: null })
-            }),
-            then: (cb) => cb({ data: {}, error: null })
-        }),
-        delete: () => ({
-            eq: () => Promise.resolve({ data: {}, error: null }),
-            then: (cb) => cb({ data: {}, error: null })
-        })
-    };
-    const mockDbClient = {
-        from: () => mockDbQuery
-    };
-    supabaseInstance = mockDbClient;
-    supabaseAdminInstance = mockDbClient;
+    throw new Error('CRITICAL ERROR: SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY environment variables are required to start the application. Database connection cannot be established.');
 }
 exports.supabase = supabaseInstance;
 exports.supabaseAdmin = supabaseAdminInstance;
@@ -89,4 +50,4 @@ function getSupabaseUserClient(token) {
     }
     return supabaseInstance;
 }
-exports.isDbMocked = !isSupabaseConfigured;
+exports.isDbMocked = false;

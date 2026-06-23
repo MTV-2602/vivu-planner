@@ -57,6 +57,47 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState<'users'|'trips'|'keys'>('users');
   const [bulkKeys, setBulkKeys] = useState('');
   const [visibleKeys, setVisibleKeys] = useState<Record<string,boolean>>({});
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    cancelText?: string;
+    isDestructive?: boolean;
+  } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
+  };
+
+  const showConfirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    options?: { confirmText?: string; cancelText?: string; isDestructive?: boolean }
+  ) => {
+    setConfirmModal({
+      visible: true,
+      title,
+      message,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmModal(null);
+      },
+      confirmText: options?.confirmText || 'Xác nhận',
+      cancelText: options?.cancelText || 'Hủy',
+      isDestructive: options?.isDestructive ?? false,
+    });
+  };
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -81,15 +122,25 @@ export default function Admin() {
           setIsAdmin(true);
           setChecking(false);
         } else {
-          Alert.alert('Từ chối truy cập', 'Bạn không có quyền truy cập trang quản trị!', [
-            { text: 'OK', onPress: () => router.replace('/chuyen-di') },
-          ]);
+          if (Platform.OS === 'web') {
+            window.alert('Từ chối truy cập: Bạn không có quyền truy cập trang quản trị!');
+            router.replace('/chuyen-di');
+          } else {
+            Alert.alert('Từ chối truy cập', 'Bạn không có quyền truy cập trang quản trị!', [
+              { text: 'OK', onPress: () => router.replace('/chuyen-di') },
+            ]);
+          }
           setChecking(false);
         }
       } catch (err) {
-        Alert.alert('Từ chối truy cập', 'Bạn không có quyền truy cập trang quản trị!', [
-          { text: 'OK', onPress: () => router.replace('/chuyen-di') },
-        ]);
+        if (Platform.OS === 'web') {
+          window.alert('Từ chối truy cập: Bạn không có quyền truy cập trang quản trị!');
+          router.replace('/chuyen-di');
+        } else {
+          Alert.alert('Từ chối truy cập', 'Bạn không có quyền truy cập trang quản trị!', [
+            { text: 'OK', onPress: () => router.replace('/chuyen-di') },
+          ]);
+        }
         setChecking(false);
       }
     };
@@ -132,13 +183,25 @@ export default function Admin() {
   // ── Mutations ────────────────────────────────────────────────────────────────
   const deleteUser = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/admin/users/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['adminUsers'] }); qc.invalidateQueries({ queryKey: ['adminStats'] }); Alert.alert('✅', 'Đã xóa người dùng thành công!'); },
-    onError: (e: any) => Alert.alert('Lỗi', e.response?.data?.error || e.message),
+    onSuccess: (res) => { 
+      const tripIds = res.data?.deletedTripIds || [];
+      tripIds.forEach((tripId: string) => {
+        cancelTripReminder(tripId);
+        clearCache(`trip_${tripId}`);
+      });
+      qc.invalidateQueries({ queryKey: ['adminUsers'] }); 
+      qc.invalidateQueries({ queryKey: ['adminStats'] }); 
+      showToast('Đã xóa người dùng và toàn bộ dữ liệu liên quan thành công!', 'success'); 
+    },
+    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
   });
   const toggleBan = useMutation({
     mutationFn: (id: string) => apiClient.put(`/admin/users/${id}/toggle-ban`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['adminUsers'] }); Alert.alert('✅', 'Đã thay đổi trạng thái người dùng!'); },
-    onError: (e: any) => Alert.alert('Lỗi', e.response?.data?.error || e.message),
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: ['adminUsers'] }); 
+      showToast('Đã thay đổi trạng thái người dùng!', 'success'); 
+    },
+    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
   });
   const deleteTrip = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/admin/trips/${id}`),
@@ -147,43 +210,105 @@ export default function Admin() {
       clearCache(`trip_${tripId}`);
       qc.invalidateQueries({ queryKey: ['adminTrips'] });
       qc.invalidateQueries({ queryKey: ['adminStats'] });
-      Alert.alert('✅', 'Đã xóa chuyến đi thành công!');
+      showToast('Đã xóa chuyến đi và toàn bộ lịch trình liên quan!', 'success');
     },
-    onError: (e: any) => Alert.alert('Lỗi', e.response?.data?.error || e.message),
+    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
   });
   const addKeys = useMutation({
     mutationFn: (keyValues: string[]) => apiClient.post('/admin/keys', { key_values: keyValues }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['adminKeys'] }); qc.invalidateQueries({ queryKey: ['adminStats'] }); setBulkKeys(''); Alert.alert('✅', 'Đã thêm danh sách API Key thành công!'); },
-    onError: (e: any) => Alert.alert('Lỗi', e.response?.data?.error || e.message),
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: ['adminKeys'] }); 
+      qc.invalidateQueries({ queryKey: ['adminStats'] }); 
+      setBulkKeys(''); 
+      showToast('Đã thêm danh sách API Key thành công!', 'success'); 
+    },
+    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
   });
   const updateKey = useMutation({
     mutationFn: ({ id, is_active, status }: { id: string; is_active: boolean; status: string }) => apiClient.put(`/admin/keys/${id}`, { is_active, status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['adminKeys'] }),
-    onError: (e: any) => Alert.alert('Lỗi', e.response?.data?.error || e.message),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['adminKeys'] });
+      showToast('Đã thay đổi cấu hình API Key!', 'success');
+    },
+    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
   });
   const deleteKey = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/admin/keys/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['adminKeys'] }); qc.invalidateQueries({ queryKey: ['adminStats'] }); Alert.alert('✅', 'Đã xóa API Key thành công!'); },
-    onError: (e: any) => Alert.alert('Lỗi', e.response?.data?.error || e.message),
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: ['adminKeys'] }); 
+      qc.invalidateQueries({ queryKey: ['adminStats'] }); 
+      showToast('Đã xóa API Key thành công!', 'success'); 
+    },
+    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
   });
 
   // ── Confirm helpers ──────────────────────────────────────────────────────────
-  const confirmDeleteUser = (id: string, email: string) => Alert.alert('Xác nhận xóa tài khoản', `Xóa tài khoản ${email}? Toàn bộ chuyến đi liên quan sẽ bị xóa!`, [
-    { text: 'Hủy', style: 'cancel' }, { text: 'Xóa', style: 'destructive', onPress: () => deleteUser.mutate(id) }
-  ]);
-  const confirmDeleteTrip = (id: string, title: string) => Alert.alert('Xác nhận xóa chuyến đi', `Xóa chuyến đi "${title}"?`, [
-    { text: 'Hủy', style: 'cancel' }, { text: 'Xóa', style: 'destructive', onPress: () => deleteTrip.mutate(id) }
-  ]);
+  const confirmDeleteUser = (id: string, email: string) => {
+    showConfirm(
+      'Xác nhận xóa tài khoản',
+      `Bạn có chắc chắn muốn xóa tài khoản ${email}? Toàn bộ thông tin cá nhân, hành trình chuyến đi và các dữ liệu liên quan khác của người dùng này sẽ bị XÓA SẠCH HOÀN TOÀN khỏi cơ sở dữ liệu!`,
+      () => deleteUser.mutate(id),
+      { confirmText: 'Xóa sạch', cancelText: 'Hủy', isDestructive: true }
+    );
+  };
+  const confirmDeleteTrip = (id: string, title: string) => {
+    showConfirm(
+      'Xác nhận xóa chuyến đi',
+      `Bạn có chắc chắn muốn xóa chuyến đi "${title}"? Toàn bộ các ngày lịch trình, hoạt động chi tiết, dữ liệu chi tiêu và sự cố liên quan sẽ bị XÓA SẠCH khỏi hệ thống!`,
+      () => deleteTrip.mutate(id),
+      { confirmText: 'Xóa sạch', cancelText: 'Hủy', isDestructive: true }
+    );
+  };
   const confirmDeleteKey = (id: string, value: string) => {
     const masked = maskKey(value);
-    Alert.alert('Xác nhận xóa API Key', `Xóa key ${masked}?`, [
-      { text: 'Hủy', style: 'cancel' }, { text: 'Xóa', style: 'destructive', onPress: () => deleteKey.mutate(id) }
-    ]);
+    showConfirm(
+      'Xác nhận xóa API Key',
+      `Bạn có chắc chắn muốn xóa API Key ${masked} khỏi bể khóa xoay vòng không? Hành động này không thể hoàn tác!`,
+      () => deleteKey.mutate(id),
+      { confirmText: 'Xóa', cancelText: 'Hủy', isDestructive: true }
+    );
+  };
+  const confirmToggleBan = (id: string, email: string, isBanned: boolean) => {
+    const title = isBanned ? 'Xác nhận mở khóa tài khoản' : 'Xác nhận khóa tài khoản';
+    const message = isBanned 
+      ? `Bạn có chắc chắn muốn mở khóa cho tài khoản ${email}? Người dùng sẽ lấy lại quyền đăng nhập và tạo chuyến đi.` 
+      : `Bạn có chắc chắn muốn khóa tài khoản ${email}? Người dùng này sẽ lập tức bị đăng xuất và không thể truy cập hệ thống.`;
+    showConfirm(
+      title,
+      message,
+      () => toggleBan.mutate(id),
+      { confirmText: isBanned ? 'Mở khóa' : 'Khóa tài khoản', cancelText: 'Hủy', isDestructive: !isBanned }
+    );
+  };
+  const confirmToggleRotation = (id: string, value: string, isActive: boolean, status: string) => {
+    const masked = maskKey(value);
+    const title = isActive ? 'Tắt xoay vòng Key' : 'Bật xoay vòng Key';
+    const message = isActive 
+      ? `Bạn có chắc chắn muốn tắt tính năng xoay vòng đối với key ${masked}?` 
+      : `Bạn có chắc chắn muốn bật tính năng xoay vòng đối với key ${masked}?`;
+    showConfirm(
+      title,
+      message,
+      () => updateKey.mutate({ id, is_active: !isActive, status }),
+      { confirmText: isActive ? 'Tắt xoay' : 'Bật xoay', cancelText: 'Hủy' }
+    );
+  };
+  const confirmResetKey = (id: string, value: string) => {
+    const masked = maskKey(value);
+    showConfirm(
+      'Đặt lại trạng thái Key',
+      `Bạn có chắc chắn muốn khôi phục trạng thái hoạt động bình thường cho key ${masked}?`,
+      () => updateKey.mutate({ id, is_active: true, status: 'active' }),
+      { confirmText: 'Đặt lại', cancelText: 'Hủy' }
+    );
   };
   const handleAddBulkKeys = () => {
     if (!bulkKeys.trim()) return;
     const parsed = bulkKeys.split('\n').map(k => k.trim()).filter(k => k.length > 10 && (k.startsWith('AIzaSy') || k.startsWith('AQ') || k.startsWith('AO')));
-    if (parsed.length === 0) { Alert.alert('Không hợp lệ', 'Không tìm thấy API Key hợp lệ (bắt đầu bằng AIzaSy, AQ hoặc AO).'); return; }
+    if (parsed.length === 0) { 
+      showToast('Không tìm thấy API Key hợp lệ (bắt đầu bằng AIzaSy, AQ hoặc AO).', 'error'); 
+      return; 
+    }
     addKeys.mutate(parsed);
   };
 
@@ -207,6 +332,38 @@ export default function Admin() {
 
   return (
     <View className="flex-1 bg-brand-bg">
+      {/* Toast Notification */}
+      {toast && (
+        <View className="absolute top-4 left-4 right-4 z-50 items-center pointer-events-none">
+          <View 
+            className="flex-row items-center gap-2 px-4 py-3 rounded-xl shadow-lg border border-brand-line/40 max-w-md w-full"
+            style={{ 
+              backgroundColor: toast.type === 'success' ? '#EBF8F4' : toast.type === 'error' ? '#FDE8E8' : '#FFF3ED',
+              borderColor: toast.type === 'success' ? '#CBECE1' : toast.type === 'error' ? '#FBD5D5' : '#FFE4D6',
+              shadowColor: '#000', 
+              shadowOffset: { width: 0, height: 4 }, 
+              shadowOpacity: 0.1, 
+              shadowRadius: 10,
+              elevation: 5
+            }}
+          >
+            {toast.type === 'success' ? (
+              <Check size={16} color={BRAND_COLORS.primary} />
+            ) : toast.type === 'error' ? (
+              <X size={16} color={BRAND_COLORS.danger} />
+            ) : (
+              <AlertTriangle size={16} color={BRAND_COLORS.accent} />
+            )}
+            <Text 
+              className="text-xs font-bold flex-1" 
+              style={{ color: toast.type === 'success' ? BRAND_COLORS.primaryStrong : toast.type === 'error' ? BRAND_COLORS.danger : BRAND_COLORS.accentStrong }}
+            >
+              {toast.message}
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Navbar */}
       <View className="bg-brand-bg border-b border-brand-line/40 px-6 py-4 flex-row justify-between items-center">
         <View className="flex-row items-center gap-2">
@@ -297,7 +454,7 @@ export default function Admin() {
                       <Text className="text-[10px] font-bold uppercase" style={{ color: BRAND_COLORS.accent }}>Hệ thống</Text>
                     </View>
                   ) : (
-                    <Pressable onPress={() => toggleBan.mutate(u.id)} className="flex-row items-center gap-1">
+                    <Pressable onPress={() => confirmToggleBan(u.id, u.email, !!u.banned_until)} className="flex-row items-center gap-1">
                       <View className="w-9 h-5 rounded-full items-center justify-center" style={{ backgroundColor: u.banned_until ? `${BRAND_COLORS.danger}20` : `${BRAND_COLORS.primary}20` }}>
                         <View className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: u.banned_until ? BRAND_COLORS.danger : BRAND_COLORS.primary, marginLeft: u.banned_until ? -6 : 6 }} />
                       </View>
@@ -457,13 +614,13 @@ export default function Admin() {
                           <Text className="text-[9px] font-bold uppercase" style={{ color: statusMeta.color }}>{statusMeta.label}</Text>
                         </View>
                         {k.status !== 'active' && (
-                          <Pressable onPress={() => updateKey.mutate({ id: k.id, is_active: true, status: 'active' })}>
+                          <Pressable onPress={() => confirmResetKey(k.id, k.key_value)}>
                             <Text className="text-[10px] font-bold text-brand-primary">Đặt lại</Text>
                           </Pressable>
                         )}
                       </View>
                       {/* Toggle rotation */}
-                      <Pressable onPress={() => updateKey.mutate({ id: k.id, is_active: !k.is_active, status: k.status })} className="px-2">
+                      <Pressable onPress={() => confirmToggleRotation(k.id, k.key_value, k.is_active, k.status)} className="px-2">
                         <View className="w-10 h-5 rounded-full items-center justify-center" style={{ backgroundColor: k.is_active ? `${BRAND_COLORS.primary}20` : `${BRAND_COLORS.textSoft}20` }}>
                           <View className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: k.is_active ? BRAND_COLORS.primary : BRAND_COLORS.textSoft, marginLeft: k.is_active ? 6 : -6 }} />
                         </View>
@@ -480,6 +637,39 @@ export default function Admin() {
           </View>
         )}
       </ScrollView>
+
+      {/* Custom Confirmation Modal */}
+      {confirmModal && confirmModal.visible && (
+        <View className="absolute inset-0 z-50 items-center justify-center bg-black/60 px-4">
+          <View 
+            className="bg-brand-bg border border-brand-line/60 rounded-2xl p-6 max-w-md w-full shadow-2xl"
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 }}
+          >
+            <View className="flex-row items-center gap-2 mb-3">
+              <AlertTriangle size={22} color={confirmModal.isDestructive ? BRAND_COLORS.danger : BRAND_COLORS.accent} />
+              <Text className="text-lg font-display font-extrabold text-brand-text">{confirmModal.title}</Text>
+            </View>
+            <Text className="text-xs text-brand-textSoft leading-relaxed mb-6">
+              {confirmModal.message}
+            </Text>
+            <View className="flex-row justify-end gap-3">
+              <Pressable 
+                onPress={() => setConfirmModal(null)}
+                className="px-4 py-2.5 rounded-xl border border-brand-line/60 bg-brand-bgAlt/50"
+              >
+                <Text className="text-xs font-bold text-brand-textSoft">{confirmModal.cancelText}</Text>
+              </Pressable>
+              <Pressable 
+                onPress={confirmModal.onConfirm}
+                className="px-4 py-2.5 rounded-xl"
+                style={{ backgroundColor: confirmModal.isDestructive ? BRAND_COLORS.danger : BRAND_COLORS.primary }}
+              >
+                <Text className="text-xs font-bold text-white">{confirmModal.confirmText}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }

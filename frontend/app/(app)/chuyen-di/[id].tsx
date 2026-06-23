@@ -49,8 +49,11 @@ function formatDate(s: string) {
   return p.length === 3 ? `${p[2]}/${p[1]}` : s;
 }
 function hasOfficialCost(c?: number | null) { return c !== undefined && c !== null && Number.isFinite(Number(c)); }
-function formatCost(c?: number | null) {
-  if (!hasOfficialCost(c)) return 'Cần xác nhận giá';
+function formatCost(c?: number | null, itemType?: string) {
+  if (!hasOfficialCost(c)) {
+    if (itemType === 'accommodation' || itemType === 'rental') return 'Cần xác nhận giá';
+    return 'Chưa cập nhật';
+  }
   return Number(c) === 0 ? 'Miễn phí' : `${Number(c).toLocaleString('vi-VN')}đ`;
 }
 function getItemTypeIcon(type: string) {
@@ -538,10 +541,12 @@ export default function TripDetail() {
 
                             {/* Cost + actions */}
                             <View className="items-end gap-3">
-                              <View className="items-end">
-                                <Text className="text-[10px] text-brand-textMuted font-bold uppercase tracking-wider">Dự tính</Text>
-                                <Text className="text-xs font-extrabold text-brand-text">{formatCost(item.estimated_cost)}</Text>
-                              </View>
+                              {(hasOfficialCost(item.estimated_cost) || item.item_type === 'accommodation' || item.item_type === 'rental') && (
+                                <View className="items-end">
+                                  <Text className="text-[10px] text-brand-textMuted font-bold uppercase tracking-wider">Dự tính</Text>
+                                  <Text className="text-xs font-extrabold text-brand-text">{formatCost(item.estimated_cost, item.item_type)}</Text>
+                                </View>
+                              )}
                               {!isAdmin && (
                                 <View className="flex-row gap-2">
                                   <Pressable onPress={() => { setAiReplaceItem(item); setAiAlternatives([]); setAiRequirement(''); setAiReplaceOpen(true); }} className="p-1.5 rounded bg-brand-accent/10">
@@ -719,7 +724,7 @@ export default function TripDetail() {
                                 </View>
                               </View>
                               <Text className="text-xs text-brand-textSoft font-serif" numberOfLines={2}>{item.description}</Text>
-                              <Text className="text-[10px] font-bold text-brand-textMuted">Chi phí: {formatCost(item.estimated_cost)}</Text>
+                              <Text className="text-[10px] font-bold text-brand-textMuted">Chi phí: {formatCost(item.estimated_cost, item.item_type)}</Text>
                             </View>
                           </Pressable>
                         );
@@ -875,7 +880,7 @@ export default function TripDetail() {
                         </View>
                       </View>
                       <Text className="text-xs text-brand-textSoft font-serif">{alt.description}</Text>
-                      <Text className="text-[10px] font-semibold text-brand-textMuted">⏱️ {alt.start_time?.substring(0, 5)} - {alt.end_time?.substring(0, 5)} · 💰 {formatCost(alt.estimated_cost)}</Text>
+                      <Text className="text-[10px] font-semibold text-brand-textMuted">⏱️ {alt.start_time?.substring(0, 5)} - {alt.end_time?.substring(0, 5)} · 💰 {formatCost(alt.estimated_cost, alt.item_type)}</Text>
                       <View className="p-2.5 rounded-lg bg-brand-accent/5 border border-brand-accent/20">
                         <Text className="text-[10px] text-brand-accentStrong font-semibold">💡 {alt.reason}</Text>
                       </View>

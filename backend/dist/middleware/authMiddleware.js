@@ -96,15 +96,6 @@ async function authMiddleware(req, res, next) {
         };
         return next();
     }
-    // Helper check: if Supabase variables are not set, allow mock-token for local testing
-    const isSupabaseMissing = !process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY;
-    if (isSupabaseMissing || token === 'mock-token') {
-        req.user = {
-            id: '00000000-0000-0000-0000-000000000000',
-            email: 'mockuser@vivu.vn'
-        };
-        return next();
-    }
     try {
         const { data: { user }, error } = await supabaseAdmin_1.supabase.auth.getUser(token);
         if (error || !user) {

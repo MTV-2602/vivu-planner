@@ -1,6 +1,6 @@
 import { Stack, Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { supabase } from '../../lib/supabaseClient';
 
 export default function AppLayout() {
@@ -24,7 +24,9 @@ export default function AppLayout() {
     );
   }
 
-  if (!session) return <Redirect href="/dang-nhap" />;
+  const hasAdminToken = Platform.OS === 'web' && typeof localStorage !== 'undefined' && !!localStorage.getItem('vivu_admin_token');
+
+  if (!session && !hasAdminToken) return <Redirect href="/dang-nhap" />;
 
   return <Stack screenOptions={{ headerShown: false }} />;
 }
