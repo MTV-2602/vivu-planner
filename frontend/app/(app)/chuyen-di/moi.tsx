@@ -317,25 +317,23 @@ export default function TripWizard() {
                       <MapPin size={14} color={BRAND_COLORS.primary} />
                       <Text className="text-sm font-bold text-brand-textSoft">Điểm đến (Chỉ Việt Nam)</Text>
                     </View>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      <View className="flex-row gap-2">
-                        {VIETNAMESE_CITIES.map(city => (
-                          <Pressable
-                            key={city}
-                            onPress={() => setDestinationCity(city)}
-                            className={`px-3.5 py-2 rounded-full border ${destinationCity === city
-                              ? 'bg-brand-primary border-brand-primary'
-                              : 'bg-brand-bg border-brand-line'}`}
+                    <View className="flex-row flex-wrap gap-2">
+                      {VIETNAMESE_CITIES.map(city => (
+                        <Pressable
+                          key={city}
+                          onPress={() => setDestinationCity(city)}
+                          className={`px-3.5 py-2 rounded-full border ${destinationCity === city
+                            ? 'bg-brand-primary border-brand-primary'
+                            : 'bg-brand-bg border-brand-line'}`}
+                        >
+                          <Text
+                            className={`text-xs font-bold ${destinationCity === city ? 'text-white' : 'text-brand-textSoft'}`}
                           >
-                            <Text
-                              className={`text-xs font-bold ${destinationCity === city ? 'text-white' : 'text-brand-textSoft'}`}
-                            >
-                              {city}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </ScrollView>
+                            {city}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
                   </View>
 
                   {/* Dates */}
