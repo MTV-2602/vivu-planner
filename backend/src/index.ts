@@ -7,6 +7,7 @@ import weatherRouter from './routes/weather';
 import devRouter from './routes/dev';
 import adminRouter from './routes/admin';
 import authRouter from './routes/auth';
+import partnersRouter from './routes/partners';
 
 process.env.TZ = 'Asia/Ho_Chi_Minh';
 dotenv.config();
@@ -40,6 +41,7 @@ app.use('/api/places', placesRouter);
 app.use('/api/weather', weatherRouter);
 app.use('/api/dev', devRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/admin/partners', partnersRouter);
 app.use('/api/auth', authRouter);
 
 // Catch-all 404 handler

@@ -51,7 +51,8 @@ router.get('/stats', async (req: AuthenticatedRequest, res: Response) => {
       totalUsers: 3,
       totalTrips: 5,
       totalDisruptions: 2,
-      totalApiKeys: 12
+      totalApiKeys: 12,
+      totalPartners: 1
     });
   }
 
@@ -78,11 +79,18 @@ router.get('/stats', async (req: AuthenticatedRequest, res: Response) => {
       .select('*', { count: 'exact', head: true });
     if (keysError) throw keysError;
 
+    // 5. Get total partners count
+    const { count: partnersCount, error: partnersError } = await supabaseAdmin
+      .from('partners')
+      .select('*', { count: 'exact', head: true });
+    if (partnersError) throw partnersError;
+
     return res.json({
       totalUsers: users?.length || 0,
       totalTrips: tripsCount || 0,
       totalDisruptions: disruptionsCount || 0,
-      totalApiKeys: keysCount || 0
+      totalApiKeys: keysCount || 0,
+      totalPartners: partnersCount || 0
     });
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to retrieve stats', details: err.message });

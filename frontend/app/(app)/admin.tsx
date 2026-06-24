@@ -8,22 +8,50 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Compass, Users, Map, Trash2, Shield, BarChart3, AlertTriangle,
   Key, Check, X, Eye, LogOut, MapPin, Calendar, Wallet,
-  Mail, RefreshCw, ChevronRight,
+  Mail, RefreshCw, ChevronRight, Plus, Star,
 } from 'lucide-react-native';
 import { supabase } from '../../lib/supabaseClient';
 import { apiClient } from '../../lib/apiClient';
 import { cancelTripReminder } from '../../lib/notifications';
 import { clearCache } from '../../lib/cache';
 import Reveal from '../../components/Reveal';
-import { BRAND_COLORS } from '../../constants';
+import { BRAND_COLORS, VIETNAMESE_CITIES } from '../../constants';
 
 const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface AdminStats { totalUsers: number; totalTrips: number; totalDisruptions: number; totalApiKeys: number; }
+interface AdminStats { totalUsers: number; totalTrips: number; totalDisruptions: number; totalApiKeys: number; totalPartners: number; }
 interface UserRecord { id: string; email: string; full_name: string; created_at: string; banned_until?: string | null; }
 interface TripRecord { id: string; title: string; destination_city: string; start_date: string; end_date: string; budget_total: number; status: string; user_email: string; created_at: string; }
 interface ApiKeyRecord { id: string; key_value: string; is_active: boolean; status: string; last_used_at: string | null; created_at: string; }
+interface PartnerRecord {
+  id: string;
+  name: string;
+  category: string;
+  address: string;
+  lat: number;
+  lng: number;
+  city: string;
+  district?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  website_url?: string | null;
+  booking_url?: string | null;
+  description?: string | null;
+  image_urls?: string[] | null;
+  price_level: number;
+  cuisine_tags?: string[] | null;
+  amenity_tags?: string[] | null;
+  dietary_safe?: string[] | null;
+  admin_rating: number;
+  admin_notes?: string | null;
+  partner_priority: number;
+  active_status: boolean;
+  impression_count: number;
+  click_count: number;
+  booking_count: number;
+  created_at: string;
+}
 
 const ADMIN_EMAILS = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'];
 
@@ -54,10 +82,34 @@ export default function Admin() {
   const qc = useQueryClient();
   const [isAdmin, setIsAdmin] = useState(false);
   const [checking, setChecking] = useState(true);
-  const [activeTab, setActiveTab] = useState<'users'|'trips'|'keys'>('users');
+  const [activeTab, setActiveTab] = useState<'users'|'trips'|'keys'|'partners'>('users');
   const [bulkKeys, setBulkKeys] = useState('');
   const [visibleKeys, setVisibleKeys] = useState<Record<string,boolean>>({});
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // ─── Partner Form States ───────────────────────────────────────────────────
+  const [partnerModalVisible, setPartnerModalVisible] = useState(false);
+  const [editingPartner, setEditingPartner] = useState<PartnerRecord | null>(null);
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState('hotel');
+  const [address, setAddress] = useState('');
+  const [lat, setLat] = useState('');
+  const [lng, setLng] = useState('');
+  const [city, setCity] = useState('Hà Nội');
+  const [district, setDistrict] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [bookingUrl, setBookingUrl] = useState('');
+  const [description, setDescription] = useState('');
+  const [imageUrls, setImageUrls] = useState('');
+  const [priceLevel, setPriceLevel] = useState(2);
+  const [cuisineTags, setCuisineTags] = useState('');
+  const [amenityTags, setAmenityTags] = useState('');
+  const [dietarySafe, setDietarySafe] = useState('');
+  const [adminRating, setAdminRating] = useState(3);
+  const [adminNotes, setAdminNotes] = useState('');
+  const [partnerPriority, setPartnerPriority] = useState('0');
   const [confirmModal, setConfirmModal] = useState<{
     visible: boolean;
     title: string;
@@ -179,6 +231,16 @@ export default function Admin() {
     queryFn: async () => (await apiClient.get('/admin/keys')).data,
     enabled: isAdmin,
   });
+  const { data: partners, isLoading: partnersLoading } = useQuery<PartnerRecord[]>({
+    queryKey: ['adminPartners'],
+    queryFn: async () => (await apiClient.get('/admin/partners')).data,
+    enabled: isAdmin,
+  });
+  const { data: partnerStats, isLoading: partnerStatsLoading } = useQuery<{ totalImpressions: number; totalClicks: number; totalBookings: number; averageCtr: number }>({
+    queryKey: ['adminPartnerStats'],
+    queryFn: async () => (await apiClient.get('/admin/partners/analytics/summary')).data,
+    enabled: isAdmin && activeTab === 'partners',
+  });
 
   // ── Mutations ────────────────────────────────────────────────────────────────
   const deleteUser = useMutation({
@@ -241,6 +303,41 @@ export default function Admin() {
     },
     onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
   });
+  const deletePartner = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/admin/partners/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['adminPartners'] });
+      qc.invalidateQueries({ queryKey: ['adminStats'] });
+      qc.invalidateQueries({ queryKey: ['adminPartnerStats'] });
+      showToast('Đã xóa đối tác thành công!', 'success');
+    },
+    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
+  });
+  const togglePartnerActive = useMutation({
+    mutationFn: (id: string) => apiClient.put(`/admin/partners/${id}/toggle`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['adminPartners'] });
+      qc.invalidateQueries({ queryKey: ['adminPartnerStats'] });
+      showToast('Đã cập nhật trạng thái hoạt động!', 'success');
+    },
+    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
+  });
+  const savePartner = useMutation({
+    mutationFn: ({ id, data }: { id?: string; data: any }) => {
+      if (id) {
+        return apiClient.put(`/admin/partners/${id}`, data);
+      } else {
+        return apiClient.post('/admin/partners', data);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['adminPartners'] });
+      qc.invalidateQueries({ queryKey: ['adminStats'] });
+      setPartnerModalVisible(false);
+      showToast(editingPartner ? 'Đã cập nhật thông tin đối tác!' : 'Đã thêm đối tác mới thành công!', 'success');
+    },
+    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
+  });
 
   // ── Confirm helpers ──────────────────────────────────────────────────────────
   const confirmDeleteUser = (id: string, email: string) => {
@@ -250,6 +347,107 @@ export default function Admin() {
       () => deleteUser.mutate(id),
       { confirmText: 'Xóa sạch', cancelText: 'Hủy', isDestructive: true }
     );
+  };
+  const confirmDeletePartner = (id: string, name: string) => {
+    showConfirm(
+      'Xác nhận xóa đối tác',
+      `Bạn có chắc chắn muốn xóa đối tác "${name}" không? Toàn bộ dữ liệu cấu hình và thống kê hiệu suất liên quan sẽ bị xóa vĩnh viễn khỏi hệ thống!`,
+      () => deletePartner.mutate(id),
+      { confirmText: 'Xóa đối tác', cancelText: 'Hủy', isDestructive: true }
+    );
+  };
+  const openPartnerModal = (partner: PartnerRecord | null = null) => {
+    setEditingPartner(partner);
+    if (partner) {
+      setName(partner.name || '');
+      setCategory(partner.category || 'hotel');
+      setAddress(partner.address || '');
+      setLat(String(partner.lat || ''));
+      setLng(String(partner.lng || ''));
+      setCity(partner.city || 'Hà Nội');
+      setDistrict(partner.district || '');
+      setContactPhone(partner.contact_phone || '');
+      setContactEmail(partner.contact_email || '');
+      setWebsiteUrl(partner.website_url || '');
+      setBookingUrl(partner.booking_url || '');
+      setDescription(partner.description || '');
+      setImageUrls(partner.image_urls ? partner.image_urls.join(', ') : '');
+      setPriceLevel(partner.price_level || 2);
+      setCuisineTags(partner.cuisine_tags ? partner.cuisine_tags.join(', ') : '');
+      setAmenityTags(partner.amenity_tags ? partner.amenity_tags.join(', ') : '');
+      setDietarySafe(partner.dietary_safe ? partner.dietary_safe.join(', ') : '');
+      setAdminRating(partner.admin_rating || 3);
+      setAdminNotes(partner.admin_notes || '');
+      setPartnerPriority(String(partner.partner_priority || 0));
+    } else {
+      setName('');
+      setCategory('hotel');
+      setAddress('');
+      setLat('');
+      setLng('');
+      setCity('Hà Nội');
+      setDistrict('');
+      setContactPhone('');
+      setContactEmail('');
+      setWebsiteUrl('');
+      setBookingUrl('');
+      setDescription('');
+      setImageUrls('');
+      setPriceLevel(2);
+      setCuisineTags('');
+      setAmenityTags('');
+      setDietarySafe('');
+      setAdminRating(3);
+      setAdminNotes('');
+      setPartnerPriority('0');
+    }
+    setPartnerModalVisible(true);
+  };
+  const parseTags = (str: string) => {
+    return str.split(',').map(t => t.trim()).filter(Boolean);
+  };
+  const handleSavePartner = () => {
+    if (!name.trim()) return showToast('Vui lòng nhập tên đối tác', 'error');
+    if (!address.trim()) return showToast('Vui lòng nhập địa chỉ đối tác', 'error');
+    if (!lat.trim() || isNaN(Number(lat))) return showToast('Vui lòng nhập vĩ độ (lat) hợp lệ', 'error');
+    if (!lng.trim() || isNaN(Number(lng))) return showToast('Vui lòng nhập kinh độ (lng) hợp lệ', 'error');
+    if (!city) return showToast('Vui lòng chọn thành phố', 'error');
+    
+    const numLat = parseFloat(lat);
+    const numLng = parseFloat(lng);
+    const priorityVal = parseInt(partnerPriority) || 0;
+    
+    if (numLat < -90 || numLat > 90) return showToast('Vĩ độ phải nằm trong khoảng -90 đến 90', 'error');
+    if (numLng < -180 || numLng > 180) return showToast('Kinh độ phải nằm trong khoảng -180 đến 180', 'error');
+    if (priorityVal < 0 || priorityVal > 10) return showToast('Độ ưu tiên phải nằm trong khoảng từ 0 đến 10', 'error');
+
+    const data = {
+      name: name.trim(),
+      category,
+      address: address.trim(),
+      lat: numLat,
+      lng: numLng,
+      city,
+      district: district.trim() || null,
+      contact_phone: contactPhone.trim() || null,
+      contact_email: contactEmail.trim() || null,
+      website_url: websiteUrl.trim() || null,
+      booking_url: bookingUrl.trim() || null,
+      description: description.trim() || null,
+      image_urls: parseTags(imageUrls),
+      price_level: priceLevel,
+      cuisine_tags: parseTags(cuisineTags),
+      amenity_tags: parseTags(amenityTags),
+      dietary_safe: parseTags(dietarySafe),
+      admin_rating: adminRating,
+      admin_notes: adminNotes.trim() || null,
+      partner_priority: priorityVal,
+    };
+
+    savePartner.mutate({
+      id: editingPartner?.id,
+      data
+    });
   };
   const confirmDeleteTrip = (id: string, title: string) => {
     showConfirm(
@@ -328,6 +526,7 @@ export default function Admin() {
     { icon: <Map size={22} color={BRAND_COLORS.accent} />, bg: `${BRAND_COLORS.accent}1A`, label: 'Chuyến đi', value: stats?.totalTrips },
     { icon: <AlertTriangle size={22} color={BRAND_COLORS.danger} />, bg: `${BRAND_COLORS.danger}1A`, label: 'Sự cố AI', value: stats?.totalDisruptions },
     { icon: <Key size={22} color={BRAND_COLORS.gold} />, bg: `${BRAND_COLORS.gold}1A`, label: 'Bể API Keys', value: stats?.totalApiKeys },
+    { icon: <Compass size={22} color={BRAND_COLORS.primaryStrong} />, bg: `${BRAND_COLORS.primaryStrong}1A`, label: 'Đối tác', value: stats?.totalPartners },
   ];
 
   return (
@@ -413,8 +612,8 @@ export default function Admin() {
 
         {/* Tabs */}
         <View className="flex-row border-b border-brand-line/40 gap-0">
-          {(['users','trips','keys'] as const).map(tab => {
-            const labels = { users: 'Người dùng', trips: 'Chuyến đi', keys: 'Gemini Keys' };
+          {(['users','trips','keys','partners'] as const).map(tab => {
+            const labels = { users: 'Người dùng', trips: 'Chuyến đi', keys: 'Gemini Keys', partners: 'Đối tác' };
             const active = activeTab === tab;
             return (
               <Pressable key={tab} onPress={() => setActiveTab(tab)} className="px-5 py-3 border-b-2" style={{ borderBottomColor: active ? BRAND_COLORS.primary : 'transparent' }}>
@@ -636,7 +835,482 @@ export default function Admin() {
             </View>
           </View>
         )}
+        {/* ── PARTNERS TAB ────────────────────────────────────────────────── */}
+        {activeTab === 'partners' && (
+          <View className="gap-6">
+            {/* Aggregate Stats Section */}
+            {partnerStatsLoading ? (
+              <ActivityIndicator color={BRAND_COLORS.primary} />
+            ) : partnerStats ? (
+              <Reveal>
+                <View className="flex-row flex-wrap gap-4 bg-brand-bgAlt/20 p-5 rounded-2xl border border-brand-line/40">
+                  <View className="flex-1 min-w-[120px] items-center py-2">
+                    <Text className="text-[10px] font-bold text-brand-textSoft uppercase tracking-wider">Tổng hiển thị</Text>
+                    <Text className="text-xl font-bold text-brand-text mt-1">{partnerStats.totalImpressions}</Text>
+                  </View>
+                  <View className="w-[1px] bg-brand-line/40 my-2" style={{ width: Platform.OS === 'web' ? 1 : 0 }} />
+                  <View className="flex-1 min-w-[120px] items-center py-2">
+                    <Text className="text-[10px] font-bold text-brand-textSoft uppercase tracking-wider">Tổng Click</Text>
+                    <Text className="text-xl font-bold text-brand-text mt-1">{partnerStats.totalClicks}</Text>
+                  </View>
+                  <View className="w-[1px] bg-brand-line/40 my-2" style={{ width: Platform.OS === 'web' ? 1 : 0 }} />
+                  <View className="flex-1 min-w-[120px] items-center py-2">
+                    <Text className="text-[10px] font-bold text-brand-textSoft uppercase tracking-wider">Tổng Booking</Text>
+                    <Text className="text-xl font-bold text-brand-text mt-1">{partnerStats.totalBookings}</Text>
+                  </View>
+                  <View className="w-[1px] bg-brand-line/40 my-2" style={{ width: Platform.OS === 'web' ? 1 : 0 }} />
+                  <View className="flex-1 min-w-[120px] items-center py-2">
+                    <Text className="text-[10px] font-bold text-brand-textSoft uppercase tracking-wider">CTR trung bình</Text>
+                    <Text className="text-xl font-bold text-brand-primary mt-1">{(partnerStats.averageCtr * 100).toFixed(1)}%</Text>
+                  </View>
+                </View>
+              </Reveal>
+            ) : null}
+
+            {/* Action Bar */}
+            <View className="flex-row justify-between items-center">
+              <View className="flex-row items-center gap-2">
+                <Compass size={18} color={BRAND_COLORS.primary} />
+                <Text className="font-bold text-base text-brand-text">Quản lý Đối tác Tích hợp</Text>
+              </View>
+              <Pressable
+                onPress={() => openPartnerModal(null)}
+                className="flex-row items-center gap-1.5 px-4 py-2.5 rounded-xl bg-brand-primary"
+              >
+                <Plus size={14} color="white" />
+                <Text className="text-white text-xs font-bold">Thêm đối tác</Text>
+              </Pressable>
+            </View>
+
+            {/* Partners list table */}
+            <View className="rounded-2xl border border-brand-line/40 overflow-hidden bg-brand-bgAlt/30">
+              <TableHeader cols={['Tên đối tác', 'Danh mục / TP', 'Đánh giá', 'Hiệu suất (H/C/B)', 'Trạng thái', '']} />
+              {partnersLoading ? (
+                <View className="py-12 items-center gap-2">
+                  <ActivityIndicator color={BRAND_COLORS.primary} />
+                  <Text className="text-xs text-brand-textSoft">Đang tải danh sách đối tác...</Text>
+                </View>
+              ) : !partners?.length ? (
+                <Text className="text-center py-12 text-brand-textSoft text-sm">Chưa có đối tác nào được tích hợp.</Text>
+              ) : partners.map(p => {
+                const categoryLabels: Record<string, string> = {
+                  hotel: 'Khách sạn',
+                  homestay: 'Homestay',
+                  resort: 'Resort',
+                  restaurant: 'Nhà hàng',
+                  cafe: 'Cà phê',
+                  attraction: 'Tham quan',
+                  transport: 'Vận chuyển'
+                };
+                return (
+                  <View key={p.id} className="flex-row items-center px-4 py-4 border-b border-brand-line/20 gap-2">
+                    {/* Name & Address */}
+                    <View className="flex-1 gap-0.5">
+                      <Text className="font-bold text-sm text-brand-text" numberOfLines={1}>{p.name}</Text>
+                      <View className="flex-row items-center gap-1">
+                        <MapPin size={10} color={BRAND_COLORS.textSoft} />
+                        <Text className="text-[10px] text-brand-textSoft" numberOfLines={1}>{p.address}</Text>
+                      </View>
+                    </View>
+                    {/* Category & City */}
+                    <View className="w-28 justify-center">
+                      <Text className="text-xs font-bold text-brand-textSoft">{categoryLabels[p.category] || p.category}</Text>
+                      <Text className="text-[10px] text-brand-textMuted">{p.city}</Text>
+                    </View>
+                    {/* Internal Rating */}
+                    <View className="w-16 flex-row items-center gap-0.5">
+                      <Star size={12} color={BRAND_COLORS.gold} fill={BRAND_COLORS.gold} />
+                      <Text className="text-xs font-bold text-brand-text">{p.admin_rating}/5</Text>
+                    </View>
+                    {/* Performance Metrics */}
+                    <View className="w-32 justify-center">
+                      <Text className="text-xs text-brand-text font-semibold">
+                        H: {p.impression_count || 0} / C: {p.click_count || 0} / B: {p.booking_count || 0}
+                      </Text>
+                      <Text className="text-[10px] text-brand-textMuted font-medium">
+                        CTR: {p.impression_count ? ((p.click_count / p.impression_count) * 100).toFixed(1) : '0.0'}%
+                      </Text>
+                    </View>
+                    {/* Active toggle */}
+                    <View className="w-20 items-center">
+                      <Pressable onPress={() => togglePartnerActive.mutate(p.id)} className="flex-row items-center gap-1">
+                        <View className="w-9 h-5 rounded-full items-center justify-center" style={{ backgroundColor: p.active_status ? `${BRAND_COLORS.primary}20` : `${BRAND_COLORS.textSoft}20` }}>
+                          <View className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: p.active_status ? BRAND_COLORS.primary : BRAND_COLORS.textSoft, marginLeft: p.active_status ? 6 : -6 }} />
+                        </View>
+                      </Pressable>
+                    </View>
+                    {/* Edit / Delete actions */}
+                    <View className="flex-row items-center gap-1.5">
+                      <Pressable
+                        onPress={() => openPartnerModal(p)}
+                        className="p-2 rounded-lg bg-brand-primary/10"
+                      >
+                        <ChevronRight size={14} color={BRAND_COLORS.primary} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => confirmDeletePartner(p.id, p.name)}
+                        className="p-2 rounded-lg bg-brand-danger/10"
+                      >
+                        <Trash2 size={14} color={BRAND_COLORS.danger} />
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </ScrollView>
+
+      {/* Custom Partner Create/Edit Modal */}
+      {partnerModalVisible && (
+        <View className="absolute inset-0 z-40 items-center justify-center bg-black/60 px-4 py-8">
+          <View 
+            className="bg-brand-bg border border-brand-line/60 rounded-2xl p-6 max-w-2xl w-full max-h-[90%] shadow-2xl flex-col"
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 }}
+          >
+            {/* Modal Header */}
+            <View className="flex-row justify-between items-center border-b border-brand-line/40 pb-3 mb-4 shrink-0">
+              <Text className="text-lg font-display font-extrabold text-brand-text">
+                {editingPartner ? 'Cập Nhật Đối Tác' : 'Thêm Đối Tác Mới'}
+              </Text>
+              <Pressable onPress={() => setPartnerModalVisible(false)} className="p-1.5 rounded-lg bg-brand-line/10">
+                <X size={16} color={BRAND_COLORS.textSoft} />
+              </Pressable>
+            </View>
+
+            {/* Scrollable Form Body */}
+            <ScrollView className="flex-1 pr-1 gap-4" contentContainerStyle={{ paddingBottom: 16 }}>
+              {/* Name */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Tên đối tác *</Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Ví dụ: Khách sạn Continental Sài Gòn"
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                  placeholderTextColor={BRAND_COLORS.textMuted}
+                />
+              </View>
+
+              {/* Category */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Danh mục *</Text>
+                <View className="flex-row flex-wrap gap-2 mt-1">
+                  {[
+                    { value: 'hotel', label: 'Khách sạn' },
+                    { value: 'homestay', label: 'Homestay' },
+                    { value: 'resort', label: 'Resort' },
+                    { value: 'restaurant', label: 'Nhà hàng' },
+                    { value: 'cafe', label: 'Cà phê' },
+                    { value: 'attraction', label: 'Điểm tham quan' },
+                    { value: 'transport', label: 'Vận chuyển' },
+                  ].map(cat => {
+                    const active = category === cat.value;
+                    return (
+                      <Pressable
+                        key={cat.value}
+                        onPress={() => setCategory(cat.value)}
+                        className="px-3 py-1.5 rounded-full border"
+                        style={{
+                          backgroundColor: active ? BRAND_COLORS.primary : 'transparent',
+                          borderColor: active ? BRAND_COLORS.primary : BRAND_COLORS.textMuted + '40',
+                        }}
+                      >
+                        <Text className="text-xs font-bold" style={{ color: active ? 'white' : BRAND_COLORS.textSoft }}>
+                          {cat.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* City */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Thành phố *</Text>
+                <View className="flex-row flex-wrap gap-2 mt-1">
+                  {VIETNAMESE_CITIES.map(c => {
+                    const active = city === c;
+                    return (
+                      <Pressable
+                        key={c}
+                        onPress={() => setCity(c)}
+                        className="px-3 py-1.5 rounded-full border"
+                        style={{
+                          backgroundColor: active ? BRAND_COLORS.primary : 'transparent',
+                          borderColor: active ? BRAND_COLORS.primary : BRAND_COLORS.textMuted + '40',
+                        }}
+                      >
+                        <Text className="text-xs font-bold" style={{ color: active ? 'white' : BRAND_COLORS.textSoft }}>
+                          {c}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* District */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Quận / Huyện</Text>
+                <TextInput
+                  value={district}
+                  onChangeText={setDistrict}
+                  placeholder="Ví dụ: Quận 1"
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                  placeholderTextColor={BRAND_COLORS.textMuted}
+                />
+              </View>
+
+              {/* Detailed Address */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Địa chỉ chi tiết *</Text>
+                <TextInput
+                  value={address}
+                  onChangeText={setAddress}
+                  placeholder="Ví dụ: 132-134 Đồng Khởi, Bến Nghé"
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                  placeholderTextColor={BRAND_COLORS.textMuted}
+                />
+              </View>
+
+              {/* Coordinates (Lat, Lng) */}
+              <View className="flex-row gap-4 mb-3">
+                <View className="flex-1 gap-1">
+                  <Text className="text-xs font-bold text-brand-textSoft">Vĩ độ (Latitude) *</Text>
+                  <TextInput
+                    value={lat}
+                    onChangeText={setLat}
+                    placeholder="Ví dụ: 10.776"
+                    keyboardType="numeric"
+                    className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                    placeholderTextColor={BRAND_COLORS.textMuted}
+                  />
+                </View>
+                <View className="flex-1 gap-1">
+                  <Text className="text-xs font-bold text-brand-textSoft">Kinh độ (Longitude) *</Text>
+                  <TextInput
+                    value={lng}
+                    onChangeText={setLng}
+                    placeholder="Ví dụ: 106.701"
+                    keyboardType="numeric"
+                    className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                    placeholderTextColor={BRAND_COLORS.textMuted}
+                  />
+                </View>
+              </View>
+
+              {/* Contact phone & email */}
+              <View className="flex-row gap-4 mb-3">
+                <View className="flex-1 gap-1">
+                  <Text className="text-xs font-bold text-brand-textSoft">Số điện thoại liên hệ</Text>
+                  <TextInput
+                    value={contactPhone}
+                    onChangeText={setContactPhone}
+                    placeholder="Ví dụ: 02838299201"
+                    className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                    placeholderTextColor={BRAND_COLORS.textMuted}
+                  />
+                </View>
+                <View className="flex-1 gap-1">
+                  <Text className="text-xs font-bold text-brand-textSoft">Email liên hệ</Text>
+                  <TextInput
+                    value={contactEmail}
+                    onChangeText={setContactEmail}
+                    placeholder="Ví dụ: contact@hotel.com"
+                    className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                    placeholderTextColor={BRAND_COLORS.textMuted}
+                  />
+                </View>
+              </View>
+
+              {/* Website & Booking URLs */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Trang web đối tác</Text>
+                <TextInput
+                  value={websiteUrl}
+                  onChangeText={setWebsiteUrl}
+                  placeholder="Ví dụ: https://continentalhotel.com.vn"
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                  placeholderTextColor={BRAND_COLORS.textMuted}
+                />
+              </View>
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Link đặt phòng / đặt chỗ (Booking URL)</Text>
+                <TextInput
+                  value={bookingUrl}
+                  onChangeText={setBookingUrl}
+                  placeholder="Ví dụ: https://booking.com/hotel/vn/continental..."
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                  placeholderTextColor={BRAND_COLORS.textMuted}
+                />
+              </View>
+
+              {/* Price Level */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Phân khúc giá</Text>
+                <View className="flex-row gap-2 mt-1">
+                  {[1, 2, 3, 4].map(level => {
+                    const labels = ['Bình dân ($)', 'Trung cấp ($$)', 'Cao cấp ($$$)', 'Sang trọng ($$$$)'];
+                    const active = priceLevel === level;
+                    return (
+                      <Pressable
+                        key={level}
+                        onPress={() => setPriceLevel(level)}
+                        className="px-3 py-1.5 rounded-full border flex-1 items-center"
+                        style={{
+                          backgroundColor: active ? BRAND_COLORS.primary : 'transparent',
+                          borderColor: active ? BRAND_COLORS.primary : BRAND_COLORS.textMuted + '40',
+                        }}
+                      >
+                        <Text className="text-[10px] font-bold" style={{ color: active ? 'white' : BRAND_COLORS.textSoft }}>
+                          {labels[level - 1]}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Admin Rating */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Điểm đánh giá hệ thống</Text>
+                <View className="flex-row gap-2 mt-1">
+                  {[1, 2, 3, 4, 5].map(rating => {
+                    const active = adminRating === rating;
+                    return (
+                      <Pressable
+                        key={rating}
+                        onPress={() => setAdminRating(rating)}
+                        className="p-2 rounded-xl border flex-row items-center justify-center gap-1 flex-1"
+                        style={{
+                          backgroundColor: active ? BRAND_COLORS.gold + '20' : 'transparent',
+                          borderColor: active ? BRAND_COLORS.gold : BRAND_COLORS.textMuted + '40',
+                        }}
+                      >
+                        <Star size={12} color={BRAND_COLORS.gold} fill={active ? BRAND_COLORS.gold : 'transparent'} />
+                        <Text className="text-xs font-bold" style={{ color: BRAND_COLORS.textSoft }}>
+                          {rating} Sao
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Priority */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Độ ưu tiên (0-10) *</Text>
+                <TextInput
+                  value={partnerPriority}
+                  onChangeText={setPartnerPriority}
+                  placeholder="Ví dụ: 5"
+                  keyboardType="numeric"
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                  placeholderTextColor={BRAND_COLORS.textMuted}
+                />
+              </View>
+
+              {/* Description */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Mô tả ngắn về đối tác</Text>
+                <TextInput
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Mô tả tóm tắt dịch vụ, điểm nổi bật..."
+                  multiline
+                  numberOfLines={3}
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                  placeholderTextColor={BRAND_COLORS.textMuted}
+                  style={{ minHeight: 60, textAlignVertical: 'top' }}
+                />
+              </View>
+
+              {/* Image URLs */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">URLs Hình ảnh (Phân cách bởi dấu phẩy)</Text>
+                <TextInput
+                  value={imageUrls}
+                  onChangeText={setImageUrls}
+                  placeholder="https://image1.jpg, https://image2.jpg"
+                  multiline
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                  placeholderTextColor={BRAND_COLORS.textMuted}
+                  style={{ minHeight: 45 }}
+                />
+              </View>
+
+              {/* Tags (Cuisine, Amenities, Dietary) */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Tags Ẩm thực (cho nhà hàng/cafe, cách nhau bởi dấu phẩy)</Text>
+                <TextInput
+                  value={cuisineTags}
+                  onChangeText={setCuisineTags}
+                  placeholder="vietnamese, seafood, buffet, street_food"
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                  placeholderTextColor={BRAND_COLORS.textMuted}
+                />
+              </View>
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Tags Tiện ích (cho khách sạn/resort, cách nhau bởi dấu phẩy)</Text>
+                <TextInput
+                  value={amenityTags}
+                  onChangeText={setAmenityTags}
+                  placeholder="pool, spa, gym, parking, free_wifi, breakfast"
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                  placeholderTextColor={BRAND_COLORS.textMuted}
+                />
+              </View>
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Chế độ ăn uống an toàn (cách nhau bởi dấu phẩy)</Text>
+                <TextInput
+                  value={dietarySafe}
+                  onChangeText={setDietarySafe}
+                  placeholder="vegetarian, vegan, halal, gluten_free"
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                  placeholderTextColor={BRAND_COLORS.textMuted}
+                />
+              </View>
+
+              {/* Admin Notes */}
+              <View className="gap-1 mb-3">
+                <Text className="text-xs font-bold text-brand-textSoft">Ghi chú quản lý nội bộ</Text>
+                <TextInput
+                  value={adminNotes}
+                  onChangeText={setAdminNotes}
+                  placeholder="Thông tin liên hệ phụ, lưu ý riêng..."
+                  multiline
+                  numberOfLines={2}
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                  placeholderTextColor={BRAND_COLORS.textMuted}
+                  style={{ minHeight: 45, textAlignVertical: 'top' }}
+                />
+              </View>
+            </ScrollView>
+
+            {/* Modal Footer Buttons */}
+            <View className="flex-row justify-end gap-3 border-t border-brand-line/40 pt-4 mt-2 shrink-0">
+              <Pressable 
+                onPress={() => setPartnerModalVisible(false)}
+                className="px-5 py-2.5 rounded-xl border border-brand-line/60 bg-brand-bgAlt/50"
+              >
+                <Text className="text-xs font-bold text-brand-textSoft">Hủy</Text>
+              </Pressable>
+              <Pressable 
+                onPress={handleSavePartner}
+                disabled={savePartner.isPending}
+                className="px-5 py-2.5 rounded-xl bg-brand-primary"
+                style={savePartner.isPending ? { opacity: 0.5 } : undefined}
+              >
+                <Text className="text-xs font-bold text-white">
+                  {savePartner.isPending ? 'Đang lưu...' : 'Lưu lại'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Custom Confirmation Modal */}
       {confirmModal && confirmModal.visible && (

@@ -145,3 +145,49 @@ create table public.gemini_api_keys (
 );
 alter table public.gemini_api_keys enable row level security;
 -- No public policies, as only service role (backend admin client) queries this table.
+
+-- ===== 9. partners =====
+create table public.partners (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  category text not null, -- 'hotel' | 'homestay' | 'resort' | 'restaurant' | 'cafe' | 'attraction' | 'transport'
+  address text not null,
+  lat double precision not null,
+  lng double precision not null,
+  city text not null,
+  district text,
+  contact_phone text,
+  contact_email text,
+  website_url text,
+  booking_url text,
+  description text,
+  image_urls text[] default '{}'::text[],
+  price_level int default 2, -- 1=budget, 2=mid, 3=upscale, 4=luxury
+  cuisine_tags text[] default '{}'::text[],
+  amenity_tags text[] default '{}'::text[],
+  dietary_safe text[] default '{}'::text[],
+  admin_rating int default 3, -- 1-5 internal score
+  admin_notes text,
+  partner_priority int default 0, -- 0-10 priority
+  active_status boolean default true,
+  impression_count int default 0,
+  click_count int default 0,
+  booking_count int default 0,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table public.partners enable row level security;
+create policy "partners_public_select" on public.partners for select using (true);
+
+-- ===== 10. partner_analytics =====
+create table public.partner_analytics (
+  id uuid primary key default gen_random_uuid(),
+  partner_id uuid not null references public.partners(id) on delete cascade,
+  event_type text not null, -- 'impression' | 'click' | 'booking' | 'skip'
+  trip_id uuid references public.trips(id) on delete set null,
+  user_id uuid references auth.users(id) on delete set null,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+alter table public.partner_analytics enable row level security;
+
