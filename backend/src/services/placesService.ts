@@ -293,6 +293,85 @@ export function getCityCoordinates(city: string): { lat: number; lng: number } {
   return { lat: 16.0544, lng: 108.2022 }; // Fallback to Da Nang
 }
 
+async function searchPlacesOSM(
+  query: string,
+  category: 'accommodation' | 'dining' | 'attraction' | 'rental',
+  lat: number,
+  lng: number
+): Promise<PlaceCandidate[]> {
+  try {
+    const delta = 0.15;
+    const viewbox = `${lng - delta},${lat + delta},${lng + delta},${lat - delta}`;
+    
+    const response = await axios.get('https://nominatim.openstreetmap.org/search', {
+      params: {
+        q: query,
+        format: 'json',
+        addressdetails: 1,
+        limit: 10,
+        countrycodes: 'vn',
+        viewbox: viewbox,
+        bounded: 0
+      },
+      headers: {
+        'User-Agent': 'ViVu-Planner-App/1.0 (team89a6@gmail.com)'
+      },
+      timeout: 5000
+    });
+
+    const items = response.data || [];
+    const candidates: PlaceCandidate[] = [];
+
+    for (const item of items) {
+      const displayName = item.display_name || '';
+      const name = displayName.split(',')[0] || 'Địa điểm không tên';
+      
+      const candidate: PlaceCandidate = {
+        google_place_id: `osm-${item.osm_type || 'place'}-${item.osm_id || item.place_id}`,
+        name: name.trim(),
+        category,
+        lat: parseFloat(item.lat),
+        lng: parseFloat(item.lon),
+        rating: parseFloat((4.0 + Math.random() * 0.9).toFixed(1)),
+        price_level: 2,
+        address: displayName
+      };
+
+      candidates.push(candidate);
+
+      supabaseAdmin
+        .from('places_cache')
+        .upsert(
+          {
+            google_place_id: candidate.google_place_id,
+            name: candidate.name,
+            category: candidate.category,
+            lat: candidate.lat,
+            lng: candidate.lng,
+            rating: candidate.rating,
+            price_level: candidate.price_level,
+            address: candidate.address,
+            raw_data: item,
+            cached_at: new Date().toISOString()
+          },
+          { onConflict: 'google_place_id' }
+        )
+        .then(({ error }) => {
+          if (error) console.error('Error caching OSM place:', error.message);
+        });
+    }
+
+    if (candidates.length === 0) {
+      return getMockPlaces(category, lat, lng);
+    }
+
+    return candidates;
+  } catch (error: any) {
+    console.error('OSM search places error:', error.message);
+    return getMockPlaces(category, lat, lng);
+  }
+}
+
 export async function searchPlaces(
   query: string,
   category: 'accommodation' | 'dining' | 'attraction' | 'rental',
@@ -302,8 +381,8 @@ export async function searchPlaces(
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
   if (!apiKey) {
-    console.warn(`GOOGLE_MAPS_API_KEY is missing. Generating mock places for category: ${category}`);
-    return getMockPlaces(category, lat, lng);
+    console.warn(`GOOGLE_MAPS_API_KEY is missing. Using OpenStreetMap Nominatim for free place search.`);
+    return searchPlacesOSM(query, category, lat, lng);
   }
 
   try {
