@@ -24,7 +24,25 @@ export default function AppLayout() {
     );
   }
 
-  const hasAdminToken = Platform.OS === 'web' && typeof localStorage !== 'undefined' && !!localStorage.getItem('vivu_admin_token');
+  const hasAdminToken = (() => {
+    if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return false;
+    const token = localStorage.getItem('vivu_admin_token');
+    if (!token) return false;
+    // Validate token expiry
+    const parts = token.split(':');
+    if (parts.length === 3) {
+      const expiresAt = parseInt(parts[1]);
+      if (!isNaN(expiresAt) && Date.now() > expiresAt) {
+        // Token expired — clean up
+        console.warn('[ViVu Layout] Admin token expired, cleaning up...');
+        localStorage.removeItem('vivu_admin_token');
+        localStorage.removeItem('vivu_mock_user');
+        localStorage.removeItem('vivu_mock_token');
+        return false;
+      }
+    }
+    return true;
+  })();
 
   if (!session && !hasAdminToken) return <Redirect href="/dang-nhap" />;
 

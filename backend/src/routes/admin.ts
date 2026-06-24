@@ -25,7 +25,7 @@ router.post('/login', async (req, res) => {
   const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 
   if (email === adminEmail && password === adminPassword) {
-    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
     const payload = `${email}:${expiresAt}`;
     const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-admin-secret';
     const signature = crypto.createHmac('sha256', secret).update(payload).digest('hex');
