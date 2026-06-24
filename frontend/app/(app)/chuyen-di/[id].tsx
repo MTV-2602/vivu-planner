@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  Modal, Alert, ActivityIndicator, Platform,
+  Modal, Alert, ActivityIndicator, Platform, Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -27,6 +27,7 @@ interface ItineraryItem {
   id: string; item_type: string; title: string; description: string;
   start_time?: string; end_time?: string; location_name: string;
   estimated_cost?: number | null; status: string; order_index: number;
+  google_place_id?: string | null; booking_url?: string | null;
 }
 interface ItineraryDay {
   id: string; day_number: number; date: string;
@@ -534,9 +535,36 @@ export default function TripDetail() {
                                     <Text className="text-[9px] font-bold text-brand-danger">ĐÃ THAY THẾ</Text>
                                   </View>
                                 )}
+                                {item.google_place_id && item.google_place_id.startsWith('partner_') && (
+                                  <View className="flex-row items-center gap-1 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                    <Shield size={10} color="#059669" />
+                                    <Text className="text-[9px] font-extrabold uppercase tracking-wider text-emerald-600">Đối tác xác minh</Text>
+                                  </View>
+                                )}
                               </View>
                               <Text className="text-base font-bold text-brand-text" style={isReplaced ? { textDecorationLine: 'line-through' } : undefined}>{item.title}</Text>
                               <Text className="text-xs text-brand-textSoft font-serif" numberOfLines={4}>{item.description}</Text>
+                              {item.booking_url && (
+                                <Pressable
+                                  onPress={() => {
+                                    if (item.booking_url) {
+                                      Linking.openURL(item.booking_url).catch(err =>
+                                        console.error("Failed to open URL", err)
+                                      );
+                                      if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
+                                        const partnerId = item.google_place_id.replace('partner_', '');
+                                        apiClient.post(`/admin/partners/${partnerId}/click`, { tripId: id }).catch(err =>
+                                          console.error("Failed to log partner click", err)
+                                        );
+                                      }
+                                    }
+                                  }}
+                                  className="mt-2 self-start flex-row items-center gap-1.5 bg-brand-primary/10 py-1.5 px-3 rounded-lg border border-brand-primary/20"
+                                >
+                                  <Compass size={12} color={BRAND_COLORS.primary} />
+                                  <Text className="text-[10px] font-bold text-brand-primary">Đặt chỗ trực tuyến</Text>
+                                </Pressable>
+                              )}
                             </View>
 
                             {/* Cost + actions */}

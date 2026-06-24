@@ -17,6 +17,20 @@ function adminMiddleware(req: AuthenticatedRequest, res: Response, next: NextFun
 }
 
 router.use(authMiddleware);
+
+// POST /api/admin/partners/:id/click - Public endpoint to log partner clicks (requires user auth, not admin)
+router.post('/:id/click', async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+  const { tripId } = req.body;
+  try {
+    const { logPartnerEvent } = require('../services/partnerService');
+    await logPartnerEvent(id, 'click', tripId, req.user?.id);
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to log partner click', details: err.message });
+  }
+});
+
 router.use(adminMiddleware);
 
 // GET /api/admin/partners - List all partners (with filters)

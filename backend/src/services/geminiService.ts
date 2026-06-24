@@ -257,8 +257,9 @@ Nhiệm vụ của bạn là xây dựng lịch trình du lịch tối ưu, an t
 
 QUY TẮC CỐT LÕI:
 1. Bạn CHỈ được chọn địa điểm trong danh sách "candidate_places" được cung cấp — tuyệt đối không tự tạo thêm địa điểm nào ngoài danh sách này (ngoại trừ loại di chuyển "transport" hoặc trải nghiệm "experience" tự do).
-2. Hãy phân tích kỹ sở thích, ngân sách, và đặc biệt là tình trạng sức khỏe, giới hạn thể lực của khách để chọn hoạt động phù hợp nhất.
-3. PHÂN BỔ NGÂN SÁCH THÔNG MINH & TỰ ĐỘNG ƯỚC LƯỢNG CHI PHÍ THỰC TẾ (RÀNG BUỘC BẮT BUỘC CỰC KỲ NGHIÊM NGẶT):
+2. ƯU TIÊN ĐỐI TÁC XÁC MINH (VERIFIED PARTNERS): Trong danh sách "candidate_places", các địa điểm có "google_place_id" bắt đầu bằng tiền tố "partner_" là đối tác đã được xác minh. Hãy ưu tiên lựa chọn và đưa các đối tác này vào lịch trình nếu họ phù hợp với sở thích, vị trí địa lý và ngân sách của khách. Tuy nhiên, tuyệt đối KHÔNG cưỡng ép chọn đối tác nếu không phù hợp — chất lượng lịch trình du lịch luôn là ưu tiên hàng đầu. Khi chọn một đối tác, hãy giữ nguyên thuộc tính google_place_id có tiền tố "partner_" trong kết quả JSON trả về.
+3. Hãy phân tích kỹ sở thích, ngân sách, và đặc biệt là tình trạng sức khỏe, giới hạn thể lực của khách để chọn hoạt động phù hợp nhất.
+4. PHÂN BỔ NGÂN SÁCH THÔNG MINH & TỰ ĐỘNG ƯỚC LƯỢNG CHI PHÍ THỰC TẾ (RÀNG BUỘC BẮT BUỘC CỰC KỲ NGHIÊM NGẶT):
     - Địa chỉ của tất cả địa điểm được chọn phải phù hợp với điều kiện kinh tế và khớp với phân bổ tổng chi phí cho tất cả các ngày.
     - Bạn BẮT BUỘC phải điền giá cả ước lượng thực tế ("estimated_cost") cho toàn bộ hoạt động (ăn uống, đi lại, tham quan, lưu trú). Tuyệt đối không bỏ trống hay trả về null/undefined cho các hoạt động ăn uống, đi lại cơ bản.
     - DỰ ĐOÁN CAO ĐIỂM / LỄ TẾT: Bạn phải kiểm tra "start_date" và "end_date". Hãy suy nghĩ chu toàn và dự đoán trước xem lịch trình này có trùng vào ngày lễ Tết lớn ở Việt Nam (như Tết Nguyên Đán, Giỗ tổ Hùng Vương, 30/4-1/5, Quốc khánh 2/9, Noel, Tết Dương lịch) hoặc cao điểm du lịch hè (tháng 6 đến tháng 8), hoặc dịp cuối tuần (Thứ 6, Thứ 7, Chủ Nhật) hay không. Nếu có, bắt buộc phải tăng mức giá phòng nghỉ và tiền xe cộ lên từ 20% đến 50% so với ngày thường để phản ánh thực tế tăng giá mùa lễ, đồng thời ghi rõ lý do và tổng chi phí bị ảnh hưởng bởi dịp lễ trong phần "expert_advice".
@@ -360,8 +361,9 @@ Nhiệm vụ của bạn là điều chỉnh lịch trình hiện tại ("curren
 
 YÊU CẦU ĐIỀU CHỈNH CHẶT CHẼ:
 1. Bạn phải phân tích toàn diện các yếu tố: lịch trình cũ ("current_itinerary"), giới hạn ngân sách còn lại, điều kiện thời tiết thực tế từ "weather_forecast", và thông tin sự cố phát sinh.
-2. Tuyệt đối không đưa ra các gợi ý bâng quơ hoặc chung chung (như "Ăn uống tự do", "Đi chơi chỗ khác" mà không có tên địa điểm). Bạn phải chọn các địa điểm cụ thể và thực tế từ danh sách "candidate_places" được cung cấp để thay thế hoàn chỉnh.
-3. PHÂN BỔ NGÂN SÁCH THÔNG MINH & TỰ ĐỘNG ƯỚC LƯỢNG CHI PHÍ THỰC TẾ (RÀNG BUỘC BẮT BUỘC CỰC KỲ NGHIÊM NGẶT):
+2. ƯU TIÊN ĐỐI TÁC XÁC MINH (VERIFIED PARTNERS): Trong danh sách "candidate_places", các địa điểm có "google_place_id" bắt đầu bằng tiền tố "partner_" là đối tác đã được xác minh. Hãy ưu tiên lựa chọn và đưa các đối tác này vào lịch trình nếu họ phù hợp với sở thích, vị trí địa lý và ngân sách của khách. Tuy nhiên, tuyệt đối KHÔNG cưỡng ép chọn đối tác nếu không phù hợp — chất lượng lịch trình du lịch luôn là ưu tiên hàng đầu. Khi chọn một đối tác, hãy giữ nguyên thuộc tính google_place_id có tiền tố "partner_" trong kết quả JSON trả về.
+3. Tuyệt đối không đưa ra các gợi ý bâng quơ hoặc chung chung (như "Ăn uống tự do", "Đi chơi chỗ khác" mà không có tên địa điểm). Bạn phải chọn các địa điểm cụ thể và thực tế từ danh sách "candidate_places" được cung cấp để thay thế hoàn chỉnh.
+4. PHÂN BỔ NGÂN SÁCH THÔNG MINH & TỰ ĐỘNG ƯỚC LƯỢNG CHI PHÍ THỰC TẾ (RÀNG BUỘC BẮT BUỘC CỰC KỲ NGHIÊM NGẶT):
     - Địa chỉ của tất cả địa điểm mới phải phù hợp với điều kiện kinh tế và khớp với phân bổ tổng chi phí cho tất cả các ngày.
     - Bạn BẮT BUỘC phải điền giá cả ước lượng thực tế ("estimated_cost") cho toàn bộ hoạt động mới thay thế. Tuyệt đối không bỏ trống hay trả về null/undefined cho các hoạt động ăn uống, đi lại cơ bản.
     - DỰ ĐOÁN CAO ĐIỂM / LỄ TẾT: Bạn phải kiểm tra "start_date" và "end_date". Hãy suy nghĩ chu toàn và dự đoán trước xem lịch trình này có trùng vào các ngày lễ Tết ở Việt Nam (như Tết Nguyên Đán, Giỗ tổ Hùng Vương, 30/4-1/5, Quốc khánh 2/9, Noel, Tết Dương lịch) hoặc cao điểm hè (tháng 6-8), hoặc dịp cuối tuần hay không. Nếu có, bắt buộc phải tăng mức giá phòng nghỉ và tiền xe cộ lên từ 20% đến 50% so với ngày thường để phản ánh thực tế tăng giá mùa lễ, đồng thời ghi rõ lý do và tổng chi phí bị ảnh hưởng bởi dịp lễ trong phần "expert_advice".
@@ -741,6 +743,7 @@ export async function generateAlternatives(
   const systemPrompt = `Bạn là trợ lý AI lập lịch trình du lịch Việt Nam.
 Hãy đề xuất đúng 3 hoạt động thay thế (alternatives) cho hoạt động gốc được cung cấp, dựa trên yêu cầu đặc thù của người dùng.
 Bạn phải tận dụng danh sách candidate_places được cung cấp ở dưới để lấy tên và google_place_id cho các hoạt động ăn uống/chỗ nghỉ/tham quan/thuê xe (nếu phù hợp).
+ƯU TIÊN ĐỐI TÁC XÁC MINH: Ưu tiên chọn các địa điểm trong candidate_places có google_place_id bắt đầu bằng "partner_" (đối tác đã xác minh) nếu phù hợp với yêu cầu của người dùng. Khi chọn, hãy giữ nguyên google_place_id của đối tác đó.
 Giờ bắt đầu và kết thúc của hoạt động thay thế nên khớp hoặc gần khớp với hoạt động gốc (${originalItem.start_time || '08:00'} - ${originalItem.end_time || '10:00'}), nhưng có thể thay đổi nhẹ nếu cần.
 Hãy ước lượng chi phí (VND) hợp lý và thực tế cho "estimated_cost" dựa trên price_level và giá trị trung bình ở Việt Nam cho hoạt động đó (ví dụ: ăn uống, vé tham quan, di chuyển...).
 Nếu hoạt động đó là miễn phí (như đi dạo công viên, chùa Linh Ứng, hoạt động tự do), hãy điền "estimated_cost" = 0 để hệ thống hiển thị là "Miễn phí".

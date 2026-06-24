@@ -4,6 +4,7 @@ import { getSupabaseUserClient, supabaseAdmin } from '../services/supabaseAdmin'
 import { getCityCoordinates, searchPlaces } from '../services/placesService';
 import { getWeatherForecast } from '../services/weatherService';
 import { generateItinerary, adaptItinerary, generateAlternatives } from '../services/geminiService';
+import { getRelevantPartners, convertPartnersToPlaceCandidates, logPartnerEvent } from '../services/partnerService';
 
 const router = Router();
 
@@ -139,11 +140,29 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       searchPlaces('cho thuê xe máy tự lái', 'rental', lat, lng)
     ]);
 
+    // Fetch relevant partners and merge them
+    const relevantPartners = await getRelevantPartners(
+      destination_city,
+      lat,
+      lng,
+      preferences || {},
+      parseFloat(budget_total) || 0,
+      start_date,
+      end_date,
+      parseInt(traveler_count || '1')
+    );
+    const partnerCandidates = convertPartnersToPlaceCandidates(relevantPartners);
+
+    const mergedAccommodations = [...partnerCandidates.filter(p => p.category === 'accommodation'), ...accommodations];
+    const mergedDining = [...partnerCandidates.filter(p => p.category === 'dining'), ...dining];
+    const mergedAttractions = [...partnerCandidates.filter(p => p.category === 'attraction'), ...attractions];
+    const mergedRentals = [...partnerCandidates.filter(p => p.category === 'rental'), ...rentals];
+
     const candidatePlaces = {
-      accommodation: accommodations,
-      dining,
-      attraction: attractions,
-      rental: rentals
+      accommodation: mergedAccommodations,
+      dining: mergedDining,
+      attraction: mergedAttractions,
+      rental: mergedRentals
     };
 
     // 4. Generate AI itinerary using Gemini
@@ -201,19 +220,21 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         let itemLat = lat;
         let itemLng = lng;
         let itemAddress = '';
+        let itemBookingUrl = '';
 
         if (item.google_place_id) {
           const matched = [
-            ...accommodations,
-            ...dining,
-            ...attractions,
-            ...rentals
+            ...mergedAccommodations,
+            ...mergedDining,
+            ...mergedAttractions,
+            ...mergedRentals
           ].find(c => c.google_place_id === item.google_place_id);
           
           if (matched) {
             itemLat = matched.lat;
             itemLng = matched.lng;
             itemAddress = matched.address;
+            itemBookingUrl = matched.booking_url || '';
           }
         }
 
@@ -229,6 +250,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
           location_lng: itemLng,
           google_place_id: item.google_place_id || null,
           estimated_cost: parseOptionalCost(item.estimated_cost),
+          booking_url: itemBookingUrl || null,
           order_index: item.order_index,
           status: 'planned'
         });
@@ -241,6 +263,19 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         .insert(itemsToInsert);
 
       if (itemsError) throw itemsError;
+
+      // Log partner booking events
+      for (const item of itemsToInsert) {
+        if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
+          const partnerId = item.google_place_id.replace('partner_', '');
+          await logPartnerEvent(partnerId, 'booking', trip.id, req.user!.id, { item_type: item.item_type });
+        }
+      }
+    }
+
+    // Log impressions for all partner candidates sent to AI
+    for (const partner of relevantPartners) {
+      await logPartnerEvent(partner.id, 'impression', trip.id, req.user!.id, {});
     }
 
     // Fetch the full assembled trip details to return
@@ -364,7 +399,31 @@ router.post('/:id/disruptions/preview', authMiddleware, async (req: Authenticate
       searchPlaces('địa điểm tham quan', 'attraction', lat, lng),
       searchPlaces('thuê xe máy', 'rental', lat, lng)
     ]);
-    const candidatePlaces = { accommodation: accommodations, dining, attraction: attractions, rental: rentals };
+    
+    // Fetch relevant partners and merge them
+    const relevantPartners = await getRelevantPartners(
+      trip.destination_city,
+      lat,
+      lng,
+      trip.preferences || {},
+      parseFloat(trip.budget_total) || 0,
+      trip.start_date,
+      trip.end_date,
+      parseInt(trip.traveler_count || '1')
+    );
+    const partnerCandidates = convertPartnersToPlaceCandidates(relevantPartners);
+
+    const mergedAccommodations = [...partnerCandidates.filter(p => p.category === 'accommodation'), ...accommodations];
+    const mergedDining = [...partnerCandidates.filter(p => p.category === 'dining'), ...dining];
+    const mergedAttractions = [...partnerCandidates.filter(p => p.category === 'attraction'), ...attractions];
+    const mergedRentals = [...partnerCandidates.filter(p => p.category === 'rental'), ...rentals];
+
+    const candidatePlaces = { 
+      accommodation: mergedAccommodations, 
+      dining: mergedDining, 
+      attraction: mergedAttractions, 
+      rental: mergedRentals 
+    };
 
     const { itinerary: adaptedItinerary, diff } = await adaptItinerary(
       trip,
@@ -466,9 +525,21 @@ router.post('/:id/disruptions/apply', authMiddleware, async (req: AuthenticatedR
     }
 
     // F. Lấy tọa độ để fallback
-    const { data: trip } = await client.from('trips').select('destination_city').eq('id', tripId).single();
+    const { data: trip } = await client.from('trips').select('*').eq('id', tripId).single();
     const city = trip?.destination_city || 'Da Nang';
     const { lat, lng } = getCityCoordinates(city);
+
+    // Fetch partners list to match booking_url
+    const relevantPartners = await getRelevantPartners(
+      city,
+      lat,
+      lng,
+      trip?.preferences || {},
+      parseFloat(trip?.budget_total) || 0,
+      trip?.start_date,
+      trip?.end_date,
+      parseInt(trip?.traveler_count || '1')
+    );
 
     // G. Chèn các hoạt động thay thế đã chọn
     const itemsToInsert: any[] = [];
@@ -476,6 +547,14 @@ router.post('/:id/disruptions/apply', authMiddleware, async (req: AuthenticatedR
       // Tìm đúng ngày trong database
       const dbDay = dbDays.find(d => Number(d.day_number) === Number(item.day_number));
       if (!dbDay) return;
+
+      let itemBookingUrl = item.booking_url || null;
+      if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
+        const matched = relevantPartners.find(p => `partner_${p.id}` === item.google_place_id);
+        if (matched) {
+          itemBookingUrl = matched.booking_url || null;
+        }
+      }
 
       itemsToInsert.push({
         day_id: dbDay.id,
@@ -489,6 +568,7 @@ router.post('/:id/disruptions/apply', authMiddleware, async (req: AuthenticatedR
         location_lng: item.location_lng || lng,
         google_place_id: item.google_place_id || null,
         estimated_cost: parseOptionalCost(item.estimated_cost),
+        booking_url: itemBookingUrl,
         order_index: item.order_index,
         status: 'planned'
       });
@@ -500,6 +580,14 @@ router.post('/:id/disruptions/apply', authMiddleware, async (req: AuthenticatedR
         .insert(itemsToInsert);
 
       if (insertError) throw insertError;
+
+      // Log partner booking events for applied alternative items
+      for (const item of itemsToInsert) {
+        if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
+          const partnerId = item.google_place_id.replace('partner_', '');
+          await logPartnerEvent(partnerId, 'booking', tripId, req.user!.id, { item_type: item.item_type, disruption_applied: true });
+        }
+      }
     }
 
     return res.json({
@@ -627,7 +715,23 @@ router.post('/items/:itemId/ai-replace', authMiddleware, async (req: Authenticat
       searchQuery = `${user_requirement} ${searchQuery}`;
     }
 
-    const candidatePlaces = await searchPlaces(searchQuery, category, lat, lng);
+    const searchPlacesResults = await searchPlaces(searchQuery, category, lat, lng);
+
+    // Fetch relevant partners and merge them
+    const relevantPartners = await getRelevantPartners(
+      trip.destination_city,
+      lat,
+      lng,
+      trip.preferences || {},
+      parseFloat(trip.budget_total) || 0,
+      trip.start_date,
+      trip.end_date,
+      parseInt(trip.traveler_count || '1')
+    );
+    const partnerCandidates = convertPartnersToPlaceCandidates(relevantPartners);
+    const categoryPartners = partnerCandidates.filter(p => p.category === category);
+
+    const candidatePlaces = [...categoryPartners, ...searchPlacesResults];
 
     // D. Gọi AI để tạo 3 phương án thay thế
     const alternatives = await generateAlternatives(trip, item, user_requirement, candidatePlaces);

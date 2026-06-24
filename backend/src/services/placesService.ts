@@ -10,6 +10,7 @@ export interface PlaceCandidate {
   rating: number;
   price_level: number;
   address: string;
+  booking_url?: string;
 }
 
 // Rich mock places library for Vietnam cities to run without a Google Maps API Key
