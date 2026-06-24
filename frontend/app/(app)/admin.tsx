@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Compass, Users, Map, Trash2, Shield, BarChart3, AlertTriangle,
   Key, Check, X, Eye, LogOut, MapPin, Calendar, Wallet,
-  Mail, RefreshCw, ChevronRight, Plus, Star,
+  Mail, RefreshCw, ChevronRight, Plus, Star, Sparkles,
 } from 'lucide-react-native';
 import { supabase } from '../../lib/supabaseClient';
 import { apiClient } from '../../lib/apiClient';
@@ -111,6 +111,12 @@ export default function Admin() {
   const [adminRating, setAdminRating] = useState(3);
   const [adminNotes, setAdminNotes] = useState('');
   const [partnerPriority, setPartnerPriority] = useState('0');
+
+  // Google Places search autofill states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchingPlaces, setSearchingPlaces] = useState(false);
+
   const [confirmModal, setConfirmModal] = useState<{
     visible: boolean;
     title: string;
@@ -451,6 +457,73 @@ export default function Admin() {
       data
     });
   };
+
+  const CITY_COORDS: Record<string, { lat: number; lng: number }> = {
+    'Hà Nội': { lat: 21.0285, lng: 105.8542 },
+    'Đà Nẵng': { lat: 16.0544, lng: 108.2022 },
+    'TP. Hồ Chí Minh': { lat: 10.8231, lng: 106.6297 },
+    'Hội An': { lat: 15.8801, lng: 108.3380 },
+    'Huế': { lat: 16.4637, lng: 107.5908 },
+    'Nha Trang': { lat: 12.2388, lng: 109.1967 },
+    'Đà Lạt': { lat: 11.9404, lng: 108.4583 },
+    'Phú Quốc': { lat: 10.2899, lng: 103.9840 },
+    'Sa Pa': { lat: 22.3364, lng: 103.8438 },
+    'Ninh Bình': { lat: 20.2506, lng: 105.9745 },
+    'Vũng Tàu': { lat: 10.3460, lng: 107.0843 }
+  };
+
+  const mapFormCategoryToPlacesCategory = (formCat: string): 'accommodation' | 'dining' | 'attraction' | 'rental' => {
+    if (formCat === 'hotel' || formCat === 'homestay' || formCat === 'resort') return 'accommodation';
+    if (formCat === 'restaurant' || formCat === 'cafe') return 'dining';
+    if (formCat === 'attraction') return 'attraction';
+    return 'rental';
+  };
+
+  const handlePlacesSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setSearchingPlaces(true);
+    setSearchResults([]);
+    try {
+      const coords = CITY_COORDS[city] || { lat: 16.0544, lng: 108.2022 };
+      const placeCategory = mapFormCategoryToPlacesCategory(category);
+      
+      const response = await apiClient.get('/places/search', {
+        params: {
+          query: searchQuery.trim(),
+          lat: coords.lat,
+          lng: coords.lng,
+          category: placeCategory
+        }
+      });
+      
+      setSearchResults(response.data || []);
+      if (response.data?.length === 0) {
+        showToast('Không tìm thấy địa điểm nào khớp từ Google.', 'info');
+      }
+    } catch (e: any) {
+      console.error(e);
+      showToast('Lỗi tìm kiếm địa điểm: ' + (e.response?.data?.error || e.message), 'error');
+    } finally {
+      setSearchingPlaces(false);
+    }
+  };
+
+  const handleSelectPlace = (place: any) => {
+    setName(place.name || '');
+    setAddress(place.address || '');
+    setLat(String(place.lat || ''));
+    setLng(String(place.lng || ''));
+    if (place.price_level) {
+      setPriceLevel(place.price_level);
+    }
+    if (place.rating) {
+      setAdminRating(Math.min(5, Math.max(1, Math.round(place.rating))));
+    }
+    setSearchResults([]);
+    setSearchQuery('');
+    showToast('Đã tự động điền thông tin từ Google Places!', 'success');
+  };
+
   const confirmDeleteTrip = (id: string, title: string) => {
     showConfirm(
       'Xác nhận xóa chuyến đi',
@@ -1009,6 +1082,55 @@ export default function Admin() {
             <ScrollView className="flex-1 pr-1 gap-4" contentContainerStyle={{ paddingBottom: 16 }}>
               {formSubTab === 'basic' && (
                 <View className="gap-3">
+                  {/* Google Places Autofill Search Bar */}
+                  <View className="p-4 rounded-xl border border-brand-primary/20 bg-brand-primary/5 gap-2.5 mb-2">
+                    <View className="flex-row items-center gap-1.5">
+                      <Sparkles size={14} color={BRAND_COLORS.primary} />
+                      <Text className="text-xs font-bold text-brand-primary">Tìm kiếm & Tự động điền dữ liệu Google</Text>
+                    </View>
+                    <Text className="text-[10px] text-brand-textSoft">
+                      Nhập tên địa điểm để tự động điền Tên, Địa chỉ, Tọa độ GPS, Giá và Đánh giá từ Google Maps.
+                    </Text>
+                    <View className="flex-row gap-2 mt-1">
+                      <TextInput
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        placeholder="Nhập tên địa điểm (VD: Metropole Hanoi...)"
+                        className="flex-1 px-3 py-2 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                        placeholderTextColor={BRAND_COLORS.textMuted}
+                        onSubmitEditing={handlePlacesSearch}
+                      />
+                      <Pressable
+                        onPress={handlePlacesSearch}
+                        disabled={searchingPlaces}
+                        className="px-4 py-2 rounded-xl bg-brand-primary items-center justify-center"
+                      >
+                        {searchingPlaces ? (
+                          <ActivityIndicator size="small" color="white" />
+                        ) : (
+                          <Text className="text-white text-xs font-bold">Tìm</Text>
+                        )}
+                      </Pressable>
+                    </View>
+
+                    {/* Search Results Dropdown List */}
+                    {searchResults.length > 0 && (
+                      <View className="mt-2 bg-brand-bg border border-brand-line rounded-xl overflow-hidden max-h-48">
+                        <ScrollView nestedScrollEnabled>
+                          {searchResults.map((r, idx) => (
+                            <Pressable
+                              key={idx}
+                              onPress={() => handleSelectPlace(r)}
+                              className="px-3 py-2.5 border-b border-brand-line/40 hover:bg-brand-bgAlt/40 active:bg-brand-bgAlt/40"
+                            >
+                              <Text className="text-xs font-bold text-brand-text">{r.name}</Text>
+                              <Text className="text-[10px] text-brand-textSoft mt-0.5" numberOfLines={1}>{r.address}</Text>
+                            </Pressable>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    )}
+                  </View>
                   {/* Name */}
                   <View className="gap-1 mb-1">
                     <Text className="text-xs font-bold text-brand-textSoft">Tên đối tác *</Text>
