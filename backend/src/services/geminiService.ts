@@ -274,7 +274,7 @@ QUY TẮC CỐT LÕI:
      * NGOẠI LỆ: Chỉ khi khách hàng có yêu cầu đặc biệt muốn thay đổi khách sạn (ghi ở "special_requirements" hoặc qua câu trả lời làm rõ), bạn mới được chia lịch trình thành nhiều chỗ nghỉ khác nhau.
      * GIỚI HẠN CHI PHÍ: Tổng tiền lưu trú cho cả chuyến đi tuyệt đối không vượt quá 30% tổng ngân sách ("budget_total") đối với ngân sách eo hẹp (dưới 1.500.000đ/ngày/người). Hãy chọn homestay, nhà nghỉ bình dân hoặc hostel giá rẻ trong danh sách "candidate_places" phù hợp.
      * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và khách chưa nêu rõ yêu cầu lưu trú, bạn bắt buộc phải đặt câu hỏi làm rõ trong "missing_info_questions": "Bạn muốn ở 1 chỗ nghỉ cố định hay muốn thay đổi nhiều nơi trong chuyến đi này?"
-   - ĐẢM BẢO CHI PHÍ ĂN UỐNG (DINING): Mỗi ngày bắt buộc phải có ít nhất 2 bữa ăn chính (trưa và tối) sử dụng các quán ăn thực tế trong danh sách. Chi phí ăn uống mỗi ngày phải được ước lượng cụ thể cho cả nhóm (ví dụ: bún/phở/bánh mì local giá từ 30k-60k/người; nhà hàng/quán ăn đặc sản giá từ 100k-250k/người) và cân đối kỹ lưỡng sao cho phù hợp với phần ngân sách còn lại sau khi đã trừ tiền phòng.
+   - ĐẢM BẢO CHI PHÍ ĂN UỐNG & ĐA DẠNG ẨM THỰC (DINING DIVERSITY): Mỗi ngày bắt buộc phải có ít nhất 2 bữa ăn chính (trưa và tối) sử dụng các quán ăn thực tế trong danh sách. Bạn phải đa dạng hóa món ăn, tuyệt đối không lặp lại cùng một món (ví dụ: không ăn bánh khọt hai bữa liên tiếp hoặc ăn hải sản liên tiếp trong ngày). Hãy ưu tiên kết hợp các món đặc sản địa phương khác nhau của vùng miền đó (ví dụ: bữa trưa ăn bún/phở/bánh khọt địa phương, bữa tối ăn lẩu cá đuối/hải sản/quán ăn cơm gia đình). Chi phí ăn uống mỗi ngày phải được ước lượng cụ thể cho cả nhóm (ví dụ: bún/phở/bánh mì local giá từ 30k-60k/người; nhà hàng/quán ăn đặc sản giá từ 100k-250k/người) và cân đối kỹ lưỡng sao cho phù hợp với phần ngân sách còn lại sau khi đã trừ tiền phòng.
    - QUY TẮC PHÍ DỊCH VỤ & DI CHUYỂN:
      * "estimated_cost" luôn là VND cho toàn bộ nhóm khách (traveler_count), không phải giá mỗi người.
       * Bạn PHẢI tự động ước lượng chi phí (VND) thực tế cho các mục ăn uống (ví dụ: 50.000đ-150.000đ/người/bữa), lưu trú, di chuyển và ghi vào "estimated_cost" của cả nhóm.
@@ -378,7 +378,8 @@ YÊU CẦU ĐIỀU CHỈNH CHẶT CHẼ:
      * CHI PHÍ CHỖ NGHỈ: Bạn phải tự ước lượng và điền chi phí phòng cho cả chuyến đi vào "estimated_cost" của ngày đầu tiên: estimated_cost = (giá 1 đêm ước tính hợp lý của khách sạn) * (số ngày - 1). Mức giá phòng nghỉ phải khớp với phân khúc homestay/khách sạn được chọn dựa trên price_level (ví dụ: price_level 1: 200k-400k/đêm, level 2: 500k-900k/đêm...).
      * NGOẠI LỆ: Chỉ chia thành nhiều khách sạn khi khách hàng có yêu cầu thay đổi rõ ràng trong "special_requirements" hoặc câu trả lời làm rõ.
      * GIỚI HẠN CHI PHÍ: Tổng tiền lưu trú cho cả chuyến đi tuyệt đối không vượt quá 30% tổng ngân sách ("budget_total") đối với ngân sách eo hẹp. Hãy ưu tiên chọn homestay, hostel hoặc nhà nghỉ bình dân giá rẻ trong danh sách "candidate_places".
-     * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và chưa rõ sở thích lưu trú của khách, hãy đặt câu hỏi làm rõ trong "missing_info_questions" xem họ muốn ở cố định 1 chỗ hay muốn thay đổi nhiều chỗ ở.
+      * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và chưa rõ sở thích lưu trú của khách, hãy đặt câu hỏi làm rõ trong "missing_info_questions" xem họ muốn ở cố định 1 chỗ hay muốn thay đổi nhiều chỗ ở.
+      * ĐA DẠNG ĂN UỐNG (DINING): Hãy đảm bảo các bữa ăn chính (trưa, tối) sử dụng các nhà hàng/quán ăn thực tế từ danh sách, và tuyệt đối không lặp lại món ăn/nhà hàng (ví dụ: không gợi ý ăn bánh khọt liên tiếp trong một ngày hoặc ăn hải sản liên tục). Hãy đa dạng hóa ẩm thực để tạo trải nghiệm hấp dẫn.
       * Di chuyển nội thành: đi bộ/không phát sinh phương tiện trả phí bạn PHẢI ghi estimated_cost = 0; nếu dùng Grab/taxi/xe ôm bạn PHẢI tự ước lượng một mức chi phí thực tế cho cả nhóm (ví dụ: 50.000đ - 150.000đ).
       * Thuê xe máy: nếu có, hãy điền ước lượng thực tế (ví dụ: 120.000đ/ngày/xe) thay vì để trống.
       * Đối với bất kỳ hoạt động nào miễn phí (như bãi biển, chùa, dạo bộ, check-out) hoặc đã bao gồm trong dịch vụ khác (như ăn sáng tại khách sạn), bạn PHẢI điền "estimated_cost" = 0.
@@ -434,15 +435,26 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
   }
 }
 
+function shuffleArray<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const temp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = temp;
+  }
+  return arr;
+}
+
 // Programmatic mock itinerary generator
 function generateMockItinerary(
   tripData: any,
   weatherForecast: WeatherForecast[],
   candidatePlaces: Record<string, PlaceCandidate[]>
 ): GeneratedItinerary {
-  const accommodations = candidatePlaces.accommodation || [];
-  const dining = candidatePlaces.dining || [];
-  const attractions = candidatePlaces.attraction || [];
+  const accommodations = shuffleArray(candidatePlaces.accommodation || []);
+  const dining = shuffleArray(candidatePlaces.dining || []);
+  const attractions = shuffleArray(candidatePlaces.attraction || []);
 
   const budget_total = Number(tripData.budget_total) || 5000000;
   const daysCount = weatherForecast.length || 1;

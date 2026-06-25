@@ -25,7 +25,9 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     dining: [
       { name: 'Bún Chả Hương Liên (Obama Bun Cha)', rating: 4.5, price_level: 2, address: '24 Lê Văn Hưu, Phan Chu Trinh, Hai Bà Trưng, Hà Nội' },
       { name: 'Phở Thìn Lò Đúc', rating: 4.3, price_level: 1, address: '13 Lò Đúc, Phạm Đình Hổ, Hai Bà Trưng, Hà Nội' },
-      { name: 'Nhà hàng Ngon', rating: 4.4, price_level: 2, address: '26 Trần Hưng Đạo, Hoàn Kiếm, Hà Nội' },
+      { name: 'Chả cá Lã Vọng Anh Vũ', rating: 4.6, price_level: 3, address: '120 Giảng Võ, Cát Linh, Đống Đa, Hà Nội' },
+      { name: 'Bún đậu mắm tôm Trung Hương', rating: 4.5, price_level: 1, address: '49 Ngõ Phất Lộc, Hàng Bạc, Hoàn Kiếm, Hà Nội' },
+      { name: 'Phở cuốn Hương Mai Ngũ Xã', rating: 4.4, price_level: 2, address: '25 Ngũ Xã, Trúc Bạch, Ba Đình, Hà Nội' },
       { name: 'Giang Cafe (Cà phê trứng)', rating: 4.6, price_level: 1, address: '39 Nguyễn Hữu Huân, Lý Thái Tổ, Hoàn Kiếm, Hà Nội' }
     ],
     attraction: [
@@ -49,6 +51,8 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     dining: [
       { name: 'Mỳ Quảng Ếch Bếp Trang', rating: 4.4, price_level: 2, address: '24 Lê Hồng Phong, Phước Ninh, Hải Châu, Đà Nẵng' },
       { name: 'Bánh xèo Bà Dưỡng', rating: 4.3, price_level: 1, address: 'K280/23 Hoàng Diệu, Bình Hiên, Hải Châu, Đà Nẵng' },
+      { name: 'Bánh tráng thịt heo Trần', rating: 4.5, price_level: 2, address: '04 Lê Duẩn, Hải Châu, Đà Nẵng' },
+      { name: 'Bún chả cá Hờn', rating: 4.3, price_level: 1, address: '113/3 Nguyễn Chí Thanh, Hải Châu, Đà Nẵng' },
       { name: 'Hải sản Năm Đảnh', rating: 4.2, price_level: 1, address: 'K139/H59/38 Trần Quang Khải, Thọ Quang, Sơn Trà, Đà Nẵng' },
       { name: 'Nhà hàng Cá Lửa', rating: 4.5, price_level: 3, address: '04 Bình Minh 4, Bình Hiên, Hải Châu, Đà Nẵng' }
     ],
@@ -73,6 +77,8 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     dining: [
       { name: 'Cục Gạch Quán', rating: 4.4, price_level: 3, address: '10 Đặng Tất, Tân Định, Quận 1, TP. HCM' },
       { name: 'Phở Lệ', rating: 4.3, price_level: 1, address: '415 Nguyễn Trãi, Phường 7, Quận 5, TP. HCM' },
+      { name: 'Cơm tấm Ba Ghiền', rating: 4.5, price_level: 2, address: '84 Đặng Văn Ngữ, Phường 10, Phú Nhuận, TP. HCM' },
+      { name: 'Hủ tiếu Nam Vang Thành Đạt', rating: 4.4, price_level: 1, address: '34 Cô Bắc, Cầu Ông Lãnh, Quận 1, TP. HCM' },
       { name: 'Bánh Mì Huỳnh Hoa', rating: 4.5, price_level: 1, address: '26 Lê Thị Riêng, Phạm Ngũ Lão, Quận 1, TP. HCM' },
       { name: 'Nhà hàng ngon SHÂN', rating: 4.4, price_level: 2, address: '88 Nguyễn Huệ, Bến Nghé, Quận 1, TP. HCM' }
     ],
@@ -96,6 +102,8 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     dining: [
       { name: 'Lẩu gà lá é Tao Ngộ', rating: 4.4, price_level: 1, address: '5 Đường 3/4, Phường 3, Đà Lạt' },
       { name: 'Bánh ướt lòng gà Long', rating: 4.3, price_level: 1, address: 'Hẻm 202 Phan Đình Phùng, Phường 2, Đà Lạt' },
+      { name: 'Bánh căn Lệ', rating: 4.5, price_level: 1, address: '27/44 Yersin, Phường 10, Đà Lạt' },
+      { name: 'Nem nướng Bà Hùng', rating: 4.4, price_level: 2, address: '328 Phan Đình Phùng, Phường 2, Đà Lạt' },
       { name: 'Nhà hàng Léguda (Lẩu rau)', rating: 4.5, price_level: 2, address: 'Đồi Robin, Phường 3, Đà Lạt' },
       { name: 'Quán nướng Chu', rating: 4.4, price_level: 2, address: '3 Phạm Ngũ Lão, Phường 3, Đà Lạt' }
     ],
@@ -119,6 +127,7 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     dining: [
       { name: 'Nhà hàng Ô Quý Hồ Sapa', rating: 4.4, price_level: 2, address: '8 Thạch Sơn, Sa Pa' },
       { name: 'Quán ẩm thực Tây Bắc A Phủ', rating: 4.3, price_level: 2, address: '15 Fansipan, Sa Pa' },
+      { name: 'Thắng cố A Quỳnh', rating: 4.2, price_level: 2, address: '15 Thạch Sơn, Sa Pa' },
       { name: 'Lẩu cá hồi cá tầm Xuân Viên', rating: 4.2, price_level: 2, address: '39 Xuân Viên, Sa Pa' }
     ],
     attraction: [
@@ -138,6 +147,8 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     dining: [
       { name: 'Cơm gà Bà Buội Hội An', rating: 4.3, price_level: 2, address: '22 Phan Chu Trinh, Minh An, Hội An' },
       { name: 'Bánh mì Phượng', rating: 4.4, price_level: 1, address: '2B Phan Chu Trinh, Cẩm Châu, Hội An' },
+      { name: 'Cao lầu Thanh', rating: 4.5, price_level: 1, address: '26 Thái Phiên, Minh An, Hội An' },
+      { name: 'Bánh bao bánh vạc Hoa Hồng Trắng', rating: 4.3, price_level: 2, address: '533 Hai Bà Trưng, Cẩm Phô, Hội An' },
       { name: 'Nước Mót Hội An (Trà thảo mộc)', rating: 4.6, price_level: 1, address: '150 Trần Phú, Minh An, Hội An' }
     ],
     attraction: [
@@ -155,7 +166,9 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     ],
     dining: [
       { name: 'Bún bò Huế O Lâm', rating: 4.4, price_level: 1, address: '71 Nguyễn Công Trứ, Phú Hội, Huế' },
-      { name: 'Bánh bèo nậm lọc bà Đỏ', rating: 4.2, price_level: 1, address: '8 Nguyễn Bỉnh Khiêm, Phú Cát, Huế' }
+      { name: 'Bánh bèo nậm lọc bà Đỏ', rating: 4.2, price_level: 1, address: '8 Nguyễn Bỉnh Khiêm, Phú Cát, Huế' },
+      { name: 'Cơm hến Hoa Đông Vĩ Dạ', rating: 4.3, price_level: 1, address: '64 kiệt 7 Ưng Bình, Vĩ Dạ, Huế' },
+      { name: 'Bánh khoái Hồng Mai', rating: 4.4, price_level: 2, address: '110 Đinh Tiên Hoàng, Phú Hậu, Huế' }
     ],
     attraction: [
       { name: 'Đại Nội Huế (Hoàng Thành cổ)', rating: 4.7, price_level: 2, address: 'Đường 23 Tháng 8, Thuận Hòa, Huế' },
@@ -173,7 +186,9 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     ],
     dining: [
       { name: 'Bún sứa Năm Beo Chợ Đầm', rating: 4.3, price_level: 1, address: 'B2 Chung cư Phan Bội Châu, Xương Huân, Nha Trang' },
-      { name: 'Nem nướng Đặng Văn Quyên', rating: 4.2, price_level: 2, address: '16A Lãn Ông, Xương Huân, Nha Trang' }
+      { name: 'Nem nướng Đặng Văn Quyên', rating: 4.2, price_level: 2, address: '16A Lãn Ông, Xương Huân, Nha Trang' },
+      { name: 'Hải sản Thanh Sương', rating: 4.4, price_level: 2, address: '21 Trần Phú, Vĩnh Nguyên, Nha Trang' },
+      { name: 'Bánh căn cô Tư Tháp Bà', rating: 4.3, price_level: 1, address: '7A Tháp Bà, Vĩnh Phước, Nha Trang' }
     ],
     attraction: [
       { name: 'VinWonders Nha Trang Amusement Park', rating: 4.8, price_level: 4, address: 'Đảo Hòn Tre, Vĩnh Nguyên, Nha Trang' },
@@ -190,7 +205,9 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     ],
     dining: [
       { name: 'Bún quậy Kiến Xây Bạch Đằng', rating: 4.4, price_level: 1, address: '28 Bạch Đằng, Dương Đông, Phú Quốc' },
-      { name: 'Nhà hàng hải sản Xin Chào', rating: 4.3, price_level: 3, address: '66 Trần Hưng Đạo, Dương Đông, Phú Quốc' }
+      { name: 'Nhà hàng hải sản Xin Chào', rating: 4.3, price_level: 3, address: '66 Trần Hưng Đạo, Dương Đông, Phú Quốc' },
+      { name: 'Gỏi cá trích Trùng Dương', rating: 4.2, price_level: 2, address: '136 Đường 30 Tháng 4, Dương Đông, Phú Quốc' },
+      { name: 'Bánh canh chả cá Phụng', rating: 4.3, price_level: 1, address: '27 Bạch Đằng, Dương Đông, Phú Quốc' }
     ],
     attraction: [
       { name: 'Cáp treo Hòn Thơm Sun World', rating: 4.8, price_level: 3, address: 'Bãi Đất Đỏ, An Thới, Phú Quốc' },
@@ -207,7 +224,9 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     ],
     dining: [
       { name: 'Thịt dê cơm cháy Thăng Long Ninh Bình', rating: 4.4, price_level: 2, address: 'Tràng An, Trường Yên, Hoa Lư, Ninh Bình' },
-      { name: 'Nhà hàng Đức Dê Ninh Bình', rating: 4.2, price_level: 2, address: '446 Nguyễn Huệ, Nam Bình, Ninh Bình' }
+      { name: 'Nhà hàng Đức Dê Ninh Bình', rating: 4.2, price_level: 2, address: '446 Nguyễn Huệ, Nam Bình, Ninh Bình' },
+      { name: 'Miến lươn Bà Phấn', rating: 4.3, price_level: 1, address: '995 Trần Hưng Đạo, Thanh Bình, Ninh Bình' },
+      { name: 'Gỏi cá nhệch Kim Sơn Vũ Gia', rating: 4.5, price_level: 2, address: 'Ngô Quyền, Đông Thành, Ninh Bình' }
     ],
     attraction: [
       { name: 'Khu du lịch sinh thái Tràng An', rating: 4.8, price_level: 2, address: 'Tràng An, Trường Yên, Hoa Lư, Ninh Bình' },
@@ -225,7 +244,11 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     ],
     dining: [
       { name: 'Bánh khọt Gốc Vú Sữa', rating: 4.2, price_level: 1, address: '14 Nguyễn Trường Tộ, Phường 2, Vũng Tàu' },
-      { name: 'Bánh khọt Cô Ba Vũng Tàu', rating: 4.4, price_level: 2, address: '1 Hoàng Hoa Thám, Phường 3, Vũng Tàu' }
+      { name: 'Bánh khọt Cô Ba Vũng Tàu', rating: 4.4, price_level: 2, address: '1 Hoàng Hoa Thám, Phường 3, Vũng Tàu' },
+      { name: 'Lẩu cá đuối Hoàng Minh', rating: 4.3, price_level: 2, address: '44 Trương Công Định, Phường 3, Vũng Tàu' },
+      { name: 'Hải sản Gành Hào', rating: 4.6, price_level: 3, address: '3 Trần Phú, Phường 5, Vũng Tàu' },
+      { name: 'Quán nướng Cô Nên', rating: 4.4, price_level: 2, address: '6 Hạ Long, Phường 2, Vũng Tàu' },
+      { name: 'Bánh mì xíu mại Hàng Quyên', rating: 4.3, price_level: 1, address: '37 Phan Chu Trinh, Phường 2, Vũng Tàu' }
     ],
     attraction: [
       { name: 'Tượng Chúa Kitô Vua Vũng Tàu', rating: 4.7, price_level: 1, address: 'Thùy Vân, Phường 2, Vũng Tàu' },
