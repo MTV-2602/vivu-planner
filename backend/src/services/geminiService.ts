@@ -470,9 +470,52 @@ function generateMockItinerary(
   const daysCount = weatherForecast.length || 1;
   const dailyBudget = budget_total / daysCount;
 
+  // Sort attractions based on user preferences (interests/sở thích)
+  const preferences = tripData.preferences || {};
+  const scoredAttractions = (candidatePlaces.attraction || []).map(place => {
+    let score = 0;
+    const nameLower = place.name.toLowerCase();
+    
+    if (preferences.history === true) {
+      const historyKeywords = ['tượng', 'lăng', 'văn miếu', 'nhà tù', 'chùa', 'hoàng thành', 'nhà hát', 'cổ', 'dinh', 'thích ca', 'bạch dinh', 'cố đô', 'di tích', 'bảo tàng', 'đền'];
+      if (historyKeywords.some(kw => nameLower.includes(kw))) score += 5;
+    }
+    if (preferences.nature === true) {
+      const natureKeywords = ['hồ', 'bãi biển', 'núi', 'thác', 'thung lũng', 'đồi', 'rừng', 'mũi nghinh phong', 'hang múa', 'bán đảo', 'vịnh', 'hòn', 'đèo'];
+      if (natureKeywords.some(kw => nameLower.includes(kw))) score += 5;
+    }
+    if (preferences.adventure === true) {
+      const adventureKeywords = ['máng trượt', 'trekking', 'leo núi', 'mạo hiểm', 'safari', 'cáp treo', 'hồ mây', 'hang động', 'thác dạt'];
+      if (adventureKeywords.some(kw => nameLower.includes(kw))) score += 5;
+    }
+    if (preferences.shopping === true || preferences.relax === true) {
+      const shopRelaxKeywords = ['chợ', 'trung tâm', 'mua sắm', 'phố đi bộ', 'phố cổ', 'grand world', 'night market', 'dạo cảnh', 'công viên', 'hải đăng'];
+      if (shopRelaxKeywords.some(kw => nameLower.includes(kw))) score += 5;
+    }
+    return { place, score };
+  });
+
+  // Sort by score descending
+  scoredAttractions.sort((a, b) => b.score - a.score);
+  
+  // Group by score and shuffle within each group to maintain diversity
+  const groups: Record<number, PlaceCandidate[]> = {};
+  scoredAttractions.forEach(item => {
+    if (!groups[item.score]) groups[item.score] = [];
+    groups[item.score].push(item.place);
+  });
+  
+  const sortedAttractions: PlaceCandidate[] = [];
+  Object.keys(groups)
+    .map(Number)
+    .sort((a, b) => b - a)
+    .forEach(score => {
+      sortedAttractions.push(...shuffleArray(groups[score]));
+    });
+
   const accommodations = filterByBudget(shuffleArray(candidatePlaces.accommodation || []), dailyBudget);
   const dining = filterByBudget(shuffleArray(candidatePlaces.dining || []), dailyBudget);
-  const attractions = filterByBudget(shuffleArray(candidatePlaces.attraction || []), dailyBudget);
+  const attractions = filterByBudget(sortedAttractions, dailyBudget);
 
   // Set up depletion pools for popping and avoiding duplicates across the itinerary
   const attractionsPool = [...attractions];
