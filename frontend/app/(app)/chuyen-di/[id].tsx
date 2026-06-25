@@ -348,30 +348,89 @@ export default function TripDetail() {
   const handleExportPDF = async () => {
     if (Platform.OS === 'web') {
       const runHtml2Pdf = () => {
-        const element = document.querySelector('.print-only-container');
-        if (element) {
-          const originalStyle = element.getAttribute('style') || '';
-          // Render off-screen using z-index so html2canvas can capture it at (0,0) without layout shifting or blank sheets
-          element.setAttribute('style', 'display: block; position: fixed; left: 0; top: 0; z-index: -9999; width: 800px; font-family: system-ui, -apple-system, sans-serif; padding: 25px; color: #1B2420; background-color: white;');
-          
-          const opt = {
-            margin:       12,
-            filename:     `${trip.title || 'lich-trinh'}.pdf`,
-            image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, useCORS: true },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-          };
+        const htmlString = `
+          <div style="font-family: system-ui, -apple-system, sans-serif; padding: 25px; color: #1B2420; background-color: white; max-width: 800px; margin: 0 auto;">
+            <div style="border-b: 2px solid #14201B; border-bottom: 2px solid #14201B; padding-bottom: 15px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: flex-start;">
+              <div>
+                <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold; color: #14201B;">${trip.title}</h1>
+                <p style="margin: 0; font-size: 13px; color: #555555;">📍 Điểm đến: <strong>${trip.destination_city}</strong></p>
+              </div>
+              <div style="text-align: right;">
+                <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: bold; color: #14201B;">ViVu Planner</h2>
+                <p style="margin: 0; font-size: 11px; color: #777777;">Lịch trình du lịch cá nhân hóa</p>
+              </div>
+            </div>
+            
+            <div style="border-bottom: 1px solid #eeeeee; padding-bottom: 12px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 20px;">
+              <span style="font-size: 12px; color: #333333;">📅 <strong>Thời gian:</strong> ${formatDate(trip.start_date)} — ${formatDate(trip.end_date)}</span>
+              <span style="font-size: 12px; color: #333333;">💰 <strong>Tổng ngân sách:</strong> ${formatVND(trip.budget_total)}</span>
+              <span style="font-size: 12px; color: #333333;">👥 <strong>Thành viên:</strong> ${trip.traveler_count} khách (${trip.traveler_type})</span>
+            </div>
+            
+            ${sortedDays.map(day => {
+              const spentVal = dailySpent[day.id] || 0;
+              const remainingVal = dailyRemaining[day.id] || 0;
+              const items = (day.items || [])
+                .sort((a, b) => a.order_index - b.order_index)
+                .filter(item => item.status !== 'replaced' && item.status !== 'skipped');
 
-          // @ts-ignore
-          html2pdf().set(opt).from(element).save().then(() => {
-            element.setAttribute('style', originalStyle);
-          }).catch((err: any) => {
-            console.error("PDF generation failed:", err);
-            element.setAttribute('style', originalStyle);
-            // Fallback to native print if library fails
-            window.print();
-          });
-        }
+              const itemsHtml = items.length === 0
+                ? `<div style="font-size: 12px; color: #777777; font-style: italic; padding: 10px 0;">Chưa có hoạt động nào được lên lịch.</div>`
+                : items.map(item => {
+                    const timeStr = item.start_time ? `<span style="font-size: 11px; font-weight: bold; color: #666666; margin-left: 8px;">⏱️ ${item.start_time.substring(0, 5)}${item.end_time ? ` - ${item.end_time.substring(0, 5)}` : ''}</span>` : '';
+                    const costStr = hasOfficialCost(item.estimated_cost) ? `<span style="font-size: 12px; font-weight: bold; color: #14201B;">${formatCost(item.estimated_cost, item.item_type)}</span>` : '';
+                    return `
+                      <div style="border: 1px solid #eeeeee; border-radius: 8px; padding: 12px; margin-bottom: 12px; background-color: #ffffff;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                          <div style="display: flex; align-items: center;">
+                            <span style="font-size: 9px; font-weight: bold; color: #14201B; background-color: #e2f0ea; padding: 2px 6px; border-radius: 4px; text-transform: uppercase;">
+                              ${ITEM_TYPE_LABELS[item.item_type] || 'Khác'}
+                            </span>
+                            ${timeStr}
+                          </div>
+                          ${costStr}
+                        </div>
+                        <h4 style="margin: 0 0 4px 0; font-size: 14px; font-weight: bold; color: #111111;">${item.title}</h4>
+                        ${item.description ? `<p style="margin: 0; font-size: 12px; color: #555555; line-height: 1.4;">${item.description}</p>` : ''}
+                      </div>
+                    `;
+                  }).join('');
+
+              const weatherHtml = day.weather_summary?.note
+                ? `<div style="background-color: #f9f9f9; padding: 10px; border-radius: 6px; margin-bottom: 12px; border-left: 3px solid #14201B; font-size: 11px; font-style: italic; color: #555555;">☀️ Thời tiết: ${day.weather_summary.note}</div>`
+                : '';
+
+              return `
+                <div style="margin-bottom: 30px; page-break-inside: avoid;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #dddddd; padding-bottom: 6px; margin-bottom: 12px;">
+                    <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #14201B;">Ngày 0${day.day_number}: ${formatDate(day.date)}</h3>
+                    <div style="font-size: 11px; color: #555555;">
+                      <span>Dự kiến: <strong>${formatVND(spentVal)}</strong></span>
+                      <span style="margin: 0 6px;">|</span>
+                      <span>Còn lại: <strong>${formatVND(remainingVal)}</strong></span>
+                    </div>
+                  </div>
+                  ${weatherHtml}
+                  ${itemsHtml}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+
+        const opt = {
+          margin:       12,
+          filename:     `${trip.title || 'lich-trinh'}.pdf`,
+          image:        { type: 'jpeg', quality: 0.98 },
+          html2canvas:  { scale: 2, useCORS: true, logging: false },
+          jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        // @ts-ignore
+        html2pdf().set(opt).from(htmlString).save().catch((err: any) => {
+          console.error("PDF generation failed:", err);
+          window.print();
+        });
       };
 
       // @ts-ignore
@@ -385,7 +444,6 @@ export default function TripDetail() {
           runHtml2Pdf();
         };
         script.onerror = () => {
-          // Fallback to native print if script fails to load
           window.print();
         };
         document.body.appendChild(script);
