@@ -347,7 +347,49 @@ export default function TripDetail() {
 
   const handleExportPDF = async () => {
     if (Platform.OS === 'web') {
-      window.print();
+      const runHtml2Pdf = () => {
+        const element = document.querySelector('.print-only-container');
+        if (element) {
+          const originalStyle = element.getAttribute('style') || '';
+          // Render off-screen temporarily so html2canvas can capture it without page flickering
+          element.setAttribute('style', 'display: block; position: absolute; left: -9999px; top: 0; width: 800px; font-family: system-ui, -apple-system, sans-serif; padding: 25px; color: #1B2420; background-color: white;');
+          
+          const opt = {
+            margin:       12,
+            filename:     `${trip.title || 'lich-trinh'}.pdf`,
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { scale: 2, useCORS: true },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          };
+
+          // @ts-ignore
+          html2pdf().set(opt).from(element).save().then(() => {
+            element.setAttribute('style', originalStyle);
+          }).catch((err: any) => {
+            console.error("PDF generation failed:", err);
+            element.setAttribute('style', originalStyle);
+            // Fallback to native print if library fails
+            window.print();
+          });
+        }
+      };
+
+      // @ts-ignore
+      if (typeof html2pdf !== 'undefined') {
+        runHtml2Pdf();
+      } else {
+        // Load html2pdf from CDN dynamically
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+        script.onload = () => {
+          runHtml2Pdf();
+        };
+        script.onerror = () => {
+          // Fallback to native print if script fails to load
+          window.print();
+        };
+        document.body.appendChild(script);
+      }
     } else {
       try {
         const daysText = sortedDays.map(day => {
