@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  Modal, Alert, ActivityIndicator, Platform, Linking,
+  Modal, Alert, ActivityIndicator, Platform, Linking, Share,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -9,7 +9,7 @@ import {
   Compass, ArrowLeft, AlertTriangle, Calendar, Wallet, MapPin,
   Sparkles, Clock, Map, Utensils, Home, Bike, Check, X,
   HelpCircle, ChevronRight, Activity, ThermometerSun, Trash2, PenLine,
-  Shield,
+  Shield, Share2,
 } from 'lucide-react-native';
 import { apiClient } from '../../../lib/apiClient';
 import { getCache, setCache } from '../../../lib/cache';
@@ -345,6 +345,48 @@ export default function TripDetail() {
     return `${num.toLocaleString('vi-VN')}đ`;
   };
 
+  const handleExportPDF = async () => {
+    if (Platform.OS === 'web') {
+      window.print();
+    } else {
+      try {
+        const daysText = sortedDays.map(day => {
+          const itemsText = (day.items || [])
+            .sort((a, b) => a.order_index - b.order_index)
+            .filter(item => item.status !== 'replaced' && item.status !== 'skipped')
+            .map(item => {
+              const timeStr = item.start_time ? `[${item.start_time.substring(0, 5)}${item.end_time ? ` - ${item.end_time.substring(0, 5)}` : ''}] ` : '';
+              const costStr = item.estimated_cost != null ? ` (Dự tính: ${formatCost(item.estimated_cost, item.item_type)})` : '';
+              return `- ${timeStr}${item.title}: ${item.description || ''}${costStr}`;
+            })
+            .join('\n');
+          
+          const spentVal = dailySpent[day.id] || 0;
+          const remainingVal = dailyRemaining[day.id] || 0;
+          
+          return `📅 Ngày 0${day.day_number} (${formatDate(day.date)})\n` +
+                 `☀️ Thời tiết: ${day.weather_summary?.note || 'Chưa cập nhật'}\n` +
+                 `💰 Chi tiêu ngày: ${formatVND(spentVal)} | Còn lại: ${formatVND(remainingVal)}\n` +
+                 `${itemsText || '- Không có hoạt động nào'}\n`;
+        }).join('\n');
+
+        const message = `✈️ CẨM NANG DU LỊCH: ${trip.title.toUpperCase()}\n` +
+          `📍 Điểm đến: ${trip.destination_city}\n` +
+          `📅 Thời gian: ${formatDate(trip.start_date)} - ${formatDate(trip.end_date)}\n` +
+          `💰 Tổng ngân sách: ${formatVND(trip.budget_total)}\n` +
+          `👥 Thành viên: ${trip.traveler_count} người (${trip.traveler_type})\n\n` +
+          `--- CHI TIẾT LỊCH TRÌNH ---\n\n${daysText}\n\nChúc bạn có một chuyến đi vui vẻ! - ViVu Planner`;
+
+        await Share.share({
+          message,
+          title: `Lịch trình chuyến đi ${trip.title}`,
+        });
+      } catch (error: any) {
+        Alert.alert('Lỗi chia sẻ', error.message);
+      }
+    }
+  };
+
   // ── Disruption type options ───────────────────────────────────────────────
   const DISRUPTION_TYPES = [
     { value: 'weather_change', label: 'Thay đổi thời tiết' },
@@ -362,7 +404,8 @@ export default function TripDetail() {
 
   return (
     <View className="flex-1 bg-brand-bg">
-      <ScrollView
+      <View className="no-print flex-1">
+        <ScrollView
         ref={scrollRef}
         className="flex-1"
         onScroll={e => setShowBackToTop(e.nativeEvent.contentOffset.y > 400)}
@@ -442,12 +485,18 @@ export default function TripDetail() {
                   </View>
                 </View>
               </View>
-              {!isAdmin && (
-                <Pressable onPress={() => setDisruptionOpen(true)} className="flex-row items-center gap-2 px-5 py-3.5 rounded-xl bg-brand-danger">
-                  <AlertTriangle size={16} color="white" />
-                  <Text className="text-white font-bold">Báo sự cố</Text>
+              <View className="flex-row gap-3 items-center flex-wrap">
+                <Pressable onPress={handleExportPDF} className="flex-row items-center gap-2 px-5 py-3.5 rounded-xl bg-brand-primary">
+                  <Share2 size={16} color="white" />
+                  <Text className="text-white font-bold">{Platform.OS === 'web' ? 'Tải PDF' : 'Chia sẻ'}</Text>
                 </Pressable>
-              )}
+                {!isAdmin && (
+                  <Pressable onPress={() => setDisruptionOpen(true)} className="flex-row items-center gap-2 px-5 py-3.5 rounded-xl bg-brand-danger">
+                    <AlertTriangle size={16} color="white" />
+                    <Text className="text-white font-bold">Báo sự cố</Text>
+                  </Pressable>
+                )}
+              </View>
             </View>
           </View>
 
@@ -985,6 +1034,134 @@ export default function TripDetail() {
             </View>
           </ScrollView>
         </ModalShell>
+      )}
+      </View>
+
+      {/* Web print-friendly stylesheet injection */}
+      {Platform.OS === 'web' && (
+        <style dangerouslySetInnerHTML={{ __html: `
+          @media print {
+            body, html, #root {
+              background-color: white !important;
+              color: #1B2420 !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              height: auto !important;
+              overflow: visible !important;
+            }
+            .no-print {
+              display: none !important;
+            }
+            .print-only-container {
+              display: block !important;
+              position: static !important;
+              width: 100% !important;
+              height: auto !important;
+              overflow: visible !important;
+              background-color: white !important;
+              color: #1B2420 !important;
+              padding: 20px !important;
+            }
+            .print-day-block {
+              page-break-after: always !important;
+              page-break-inside: avoid !important;
+              margin-bottom: 30px !important;
+              display: block !important;
+            }
+            .print-day-block:last-child {
+              page-break-after: avoid !important;
+            }
+          }
+          .print-only-container {
+            display: none;
+          }
+        `}} />
+      )}
+
+      {/* Web Print Container */}
+      {Platform.OS === 'web' && (
+        <View className="print-only-container" style={{ display: 'none' } as any}>
+          {/* Header info */}
+          <View style={{ borderBottomWidth: 2, borderBottomColor: '#14201B', paddingBottom: 15, marginBottom: 25 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#14201B', marginBottom: 8 }}>{trip.title}</Text>
+                <Text style={{ fontSize: 13, color: '#555555' }}>📍 Điểm đến: <Text style={{ fontWeight: 'bold' }}>{trip.destination_city}</Text></Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#14201B', marginBottom: 4 }}>ViVu Planner</Text>
+                <Text style={{ fontSize: 11, color: '#777777' }}>Lịch trình du lịch cá nhân hóa</Text>
+              </View>
+            </View>
+            
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 15, gap: 20 }}>
+              <Text style={{ fontSize: 12, color: '#333333' }}>📅 <Text style={{ fontWeight: 'bold' }}>Thời gian:</Text> {formatDate(trip.start_date)} — {formatDate(trip.end_date)}</Text>
+              <Text style={{ fontSize: 12, color: '#333333' }}>💰 <Text style={{ fontWeight: 'bold' }}>Tổng ngân sách:</Text> {formatVND(trip.budget_total)}</Text>
+              <Text style={{ fontSize: 12, color: '#333333' }}>👥 <Text style={{ fontWeight: 'bold' }}>Thành viên:</Text> {trip.traveler_count} người ({trip.traveler_type})</Text>
+            </View>
+          </View>
+
+          {/* Days list */}
+          {sortedDays.map((day) => {
+            const spentVal = dailySpent[day.id] || 0;
+            const remainingVal = dailyRemaining[day.id] || 0;
+            const items = (day.items || [])
+              .sort((a, b) => a.order_index - b.order_index)
+              .filter(item => item.status !== 'replaced' && item.status !== 'skipped');
+
+            return (
+              <View key={day.id} className="print-day-block" style={{ marginBottom: 25 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#dddddd', paddingBottom: 6, marginBottom: 12 }}>
+                  <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#14201B' }}>
+                    Ngày 0{day.day_number}: {formatDate(day.date)}
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <Text style={{ fontSize: 11, color: '#555555' }}>Dự kiến: <Text style={{ fontWeight: 'bold' }}>{formatVND(spentVal)}</Text></Text>
+                    <Text style={{ fontSize: 11, color: '#555555' }}>Còn lại: <Text style={{ fontWeight: 'bold' }}>{formatVND(remainingVal)}</Text></Text>
+                  </View>
+                </View>
+
+                {day.weather_summary?.note && (
+                  <View style={{ backgroundColor: '#f9f9f9', padding: 8, borderRadius: 6, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#14201B' }}>
+                    <Text style={{ fontSize: 11, fontStyle: 'italic', color: '#555555' }}>☀️ Thời tiết: {day.weather_summary.note}</Text>
+                  </View>
+                )}
+
+                {items.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: '#777777', fontStyle: 'italic', paddingLeft: 10 }}>Chưa có hoạt động nào được lên lịch.</Text>
+                ) : (
+                  <View style={{ gap: 12 }}>
+                    {items.map((item) => (
+                      <View key={item.id} style={{ borderWidth: 1, borderColor: '#eeeeee', borderRadius: 8, padding: 10, backgroundColor: '#ffffff' }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#14201B', backgroundColor: '#e2f0ea', paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4 }}>
+                              {ITEM_TYPE_LABELS[item.item_type] || 'Khác'}
+                            </Text>
+                            {item.start_time && (
+                              <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#666666' }}>
+                                ⏱️ {item.start_time.substring(0, 5)}{item.end_time ? ` - ${item.end_time.substring(0, 5)}` : ''}
+                              </Text>
+                            )}
+                          </View>
+                          {hasOfficialCost(item.estimated_cost) && (
+                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#14201B' }}>
+                              {formatCost(item.estimated_cost, item.item_type)}
+                            </Text>
+                          )}
+                        </View>
+                        <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#111111', marginBottom: 4 }}>{item.title}</Text>
+                        {item.description && (
+                          <Text style={{ fontSize: 11, color: '#555555', lineHeight: 15 }}>{item.description}</Text>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
       )}
     </View>
   );

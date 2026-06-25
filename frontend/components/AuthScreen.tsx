@@ -34,6 +34,7 @@ export default function AuthScreen({ mode }: Props) {
   const [errorMsg, setErrorMsg] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
   const [focused, setFocused] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -44,6 +45,10 @@ export default function AuthScreen({ mode }: Props) {
   const handleSubmit = async () => {
     if (!email || !password) {
       setErrorMsg('Vui lòng điền đầy đủ email và mật khẩu');
+      return;
+    }
+    if (isSignUp && !agreed) {
+      setErrorMsg('Vui lòng đọc và đồng ý với cam kết bảo mật dữ liệu');
       return;
     }
     setLoading(true);
@@ -295,6 +300,35 @@ export default function AuthScreen({ mode }: Props) {
               />
             </View>
           </View>
+
+          {isSignUp && (
+            <Pressable
+              onPress={() => setAgreed(!agreed)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 10,
+                marginTop: 18,
+                paddingHorizontal: 2,
+              }}
+            >
+              <View style={{
+                width: 18, height: 18, borderRadius: 4,
+                borderWidth: 1.5,
+                borderColor: agreed ? BRAND_COLORS.primary : 'rgba(27,36,32,0.3)',
+                backgroundColor: agreed ? BRAND_COLORS.primary : 'transparent',
+                alignItems: 'center', justifyContent: 'center',
+                marginTop: 2,
+              }}>
+                {agreed && <Check size={12} color="#fff" strokeWidth={3} />}
+              </View>
+              <Text style={{ fontFamily: F.regular, fontSize: 12, lineHeight: 18, color: BRAND_COLORS.textSoft, flex: 1 }}>
+                Tôi cam đoan thông tin cung cấp là chính xác và đồng ý cho ViVu Planner sử dụng, phân tích dữ liệu cá nhân theo{' '}
+                <Text style={{ fontFamily: F.semiBold, color: BRAND_COLORS.primary, textDecorationLine: 'underline' }}>Chính sách bảo mật</Text>
+                {' '}nhằm tối ưu hóa lộ trình du lịch cá nhân hóa.
+              </Text>
+            </Pressable>
+          )}
 
           {/* Submit */}
           <Pressable
