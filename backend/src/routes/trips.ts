@@ -81,9 +81,74 @@ router.get('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
 
       if (itemsError) throw itemsError;
 
+      // Dynamically match and enrich partner information for pre-existing itinerary items
+      let enrichedItems = items || [];
+      try {
+        const { data: partners } = await supabaseAdmin
+          .from('partners')
+          .select('*')
+          .eq('active_status', true);
+
+        const activePartners = partners || [];
+
+        const normalizeNameForMatching = (name: string): string => {
+          if (!name) return '';
+          return name
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '') // remove diacritics
+            .replace(/[&\/\\#,+()$~%.'\":*?<>{}]/g, '') // remove special chars
+            .replace(/\s+/g, ' ') // normalize whitespace
+            .trim();
+        };
+
+        const matchPartner = (itemTitle: string, partnerName: string): boolean => {
+          const normTitle = normalizeNameForMatching(itemTitle);
+          const normPartner = normalizeNameForMatching(partnerName);
+          
+          if (!normTitle || !normPartner) return false;
+          if (normTitle === normPartner) return true;
+          
+          if (normPartner.length >= 6) {
+            if (normTitle.includes(normPartner) || normPartner.includes(normTitle)) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        enrichedItems = (items || []).map((item: any) => {
+          // If it's already a partner item, keep it but ensure booking_url is populated
+          if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
+            const partnerId = item.google_place_id.replace('partner_', '');
+            const matchedPartner = activePartners.find((p: any) => String(p.id) === partnerId);
+            if (matchedPartner) {
+              return {
+                ...item,
+                booking_url: item.booking_url || matchedPartner.booking_url || null
+              };
+            }
+          }
+
+          // Otherwise, check name match to enrich retroactively
+          const matched = activePartners.find((p: any) => matchPartner(item.title, p.name));
+          if (matched) {
+            return {
+              ...item,
+              google_place_id: item.google_place_id || `partner_${matched.id}`,
+              booking_url: item.booking_url || matched.booking_url || null
+            };
+          }
+
+          return item;
+        });
+      } catch (partnerErr) {
+        console.error('[GetTripDetail] Error enriching partner data:', partnerErr);
+      }
+
       daysWithItems = days.map(day => ({
         ...day,
-        items: items ? items.filter(item => item.day_id === day.id) : []
+        items: enrichedItems.filter((item: any) => item.day_id === day.id)
       }));
     }
 
