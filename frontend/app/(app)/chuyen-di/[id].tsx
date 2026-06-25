@@ -319,6 +319,32 @@ export default function TripDetail() {
   const activeDay = trip.days.find(d => d.id === activeTabId);
   const activeItems = activeDay ? [...activeDay.items].sort((a, b) => a.order_index - b.order_index) : [];
 
+  // ── Spent/Remaining Budget Calculations ────────────────────────────────────
+  const dailySpent: Record<string, number> = {};
+  sortedDays.forEach(day => {
+    let spent = 0;
+    if (day.items) {
+      day.items.forEach((item: any) => {
+        if (item.status !== 'replaced' && item.status !== 'skipped' && item.estimated_cost) {
+          spent += Number(item.estimated_cost) || 0;
+        }
+      });
+    }
+    dailySpent[day.id] = spent;
+  });
+
+  const dailyRemaining: Record<string, number> = {};
+  let currentRemaining = trip.budget_total;
+  sortedDays.forEach(day => {
+    const spent = dailySpent[day.id] || 0;
+    currentRemaining = currentRemaining - spent;
+    dailyRemaining[day.id] = Math.max(0, currentRemaining);
+  });
+
+  const formatVND = (num: number) => {
+    return `${num.toLocaleString('vi-VN')}đ`;
+  };
+
   // ── Disruption type options ───────────────────────────────────────────────
   const DISRUPTION_TYPES = [
     { value: 'weather_change', label: 'Thay đổi thời tiết' },
@@ -440,9 +466,19 @@ export default function TripDetail() {
                       className={`p-4 rounded-xl border ${active ? 'bg-brand-primary border-brand-primary' : 'bg-brand-bg/50 border-brand-line/30'}`}
                     >
                       <View className="flex-row justify-between items-center">
-                        <View>
+                        <View className="flex-1">
                           <Text className={`text-xs font-semibold ${active ? 'text-white/75' : 'text-brand-textMuted'}`}>Ngày 0{day.day_number}</Text>
                           <Text className={`font-bold text-sm mt-0.5 ${active ? 'text-white' : 'text-brand-textSoft'}`}>{formatDate(day.date)}</Text>
+                          
+                          <View className="flex-row items-center gap-2 mt-1.5 flex-wrap">
+                            <Text className={`text-[10px] font-bold ${active ? 'text-white/90' : 'text-brand-textSoft'}`}>
+                              Đã xài: <Text className={active ? 'text-white' : 'text-brand-accent'}>{formatVND(dailySpent[day.id] || 0)}</Text>
+                            </Text>
+                            <Text className={`text-[10px] ${active ? 'text-white/60' : 'text-brand-textMuted'}`}>|</Text>
+                            <Text className={`text-[10px] font-bold ${active ? 'text-white/90' : 'text-brand-textSoft'}`}>
+                              Còn lại: <Text className={active ? 'text-white' : 'text-emerald-600'}>{formatVND(dailyRemaining[day.id] || 0)}</Text>
+                            </Text>
+                          </View>
                         </View>
                         <ChevronRight size={16} color={active ? 'white' : BRAND_COLORS.textSoft} />
                       </View>
@@ -494,7 +530,19 @@ export default function TripDetail() {
 
             {/* Timeline */}
             <View className="bg-brand-bgAlt p-6 rounded-3xl border border-brand-line/50 gap-6">
-              <Text className="font-display font-extrabold text-2xl text-brand-text">Chi tiết hoạt động</Text>
+              <View className="flex-row justify-between items-center flex-wrap gap-2">
+                <Text className="font-display font-extrabold text-2xl text-brand-text">Chi tiết hoạt động</Text>
+                {activeDay && (
+                  <View className="flex-row gap-2">
+                    <View className="px-2.5 py-1 rounded-lg bg-brand-accent/10 border border-brand-accent/20">
+                      <Text className="text-[10px] font-extrabold text-brand-accent uppercase">Đã xài: {formatVND(dailySpent[activeDay.id] || 0)}</Text>
+                    </View>
+                    <View className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200">
+                      <Text className="text-[10px] font-extrabold text-emerald-600 uppercase">Còn lại: {formatVND(dailyRemaining[activeDay.id] || 0)}</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
               {activeItems.length === 0 ? (
                 <Text className="text-center py-12 text-brand-textSoft text-sm">Chưa có hoạt động nào.</Text>
               ) : (
