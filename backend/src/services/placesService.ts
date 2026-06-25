@@ -277,7 +277,8 @@ const VIETNAM_PROVINCES: Record<string, { lat: number; lng: number }> = {
 function getMockPlaces(
   category: 'accommodation' | 'dining' | 'attraction' | 'rental',
   lat: number,
-  lng: number
+  lng: number,
+  query?: string
 ): PlaceCandidate[] {
   let matchedCity = 'da nang';
   
@@ -294,7 +295,7 @@ function getMockPlaces(
   const cityKey = MOCK_PLACES_LIBRARY[matchedCity] ? matchedCity : 'da nang';
   const mockList = MOCK_PLACES_LIBRARY[cityKey][category] || [];
   
-  return mockList.map((item, idx) => ({
+  let candidates = mockList.map((item, idx) => ({
     google_place_id: `mock-${category}-${cityKey}-${idx}`,
     name: item.name!,
     category,
@@ -304,6 +305,35 @@ function getMockPlaces(
     price_level: item.price_level || 2,
     address: item.address || 'Địa chỉ thực tế tại Việt Nam'
   }));
+
+  // Prioritize candidates matching the query keywords (e.g. "lẩu cá đuối")
+  if (query) {
+    const keywords = query.toLowerCase()
+      .replace(/đ/g, 'd')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .split(/\s+/)
+      .filter(w => w.length > 1); // match words longer than 1 character
+
+    if (keywords.length > 0) {
+      candidates.sort((a, b) => {
+        const aNorm = a.name.toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const bNorm = b.name.toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        
+        let aScore = 0;
+        let bScore = 0;
+        
+        keywords.forEach(kw => {
+          if (aNorm.includes(kw)) aScore += 1;
+          if (bNorm.includes(kw)) bScore += 1;
+        });
+        
+        return bScore - aScore; // highest match score first
+      });
+    }
+  }
+
+  return candidates;
 }
 
 export function getCityCoordinates(city: string): { lat: number; lng: number } {
@@ -386,13 +416,13 @@ async function searchPlacesOSM(
     }
 
     if (candidates.length === 0) {
-      return getMockPlaces(category, lat, lng);
+      return getMockPlaces(category, lat, lng, query);
     }
 
     return candidates;
   } catch (error: any) {
     console.error('OSM search places error:', error.message);
-    return getMockPlaces(category, lat, lng);
+    return getMockPlaces(category, lat, lng, query);
   }
 }
 
@@ -497,6 +527,6 @@ export async function searchPlaces(
   } catch (error: any) {
     console.error(`Google Places API failure: ${error.response?.data?.error?.message || error.message}. Returning mock data.`);
     // Fallback to mock data on error safely without recursive call
-    return getMockPlaces(category, lat, lng);
+    return getMockPlaces(category, lat, lng, query);
   }
 }

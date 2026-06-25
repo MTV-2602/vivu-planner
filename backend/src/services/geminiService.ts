@@ -446,18 +446,34 @@ function shuffleArray<T>(array: T[]): T[] {
   return arr;
 }
 
+function filterByBudget(places: PlaceCandidate[], dailyBudget: number): PlaceCandidate[] {
+  if (places.length === 0) return places;
+  
+  let preferredLevels: number[] = [1, 2];
+  if (dailyBudget >= 1500000) {
+    preferredLevels = [2, 3, 4];
+  } else if (dailyBudget < 600000) {
+    preferredLevels = [0, 1];
+  }
+  
+  const filtered = places.filter(p => preferredLevels.includes(p.price_level));
+  return filtered.length > 0 ? filtered : places;
+}
+
 // Programmatic mock itinerary generator
 function generateMockItinerary(
   tripData: any,
   weatherForecast: WeatherForecast[],
   candidatePlaces: Record<string, PlaceCandidate[]>
 ): GeneratedItinerary {
-  const accommodations = shuffleArray(candidatePlaces.accommodation || []);
-  const dining = shuffleArray(candidatePlaces.dining || []);
-  const attractions = shuffleArray(candidatePlaces.attraction || []);
-
   const budget_total = Number(tripData.budget_total) || 5000000;
   const daysCount = weatherForecast.length || 1;
+  const dailyBudget = budget_total / daysCount;
+
+  const accommodations = filterByBudget(shuffleArray(candidatePlaces.accommodation || []), dailyBudget);
+  const dining = filterByBudget(shuffleArray(candidatePlaces.dining || []), dailyBudget);
+  const attractions = filterByBudget(shuffleArray(candidatePlaces.attraction || []), dailyBudget);
+
   const totalNights = Math.max(0, daysCount - 1);
   const selectedAccommodation = accommodations.reduce<PlaceCandidate | undefined>((cheapest, place) => {
     if (!cheapest) return place;
@@ -813,33 +829,54 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
     });
   } catch (error: any) {
     console.error('Gemini generateAlternatives failed:', error.message);
-    // Fallback Mock alternatives
-    return [
-      {
+    
+    // Fallback Mock alternatives from candidates (prioritizing matches)
+    const fallbackAlts: any[] = [];
+    const placesToUse = candidatePlaces.slice(0, 3);
+    
+    if (placesToUse.length > 0) {
+      placesToUse.forEach((place, index) => {
+        let cost: number | null = null;
+        if (place.category === 'dining') {
+          cost = place.price_level === 0 ? 50000 : (place.price_level === 1 ? 90000 : (place.price_level === 2 ? 200000 : 450000));
+        } else if (place.category === 'accommodation') {
+          cost = place.price_level === 0 ? 150000 : (place.price_level === 1 ? 300000 : (place.price_level === 2 ? 600000 : 1200000));
+        } else if (place.category === 'attraction') {
+          cost = place.price_level === 0 ? 0 : (place.price_level === 1 ? 30000 : (place.price_level === 2 ? 100000 : 250000));
+        }
+        
+        const travelerCount = Number(tripData?.traveler_count) || 1;
+        if (cost !== null && place.category !== 'accommodation') {
+          cost = cost * travelerCount;
+        }
+
+        fallbackAlts.push({
+          item_type: originalItem.item_type,
+          title: `${originalItem.item_type === 'dining' ? 'Ăn uống tại' : (originalItem.item_type === 'accommodation' ? 'Nghỉ tại' : 'Tham quan')} ${place.name}`,
+          description: `Địa điểm thay thế lý tưởng: ${place.name}. Đánh giá: ${place.rating}⭐. Địa chỉ: ${place.address}`,
+          start_time: originalItem.start_time || '08:00',
+          end_time: originalItem.end_time || '10:00',
+          google_place_id: place.google_place_id,
+          estimated_cost: cost,
+          reason: `Đề xuất thay thế dựa trên yêu cầu tìm kiếm: "${userRequirement || 'thay thế'}".`
+        });
+      });
+    }
+
+    while (fallbackAlts.length < 3) {
+      const idx = fallbackAlts.length + 1;
+      fallbackAlts.push({
         item_type: originalItem.item_type,
-        title: `[Gợi ý AI 1] ${originalItem.title} thay thế`,
-        description: `Phương án thay thế đề xuất 1 cho "${originalItem.title}". Phù hợp với tiêu chuẩn dịch vụ và thời gian của bạn.`,
+        title: `[Gợi ý AI ${idx}] ${originalItem.title} thay thế`,
+        description: `Phương án thay thế đề xuất ${idx} cho "${originalItem.title}". Phù hợp với yêu cầu: "${userRequirement}".`,
         start_time: originalItem.start_time || '08:00',
         end_time: originalItem.end_time || '10:00',
-        reason: 'Phù hợp với lịch trình hiện tại; cần xác nhận giá chính thức trước khi chốt ngân sách.'
-      },
-      {
-        item_type: originalItem.item_type,
-        title: `[Gợi ý AI 2] ${originalItem.title} - Phương án 2`,
-        description: `Phương án thay thế đề xuất 2. Phục vụ nhu cầu trải nghiệm đa dạng và chi phí hợp lý.`,
-        start_time: originalItem.start_time || '08:00',
-        end_time: originalItem.end_time || '10:00',
-        reason: 'Có tiềm năng tối ưu chi phí, nhưng vẫn cần xác nhận giá chính thức của địa điểm.'
-      },
-      {
-        item_type: originalItem.item_type,
-        title: `[Gợi ý AI 3] ${originalItem.title} - Phương án 3`,
-        description: `Phương án thay thế đề xuất 3. Mang tính chất khám phá thư giãn, nhẹ nhàng.`,
-        start_time: originalItem.start_time || '08:00',
-        end_time: originalItem.end_time || '10:00',
-        reason: 'Không gian phù hợp hơn; giá cần được xác nhận chính thức trước khi áp dụng.'
-      }
-    ];
+        estimated_cost: originalItem.estimated_cost || 100000,
+        reason: `Phương án thay thế dự phòng số ${idx}.`
+      });
+    }
+
+    return fallbackAlts;
   }
 }
 
