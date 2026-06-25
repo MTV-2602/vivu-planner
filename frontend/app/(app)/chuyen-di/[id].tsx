@@ -472,7 +472,7 @@ export default function TripDetail() {
                           
                           <View className="flex-row items-center gap-2 mt-1.5 flex-wrap">
                             <Text className={`text-[10px] font-bold ${active ? 'text-white/90' : 'text-brand-textSoft'}`}>
-                              Đã xài: <Text className={active ? 'text-white' : 'text-brand-accent'}>{formatVND(dailySpent[day.id] || 0)}</Text>
+                              Dự kiến: <Text className={active ? 'text-white' : 'text-brand-accent'}>{formatVND(dailySpent[day.id] || 0)}</Text>
                             </Text>
                             <Text className={`text-[10px] ${active ? 'text-white/60' : 'text-brand-textMuted'}`}>|</Text>
                             <Text className={`text-[10px] font-bold ${active ? 'text-white/90' : 'text-brand-textSoft'}`}>
@@ -535,7 +535,7 @@ export default function TripDetail() {
                 {activeDay && (
                   <View className="flex-row gap-2">
                     <View className="px-2.5 py-1 rounded-lg bg-brand-accent/10 border border-brand-accent/20">
-                      <Text className="text-[10px] font-extrabold text-brand-accent uppercase">Đã xài: {formatVND(dailySpent[activeDay.id] || 0)}</Text>
+                      <Text className="text-[10px] font-extrabold text-brand-accent uppercase">Dự kiến: {formatVND(dailySpent[activeDay.id] || 0)}</Text>
                     </View>
                     <View className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200">
                       <Text className="text-[10px] font-extrabold text-emerald-600 uppercase">Còn lại: {formatVND(dailyRemaining[activeDay.id] || 0)}</Text>
