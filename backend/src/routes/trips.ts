@@ -30,6 +30,45 @@ function parseOptionalCost(value: unknown): number | null {
   return Math.max(0, Math.round(parsed));
 }
 
+function buildDynamicSearchQueries(preferences: any) {
+  let accommodationQuery = 'khách sạn homestay';
+  let diningQuery = 'nhà hàng quán ăn ngon đặc sản';
+  let attractionQuery = 'địa điểm tham quan du lịch danh lam thắng cảnh';
+  let rentalQuery = 'cho thuê xe máy tự lái';
+
+  if (preferences) {
+    if (preferences.food === true) {
+      diningQuery = 'quán ăn ngon đặc sản ẩm thực địa phương nhà hàng';
+    }
+    if (preferences.relax === true) {
+      accommodationQuery = 'khách sạn nghỉ dưỡng resort homestay yên bình';
+    }
+    const attractionKeywords: string[] = [];
+    if (preferences.history === true) {
+      attractionKeywords.push('chùa đền di tích lịch sử bảo tàng cổ kính');
+    }
+    if (preferences.nature === true) {
+      attractionKeywords.push('bãi biển cảnh đẹp thiên nhiên đồi thông thác nước');
+    }
+    if (preferences.adventure === true) {
+      attractionKeywords.push('khu du lịch sinh thái trekking leo núi cắm trại mạo hiểm');
+    }
+    if (preferences.shopping === true) {
+      attractionKeywords.push('chợ đêm trung tâm mua sắm giải trí phố đi bộ');
+    }
+    if (attractionKeywords.length > 0) {
+      attractionQuery = attractionKeywords.join(' ');
+    }
+  }
+
+  return {
+    accommodationQuery,
+    diningQuery,
+    attractionQuery,
+    rentalQuery
+  };
+}
+
 // GET /api/trips - List all trips of the current user
 router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const client = getSupabaseUserClient(req.token!);
@@ -198,11 +237,12 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     const weatherForecast = await getWeatherForecast(lat, lng, start_date, end_date);
 
     // 3. Search real candidate places in the background
+    const queries = buildDynamicSearchQueries(preferences);
     const [accommodations, dining, attractions, rentals] = await Promise.all([
-      searchPlaces('khách sạn homestay', 'accommodation', lat, lng),
-      searchPlaces('nhà hàng quán ăn ngon đặc sản', 'dining', lat, lng),
-      searchPlaces('địa điểm tham quan du lịch danh lam thắng cảnh', 'attraction', lat, lng),
-      searchPlaces('cho thuê xe máy tự lái', 'rental', lat, lng)
+      searchPlaces(queries.accommodationQuery, 'accommodation', lat, lng),
+      searchPlaces(queries.diningQuery, 'dining', lat, lng),
+      searchPlaces(queries.attractionQuery, 'attraction', lat, lng),
+      searchPlaces(queries.rentalQuery, 'rental', lat, lng)
     ]);
 
     // Fetch relevant partners and merge them
@@ -458,11 +498,12 @@ router.post('/:id/disruptions/preview', authMiddleware, async (req: Authenticate
     const { lat, lng } = getCityCoordinates(trip.destination_city);
     const weatherForecast = await getWeatherForecast(lat, lng, trip.start_date, trip.end_date);
     
+    const queries = buildDynamicSearchQueries(trip.preferences);
     const [accommodations, dining, attractions, rentals] = await Promise.all([
-      searchPlaces('khách sạn', 'accommodation', lat, lng),
-      searchPlaces('nhà hàng ngon', 'dining', lat, lng),
-      searchPlaces('địa điểm tham quan', 'attraction', lat, lng),
-      searchPlaces('thuê xe máy', 'rental', lat, lng)
+      searchPlaces(queries.accommodationQuery, 'accommodation', lat, lng),
+      searchPlaces(queries.diningQuery, 'dining', lat, lng),
+      searchPlaces(queries.attractionQuery, 'attraction', lat, lng),
+      searchPlaces(queries.rentalQuery, 'rental', lat, lng)
     ]);
     
     // Fetch relevant partners and merge them

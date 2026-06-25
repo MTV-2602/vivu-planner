@@ -124,30 +124,65 @@ export async function getRelevantPartners(
         if (priceDiff === 0) preferenceScore += 0.3;
         else if (priceDiff === 1) preferenceScore += 0.15;
 
-        // Cuisine tags match (for restaurants/cafes)
-        if (partner.category === 'restaurant' || partner.category === 'cafe') {
-          const prefCuisines = tripPreferences.food || [];
+        // 1. Array/Tag-based check (legacy or special tags)
+        if (Array.isArray(tripPreferences.food) && (partner.category === 'restaurant' || partner.category === 'cafe')) {
           const matchedCuisine = partner.cuisine_tags.some((tag: string) => 
-            prefCuisines.includes(tag)
+            tripPreferences.food.includes(tag)
           );
           if (matchedCuisine) preferenceScore += 0.3;
         }
-
-        // Amenity tags match (for hotels/resorts/homestays)
-        if (['hotel', 'homestay', 'resort'].includes(partner.category)) {
-          const prefAmenities = tripPreferences.accommodation || [];
+        if (Array.isArray(tripPreferences.accommodation) && ['hotel', 'homestay', 'resort'].includes(partner.category)) {
           const matchedAmenity = partner.amenity_tags.some((tag: string) => 
-            prefAmenities.includes(tag)
+            tripPreferences.accommodation.includes(tag)
           );
           if (matchedAmenity) preferenceScore += 0.2;
         }
+        if (Array.isArray(tripPreferences.dietary)) {
+          const matchedDietary = partner.dietary_safe.some((tag: string) => 
+            tripPreferences.dietary.includes(tag)
+          );
+          if (matchedDietary) preferenceScore += 0.2;
+        }
 
-        // Dietary safe match
-        const tripDietary = tripPreferences.dietary || [];
-        const matchedDietary = partner.dietary_safe.some((tag: string) => 
-          tripDietary.includes(tag)
-        );
-        if (matchedDietary) preferenceScore += 0.2;
+        // 2. Boolean dictionary-based check (from frontend form submission)
+        if (tripPreferences.food === true && (partner.category === 'restaurant' || partner.category === 'cafe' || partner.category === 'dining')) {
+          preferenceScore += 0.3;
+        }
+        if (tripPreferences.relax === true && ['hotel', 'homestay', 'resort', 'accommodation'].includes(partner.category)) {
+          preferenceScore += 0.2;
+        }
+        if (tripPreferences.nature === true) {
+          const hasNatureTag = partner.amenity_tags?.some((tag: string) => 
+            ['garden', 'beach', 'view', 'pool', 'nature', 'outdoor'].includes(tag.toLowerCase())
+          );
+          if (hasNatureTag || partner.category === 'resort') {
+            preferenceScore += 0.2;
+          }
+        }
+        if (tripPreferences.history === true) {
+          const hasHistoryTag = partner.amenity_tags?.some((tag: string) => 
+            ['history', 'culture', 'museum', 'ancient', 'traditional'].includes(tag.toLowerCase())
+          );
+          if (hasHistoryTag || partner.category === 'attraction') {
+            preferenceScore += 0.2;
+          }
+        }
+        if (tripPreferences.adventure === true) {
+          const hasAdventureTag = partner.amenity_tags?.some((tag: string) => 
+            ['adventure', 'trekking', 'hiking', 'camping', 'diving', 'climbing', 'bike'].includes(tag.toLowerCase())
+          );
+          if (hasAdventureTag) {
+            preferenceScore += 0.2;
+          }
+        }
+        if (tripPreferences.shopping === true) {
+          const hasShoppingTag = partner.amenity_tags?.some((tag: string) => 
+            ['shopping', 'mall', 'market', 'souvenir', 'bar', 'club', 'entertainment'].includes(tag.toLowerCase())
+          );
+          if (hasShoppingTag) {
+            preferenceScore += 0.2;
+          }
+        }
 
         // Cap preferenceScore at 1.0
         preferenceScore = Math.min(1.0, preferenceScore);
