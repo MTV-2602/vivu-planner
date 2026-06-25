@@ -47,6 +47,60 @@ const TESTIMONIALS = [
   { initial: 'PH', name: 'Phương Hà', location: 'Đà Nẵng', quote: 'Gia đình 5 người, 2 cháu nhỏ, AI hiểu ngay cần điểm thân thiện trẻ em. Lịch trình rất thực tế, không bị nhồi nhét.', tag: 'Phú Quốc · 5N4Đ' },
 ];
 
+const PRICING_PACKAGES = [
+  {
+    title: 'Gói Cơ bản',
+    price: '0 VNĐ',
+    priceSub: 'Mặc định',
+    isPremium: false,
+    tag: 'Hiện tại',
+    tagBg: '#1F6F5415',
+    tagText: '#1F6F54',
+    desc: 'Cung cấp các tính năng tạo lịch trình bằng AI chuyên sâu, tích hợp bản đồ và công cụ quản lý ngân sách.',
+    features: [
+      'Tạo lịch trình tự động chuyên sâu',
+      'Gợi ý các điểm đến phổ biến',
+      'Tích hợp bản đồ trực tuyến',
+      'Công cụ quản lý ngân sách chuyến đi',
+      'Tiếp thị liên kết với các OTA'
+    ]
+  },
+  {
+    title: 'Gói Cao cấp theo lượt',
+    price: '10K - 30K',
+    priceSub: 'VNĐ / lịch trình',
+    isPremium: true,
+    tag: 'Dự kiến',
+    tagBg: '#E2703A15',
+    tagText: '#E2703A',
+    desc: 'Gợi ý các địa danh độc bản "Hidden Gems" và tối ưu hóa lộ trình di chuyển chi tiết.',
+    features: [
+      'Gói 10K (Discovery): 3+ Hidden Gems (Rating ≥4.0, <200 reviews)',
+      'Gói 20K (Explorer): 6+ Hidden Gems & cá nhân hóa sở thích',
+      'Gói 30K (Insider): 9+ Hidden Gems độc quyền từ người bản địa',
+      'Lộ trình tối ưu kết nối các Hidden Gems',
+      'Tối ưu cách di chuyển và thời gian tham quan',
+      'Đánh giá chất lượng bằng chỉ số Scenic Score',
+    ]
+  },
+  {
+    title: 'Gói Cao cấp mở rộng',
+    price: '40K',
+    priceSub: 'VNĐ / lịch trình',
+    isPremium: false,
+    tag: 'Dự kiến',
+    tagBg: '#E2703A15',
+    tagText: '#E2703A',
+    desc: 'Toàn bộ tính năng cao cấp cộng thêm các công cụ định hướng du lịch xanh, bền vững.',
+    features: [
+      'Bao gồm toàn bộ tính năng Cao cấp',
+      'Tính toán dấu chân carbon của chuyến đi',
+      'Đề xuất du lịch bền vững & giảm khí thải',
+      'Scenic Score ưu tiên chất lượng >85/100',
+    ]
+  }
+];
+
 export default function Landing() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -74,6 +128,7 @@ export default function Landing() {
 
   const [featuresSectionY, setFeaturesSectionY] = useState(0);
   const [howItWorksSectionY, setHowItWorksSectionY] = useState(0);
+  const [pricingSectionY, setPricingSectionY] = useState(0);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -173,6 +228,9 @@ export default function Landing() {
             </Pressable>
             <Pressable onPress={() => scrollRef.current?.scrollTo({ y: howItWorksSectionY, animated: true })}>
               <Text style={{ fontFamily: F.regular, fontSize: 14, color: BRAND_COLORS.textSoft }}>Cách dùng</Text>
+            </Pressable>
+            <Pressable onPress={() => scrollRef.current?.scrollTo({ y: pricingSectionY, animated: true })}>
+              <Text style={{ fontFamily: F.regular, fontSize: 14, color: BRAND_COLORS.textSoft }}>Bảng giá</Text>
             </Pressable>
           </View>
         )}
@@ -566,7 +624,99 @@ export default function Landing() {
           </View>
         </View>
 
-        
+        {/* ── PRICING SECTION (COMING SOON / ROADMAP) ───────────────────────── */}
+        <View
+          style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#FBF5EA' }}
+          onLayout={(e) => setPricingSectionY(e.nativeEvent.layout.y)}
+        >
+          <View style={{ gap: 14 }}>
+            <Reveal>
+              <View style={{
+                alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100,
+                backgroundColor: `${BRAND_COLORS.primary}12`,
+                borderWidth: 1, borderColor: `${BRAND_COLORS.primary}28`,
+              }}>
+                <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: BRAND_COLORS.primary, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                  Bảng giá & Định hướng
+                </Text>
+              </View>
+            </Reveal>
+            <Reveal delay={80}>
+              <Text style={{ fontFamily: F.loraBold, fontSize: isMobile ? 28 : 38, lineHeight: isMobile ? 38 : 50, color: '#1B2420' }}>
+                Kế hoạch phát triển{'\n'}và Thương mại hóa
+              </Text>
+            </Reveal>
+            <Reveal delay={140}>
+              <Text style={{ fontFamily: F.regular, fontSize: 14, lineHeight: 24, color: BRAND_COLORS.textSoft, maxWidth: 500 }}>
+                Dựa trên chiến lược Freemium và kết quả khảo sát người dùng. Các tính năng cao cấp dưới đây nằm trong định hướng phát triển và thương mại hóa trong tương lai của ViVu Planner.
+              </Text>
+            </Reveal>
+          </View>
+
+          <View style={{ flexDirection: isMobile ? 'column' : 'row', gap: 16 }}>
+            {PRICING_PACKAGES.map((pkg, i) => (
+              <Reveal key={i} delay={i * 100} style={isMobile ? undefined : { flex: 1 }}>
+                <View style={{
+                  flex: isMobile ? undefined : 1,
+                  backgroundColor: '#fff',
+                  borderWidth: pkg.isPremium ? 2 : 0.5,
+                  borderColor: pkg.isPremium ? BRAND_COLORS.primary : 'rgba(27,36,32,0.08)',
+                  borderRadius: 20,
+                  padding: 28,
+                  gap: 16,
+                  shadowColor: '#1B2420',
+                  shadowOffset: { width: 0, height: pkg.isPremium ? 8 : 4 },
+                  shadowOpacity: pkg.isPremium ? 0.06 : 0.03,
+                  shadowRadius: pkg.isPremium ? 16 : 8,
+                  elevation: pkg.isPremium ? 4 : 2,
+                }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: pkg.tagBg }}>
+                      <Text style={{ fontFamily: F.bold, fontSize: 10, color: pkg.tagText, letterSpacing: 0.5 }}>
+                        {pkg.tag}
+                      </Text>
+                    </View>
+                    {pkg.isPremium && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Star size={12} color={BRAND_COLORS.gold} fill={BRAND_COLORS.gold} />
+                        <Text style={{ fontFamily: F.bold, fontSize: 10, color: BRAND_COLORS.gold, textTransform: 'uppercase' }}>Phổ biến nhất</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={{ gap: 4 }}>
+                    <Text style={{ fontFamily: F.bold, fontSize: 18, color: '#1B2420' }}>{pkg.title}</Text>
+                    <Text style={{ fontFamily: F.regular, fontSize: 12, color: BRAND_COLORS.textSoft, lineHeight: 18 }}>
+                      {pkg.desc}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: 'rgba(27,36,32,0.08)' }}>
+                    <Text style={{ fontFamily: F.loraBold, fontSize: 26, color: BRAND_COLORS.primary }}>
+                      {pkg.price}
+                    </Text>
+                    <Text style={{ fontFamily: F.regular, fontSize: 12, color: BRAND_COLORS.textMuted }}>
+                      {pkg.priceSub}
+                    </Text>
+                  </View>
+
+                  <View style={{ gap: 10, flex: 1 }}>
+                    {pkg.features.map((feat, fi) => (
+                      <View key={fi} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                        <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: `${BRAND_COLORS.primary}15`, alignItems: 'center', justifyContent: 'center', marginTop: 3, flexShrink: 0 }}>
+                          <Check size={8} color={BRAND_COLORS.primary} strokeWidth={4} />
+                        </View>
+                        <Text style={{ fontFamily: F.regular, fontSize: 12, lineHeight: 18, color: BRAND_COLORS.textSoft, flex: 1 }}>
+                          {feat}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </Reveal>
+            ))}
+          </View>
+        </View>
 
         {/* ── DARK — TESTIMONIALS + CTA ──────────────────────────────────────── */}
         <View style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#14201B' }}>
