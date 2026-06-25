@@ -351,8 +351,8 @@ export default function TripDetail() {
         const element = document.querySelector('.print-only-container');
         if (element) {
           const originalStyle = element.getAttribute('style') || '';
-          // Render off-screen temporarily so html2canvas can capture it without page flickering
-          element.setAttribute('style', 'display: block; position: absolute; left: -9999px; top: 0; width: 800px; font-family: system-ui, -apple-system, sans-serif; padding: 25px; color: #1B2420; background-color: white;');
+          // Render off-screen using z-index so html2canvas can capture it at (0,0) without layout shifting or blank sheets
+          element.setAttribute('style', 'display: block; position: fixed; left: 0; top: 0; z-index: -9999; width: 800px; font-family: system-ui, -apple-system, sans-serif; padding: 25px; color: #1B2420; background-color: white;');
           
           const opt = {
             margin:       12,
