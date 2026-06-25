@@ -34,7 +34,11 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
       { name: 'Hồ Hoàn Kiếm và Đền Ngọc Sơn', rating: 4.7, price_level: 1, address: 'Đinh Tiên Hoàng, Hàng Trống, Hoàn Kiếm, Hà Nội' },
       { name: 'Lăng Chủ tịch Hồ Chí Minh', rating: 4.8, price_level: 1, address: 'Hùng Vương, Điện Biên, Ba Đình, Hà Nội' },
       { name: 'Văn Miếu - Quốc Tử Giám', rating: 4.7, price_level: 1, address: '58 Quốc Tử Giám, Văn Miếu, Đống Đa, Hà Nội' },
-      { name: 'Nhà tù Hỏa Lò', rating: 4.6, price_level: 1, address: '1 Hỏa Lò, Trần Hưng Đạo, Hoàn Kiếm, Hà Nội' }
+      { name: 'Nhà tù Hỏa Lò', rating: 4.6, price_level: 1, address: '1 Hỏa Lò, Trần Hưng Đạo, Hoàn Kiếm, Hà Nội' },
+      { name: 'Chùa Một Cột', rating: 4.6, price_level: 1, address: 'Chùa Một Cột, Đội Cấn, Ba Đình, Hà Nội' },
+      { name: 'Hoàng thành Thăng Long', rating: 4.5, price_level: 1, address: '19C Hoàng Diệu, Điện Biên, Ba Đình, Hà Nội' },
+      { name: 'Nhà hát Lớn Hà Nội', rating: 4.7, price_level: 2, address: '1 Tràng Tiền, Phan Chu Trinh, Hoàn Kiếm, Hà Nội' },
+      { name: 'Cầu Long Biên', rating: 4.5, price_level: 0, address: 'Cầu Long Biên, Ngọc Lâm, Long Biên, Hà Nội' }
     ],
     rental: [
       { name: 'Thuê xe máy Gia Hưng Hà Nội', rating: 4.5, price_level: 1, address: '41 Ngõ 115 Nguyễn Lương Bằng, Đống Đa, Hà Nội' },
@@ -60,7 +64,11 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
       { name: 'Bán đảo Sơn Trà & Chùa Linh Ứng', rating: 4.8, price_level: 1, address: 'Sơn Trà, Đà Nẵng' },
       { name: 'Cầu Vàng (Bà Nà Hills)', rating: 4.7, price_level: 4, address: 'Hòa Phú, Hòa Vang, Đà Nẵng' },
       { name: 'Ngũ Hành Sơn', rating: 4.6, price_level: 1, address: '81 Huyền Trân Công Chúa, Hòa Hải, Ngũ Hành Sơn, Đà Nẵng' },
-      { name: 'Cầu Rồng Đà Nẵng', rating: 4.8, price_level: 1, address: 'An Hải Tây, Sơn Trà, Đà Nẵng' }
+      { name: 'Cầu Rồng Đà Nẵng', rating: 4.8, price_level: 1, address: 'An Hải Tây, Sơn Trà, Đà Nẵng' },
+      { name: 'Bãi biển Mỹ Khê', rating: 4.8, price_level: 0, address: 'Võ Nguyên Giáp, Phước Mỹ, Sơn Trà, Đà Nẵng' },
+      { name: 'Bảo tàng Điêu khắc Chăm', rating: 4.4, price_level: 1, address: 'Số 02 2 Tháng 9, Bình Hiên, Hải Châu, Đà Nẵng' },
+      { name: 'Chợ Cồn', rating: 4.3, price_level: 1, address: '290 Hùng Vương, Vĩnh Trung, Hải Châu, Đà Nẵng' },
+      { name: 'Công viên Châu Á (Asia Park)', rating: 4.5, price_level: 2, address: '1 Phan Đăng Lưu, Hòa Cường Bắc, Hải Châu, Đà Nẵng' }
     ],
     rental: [
       { name: 'Cho thuê xe máy Đà Nẵng Gia Huy', rating: 4.6, price_level: 1, address: '126/6 Trần Cao Vân, Tam Thuận, Thanh Khê, Đà Nẵng' },
@@ -86,7 +94,11 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
       { name: 'Dinh Độc Lập', rating: 4.6, price_level: 1, address: '135 Nam Kỳ Khởi Nghĩa, Bến Thành, Quận 1, TP. HCM' },
       { name: 'Bưu điện Trung tâm Thành phố', rating: 4.5, price_level: 1, address: '02 Công xã Paris, Bến Nghé, Quận 1, TP. HCM' },
       { name: 'Bảo tàng Chứng tích Chiến tranh', rating: 4.7, price_level: 1, address: '28 Võ Văn Tần, Võ Thị Sáu, Quận 3, TP. HCM' },
-      { name: 'Chợ Bến Thành', rating: 4.2, price_level: 2, address: 'Lê Lợi, Bến Thành, Quận 1, TP. HCM' }
+      { name: 'Chợ Bến Thành', rating: 4.2, price_level: 2, address: 'Lê Lợi, Bến Thành, Quận 1, TP. HCM' },
+      { name: 'Nhà thờ Đức Bà Sài Gòn', rating: 4.5, price_level: 0, address: '01 Công xã Paris, Bến Nghé, Quận 1, TP. HCM' },
+      { name: 'Thảo Cầm Viên Sài Gòn', rating: 4.3, price_level: 1, address: '2 Nguyễn Bỉnh Khiêm, Bến Nghé, Quận 1, TP. HCM' },
+      { name: 'Tòa nhà Landmark 81', rating: 4.7, price_level: 3, address: '208 Nguyễn Hữu Cảnh, Phường 22, Bình Thạnh, TP. HCM' },
+      { name: 'Phố đi bộ Nguyễn Huệ', rating: 4.6, price_level: 0, address: 'Đường Nguyễn Huệ, Bến Nghé, Quận 1, TP. HCM' }
     ],
     rental: [
       { name: 'Thuê xe máy Sài Gòn Biketown', rating: 4.6, price_level: 1, address: '152 Bùi Viện, Phạm Ngũ Lão, Quận 1, TP. HCM' },
@@ -111,7 +123,11 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
       { name: 'Hồ Xuân Hương & Vườn hoa Thành phố', rating: 4.7, price_level: 1, address: 'Trần Quốc Toản, Phường 1, Đà Lạt' },
       { name: 'Thung lũng Tình Yêu', rating: 4.5, price_level: 2, address: '3 - 5 - 7 Mai Anh Đào, Phường 8, Đà Lạt' },
       { name: 'Thác Datanla & Máng trượt', rating: 4.6, price_level: 2, address: 'Quốc lộ 20, Phường 3, Đà Lạt' },
-      { name: 'Ga Đà Lạt cổ', rating: 4.4, price_level: 1, address: 'Quang Trung, Phường 9, Đà Lạt' }
+      { name: 'Ga Đà Lạt cổ', rating: 4.4, price_level: 1, address: 'Quang Trung, Phường 9, Đà Lạt' },
+      { name: 'Đồi Chè Cầu Đất', rating: 4.5, price_level: 0, address: 'QL20, Xuân Trường, Thành phố Đà Lạt' },
+      { name: 'Dinh I Bảo Đại', rating: 4.4, price_level: 1, address: 'Trần Quang Diệu, Phường 10, Đà Lạt' },
+      { name: 'Chùa Linh Phước (Chùa Ve Chai)', rating: 4.7, price_level: 0, address: '120 Tự Phước, Trại Mát, Đà Lạt' },
+      { name: 'Quảng trường Lâm Viên', rating: 4.6, price_level: 0, address: 'Đường Trần Quốc Toản, Phường 1, Đà Lạt' }
     ],
     rental: [
       { name: 'Thuê xe máy Khánh Đoan Đà Lạt', rating: 4.6, price_level: 1, address: '15 Trần Bình Trọng, Phường 5, Đà Lạt' },
@@ -133,7 +149,11 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     attraction: [
       { name: 'Đỉnh Fansipan (Cáp treo Sun World)', rating: 4.8, price_level: 4, address: 'Đường Nguyễn Chí Thanh, Sa Pa' },
       { name: 'Bản du lịch Cát Cát', rating: 4.5, price_level: 1, address: 'San Sả Hồ, Sa Pa' },
-      { name: 'Thung lũng Mường Hoa', rating: 4.6, price_level: 1, address: 'Mường Hoa, Lao Chải, Sa Pa' }
+      { name: 'Thung lũng Mường Hoa', rating: 4.6, price_level: 1, address: 'Mường Hoa, Lao Chải, Sa Pa' },
+      { name: 'Núi Hàm Rồng', rating: 4.4, price_level: 1, address: 'Đường Hàm Rồng, Sa Pa' },
+      { name: 'Nhà thờ Đá Sa Pa', rating: 4.5, price_level: 0, address: 'Phố Hàm Rồng, Sa Pa' },
+      { name: 'Thác Bạc Sapa', rating: 4.3, price_level: 1, address: 'QL4D, San Sả Hồ, Sa Pa' },
+      { name: 'Bản Tả Phìn', rating: 4.4, price_level: 1, address: 'Xã Tả Phìn, Sa Pa' }
     ],
     rental: [
       { name: 'Thuê xe máy Motorbike Sapa 365', rating: 4.7, price_level: 1, address: '02 Cầu Mây, Sa Pa' }
@@ -153,7 +173,11 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     ],
     attraction: [
       { name: 'Phố cổ Hội An & Chùa Cầu', rating: 4.8, price_level: 1, address: 'Trần Phú, Minh An, Hội An' },
-      { name: 'Khu sinh thái Rừng dừa Bảy Mẫu', rating: 4.5, price_level: 2, address: 'Vạn Lăng, Cẩm Thanh, Hội An' }
+      { name: 'Khu sinh thái Rừng dừa Bảy Mẫu', rating: 4.5, price_level: 2, address: 'Vạn Lăng, Cẩm Thanh, Hội An' },
+      { name: 'Làng gốm Thanh Hà', rating: 4.4, price_level: 1, address: 'Phạm Phán, Thanh Hà, Hội An' },
+      { name: 'Bãi biển An Bàng', rating: 4.6, price_level: 0, address: 'Đường Hai Bà Trưng, Cẩm An, Hội An' },
+      { name: 'Làng rau Trà Quế', rating: 4.5, price_level: 1, address: 'Cẩm Hà, Hội An' },
+      { name: 'Chợ đêm Hội An', rating: 4.3, price_level: 0, address: 'Đường Nguyễn Hoàng, Minh An, Hội An' }
     ],
     rental: [
       { name: 'Hoi An Motorbike Rental', rating: 4.6, price_level: 1, address: '111 Hùng Vương, Cẩm Phô, Hội An' }
@@ -173,7 +197,11 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     attraction: [
       { name: 'Đại Nội Huế (Hoàng Thành cổ)', rating: 4.7, price_level: 2, address: 'Đường 23 Tháng 8, Thuận Hòa, Huế' },
       { name: 'Lăng vua Khải Định', rating: 4.8, price_level: 2, address: 'Thủy Bằng, Hương Thủy, Thừa Thiên Huế' },
-      { name: 'Chùa Thiên Mụ', rating: 4.6, price_level: 1, address: 'Kim Long, Hương Long, Huế' }
+      { name: 'Chùa Thiên Mụ', rating: 4.6, price_level: 1, address: 'Kim Long, Hương Long, Huế' },
+      { name: 'Lăng vua Tự Đức', rating: 4.6, price_level: 2, address: 'Thủy Xuân, Thành phố Huế' },
+      { name: 'Lăng vua Minh Mạng', rating: 4.7, price_level: 2, address: 'Hương Thọ, Hương Trà, Thừa Thiên Huế' },
+      { name: 'Cầu Trường Tiền', rating: 4.7, price_level: 0, address: 'Cầu Trường Tiền, Phú Hội, Huế' },
+      { name: 'Chợ Đông Ba', rating: 4.2, price_level: 1, address: 'Trần Hưng Đạo, Phú Hòa, Huế' }
     ],
     rental: [
       { name: 'Thuê xe máy Motorbike Rental Hue', rating: 4.6, price_level: 1, address: '29 Chu Văn An, Phú Hội, Huế' }
@@ -192,7 +220,11 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     ],
     attraction: [
       { name: 'VinWonders Nha Trang Amusement Park', rating: 4.8, price_level: 4, address: 'Đảo Hòn Tre, Vĩnh Nguyên, Nha Trang' },
-      { name: 'Khu di tích Tháp Bà Ponagar', rating: 4.6, price_level: 1, address: '2 Tháng 4, Vĩnh Phước, Nha Trang' }
+      { name: 'Khu di tích Tháp Bà Ponagar', rating: 4.6, price_level: 1, address: '2 Tháng 4, Vĩnh Phước, Nha Trang' },
+      { name: 'Chùa Long Sơn', rating: 4.6, price_level: 0, address: '20 Đường 23 Tháng 10, Phương Sơn, Nha Trang' },
+      { name: 'Hòn Chồng', rating: 4.4, price_level: 1, address: 'Vĩnh Phước, Nha Trang' },
+      { name: 'Viện Hải dương học Nha Trang', rating: 4.4, price_level: 1, address: 'Số 1 Cầu Đá, Vĩnh Nguyên, Nha Trang' },
+      { name: 'Bãi Dài Nha Trang', rating: 4.5, price_level: 0, address: 'Cam Hải Đông, Cam Lâm, Khánh Hòa' }
     ],
     rental: [
       { name: 'Thuê xe máy Nha Trang San Hô Việt', rating: 4.7, price_level: 1, address: '114/23 Hoàng Hoa Thám, Lộc Thọ, Nha Trang' }
@@ -211,7 +243,11 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     ],
     attraction: [
       { name: 'Cáp treo Hòn Thơm Sun World', rating: 4.8, price_level: 3, address: 'Bãi Đất Đỏ, An Thới, Phú Quốc' },
-      { name: 'Grand World Phú Quốc (Thành phố không ngủ)', rating: 4.6, price_level: 2, address: 'Gành Dầu, Phú Quốc' }
+      { name: 'Grand World Phú Quốc (Thành phố không ngủ)', rating: 4.6, price_level: 2, address: 'Gành Dầu, Phú Quốc' },
+      { name: 'Bãi Sao Phú Quốc', rating: 4.5, price_level: 0, address: 'An Thới, Phú Quốc' },
+      { name: 'Nhà tù Phú Quốc', rating: 4.4, price_level: 1, address: 'Đường Nguyễn Văn Cừ, An Thới, Phú Quốc' },
+      { name: 'Chợ đêm Phú Quốc', rating: 4.3, price_level: 0, address: 'Đường Nguyễn Trãi, Dương Đông, Phú Quốc' },
+      { name: 'Vinpearl Safari Phú Quốc', rating: 4.7, price_level: 4, address: 'Gành Dầu, Phú Quốc' }
     ],
     rental: [
       { name: 'Thuê xe máy Phú Quốc Minh Thư', rating: 4.7, price_level: 1, address: 'Đường Trần Hưng Đạo, Dương Đông, Phú Quốc' }
@@ -231,7 +267,11 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     attraction: [
       { name: 'Khu du lịch sinh thái Tràng An', rating: 4.8, price_level: 2, address: 'Tràng An, Trường Yên, Hoa Lư, Ninh Bình' },
       { name: 'Chùa Bái Đính cổ và mới', rating: 4.7, price_level: 1, address: 'Gia Sinh, Gia Viễn, Ninh Bình' },
-      { name: 'Tuyệt Tình Cốc & Động Am Tiên', rating: 4.5, price_level: 1, address: 'Trường Yên, Hoa Lư, Ninh Bình' }
+      { name: 'Tuyệt Tình Cốc & Động Am Tiên', rating: 4.5, price_level: 1, address: 'Trường Yên, Hoa Lư, Ninh Bình' },
+      { name: 'Tam Cốc - Bích Động', rating: 4.6, price_level: 2, address: 'Ninh Hải, Hoa Lư, Ninh Bình' },
+      { name: 'Hang Múa (Mua Caves)', rating: 4.7, price_level: 1, address: 'Khê Đầu Hạ, Ninh Xuân, Hoa Lư, Ninh Bình' },
+      { name: 'Vườn quốc gia Cúc Phương', rating: 4.5, price_level: 1, address: 'Nho Quan, Ninh Bình' },
+      { name: 'Cố đô Hoa Lư', rating: 4.4, price_level: 1, address: 'Trường Yên, Hoa Lư, Ninh Bình' }
     ],
     rental: [
       { name: 'Thuê xe máy Ninh Bình Khánh Chi', rating: 4.7, price_level: 1, address: '80 Lương Văn Tụy, Tân Thành, Ninh Bình' }
@@ -252,7 +292,12 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
     ],
     attraction: [
       { name: 'Tượng Chúa Kitô Vua Vũng Tàu', rating: 4.7, price_level: 1, address: 'Thùy Vân, Phường 2, Vũng Tàu' },
-      { name: 'Ngọn Hải Đăng Vũng Tàu', rating: 4.6, price_level: 1, address: 'Núi Nhỏ, Phường 2, Vũng Tàu' }
+      { name: 'Ngọn Hải Đăng Vũng Tàu', rating: 4.6, price_level: 1, address: 'Núi Nhỏ, Phường 2, Vũng Tàu' },
+      { name: 'Khu du lịch Hồ Mây', rating: 4.4, price_level: 3, address: 'Vi Ba, Phường 1, Vũng Tàu' },
+      { name: 'Bạch Dinh (Villa Blanche)', rating: 4.5, price_level: 1, address: '4 Trần Phú, Phường 1, Vũng Tàu' },
+      { name: 'Mũi Nghinh Phong', rating: 4.6, price_level: 0, address: '1 Đường Hạ Long, Phường 2, Vũng Tàu' },
+      { name: 'Đồi Con Heo', rating: 4.3, price_level: 0, address: 'Hẻm 222 Phan Chu Trinh, Phường 2, Vũng Tàu' },
+      { name: 'Thích Ca Phật Đài', rating: 4.5, price_level: 1, address: '608 Trần Phú, Phường 5, Vũng Tàu' }
     ],
     rental: [
       { name: 'Thuê xe máy Vũng Tàu giá rẻ Minh Đức', rating: 4.7, price_level: 1, address: '18 Lương Văn Can, Phường 2, Vũng Tàu' }

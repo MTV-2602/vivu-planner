@@ -474,6 +474,29 @@ function generateMockItinerary(
   const dining = filterByBudget(shuffleArray(candidatePlaces.dining || []), dailyBudget);
   const attractions = filterByBudget(shuffleArray(candidatePlaces.attraction || []), dailyBudget);
 
+  // Set up depletion pools for popping and avoiding duplicates across the itinerary
+  const attractionsPool = [...attractions];
+  let currentAttractions = [...attractionsPool];
+
+  const getNextAttraction = (): PlaceCandidate | null => {
+    if (attractionsPool.length === 0) return null;
+    if (currentAttractions.length === 0) {
+      currentAttractions = shuffleArray([...attractionsPool]);
+    }
+    return currentAttractions.shift() || null;
+  };
+
+  const diningPool = [...dining];
+  let currentDining = [...diningPool];
+
+  const getNextDining = (): PlaceCandidate | null => {
+    if (diningPool.length === 0) return null;
+    if (currentDining.length === 0) {
+      currentDining = shuffleArray([...diningPool]);
+    }
+    return currentDining.shift() || null;
+  };
+
   const totalNights = Math.max(0, daysCount - 1);
   const selectedAccommodation = accommodations.reduce<PlaceCandidate | undefined>((cheapest, place) => {
     if (!cheapest) return place;
@@ -513,64 +536,64 @@ function generateMockItinerary(
     });
 
     // Attraction 1 (Morning)
-    if (attractions.length > 0) {
-      const site = attractions[(index * 2) % attractions.length];
-      const costPerPerson = site.price_level === 0 ? 0 : (site.price_level === 1 ? 30000 : (site.price_level === 2 ? 100000 : 250000));
+    const site1 = getNextAttraction();
+    if (site1) {
+      const costPerPerson = site1.price_level === 0 ? 0 : (site1.price_level === 1 ? 30000 : (site1.price_level === 2 ? 100000 : 250000));
       items.push({
         item_type: 'attraction',
-        title: `Tham quan ${site.name}`,
-        description: `Khám phá vẻ đẹp lịch sử và văn hóa địa phương. Địa chỉ: ${site.address}`,
+        title: `Tham quan ${site1.name}`,
+        description: `Khám phá vẻ đẹp lịch sử và văn hóa địa phương. Địa chỉ: ${site1.address}`,
         start_time: '09:00',
         end_time: '11:30',
-        google_place_id: site.google_place_id,
+        google_place_id: site1.google_place_id,
         estimated_cost: costPerPerson * Math.max(1, Number(tripData.traveler_count || 1)),
         order_index: 2
       });
     }
 
     // Dining (Lunch)
-    if (dining.length > 0) {
-      const rest = dining[(index * 2) % dining.length];
-      const costPerPerson = rest.price_level === 0 ? 40000 : (rest.price_level === 1 ? 70000 : (rest.price_level === 2 ? 150000 : 350000));
+    const lunchRest = getNextDining();
+    if (lunchRest) {
+      const costPerPerson = lunchRest.price_level === 0 ? 40000 : (lunchRest.price_level === 1 ? 70000 : (lunchRest.price_level === 2 ? 150000 : 350000));
       items.push({
         item_type: 'dining',
-        title: `Ăn trưa tại ${rest.name}`,
-        description: `Thưởng thức các món đặc sản địa phương ngon và nổi tiếng. Đánh giá: ${rest.rating}⭐. Địa chỉ: ${rest.address}`,
+        title: `Ăn trưa tại ${lunchRest.name}`,
+        description: `Thưởng thức các món đặc sản địa phương ngon và nổi tiếng. Đánh giá: ${lunchRest.rating}⭐. Địa chỉ: ${lunchRest.address}`,
         start_time: '12:00',
         end_time: '13:00',
-        google_place_id: rest.google_place_id,
+        google_place_id: lunchRest.google_place_id,
         estimated_cost: costPerPerson * Math.max(1, Number(tripData.traveler_count || 1)),
         order_index: 3
       });
     }
 
     // Attraction 2 (Afternoon)
-    if (attractions.length > 0) {
-      const site = attractions[(index * 2 + 1) % attractions.length];
-      const costPerPerson = site.price_level === 0 ? 0 : (site.price_level === 1 ? 30000 : (site.price_level === 2 ? 100000 : 250000));
+    const site2 = getNextAttraction();
+    if (site2) {
+      const costPerPerson = site2.price_level === 0 ? 0 : (site2.price_level === 1 ? 30000 : (site2.price_level === 2 ? 100000 : 250000));
       items.push({
         item_type: 'attraction',
-        title: `Trải nghiệm tại ${site.name}`,
-        description: `Tận hưởng không gian và tìm hiểu về các câu chuyện thú vị.`,
+        title: `Trải nghiệm tại ${site2.name}`,
+        description: `Tận hưởng không gian và tìm hiểu về các câu chuyện thú vị. Địa chỉ: ${site2.address}`,
         start_time: '15:00',
         end_time: '17:30',
-        google_place_id: site.google_place_id,
+        google_place_id: site2.google_place_id,
         estimated_cost: costPerPerson * Math.max(1, Number(tripData.traveler_count || 1)),
         order_index: 4
       });
     }
 
     // Dining (Dinner)
-    if (dining.length > 0) {
-      const rest = dining[(index * 2 + 1) % dining.length];
-      const costPerPerson = rest.price_level === 0 ? 50000 : (rest.price_level === 1 ? 90000 : (rest.price_level === 2 ? 200000 : 450000));
+    const dinnerRest = getNextDining();
+    if (dinnerRest) {
+      const costPerPerson = dinnerRest.price_level === 0 ? 50000 : (dinnerRest.price_level === 1 ? 90000 : (dinnerRest.price_level === 2 ? 200000 : 450000));
       items.push({
         item_type: 'dining',
-        title: `Ăn tối tại ${rest.name}`,
-        description: `Thưởng thức ẩm thực tối đặc sắc của địa phương. Đánh giá: ${rest.rating}⭐. Địa chỉ: ${rest.address}`,
+        title: `Ăn tối tại ${dinnerRest.name}`,
+        description: `Thưởng thức ẩm thực tối đặc sắc của địa phương. Đánh giá: ${dinnerRest.rating}⭐. Địa chỉ: ${dinnerRest.address}`,
         start_time: '18:30',
         end_time: '20:00',
-        google_place_id: rest.google_place_id,
+        google_place_id: dinnerRest.google_place_id,
         estimated_cost: costPerPerson * Math.max(1, Number(tripData.traveler_count || 1)),
         order_index: 5
       });
