@@ -349,7 +349,7 @@ export default function TripDetail() {
     if (Platform.OS === 'web') {
       const runHtml2Pdf = () => {
         const htmlString = `
-          <div style="font-family: system-ui, -apple-system, sans-serif; padding: 25px; color: #1B2420; background-color: white; max-width: 800px; margin: 0 auto;">
+          <div style="font-family: system-ui, -apple-system, sans-serif; padding: 25px; color: #1B2420; background-color: white; width: 794px; margin: 0 auto; box-sizing: border-box;">
             <div style="border-b: 2px solid #14201B; border-bottom: 2px solid #14201B; padding-bottom: 15px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: flex-start;">
               <div>
                 <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold; color: #14201B;">${trip.title}</h1>
@@ -422,7 +422,13 @@ export default function TripDetail() {
           margin:       12,
           filename:     `${trip.title || 'lich-trinh'}.pdf`,
           image:        { type: 'jpeg', quality: 0.98 },
-          html2canvas:  { scale: 2, useCORS: true, logging: false },
+          html2canvas:  { 
+            scale: 2, 
+            useCORS: true, 
+            logging: true,
+            scrollX: 0,
+            scrollY: 0
+          },
           jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
 
