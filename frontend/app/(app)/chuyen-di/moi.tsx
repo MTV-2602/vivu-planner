@@ -20,7 +20,7 @@ const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'und
 
 const LOADING_STAGES = [
   'Đang tra cứu dự báo thời tiết tại điểm đến...',
-  'Đang quét địa điểm lưu trú & ăn uống thực tế (Google Places)...',
+  'Đang quét địa điểm lưu trú & ăn uống thực tế (OpenStreetMap)...',
   'Đang cá nhân hóa lịch trình tối ưu bằng Gemini AI...',
   'Đang cấu hình các phương án dự phòng sự cố...',
   'Đang khởi tạo cơ sở dữ liệu chuyến đi của bạn...',
