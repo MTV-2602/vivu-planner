@@ -367,6 +367,24 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     return res.status(400).json({ error: 'Missing required parameters: destination_city, start_date, end_date, budget_total' });
   }
 
+  // Predict absolute minimum cost and validate budget
+  const start = new Date(start_date);
+  const end = new Date(end_date);
+  let daysCount = 1;
+  if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    daysCount = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  }
+  const nightsCount = Math.max(0, daysCount - 1);
+  const travelers = parseInt(traveler_count || '1');
+  const minRequiredBudget = travelers * ((nightsCount * 100000) + (daysCount * 120000));
+  
+  if (parseFloat(budget_total) < minRequiredBudget) {
+    return res.status(400).json({
+      error: `Ngân sách tối thiểu dự kiến cho chuyến đi ${daysCount} ngày (${nightsCount} đêm) của ${travelers} khách tại ${destination_city} là ${minRequiredBudget.toLocaleString('vi-VN')}đ. Vui lòng tăng ngân sách để tiếp tục.`
+    });
+  }
+
   try {
     // 1. Resolve coordinates
     const { lat, lng } = getCityCoordinates(destination_city);

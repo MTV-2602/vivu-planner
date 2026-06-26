@@ -77,6 +77,19 @@ function formatDateForDisplay(dateStr: string): string {
   return `${day}/${month}/${year}`;
 }
 
+function calculateMinimumBudget(startDateStr: string, endDateStr: string, travelerCount: number): { minBudget: number, daysCount: number, nightsCount: number } {
+  const start = parseDate(startDateStr);
+  const end = parseDate(endDateStr);
+  let daysCount = 1;
+  if (start && end) {
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    daysCount = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  }
+  const nightsCount = Math.max(0, daysCount - 1);
+  const minBudget = travelerCount * ((nightsCount * 100000) + (daysCount * 120000));
+  return { minBudget, daysCount, nightsCount };
+}
+
 // Web-only: render <input type="date">; Native: plain TextInput
 function DateInput({
   value, onChange, placeholder, min,
@@ -270,6 +283,11 @@ export default function TripWizard() {
     setErrorMsg('');
   }, [startDate, endDate]);
 
+  // Clear budget errors when budget or traveler count changes to keep the Next/Submit button enabled
+  useEffect(() => {
+    setErrorMsg('');
+  }, [budgetTotal, travelerCount]);
+
   const handlePrefToggle = (id: string) => {
     setSelectedPrefs(prev =>
       prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
@@ -312,6 +330,17 @@ export default function TripWizard() {
         return;
       }
     }
+    if (step === 2) {
+      if (budgetTotal <= 0) {
+        setErrorMsg('Vui lòng nhập tổng ngân sách lớn hơn 0');
+        return;
+      }
+      const { minBudget, daysCount, nightsCount } = calculateMinimumBudget(startDate, endDate, travelerCount);
+      if (budgetTotal < minBudget) {
+        setErrorMsg(`Ngân sách tối thiểu dự kiến cho chuyến đi ${daysCount} ngày (${nightsCount} đêm) của ${travelerCount} khách là ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(minBudget)} (bao gồm chỗ nghỉ bình dân dorm và chi phí ăn uống tối thiểu). Vui lòng nâng ngân sách để tiếp tục.`);
+        return;
+      }
+    }
     setErrorMsg('');
     setStep(prev => prev + 1);
   };
@@ -322,6 +351,13 @@ export default function TripWizard() {
   };
 
   const handleSubmit = async () => {
+    const { minBudget, daysCount, nightsCount } = calculateMinimumBudget(startDate, endDate, travelerCount);
+    if (budgetTotal < minBudget) {
+      setErrorMsg(`Ngân sách tối thiểu dự kiến cho chuyến đi ${daysCount} ngày (${nightsCount} đêm) của ${travelerCount} khách là ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(minBudget)}. Vui lòng quay lại bước 2 để nâng ngân sách.`);
+      setStep(2);
+      return;
+    }
+
     setLoading(true);
     setLoadingStage(0);
 
