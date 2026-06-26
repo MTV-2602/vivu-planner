@@ -540,6 +540,88 @@ function generateMockItinerary(
     return currentDining.shift() || null;
   };
 
+  const destinationLower = (tripData.destination_city || '').toLowerCase();
+  
+  const getEveningExperience = (dayIdx: number): { title: string, description: string } => {
+    if (destinationLower.includes('vũng tàu') || destinationLower.includes('vung tau')) {
+      const options = [
+        { title: 'Đi dạo dọc bờ biển Bãi Sau hóng gió', description: 'Tận hưởng làn gió biển mát rượi và không khí trong lành tại Bãi Sau về đêm.' },
+        { title: 'Càn quét hải sản tại Chợ đêm Vũng Tàu', description: 'Thưởng thức vô vàn món hải sản tươi sống được chế biến nóng hổi tại chỗ cực kỳ hấp dẫn.' },
+        { title: 'Thư giãn ngắm biển tại khu Bãi Trước', description: 'Dạo bộ công viên bờ biển Bãi Trước ngắm nhìn tàu thuyền neo đậu lung linh ánh đèn.' },
+        { title: 'Thưởng thức cà phê view biển đường Trần Phú', description: 'Ghé quán cà phê lộng gió sát bờ biển đường Trần Phú để ngắm nhìn sóng vỗ về đêm.' }
+      ];
+      return options[dayIdx % options.length];
+    }
+    if (destinationLower.includes('hà nội') || destinationLower.includes('ha noi')) {
+      const options = [
+        { title: 'Dạo quanh Hồ Hoàn Kiếm và Phố cổ', description: 'Dạo bộ khu phố cổ rực rỡ, cảm nhận nhịp sống thủ đô bình dị và ấm áp.' },
+        { title: 'Khám phá ẩm thực Chợ đêm Đồng Xuân', description: 'Thử sức với thiên đường đồ ăn vặt và mua sắm quà lưu niệm xinh xắn.' },
+        { title: 'Hóng gió ngắm cầu Long Biên lịch sử', description: 'Lên cầu Long Biên hoặc ghé quán cà phê ven đê sông Hồng hóng gió mát.' },
+        { title: 'Thưởng thức cà phê trứng trong ngõ cổ', description: 'Nhâm nhi hương vị cà phê trứng béo ngậy đặc sản Hà Nội trong không gian hoài niệm.' }
+      ];
+      return options[dayIdx % options.length];
+    }
+    if (destinationLower.includes('đà nẵng') || destinationLower.includes('da nang')) {
+      const options = [
+        { title: 'Ngắm Cầu Rồng phun lửa bờ sông Hàn', description: 'Chiêm ngưỡng cầu Rồng phun lửa/nước hoành tráng (cuối tuần) và đi dạo cầu Tình Yêu.' },
+        { title: 'Khám phá ẩm thực Chợ đêm Helio', description: 'Thiên đường ẩm thực đêm lớn nhất Đà Nẵng với hàng trăm món ngon hấp dẫn.' },
+        { title: 'Dạo mát trên bờ cát biển Mỹ Khê', description: 'Đi dạo lắng nghe tiếng sóng vỗ rì rào tại một trong những bãi biển đẹp nhất hành tinh.' },
+        { title: 'Khám phá Chợ đêm Sơn Trà sầm uất', description: 'Mua sắm đặc sản địa phương, thưởng thức hải sản nướng thơm nức mũi.' }
+      ];
+      return options[dayIdx % options.length];
+    }
+    if (destinationLower.includes('hồ chí minh') || destinationLower.includes('sài gòn') || destinationLower.includes('ho chi minh') || destinationLower.includes('sai gon')) {
+      const options = [
+        { title: 'Dạo chơi Phố đi bộ Nguyễn Huệ', description: 'Hòa mình vào không khí sôi động, xem biểu diễn nghệ thuật đường phố và ngắm Landmark 81 từ xa.' },
+        { title: 'Trải nghiệm Phố Tây Bùi Viện náo nhiệt', description: 'Khám phá khu phố không ngủ sầm uất với các hoạt động giải trí xuyên đêm.' },
+        { title: 'Hóng gió công viên Bạch Đằng ven sông', description: 'Ngồi ngắm tàu thuyền du lịch lung linh lướt trên sông Sài Gòn lộng gió.' },
+        { title: 'Ăn vặt chợ đêm quanh Bến Thành', description: 'Thưởng thức các món chè, bánh xèo, hủ tiếu gõ mang đậm hương vị Nam Bộ.' }
+      ];
+      return options[dayIdx % options.length];
+    }
+    if (destinationLower.includes('đà lạt') || destinationLower.includes('da lat')) {
+      const options = [
+        { title: 'Khám phá Chợ đêm Đà Lạt (Chợ Âm Phủ)', description: 'Thưởng thức sữa đậu nành nóng, bánh tráng nướng và xiên que nướng trong tiết trời se lạnh.' },
+        { title: 'Dạo bộ quanh Hồ Xuân Hương mờ sương', description: 'Thuê xe đạp đôi hoặc đi dạo ven hồ cảm nhận không khí lãng mạn đặc trưng.' },
+        { title: 'Ghé quán cà phê acoustic ngắm thung lũng đèn', description: 'Nghe nhạc sống mộc mạc và ngắm nhìn thung lũng nhà lồng lung linh như vạn vì sao.' },
+        { title: 'Thưởng thức kem bơ và bánh tráng khu Hòa Bình', description: 'Kem bơ béo ngậy kết hợp sầu riêng thơm phức là món ăn không thể bỏ qua.' }
+      ];
+      return options[dayIdx % options.length];
+    }
+    if (destinationLower.includes('hội an') || destinationLower.includes('hoi an')) {
+      const options = [
+        { title: 'Dạo ngắm đèn lồng Phố cổ Hội An', description: 'Chiêm ngưỡng những ngôi nhà cổ sơn vàng lung linh dưới sắc đèn lồng rực rỡ.' },
+        { title: 'Thả đèn hoa đăng trên dòng sông Hoài', description: 'Ngồi thuyền gỗ nhỏ trôi lững lờ và thả những chiếc đèn giấy ước nguyện xuống sông.' },
+        { title: 'Mua sắm tại Chợ đêm Nguyễn Hoàng', description: 'Tìm kiếm những món quà lưu niệm bằng gốm Thanh Hà hoặc lồng đèn xinh xắn.' },
+        { title: 'Thưởng thức ly nước Mót bên vỉa hè cổ', description: 'Nhâm nhi ly trà thảo mộc mát lành thơm mùi sả chanh giữa lòng phố cổ.' }
+      ];
+      return options[dayIdx % options.length];
+    }
+    if (destinationLower.includes('ninh bình') || destinationLower.includes('ninh binh')) {
+      const options = [
+        { title: 'Dạo chơi Phố cổ Hoa Lư rực rỡ', description: 'Tham quan khu phố cổ tái hiện nét văn hóa Đại Việt xưa lung linh soi bóng xuống mặt hồ.' },
+        { title: 'Thưởng thức đặc sản thịt dê nướng cung đình', description: 'Nhâm nhi cơm cháy giòn rụm cùng các món dê đặc sản trứ danh.' },
+        { title: 'Thư giãn ngắm hoàng hôn và núi non tĩnh lặng', description: 'Cảm nhận không khí đồng quê trong lành, tách biệt hoàn toàn khói bụi thành phố.' }
+      ];
+      return options[dayIdx % options.length];
+    }
+    if (destinationLower.includes('sa pa') || destinationLower.includes('sapa')) {
+      const options = [
+        { title: 'Dạo hồ Sa Pa và ngắm Nhà thờ Đá', description: 'Nhà thờ Đá kiến trúc Pháp cổ kính được thắp sáng rực rỡ giữa quảng trường sương mù.' },
+        { title: 'Khám phá đồ nướng và hạt dẻ nóng Sa Pa', description: 'Thưởng thức cải mèo cuốn thịt bò nướng, cơm lam và hạt dẻ rừng thơm bùi.' },
+        { title: 'Giao lưu văn nghệ Chợ tình Sa Pa', description: 'Trải nghiệm nét sinh hoạt văn hóa độc đáo của các đồng bào dân tộc H\'Mông, Dao.' }
+      ];
+      return options[dayIdx % options.length];
+    }
+    
+    const defaults = [
+      { title: 'Dạo bộ trung tâm thành phố ngắm cảnh đêm', description: 'Cảm nhận nhịp sống địa phương bình dị và thư giãn sau ngày dài di chuyển.' },
+      { title: 'Khám phá chợ đêm và ẩm thực đường phố', description: 'Ghé các hàng quán vỉa hè ăn vặt, mua sắm đồ lưu niệm địa phương.' },
+      { title: 'Thư giãn tại quán cà phê địa phương', description: 'Nhâm nhi tách trà/cà phê ấm cúng và nhìn ngắm đường phố về đêm.' }
+    ];
+    return defaults[dayIdx % defaults.length];
+  };
+
   const totalNights = Math.max(0, daysCount - 1);
   const selectedAccommodation = accommodations.reduce<PlaceCandidate | undefined>((cheapest, place) => {
     if (!cheapest) return place;
@@ -643,10 +725,11 @@ function generateMockItinerary(
     }
 
     // Experience (Evening)
+    const eve = getEveningExperience(index);
     items.push({
       item_type: 'experience',
-      title: 'Dạo chơi phố cổ / Chợ đêm',
-      description: 'Dạo bộ tự do để cảm nhận không khí về đêm của thành phố; mua sắm hoặc ăn vặt nếu có sẽ phát sinh chi phí riêng cần xác nhận.',
+      title: eve.title,
+      description: eve.description,
       start_time: '20:30',
       end_time: '22:00',
       estimated_cost: 0,
