@@ -199,8 +199,13 @@ Nhiệm vụ của bạn là xây dựng lịch trình du lịch tối ưu, an t
 
 QUY TẮC CỐT LÕI:
 1. Bạn CHỈ được chọn địa điểm trong danh sách "candidate_places" được cung cấp — tuyệt đối không tự tạo thêm địa điểm nào ngoài danh sách này (ngoại trừ loại di chuyển "transport" hoặc trải nghiệm "experience" tự do).
-2. Hãy phân tích kỹ sở thích, ngân sách, và đặc biệt là tình trạng sức khỏe, giới hạn thể lực của khách để chọn hoạt động phù hợp nhất.
-3. PHÂN BỔ NGÂN SÁCH THÔNG MINH & TỰ ĐỘNG ƯỚC LƯỢNG CHI PHÍ THỰC TẾ (RÀNG BUỘC BẮT BUỘC CỰC KỲ NGHIÊM NGẶT):
+2. ƯU TIÊN ĐỐI TÁC XÁC MINH (VERIFIED PARTNERS): Trong danh sách "candidate_places", các địa điểm có "google_place_id" bắt đầu bằng tiền tố "partner_" là đối tác đã được xác minh. Hãy ưu tiên lựa chọn và đưa các đối tác này vào lịch trình nếu họ phù hợp với sở thích, vị trí địa lý và ngân sách của khách. Tuy nhiên, tuyệt đối KHÔNG cưỡng ép chọn đối tác nếu không phù hợp — chất lượng lịch trình du lịch luôn là ưu tiên hàng đầu. Khi chọn một đối tác, hãy giữ nguyên thuộc tính google_place_id có tiền tố "partner_" trong kết quả JSON trả về.
+3. Hãy phân tích kỹ sở thích, ngân sách, và đặc biệt là tình trạng sức khỏe, giới hạn thể lực của khách để chọn hoạt động phù hợp nhất.
+4. ĐẢM BẢO TÍNH ĐA DẠNG & GỢI Ý CÁC ĐỊA ĐIỂM ĐỘC ĐÁO (HIDDEN GEMS):
+   - Tuyệt đối không thiết kế các lịch trình lặp đi lặp lại hoặc chỉ chứa toàn các địa điểm du lịch quá phổ thông (hot spots) mà ai cũng biết. Lịch trình phải có sự kết hợp hài hòa giữa các địa điểm nổi tiếng và các địa điểm độc lạ, ít người biết, đậm chất bản địa (Hidden Gems) phù hợp với mong muốn khám phá của người dùng.
+   - Cá nhân hóa sâu sắc theo sở thích của người dùng: Ví dụ, nếu họ chọn 'Khám phá mạo hiểm', hãy ưu tiên trekking, cắm trại, các hoạt động ngoài trời mới lạ; nếu họ chọn 'Ẩm thực & Đặc sản', hãy gợi ý các quán ăn địa phương gia truyền độc đáo; nếu họ chọn 'Nghỉ dưỡng & Chill', hãy ưu tiên các quán cà phê ngắm cảnh yên bình, bãi biển vắng người, spa.
+   - Đối với các hoạt động trải nghiệm bản địa đặc sắc, các Hidden Gems hoặc hoạt động giải trí theo sở thích đặc biệt của khách mà không có sẵn trong danh sách candidate_places, bạn có thể tự thiết kế bằng cách dùng item_type: 'experience' và không điền google_place_id (hoặc để google_place_id = null) để lịch trình sinh động, đa dạng và đáp ứng đúng yêu cầu của khách hàng.
+5. PHÂN BỔ NGÂN SÁCH THÔNG MINH & TỰ ĐỘNG ƯỚC LƯỢNG CHI PHÍ THỰC TẾ (RÀNG BUỘC BẮT BUỘC CỰC KỲ NGHIÊM NGẶT):
     - Địa chỉ của tất cả địa điểm được chọn phải phù hợp với điều kiện kinh tế và khớp với phân bổ tổng chi phí cho tất cả các ngày.
     - Bạn BẮT BUỘC phải điền giá cả ước lượng thực tế ("estimated_cost") cho toàn bộ hoạt động (ăn uống, đi lại, tham quan, lưu trú). Tuyệt đối không bỏ trống hay trả về null/undefined cho các hoạt động ăn uống, đi lại cơ bản.
     - DỰ ĐOÁN CAO ĐIỂM / LỄ TẾT: Bạn phải kiểm tra "start_date" và "end_date". Hãy suy nghĩ chu toàn và dự đoán trước xem lịch trình này có trùng vào ngày lễ Tết lớn ở Việt Nam (như Tết Nguyên Đán, Giỗ tổ Hùng Vương, 30/4-1/5, Quốc khánh 2/9, Noel, Tết Dương lịch) hoặc cao điểm du lịch hè (tháng 6 đến tháng 8), hoặc dịp cuối tuần (Thứ 6, Thứ 7, Chủ Nhật) hay không. Nếu có, bắt buộc phải tăng mức giá phòng nghỉ và tiền xe cộ lên từ 20% đến 50% so với ngày thường để phản ánh thực tế tăng giá mùa lễ, đồng thời ghi rõ lý do và tổng chi phí bị ảnh hưởng bởi dịp lễ trong phần "expert_advice".
@@ -211,7 +216,7 @@ QUY TẮC CỐT LÕI:
      * NGOẠI LỆ: Chỉ khi khách hàng có yêu cầu đặc biệt muốn thay đổi khách sạn (ghi ở "special_requirements" hoặc qua câu trả lời làm rõ), bạn mới được chia lịch trình thành nhiều chỗ nghỉ khác nhau.
      * GIỚI HẠN CHI PHÍ: Tổng tiền lưu trú cho cả chuyến đi tuyệt đối không vượt quá 30% tổng ngân sách ("budget_total") đối với ngân sách eo hẹp (dưới 1.500.000đ/ngày/người). Hãy chọn homestay, nhà nghỉ bình dân hoặc hostel giá rẻ trong danh sách "candidate_places" phù hợp.
      * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và khách chưa nêu rõ yêu cầu lưu trú, bạn bắt buộc phải đặt câu hỏi làm rõ trong "missing_info_questions": "Bạn muốn ở 1 chỗ nghỉ cố định hay muốn thay đổi nhiều nơi trong chuyến đi này?"
-   - ĐẢM BẢO CHI PHÍ ĂN UỐNG (DINING): Mỗi ngày bắt buộc phải có ít nhất 2 bữa ăn chính (trưa và tối) sử dụng các quán ăn thực tế trong danh sách. Chi phí ăn uống mỗi ngày phải được ước lượng cụ thể cho cả nhóm (ví dụ: bún/phở/bánh mì local giá từ 30k-60k/người; nhà hàng/quán ăn đặc sản giá từ 100k-250k/người) và cân đối kỹ lưỡng sao cho phù hợp với phần ngân sách còn lại sau khi đã trừ tiền phòng.
+   - ĐẢM BẢO CHI PHÍ ĂN UỐNG & ĐA DẠNG ẨM THỰC (DINING DIVERSITY): Mỗi ngày bắt buộc phải có ít nhất 2 bữa ăn chính (trưa và tối) sử dụng các quán ăn thực tế trong danh sách. Bạn phải đa dạng hóa món ăn, tuyệt đối không lặp lại cùng một món (ví dụ: không ăn bánh khọt hai bữa liên tiếp hoặc ăn hải sản liên tiếp trong ngày). Hãy ưu tiên kết hợp các món đặc sản địa phương khác nhau của vùng miền đó (ví dụ: bữa trưa ăn bún/phở/bánh khọt địa phương, bữa tối ăn lẩu cá đuối/hải sản/quán ăn cơm gia đình). Chi phí ăn uống mỗi ngày phải được ước lượng cụ thể cho cả nhóm (ví dụ: bún/phở/bánh mì local giá từ 30k-60k/người; nhà hàng/quán ăn đặc sản giá từ 100k-250k/người) và cân đối kỹ lưỡng sao cho phù hợp với phần ngân sách còn lại sau khi đã trừ tiền phòng.
    - QUY TẮC PHÍ DỊCH VỤ & DI CHUYỂN:
      * "estimated_cost" luôn là VND cho toàn bộ nhóm khách (traveler_count), không phải giá mỗi người.
       * Bạn PHẢI tự động ước lượng chi phí (VND) thực tế cho các mục ăn uống (ví dụ: 50.000đ-150.000đ/người/bữa), lưu trú, di chuyển và ghi vào "estimated_cost" của cả nhóm.
@@ -219,7 +224,7 @@ QUY TẮC CỐT LÕI:
       * TUYỆT ĐỐI KHÔNG để trống "estimated_cost" hoặc trả về null/undefined cho các hoạt động ăn uống, đi lại cơ bản hoặc hoạt động miễn phí, vì hệ thống sẽ hiển thị là "Cần xác nhận giá" và tạo ra câu hỏi bắt người dùng phải xác nhận giá cực kỳ phiền toái. Chỉ để trống/để null khi thật sự cần người dùng xác nhận một dịch vụ trả phí lớn chưa rõ giá.
    - KHÔNG DÙNG PLACEHOLDER CHUNG CHUNG: Tất cả khách sạn, quán ăn, điểm tham quan đều phải chọn địa điểm cụ thể trong danh sách "candidate_places". Tuyệt đối không ghi chung chung "Ăn tối tự do", "Khách sạn tự chọn".
    - CẢNH BÁO: Nếu ngân sách tổng quá thấp (dưới 400.000đ/ngày/người) hoặc yêu cầu của khách mâu thuẫn (muốn ở resort sang trọng nhưng ngân sách thấp), hãy cảnh báo nguy cơ thiếu hụt ngân sách tại "warning_notes" và đưa ra câu hỏi làm rõ đề xuất nâng ngân sách tại "missing_info_questions".
-4. Trong kết quả JSON, hãy cung cấp:
+6. Trong kết quả JSON, hãy cung cấp:
    - "expert_advice": Lời khuyên/tư vấn chi tiết từ góc nhìn chuyên gia du lịch, giải thích rõ lý do tại sao lịch trình này được thiết kế như vậy để phù hợp nhất với sở thích/sức khỏe/ngân sách của khách.
    - "warning_notes": Các lưu ý an toàn quan trọng (ví dụ: cảnh báo thời tiết xấu, đường đèo hiểm trở, hoặc lưu ý bảo quản hành lý, sức khỏe).
    - "missing_info_questions": Nếu dữ liệu đầu vào của khách quá mơ hồ hoặc thiếu, hãy đưa ra các câu hỏi làm rõ cụ thể để người dùng cung cấp thêm thông tin nhằm điều chỉnh lịch trình chuẩn xác hơn. Nếu thông tin đã rất đầy đủ, để danh sách này trống.
@@ -253,7 +258,8 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
                 contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
                 config: {
                     responseMimeType: 'application/json',
-                    responseSchema: ITINERARY_JSON_SCHEMA
+                    responseSchema: ITINERARY_JSON_SCHEMA,
+                    tools: [{ googleSearchRetrieval: {} }]
                 }
             });
             const text = response.text;
@@ -288,8 +294,9 @@ Nhiệm vụ của bạn là điều chỉnh lịch trình hiện tại ("curren
 
 YÊU CẦU ĐIỀU CHỈNH CHẶT CHẼ:
 1. Bạn phải phân tích toàn diện các yếu tố: lịch trình cũ ("current_itinerary"), giới hạn ngân sách còn lại, điều kiện thời tiết thực tế từ "weather_forecast", và thông tin sự cố phát sinh.
-2. Tuyệt đối không đưa ra các gợi ý bâng quơ hoặc chung chung (như "Ăn uống tự do", "Đi chơi chỗ khác" mà không có tên địa điểm). Bạn phải chọn các địa điểm cụ thể và thực tế từ danh sách "candidate_places" được cung cấp để thay thế hoàn chỉnh.
-3. PHÂN BỔ NGÂN SÁCH THÔNG MINH & TỰ ĐỘNG ƯỚC LƯỢNG CHI PHÍ THỰC TẾ (RÀNG BUỘC BẮT BUỘC CỰC KỲ NGHIÊM NGẶT):
+2. ƯU TIÊN ĐỐI TÁC XÁC MINH (VERIFIED PARTNERS): Trong danh sách "candidate_places", các địa điểm có "google_place_id" bắt đầu bằng tiền tố "partner_" là đối tác đã được xác minh. Hãy ưu tiên lựa chọn và đưa các đối tác này vào lịch trình nếu họ phù hợp với sở thích, vị trí địa lý và ngân sách của khách. Tuy nhiên, tuyệt đối KHÔNG cưỡng ép chọn đối tác nếu không phù hợp — chất lượng lịch trình du lịch luôn là ưu tiên hàng đầu. Khi chọn một đối tác, hãy giữ nguyên thuộc tính google_place_id có tiền tố "partner_" trong kết quả JSON trả về.
+3. Tuyệt đối không đưa ra các gợi ý bâng quơ hoặc chung chung (như "Ăn uống tự do", "Đi chơi chỗ khác" mà không có tên địa điểm). Bạn phải chọn các địa điểm cụ thể và thực tế từ danh sách "candidate_places" được cung cấp để thay thế hoàn chỉnh.
+4. PHÂN BỔ NGÂN SÁCH THÔNG MINH & TỰ ĐỘNG ƯỚC LƯỢNG CHI PHÍ THỰC TẾ (RÀNG BUỘC BẮT BUỘC CỰC KỲ NGHIÊM NGẶT):
     - Địa chỉ của tất cả địa điểm mới phải phù hợp với điều kiện kinh tế và khớp với phân bổ tổng chi phí cho tất cả các ngày.
     - Bạn BẮT BUỘC phải điền giá cả ước lượng thực tế ("estimated_cost") cho toàn bộ hoạt động mới thay thế. Tuyệt đối không bỏ trống hay trả về null/undefined cho các hoạt động ăn uống, đi lại cơ bản.
     - DỰ ĐOÁN CAO ĐIỂM / LỄ TẾT: Bạn phải kiểm tra "start_date" và "end_date". Hãy suy nghĩ chu toàn và dự đoán trước xem lịch trình này có trùng vào các ngày lễ Tết ở Việt Nam (như Tết Nguyên Đán, Giỗ tổ Hùng Vương, 30/4-1/5, Quốc khánh 2/9, Noel, Tết Dương lịch) hoặc cao điểm hè (tháng 6-8), hoặc dịp cuối tuần hay không. Nếu có, bắt buộc phải tăng mức giá phòng nghỉ và tiền xe cộ lên từ 20% đến 50% so với ngày thường để phản ánh thực tế tăng giá mùa lễ, đồng thời ghi rõ lý do và tổng chi phí bị ảnh hưởng bởi dịp lễ trong phần "expert_advice".
@@ -299,7 +306,8 @@ YÊU CẦU ĐIỀU CHỈNH CHẶT CHẼ:
      * CHI PHÍ CHỖ NGHỈ: Bạn phải tự ước lượng và điền chi phí phòng cho cả chuyến đi vào "estimated_cost" của ngày đầu tiên: estimated_cost = (giá 1 đêm ước tính hợp lý của khách sạn) * (số ngày - 1). Mức giá phòng nghỉ phải khớp với phân khúc homestay/khách sạn được chọn dựa trên price_level (ví dụ: price_level 1: 200k-400k/đêm, level 2: 500k-900k/đêm...).
      * NGOẠI LỆ: Chỉ chia thành nhiều khách sạn khi khách hàng có yêu cầu thay đổi rõ ràng trong "special_requirements" hoặc câu trả lời làm rõ.
      * GIỚI HẠN CHI PHÍ: Tổng tiền lưu trú cho cả chuyến đi tuyệt đối không vượt quá 30% tổng ngân sách ("budget_total") đối với ngân sách eo hẹp. Hãy ưu tiên chọn homestay, hostel hoặc nhà nghỉ bình dân giá rẻ trong danh sách "candidate_places".
-     * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và chưa rõ sở thích lưu trú của khách, hãy đặt câu hỏi làm rõ trong "missing_info_questions" xem họ muốn ở cố định 1 chỗ hay muốn thay đổi nhiều chỗ ở.
+      * HỎI Ý KIẾN KHÁCH HÀNG: Nếu chuyến đi dài từ 3 ngày trở lên và chưa rõ sở thích lưu trú của khách, hãy đặt câu hỏi làm rõ trong "missing_info_questions" xem họ muốn ở cố định 1 chỗ hay muốn thay đổi nhiều chỗ ở.
+      * ĐA DẠNG ĂN UỐNG (DINING): Hãy đảm bảo các bữa ăn chính (trưa, tối) sử dụng các nhà hàng/quán ăn thực tế từ danh sách, và tuyệt đối không lặp lại món ăn/nhà hàng (ví dụ: không gợi ý ăn bánh khọt liên tiếp trong một ngày hoặc ăn hải sản liên tục). Hãy đa dạng hóa ẩm thực để tạo trải nghiệm hấp dẫn.
       * Di chuyển nội thành: đi bộ/không phát sinh phương tiện trả phí bạn PHẢI ghi estimated_cost = 0; nếu dùng Grab/taxi/xe ôm bạn PHẢI tự ước lượng một mức chi phí thực tế cho cả nhóm (ví dụ: 50.000đ - 150.000đ).
       * Thuê xe máy: nếu có, hãy điền ước lượng thực tế (ví dụ: 120.000đ/ngày/xe) thay vì để trống.
       * Đối với bất kỳ hoạt động nào miễn phí (như bãi biển, chùa, dạo bộ, check-out) hoặc đã bao gồm trong dịch vụ khác (như ăn sáng tại khách sạn), bạn PHẢI điền "estimated_cost" = 0.
@@ -332,7 +340,8 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
                 contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
                 config: {
                     responseMimeType: 'application/json',
-                    responseSchema: ITINERARY_JSON_SCHEMA
+                    responseSchema: ITINERARY_JSON_SCHEMA,
+                    tools: [{ googleSearchRetrieval: {} }]
                 }
             });
             const text = response.text;
@@ -350,14 +359,235 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
         return adaptMockItinerary(currentItinerary, disruptionType, disruptionDescription, candidatePlaces);
     }
 }
+function shuffleArray(array) {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const temp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = temp;
+    }
+    return arr;
+}
+function filterByBudget(places, dailyBudget, neededCount = 0) {
+    if (places.length === 0)
+        return places;
+    let preferredLevels = [1, 2];
+    if (dailyBudget >= 1500000) {
+        preferredLevels = [2, 3, 4];
+    }
+    else if (dailyBudget < 600000) {
+        preferredLevels = [0, 1];
+    }
+    let filtered = places.filter(p => preferredLevels.includes(p.price_level));
+    // If the filtered list is too short to guarantee unique options for the itinerary,
+    // gradually expand the preferred levels to include neighboring price levels.
+    if (neededCount > 0 && filtered.length < neededCount) {
+        const expandedLevels = new Set(preferredLevels);
+        for (let diff = 1; diff <= 4; diff++) {
+            preferredLevels.forEach(lvl => {
+                if (lvl - diff >= 0)
+                    expandedLevels.add(lvl - diff);
+                if (lvl + diff <= 4)
+                    expandedLevels.add(lvl + diff);
+            });
+            filtered = places.filter(p => expandedLevels.has(p.price_level));
+            if (filtered.length >= neededCount)
+                break;
+        }
+    }
+    return filtered.length > 0 ? filtered : places;
+}
 // Programmatic mock itinerary generator
 function generateMockItinerary(tripData, weatherForecast, candidatePlaces) {
-    const accommodations = candidatePlaces.accommodation || [];
-    const dining = candidatePlaces.dining || [];
-    const attractions = candidatePlaces.attraction || [];
     const budget_total = Number(tripData.budget_total) || 5000000;
     const daysCount = weatherForecast.length || 1;
+    const dailyBudget = budget_total / daysCount;
     const totalNights = Math.max(0, daysCount - 1);
+    // Sort attractions based on user preferences (interests/sở thích)
+    const preferences = tripData.preferences || {};
+    const scoredAttractions = (candidatePlaces.attraction || []).map(place => {
+        let score = 0;
+        const nameLower = place.name.toLowerCase();
+        if (preferences.history === true) {
+            const historyKeywords = ['tượng', 'lăng', 'văn miếu', 'nhà tù', 'chùa', 'hoàng thành', 'nhà hát', 'cổ', 'dinh', 'thích ca', 'bạch dinh', 'cố đô', 'di tích', 'bảo tàng', 'đền'];
+            if (historyKeywords.some(kw => nameLower.includes(kw)))
+                score += 5;
+        }
+        if (preferences.nature === true) {
+            const natureKeywords = ['hồ', 'bãi biển', 'núi', 'thác', 'thung lũng', 'đồi', 'rừng', 'mũi nghinh phong', 'hang múa', 'bán đảo', 'vịnh', 'hòn', 'đèo'];
+            if (natureKeywords.some(kw => nameLower.includes(kw)))
+                score += 5;
+        }
+        if (preferences.adventure === true) {
+            const adventureKeywords = ['máng trượt', 'trekking', 'leo núi', 'mạo hiểm', 'safari', 'cáp treo', 'hồ mây', 'hang động', 'thác dạt'];
+            if (adventureKeywords.some(kw => nameLower.includes(kw)))
+                score += 5;
+        }
+        if (preferences.shopping === true || preferences.relax === true) {
+            const shopRelaxKeywords = ['chợ', 'trung tâm', 'mua sắm', 'phố đi bộ', 'phố cổ', 'grand world', 'night market', 'dạo cảnh', 'công viên', 'hải đăng'];
+            if (shopRelaxKeywords.some(kw => nameLower.includes(kw)))
+                score += 5;
+        }
+        return { place, score };
+    });
+    // Sort by score descending
+    scoredAttractions.sort((a, b) => b.score - a.score);
+    // Group by score and shuffle within each group to maintain diversity
+    const groups = {};
+    scoredAttractions.forEach(item => {
+        if (!groups[item.score])
+            groups[item.score] = [];
+        groups[item.score].push(item.place);
+    });
+    const sortedAttractions = [];
+    Object.keys(groups)
+        .map(Number)
+        .sort((a, b) => b - a)
+        .forEach(score => {
+        sortedAttractions.push(...shuffleArray(groups[score]));
+    });
+    // Sort dining based on special requirements (e.g. "ăn bánh ướt lòng gà", "lẩu cá đuối")
+    const specialReq = (tripData.special_requirements || '').toLowerCase();
+    const tripTitle = (tripData.title || '').toLowerCase();
+    const searchTerms = [specialReq, tripTitle].filter(Boolean);
+    const scoredDining = (candidatePlaces.dining || []).map(place => {
+        let score = 0;
+        const nameLower = place.name.toLowerCase();
+        searchTerms.forEach(term => {
+            if (term.includes(nameLower) || nameLower.includes(term)) {
+                score += 20; // high priority match
+            }
+            else {
+                const keywords = term.split(/[\s,]+/);
+                keywords.forEach(kw => {
+                    if (kw.length > 2 && nameLower.includes(kw)) {
+                        score += 2;
+                    }
+                });
+            }
+        });
+        return { place, score };
+    });
+    // Sort by score descending
+    scoredDining.sort((a, b) => b.score - a.score);
+    // Group and shuffle within score groups to maintain diversity
+    const diningGroups = {};
+    scoredDining.forEach(item => {
+        if (!diningGroups[item.score])
+            diningGroups[item.score] = [];
+        diningGroups[item.score].push(item.place);
+    });
+    const sortedDining = [];
+    Object.keys(diningGroups)
+        .map(Number)
+        .sort((a, b) => b - a)
+        .forEach(score => {
+        sortedDining.push(...shuffleArray(diningGroups[score]));
+    });
+    const accommodations = filterByBudget(shuffleArray(candidatePlaces.accommodation || []), dailyBudget, totalNights);
+    const dining = filterByBudget(sortedDining, dailyBudget, daysCount * 2);
+    const attractions = filterByBudget(sortedAttractions, dailyBudget, daysCount * 2);
+    // Set up depletion pools for popping and avoiding duplicates across the itinerary
+    const attractionsPool = [...attractions];
+    let currentAttractions = [...attractionsPool];
+    const getNextAttraction = () => {
+        if (attractionsPool.length === 0)
+            return null;
+        if (currentAttractions.length === 0) {
+            currentAttractions = shuffleArray([...attractionsPool]);
+        }
+        return currentAttractions.shift() || null;
+    };
+    const diningPool = [...dining];
+    let currentDining = [...diningPool];
+    const getNextDining = () => {
+        if (diningPool.length === 0)
+            return null;
+        if (currentDining.length === 0) {
+            currentDining = shuffleArray([...diningPool]);
+        }
+        return currentDining.shift() || null;
+    };
+    const destinationLower = (tripData.destination_city || '').toLowerCase();
+    const getEveningExperience = (dayIdx) => {
+        if (destinationLower.includes('vũng tàu') || destinationLower.includes('vung tau')) {
+            const options = [
+                { title: 'Đi dạo dọc bờ biển Bãi Sau hóng gió', description: 'Tận hưởng làn gió biển mát rượi và không khí trong lành tại Bãi Sau về đêm.' },
+                { title: 'Càn quét hải sản tại Chợ đêm Vũng Tàu', description: 'Thưởng thức vô vàn món hải sản tươi sống được chế biến nóng hổi tại chỗ cực kỳ hấp dẫn.' },
+                { title: 'Thư giãn ngắm biển tại khu Bãi Trước', description: 'Dạo bộ công viên bờ biển Bãi Trước ngắm nhìn tàu thuyền neo đậu lung linh ánh đèn.' },
+                { title: 'Thưởng thức cà phê view biển đường Trần Phú', description: 'Ghé quán cà phê lộng gió sát bờ biển đường Trần Phú để ngắm nhìn sóng vỗ về đêm.' }
+            ];
+            return options[dayIdx % options.length];
+        }
+        if (destinationLower.includes('hà nội') || destinationLower.includes('ha noi')) {
+            const options = [
+                { title: 'Dạo quanh Hồ Hoàn Kiếm và Phố cổ', description: 'Dạo bộ khu phố cổ rực rỡ, cảm nhận nhịp sống thủ đô bình dị và ấm áp.' },
+                { title: 'Khám phá ẩm thực Chợ đêm Đồng Xuân', description: 'Thử sức với thiên đường đồ ăn vặt và mua sắm quà lưu niệm xinh xắn.' },
+                { title: 'Hóng gió ngắm cầu Long Biên lịch sử', description: 'Lên cầu Long Biên hoặc ghé quán cà phê ven đê sông Hồng hóng gió mát.' },
+                { title: 'Thưởng thức cà phê trứng trong ngõ cổ', description: 'Nhâm nhi hương vị cà phê trứng béo ngậy đặc sản Hà Nội trong không gian hoài niệm.' }
+            ];
+            return options[dayIdx % options.length];
+        }
+        if (destinationLower.includes('đà nẵng') || destinationLower.includes('da nang')) {
+            const options = [
+                { title: 'Ngắm Cầu Rồng phun lửa bờ sông Hàn', description: 'Chiêm ngưỡng cầu Rồng phun lửa/nước hoành tráng (cuối tuần) và đi dạo cầu Tình Yêu.' },
+                { title: 'Khám phá ẩm thực Chợ đêm Helio', description: 'Thiên đường ẩm thực đêm lớn nhất Đà Nẵng với hàng trăm món ngon hấp dẫn.' },
+                { title: 'Dạo mát trên bờ cát biển Mỹ Khê', description: 'Đi dạo lắng nghe tiếng sóng vỗ rì rào tại một trong những bãi biển đẹp nhất hành tinh.' },
+                { title: 'Khám phá Chợ đêm Sơn Trà sầm uất', description: 'Mua sắm đặc sản địa phương, thưởng thức hải sản nướng thơm nức mũi.' }
+            ];
+            return options[dayIdx % options.length];
+        }
+        if (destinationLower.includes('hồ chí minh') || destinationLower.includes('sài gòn') || destinationLower.includes('ho chi minh') || destinationLower.includes('sai gon')) {
+            const options = [
+                { title: 'Dạo chơi Phố đi bộ Nguyễn Huệ', description: 'Hòa mình vào không khí sôi động, xem biểu diễn nghệ thuật đường phố và ngắm Landmark 81 từ xa.' },
+                { title: 'Trải nghiệm Phố Tây Bùi Viện náo nhiệt', description: 'Khám phá khu phố không ngủ sầm uất với các hoạt động giải trí xuyên đêm.' },
+                { title: 'Hóng gió công viên Bạch Đằng ven sông', description: 'Ngồi ngắm tàu thuyền du lịch lung linh lướt trên sông Sài Gòn lộng gió.' },
+                { title: 'Ăn vặt chợ đêm quanh Bến Thành', description: 'Thưởng thức các món chè, bánh xèo, hủ tiếu gõ mang đậm hương vị Nam Bộ.' }
+            ];
+            return options[dayIdx % options.length];
+        }
+        if (destinationLower.includes('đà lạt') || destinationLower.includes('da lat')) {
+            const options = [
+                { title: 'Khám phá Chợ đêm Đà Lạt (Chợ Âm Phủ)', description: 'Thưởng thức sữa đậu nành nóng, bánh tráng nướng và xiên que nướng trong tiết trời se lạnh.' },
+                { title: 'Dạo bộ quanh Hồ Xuân Hương mờ sương', description: 'Thuê xe đạp đôi hoặc đi dạo ven hồ cảm nhận không khí lãng mạn đặc trưng.' },
+                { title: 'Ghé quán cà phê acoustic ngắm thung lũng đèn', description: 'Nghe nhạc sống mộc mạc và ngắm nhìn thung lũng nhà lồng lung linh như vạn vì sao.' },
+                { title: 'Thưởng thức kem bơ và bánh tráng khu Hòa Bình', description: 'Kem bơ béo ngậy kết hợp sầu riêng thơm phức là món ăn không thể bỏ qua.' }
+            ];
+            return options[dayIdx % options.length];
+        }
+        if (destinationLower.includes('hội an') || destinationLower.includes('hoi an')) {
+            const options = [
+                { title: 'Dạo ngắm đèn lồng Phố cổ Hội An', description: 'Chiêm ngưỡng những ngôi nhà cổ sơn vàng lung linh dưới sắc đèn lồng rực rỡ.' },
+                { title: 'Thả đèn hoa đăng trên dòng sông Hoài', description: 'Ngồi thuyền gỗ nhỏ trôi lững lờ và thả những chiếc đèn giấy ước nguyện xuống sông.' },
+                { title: 'Mua sắm tại Chợ đêm Nguyễn Hoàng', description: 'Tìm kiếm những món quà lưu niệm bằng gốm Thanh Hà hoặc lồng đèn xinh xắn.' },
+                { title: 'Thưởng thức ly nước Mót bên vỉa hè cổ', description: 'Nhâm nhi ly trà thảo mộc mát lành thơm mùi sả chanh giữa lòng phố cổ.' }
+            ];
+            return options[dayIdx % options.length];
+        }
+        if (destinationLower.includes('ninh bình') || destinationLower.includes('ninh binh')) {
+            const options = [
+                { title: 'Dạo chơi Phố cổ Hoa Lư rực rỡ', description: 'Tham quan khu phố cổ tái hiện nét văn hóa Đại Việt xưa lung linh soi bóng xuống mặt hồ.' },
+                { title: 'Thưởng thức đặc sản thịt dê nướng cung đình', description: 'Nhâm nhi cơm cháy giòn rụm cùng các món dê đặc sản trứ danh.' },
+                { title: 'Thư giãn ngắm hoàng hôn và núi non tĩnh lặng', description: 'Cảm nhận không khí đồng quê trong lành, tách biệt hoàn toàn khói bụi thành phố.' }
+            ];
+            return options[dayIdx % options.length];
+        }
+        if (destinationLower.includes('sa pa') || destinationLower.includes('sapa')) {
+            const options = [
+                { title: 'Dạo hồ Sa Pa và ngắm Nhà thờ Đá', description: 'Nhà thờ Đá kiến trúc Pháp cổ kính được thắp sáng rực rỡ giữa quảng trường sương mù.' },
+                { title: 'Khám phá đồ nướng và hạt dẻ nóng Sa Pa', description: 'Thưởng thức cải mèo cuốn thịt bò nướng, cơm lam và hạt dẻ rừng thơm bùi.' },
+                { title: 'Giao lưu văn nghệ Chợ tình Sa Pa', description: 'Trải nghiệm nét sinh hoạt văn hóa độc đáo của các đồng bào dân tộc H\'Mông, Dao.' }
+            ];
+            return options[dayIdx % options.length];
+        }
+        const defaults = [
+            { title: 'Dạo bộ trung tâm thành phố ngắm cảnh đêm', description: 'Cảm nhận nhịp sống địa phương bình dị và thư giãn sau ngày dài di chuyển.' },
+            { title: 'Khám phá chợ đêm và ẩm thực đường phố', description: 'Ghé các hàng quán vỉa hè ăn vặt, mua sắm đồ lưu niệm địa phương.' },
+            { title: 'Thư giãn tại quán cà phê địa phương', description: 'Nhâm nhi tách trà/cà phê ấm cúng và nhìn ngắm đường phố về đêm.' }
+        ];
+        return defaults[dayIdx % defaults.length];
+    };
     const selectedAccommodation = accommodations.reduce((cheapest, place) => {
         if (!cheapest)
             return place;
@@ -393,70 +623,71 @@ function generateMockItinerary(tripData, weatherForecast, candidatePlaces) {
             order_index: 1
         });
         // Attraction 1 (Morning)
-        if (attractions.length > 0) {
-            const site = attractions[(index * 2) % attractions.length];
-            const costPerPerson = site.price_level === 0 ? 0 : (site.price_level === 1 ? 30000 : (site.price_level === 2 ? 100000 : 250000));
+        const site1 = getNextAttraction();
+        if (site1) {
+            const costPerPerson = site1.price_level === 0 ? 0 : (site1.price_level === 1 ? 30000 : (site1.price_level === 2 ? 100000 : 250000));
             items.push({
                 item_type: 'attraction',
-                title: `Tham quan ${site.name}`,
-                description: `Khám phá vẻ đẹp lịch sử và văn hóa địa phương. Địa chỉ: ${site.address}`,
+                title: `Tham quan ${site1.name}`,
+                description: `Khám phá vẻ đẹp lịch sử và văn hóa địa phương. Địa chỉ: ${site1.address}`,
                 start_time: '09:00',
                 end_time: '11:30',
-                google_place_id: site.google_place_id,
+                google_place_id: site1.google_place_id,
                 estimated_cost: costPerPerson * Math.max(1, Number(tripData.traveler_count || 1)),
                 order_index: 2
             });
         }
         // Dining (Lunch)
-        if (dining.length > 0) {
-            const rest = dining[(index * 2) % dining.length];
-            const costPerPerson = rest.price_level === 0 ? 40000 : (rest.price_level === 1 ? 70000 : (rest.price_level === 2 ? 150000 : 350000));
+        const lunchRest = getNextDining();
+        if (lunchRest) {
+            const costPerPerson = lunchRest.price_level === 0 ? 40000 : (lunchRest.price_level === 1 ? 70000 : (lunchRest.price_level === 2 ? 150000 : 350000));
             items.push({
                 item_type: 'dining',
-                title: `Ăn trưa tại ${rest.name}`,
-                description: `Thưởng thức các món đặc sản địa phương ngon và nổi tiếng. Đánh giá: ${rest.rating}⭐. Địa chỉ: ${rest.address}`,
+                title: `Ăn trưa tại ${lunchRest.name}`,
+                description: `Thưởng thức các món đặc sản địa phương ngon và nổi tiếng. Đánh giá: ${lunchRest.rating}⭐. Địa chỉ: ${lunchRest.address}`,
                 start_time: '12:00',
                 end_time: '13:00',
-                google_place_id: rest.google_place_id,
+                google_place_id: lunchRest.google_place_id,
                 estimated_cost: costPerPerson * Math.max(1, Number(tripData.traveler_count || 1)),
                 order_index: 3
             });
         }
         // Attraction 2 (Afternoon)
-        if (attractions.length > 0) {
-            const site = attractions[(index * 2 + 1) % attractions.length];
-            const costPerPerson = site.price_level === 0 ? 0 : (site.price_level === 1 ? 30000 : (site.price_level === 2 ? 100000 : 250000));
+        const site2 = getNextAttraction();
+        if (site2) {
+            const costPerPerson = site2.price_level === 0 ? 0 : (site2.price_level === 1 ? 30000 : (site2.price_level === 2 ? 100000 : 250000));
             items.push({
                 item_type: 'attraction',
-                title: `Trải nghiệm tại ${site.name}`,
-                description: `Tận hưởng không gian và tìm hiểu về các câu chuyện thú vị.`,
+                title: `Trải nghiệm tại ${site2.name}`,
+                description: `Tận hưởng không gian và tìm hiểu về các câu chuyện thú vị. Địa chỉ: ${site2.address}`,
                 start_time: '15:00',
                 end_time: '17:30',
-                google_place_id: site.google_place_id,
+                google_place_id: site2.google_place_id,
                 estimated_cost: costPerPerson * Math.max(1, Number(tripData.traveler_count || 1)),
                 order_index: 4
             });
         }
         // Dining (Dinner)
-        if (dining.length > 0) {
-            const rest = dining[(index * 2 + 1) % dining.length];
-            const costPerPerson = rest.price_level === 0 ? 50000 : (rest.price_level === 1 ? 90000 : (rest.price_level === 2 ? 200000 : 450000));
+        const dinnerRest = getNextDining();
+        if (dinnerRest) {
+            const costPerPerson = dinnerRest.price_level === 0 ? 50000 : (dinnerRest.price_level === 1 ? 90000 : (dinnerRest.price_level === 2 ? 200000 : 450000));
             items.push({
                 item_type: 'dining',
-                title: `Ăn tối tại ${rest.name}`,
-                description: `Thưởng thức ẩm thực tối đặc sắc của địa phương. Đánh giá: ${rest.rating}⭐. Địa chỉ: ${rest.address}`,
+                title: `Ăn tối tại ${dinnerRest.name}`,
+                description: `Thưởng thức ẩm thực tối đặc sắc của địa phương. Đánh giá: ${dinnerRest.rating}⭐. Địa chỉ: ${dinnerRest.address}`,
                 start_time: '18:30',
                 end_time: '20:00',
-                google_place_id: rest.google_place_id,
+                google_place_id: dinnerRest.google_place_id,
                 estimated_cost: costPerPerson * Math.max(1, Number(tripData.traveler_count || 1)),
                 order_index: 5
             });
         }
         // Experience (Evening)
+        const eve = getEveningExperience(index);
         items.push({
             item_type: 'experience',
-            title: 'Dạo chơi phố cổ / Chợ đêm',
-            description: 'Dạo bộ tự do để cảm nhận không khí về đêm của thành phố; mua sắm hoặc ăn vặt nếu có sẽ phát sinh chi phí riêng cần xác nhận.',
+            title: eve.title,
+            description: eve.description,
             start_time: '20:30',
             end_time: '22:00',
             estimated_cost: 0,
@@ -606,6 +837,7 @@ async function generateAlternatives(tripData, originalItem, userRequirement, can
     const systemPrompt = `Bạn là trợ lý AI lập lịch trình du lịch Việt Nam.
 Hãy đề xuất đúng 3 hoạt động thay thế (alternatives) cho hoạt động gốc được cung cấp, dựa trên yêu cầu đặc thù của người dùng.
 Bạn phải tận dụng danh sách candidate_places được cung cấp ở dưới để lấy tên và google_place_id cho các hoạt động ăn uống/chỗ nghỉ/tham quan/thuê xe (nếu phù hợp).
+ƯU TIÊN ĐỐI TÁC XÁC MINH: Ưu tiên chọn các địa điểm trong candidate_places có google_place_id bắt đầu bằng "partner_" (đối tác đã xác minh) nếu phù hợp với yêu cầu của người dùng. Khi chọn, hãy giữ nguyên google_place_id của đối tác đó.
 Giờ bắt đầu và kết thúc của hoạt động thay thế nên khớp hoặc gần khớp với hoạt động gốc (${originalItem.start_time || '08:00'} - ${originalItem.end_time || '10:00'}), nhưng có thể thay đổi nhẹ nếu cần.
 Hãy ước lượng chi phí (VND) hợp lý và thực tế cho "estimated_cost" dựa trên price_level và giá trị trung bình ở Việt Nam cho hoạt động đó (ví dụ: ăn uống, vé tham quan, di chuyển...).
 Nếu hoạt động đó là miễn phí (như đi dạo công viên, chùa Linh Ứng, hoạt động tự do), hãy điền "estimated_cost" = 0 để hệ thống hiển thị là "Miễn phí".
@@ -643,7 +875,8 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
                 contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
                 config: {
                     responseMimeType: 'application/json',
-                    responseSchema: ALTERNATIVES_JSON_SCHEMA
+                    responseSchema: ALTERNATIVES_JSON_SCHEMA,
+                    tools: [{ googleSearchRetrieval: {} }]
                 }
             });
             const text = response.text;
@@ -655,32 +888,49 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
     }
     catch (error) {
         console.error('Gemini generateAlternatives failed:', error.message);
-        // Fallback Mock alternatives
-        return [
-            {
+        // Fallback Mock alternatives from candidates (prioritizing matches)
+        const fallbackAlts = [];
+        const placesToUse = candidatePlaces.slice(0, 3);
+        if (placesToUse.length > 0) {
+            placesToUse.forEach((place, index) => {
+                let cost = null;
+                if (place.category === 'dining') {
+                    cost = place.price_level === 0 ? 50000 : (place.price_level === 1 ? 90000 : (place.price_level === 2 ? 200000 : 450000));
+                }
+                else if (place.category === 'accommodation') {
+                    cost = place.price_level === 0 ? 150000 : (place.price_level === 1 ? 300000 : (place.price_level === 2 ? 600000 : 1200000));
+                }
+                else if (place.category === 'attraction') {
+                    cost = place.price_level === 0 ? 0 : (place.price_level === 1 ? 30000 : (place.price_level === 2 ? 100000 : 250000));
+                }
+                const travelerCount = Number(tripData?.traveler_count) || 1;
+                if (cost !== null && place.category !== 'accommodation') {
+                    cost = cost * travelerCount;
+                }
+                fallbackAlts.push({
+                    item_type: originalItem.item_type,
+                    title: `${originalItem.item_type === 'dining' ? 'Ăn uống tại' : (originalItem.item_type === 'accommodation' ? 'Nghỉ tại' : 'Tham quan')} ${place.name}`,
+                    description: `Địa điểm thay thế lý tưởng: ${place.name}. Đánh giá: ${place.rating}⭐. Địa chỉ: ${place.address}`,
+                    start_time: originalItem.start_time || '08:00',
+                    end_time: originalItem.end_time || '10:00',
+                    google_place_id: place.google_place_id,
+                    estimated_cost: cost,
+                    reason: `Đề xuất thay thế dựa trên yêu cầu tìm kiếm: "${userRequirement || 'thay thế'}".`
+                });
+            });
+        }
+        while (fallbackAlts.length < 3) {
+            const idx = fallbackAlts.length + 1;
+            fallbackAlts.push({
                 item_type: originalItem.item_type,
-                title: `[Gợi ý AI 1] ${originalItem.title} thay thế`,
-                description: `Phương án thay thế đề xuất 1 cho "${originalItem.title}". Phù hợp với tiêu chuẩn dịch vụ và thời gian của bạn.`,
+                title: `[Gợi ý AI ${idx}] ${originalItem.title} thay thế`,
+                description: `Phương án thay thế đề xuất ${idx} cho "${originalItem.title}". Phù hợp với yêu cầu: "${userRequirement}".`,
                 start_time: originalItem.start_time || '08:00',
                 end_time: originalItem.end_time || '10:00',
-                reason: 'Phù hợp với lịch trình hiện tại; cần xác nhận giá chính thức trước khi chốt ngân sách.'
-            },
-            {
-                item_type: originalItem.item_type,
-                title: `[Gợi ý AI 2] ${originalItem.title} - Phương án 2`,
-                description: `Phương án thay thế đề xuất 2. Phục vụ nhu cầu trải nghiệm đa dạng và chi phí hợp lý.`,
-                start_time: originalItem.start_time || '08:00',
-                end_time: originalItem.end_time || '10:00',
-                reason: 'Có tiềm năng tối ưu chi phí, nhưng vẫn cần xác nhận giá chính thức của địa điểm.'
-            },
-            {
-                item_type: originalItem.item_type,
-                title: `[Gợi ý AI 3] ${originalItem.title} - Phương án 3`,
-                description: `Phương án thay thế đề xuất 3. Mang tính chất khám phá thư giãn, nhẹ nhàng.`,
-                start_time: originalItem.start_time || '08:00',
-                end_time: originalItem.end_time || '10:00',
-                reason: 'Không gian phù hợp hơn; giá cần được xác nhận chính thức trước khi áp dụng.'
-            }
-        ];
+                estimated_cost: originalItem.estimated_cost || 100000,
+                reason: `Phương án thay thế dự phòng số ${idx}.`
+            });
+        }
+        return fallbackAlts;
     }
 }

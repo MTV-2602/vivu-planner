@@ -288,7 +288,13 @@ const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>
       { name: 'Lẩu cá đuối Hoàng Minh', rating: 4.3, price_level: 2, address: '44 Trương Công Định, Phường 3, Vũng Tàu' },
       { name: 'Hải sản Gành Hào', rating: 4.6, price_level: 3, address: '3 Trần Phú, Phường 5, Vũng Tàu' },
       { name: 'Quán nướng Cô Nên', rating: 4.4, price_level: 2, address: '6 Hạ Long, Phường 2, Vũng Tàu' },
-      { name: 'Bánh mì xíu mại Hàng Quyên', rating: 4.3, price_level: 1, address: '37 Phan Chu Trinh, Phường 2, Vũng Tàu' }
+      { name: 'Bánh mì xíu mại Hàng Quyên', rating: 4.3, price_level: 1, address: '37 Phan Chu Trinh, Phường 2, Vũng Tàu' },
+      { name: 'Gỏi cá mai Vườn Xoài', rating: 4.5, price_level: 2, address: '34/5 Hoàng Hoa Thám, Phường 2, Vũng Tàu' },
+      { name: 'Bún riêu tôm Thuận Phúc', rating: 4.4, price_level: 1, address: '94 Hoàng Hoa Thám, Thắng Tam, Vũng Tàu' },
+      { name: 'Hải sản Lâm Đường', rating: 4.5, price_level: 3, address: '125A Trần Phú, Phường 5, Vũng Tàu' },
+      { name: 'Lẩu cháo bồ câu Phú Long', rating: 4.4, price_level: 2, address: '31 đường 30/4, Phường 9, Vũng Tàu' },
+      { name: 'Hủ tiếu mì sườn Tùng Hưng', rating: 4.3, price_level: 1, address: '144 Trương Công Định, Phường 3, Vũng Tàu' },
+      { name: 'Bánh ướt lòng gà Tú Xương', rating: 4.3, price_level: 1, address: '24 Tú Xương, Phường 4, Vũng Tàu' }
     ],
     attraction: [
       { name: 'Tượng Chúa Kitô Vua Vũng Tàu', rating: 4.7, price_level: 1, address: 'Thùy Vân, Phường 2, Vũng Tàu' },
@@ -477,101 +483,5 @@ export async function searchPlaces(
   lat: number,
   lng: number
 ): Promise<PlaceCandidate[]> {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-
-  if (!apiKey) {
-    console.warn(`GOOGLE_MAPS_API_KEY is missing. Using OpenStreetMap Nominatim for free place search.`);
-    return searchPlacesOSM(query, category, lat, lng);
-  }
-
-  try {
-    // 1. Check database cache first using supabaseAdmin client
-    const { data: cachedPlaces, error: cacheError } = await supabaseAdmin
-      .from('places_cache')
-      .select('*')
-      .eq('category', category)
-      .limit(15);
-
-    // If cache has data and is fresh (within last 30 days), we can return a subset or check distance
-    // Let's implement simple query match or distance match to keep caching simple.
-    // For this MVP, we query directly but cache new discoveries.
-    
-    // 2. Call Google Places API (New) Text Search
-    const endpoint = 'https://places.googleapis.com/v1/places:searchText';
-    const response = await axios.post(
-      endpoint,
-      {
-        textQuery: `${query} in Vietnam`,
-        locationBias: {
-          circle: {
-            center: { latitude: lat, longitude: lng },
-            radius: 15000.0
-          }
-        }
-      },
-      {
-        timeout: 3500,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.priceLevel,places.types'
-        }
-      }
-    );
-
-    const places = response.data?.places || [];
-    const candidates: PlaceCandidate[] = [];
-
-    for (const place of places) {
-      const priceMap: Record<string, number> = {
-        'PRICE_LEVEL_FREE': 0,
-        'PRICE_LEVEL_INEXPENSIVE': 1,
-        'PRICE_LEVEL_MODERATE': 2,
-        'PRICE_LEVEL_EXPENSIVE': 3,
-        'PRICE_LEVEL_VERY_EXPENSIVE': 4
-      };
-      
-      const priceLevel = priceMap[place.priceLevel] || 2;
-      const candidate: PlaceCandidate = {
-        google_place_id: place.id,
-        name: place.displayName?.text || 'Địa điểm không có tên',
-        category,
-        lat: place.location?.latitude || lat,
-        lng: place.location?.longitude || lng,
-        rating: place.rating || 4.2,
-        price_level: priceLevel,
-        address: place.formattedAddress || 'Địa chỉ đang cập nhật'
-      };
-
-      candidates.push(candidate);
-
-      // Save to cache in the background (ignore errors)
-      supabaseAdmin
-        .from('places_cache')
-        .upsert(
-          {
-            google_place_id: candidate.google_place_id,
-            name: candidate.name,
-            category: candidate.category,
-            lat: candidate.lat,
-            lng: candidate.lng,
-            rating: candidate.rating,
-            price_level: candidate.price_level,
-            address: candidate.address,
-            raw_data: place,
-            cached_at: new Date().toISOString()
-          },
-          { onConflict: 'google_place_id' }
-        )
-        .then(({ error }) => {
-          if (error) console.error('Error caching place:', error.message);
-        });
-    }
-
-    return candidates;
-  } catch (error: any) {
-    console.error(`Google Places API failure: ${error.response?.data?.error?.message || error.message}. Returning mock data.`);
-    // Fallback to mock data on error safely without recursive call
-    return getMockPlaces(category, lat, lng, query);
-  }
+  return searchPlacesOSM(query, category, lat, lng);
 }

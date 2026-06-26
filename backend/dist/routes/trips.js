@@ -6,7 +6,122 @@ const supabaseAdmin_1 = require("../services/supabaseAdmin");
 const placesService_1 = require("../services/placesService");
 const weatherService_1 = require("../services/weatherService");
 const geminiService_1 = require("../services/geminiService");
+const partnerService_1 = require("../services/partnerService");
 const router = (0, express_1.Router)();
+function extractSearchQueries(text) {
+    const diningQueries = [];
+    const attractionQueries = [];
+    if (!text)
+        return { diningQueries, attractionQueries };
+    const cleanAndSplit = (str) => {
+        return str
+            .split(/\b(?:và|hoặc|cùng|với)\b/gi)
+            .map(s => s.replace(/\s+/g, ' ').trim())
+            .filter(s => s.length > 2);
+    };
+    const lower = text.toLowerCase();
+    // Dining matches: e.g. "ăn bánh ướt", "thưởng thức lẩu cá đuối"
+    const diningRegex = /(?:ăn|thưởng thức|uống|quán|nhà hàng|món)\s+([^,.;!?\(\)]+)/gi;
+    let match;
+    while ((match = diningRegex.exec(lower)) !== null) {
+        const val = match[1].trim();
+        cleanAndSplit(val).forEach(q => {
+            if (q.length > 2 && q.length < 50) {
+                diningQueries.push(q);
+            }
+        });
+    }
+    // Attraction matches: e.g. "đi chùa", "tham quan hải đăng"
+    const attractionRegex = /(?:tham quan|thăm|đi|ghé|chơi|check[- ]?in|ngắm)\s+([^,.;!?\(\)]+)/gi;
+    while ((match = attractionRegex.exec(lower)) !== null) {
+        const val = match[1].trim();
+        cleanAndSplit(val).forEach(q => {
+            if (q.length > 2 && q.length < 50 && !q.startsWith('ăn ') && !q.startsWith('thưởng thức ') && !q.startsWith('uống ')) {
+                attractionQueries.push(q);
+            }
+        });
+    }
+    // Fallback if nothing matched and string is small
+    if (diningQueries.length === 0 && attractionQueries.length === 0 && text.trim().length > 2 && text.trim().length < 60) {
+        cleanAndSplit(lower).forEach(q => {
+            diningQueries.push(q);
+            attractionQueries.push(q);
+        });
+    }
+    return {
+        diningQueries: Array.from(new Set(diningQueries)),
+        attractionQueries: Array.from(new Set(attractionQueries))
+    };
+}
+function deduplicatePlaces(places) {
+    const seen = new Set();
+    return places.filter(p => {
+        if (!p.google_place_id)
+            return true;
+        if (seen.has(p.google_place_id))
+            return false;
+        seen.add(p.google_place_id);
+        return true;
+    });
+}
+async function fetchDynamicCandidates(text, title, lat, lng, destinationCity) {
+    const customQueries = extractSearchQueries(text);
+    if (title && !title.startsWith('Chuyến đi ') && !title.startsWith('Du hí ')) {
+        const titleQueries = extractSearchQueries(title);
+        customQueries.diningQueries.push(...titleQueries.diningQueries);
+        customQueries.attractionQueries.push(...titleQueries.attractionQueries);
+    }
+    const uniqueDiningQueries = Array.from(new Set(customQueries.diningQueries));
+    const uniqueAttractionQueries = Array.from(new Set(customQueries.attractionQueries));
+    const customDiningSearches = uniqueDiningQueries.map(q => (0, placesService_1.searchPlaces)(q, 'dining', lat, lng));
+    const customAttractionSearches = uniqueAttractionQueries.map(q => (0, placesService_1.searchPlaces)(q, 'attraction', lat, lng));
+    const customDiningResults = await Promise.all(customDiningSearches);
+    const customAttractionResults = await Promise.all(customAttractionSearches);
+    const extraDining = customDiningResults.flat();
+    const extraAttractions = customAttractionResults.flat();
+    const cityCapitalized = destinationCity.charAt(0).toUpperCase() + destinationCity.slice(1);
+    // Dynamic fallback for dining
+    uniqueDiningQueries.forEach((q, idx) => {
+        const results = customDiningResults[idx] || [];
+        if (results.length === 0) {
+            const cleanName = q.trim().replace(/^\w/, (c) => c.toUpperCase());
+            const candidateName = cleanName.toLowerCase().includes('quán') || cleanName.toLowerCase().includes('nhà hàng')
+                ? cleanName
+                : `Quán ${cleanName}`;
+            extraDining.push({
+                google_place_id: `dynamic-dining-${destinationCity.replace(/\s+/g, '-')}-${Date.now()}-${idx}`,
+                name: candidateName,
+                category: 'dining',
+                lat: lat + (Math.random() - 0.5) * 0.02,
+                lng: lng + (Math.random() - 0.5) * 0.02,
+                rating: parseFloat((4.3 + Math.random() * 0.5).toFixed(1)),
+                price_level: 1,
+                address: `Địa chỉ quán ${cleanName} tại ${cityCapitalized}`
+            });
+        }
+    });
+    // Dynamic fallback for attractions
+    uniqueAttractionQueries.forEach((q, idx) => {
+        const results = customAttractionResults[idx] || [];
+        if (results.length === 0) {
+            const cleanName = q.trim().replace(/^\w/, (c) => c.toUpperCase());
+            const candidateName = cleanName.toLowerCase().includes('điểm') || cleanName.toLowerCase().includes('khu du lịch') || cleanName.toLowerCase().includes('chùa') || cleanName.toLowerCase().includes('bãi')
+                ? cleanName
+                : `Khu du lịch ${cleanName}`;
+            extraAttractions.push({
+                google_place_id: `dynamic-attraction-${destinationCity.replace(/\s+/g, '-')}-${Date.now()}-${idx}`,
+                name: candidateName,
+                category: 'attraction',
+                lat: lat + (Math.random() - 0.5) * 0.02,
+                lng: lng + (Math.random() - 0.5) * 0.02,
+                rating: parseFloat((4.4 + Math.random() * 0.5).toFixed(1)),
+                price_level: 0,
+                address: `Địa danh ${cleanName} tại ${cityCapitalized}`
+            });
+        }
+    });
+    return { extraDining, extraAttractions };
+}
 function formatTimeForDb(timeStr) {
     if (!timeStr)
         return null;
@@ -27,6 +142,42 @@ function parseOptionalCost(value) {
     if (!Number.isFinite(parsed))
         return null;
     return Math.max(0, Math.round(parsed));
+}
+function buildDynamicSearchQueries(preferences) {
+    let accommodationQuery = 'khách sạn homestay';
+    let diningQuery = 'nhà hàng quán ăn ngon đặc sản';
+    let attractionQuery = 'địa điểm tham quan du lịch danh lam thắng cảnh';
+    let rentalQuery = 'cho thuê xe máy tự lái';
+    if (preferences) {
+        if (preferences.food === true) {
+            diningQuery = 'quán ăn ngon đặc sản ẩm thực địa phương nhà hàng';
+        }
+        if (preferences.relax === true) {
+            accommodationQuery = 'khách sạn nghỉ dưỡng resort homestay yên bình';
+        }
+        const attractionKeywords = [];
+        if (preferences.history === true) {
+            attractionKeywords.push('chùa đền di tích lịch sử bảo tàng cổ kính');
+        }
+        if (preferences.nature === true) {
+            attractionKeywords.push('bãi biển cảnh đẹp thiên nhiên đồi thông thác nước');
+        }
+        if (preferences.adventure === true) {
+            attractionKeywords.push('khu du lịch sinh thái trekking leo núi cắm trại mạo hiểm');
+        }
+        if (preferences.shopping === true) {
+            attractionKeywords.push('chợ đêm trung tâm mua sắm giải trí phố đi bộ');
+        }
+        if (attractionKeywords.length > 0) {
+            attractionQuery = attractionKeywords.join(' ');
+        }
+    }
+    return {
+        accommodationQuery,
+        diningQuery,
+        attractionQuery,
+        rentalQuery
+    };
 }
 // GET /api/trips - List all trips of the current user
 router.get('/', authMiddleware_1.authMiddleware, async (req, res) => {
@@ -74,9 +225,69 @@ router.get('/:id', authMiddleware_1.authMiddleware, async (req, res) => {
                 .order('order_index', { ascending: true });
             if (itemsError)
                 throw itemsError;
+            // Dynamically match and enrich partner information for pre-existing itinerary items
+            let enrichedItems = items || [];
+            try {
+                const { data: partners } = await supabaseAdmin_1.supabaseAdmin
+                    .from('partners')
+                    .select('*')
+                    .eq('active_status', true);
+                const activePartners = partners || [];
+                const normalizeNameForMatching = (name) => {
+                    if (!name)
+                        return '';
+                    return name
+                        .toLowerCase()
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '') // remove diacritics
+                        .replace(/[&\/\\#,+()$~%.'\":*?<>{}]/g, '') // remove special chars
+                        .replace(/\s+/g, ' ') // normalize whitespace
+                        .trim();
+                };
+                const matchPartner = (itemTitle, partnerName) => {
+                    const normTitle = normalizeNameForMatching(itemTitle);
+                    const normPartner = normalizeNameForMatching(partnerName);
+                    if (!normTitle || !normPartner)
+                        return false;
+                    if (normTitle === normPartner)
+                        return true;
+                    if (normPartner.length >= 6) {
+                        if (normTitle.includes(normPartner) || normPartner.includes(normTitle)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                enrichedItems = (items || []).map((item) => {
+                    // If it's already a partner item, keep it but ensure booking_url is populated
+                    if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
+                        const partnerId = item.google_place_id.replace('partner_', '');
+                        const matchedPartner = activePartners.find((p) => String(p.id) === partnerId);
+                        if (matchedPartner) {
+                            return {
+                                ...item,
+                                booking_url: item.booking_url || matchedPartner.booking_url || null
+                            };
+                        }
+                    }
+                    // Otherwise, check name match to enrich retroactively
+                    const matched = activePartners.find((p) => matchPartner(item.title, p.name));
+                    if (matched) {
+                        return {
+                            ...item,
+                            google_place_id: item.google_place_id || `partner_${matched.id}`,
+                            booking_url: item.booking_url || matched.booking_url || null
+                        };
+                    }
+                    return item;
+                });
+            }
+            catch (partnerErr) {
+                console.error('[GetTripDetail] Error enriching partner data:', partnerErr);
+            }
             daysWithItems = days.map(day => ({
                 ...day,
-                items: items ? items.filter(item => item.day_id === day.id) : []
+                items: enrichedItems.filter((item) => item.day_id === day.id)
             }));
         }
         // Retrieve revision logs
@@ -108,17 +319,26 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
         // 2. Fetch weather
         const weatherForecast = await (0, weatherService_1.getWeatherForecast)(lat, lng, start_date, end_date);
         // 3. Search real candidate places in the background
-        const [accommodations, dining, attractions, rentals] = await Promise.all([
-            (0, placesService_1.searchPlaces)('khách sạn homestay', 'accommodation', lat, lng),
-            (0, placesService_1.searchPlaces)('nhà hàng quán ăn ngon đặc sản', 'dining', lat, lng),
-            (0, placesService_1.searchPlaces)('địa điểm tham quan du lịch danh lam thắng cảnh', 'attraction', lat, lng),
-            (0, placesService_1.searchPlaces)('cho thuê xe máy tự lái', 'rental', lat, lng)
+        const queries = buildDynamicSearchQueries(preferences);
+        const [accommodations, dining, attractions, rentals, { extraDining, extraAttractions }] = await Promise.all([
+            (0, placesService_1.searchPlaces)(queries.accommodationQuery, 'accommodation', lat, lng),
+            (0, placesService_1.searchPlaces)(queries.diningQuery, 'dining', lat, lng),
+            (0, placesService_1.searchPlaces)(queries.attractionQuery, 'attraction', lat, lng),
+            (0, placesService_1.searchPlaces)(queries.rentalQuery, 'rental', lat, lng),
+            fetchDynamicCandidates(special_requirements || '', title || '', lat, lng, destination_city)
         ]);
+        // Fetch relevant partners and merge them
+        const relevantPartners = await (0, partnerService_1.getRelevantPartners)(destination_city, lat, lng, preferences || {}, parseFloat(budget_total) || 0, start_date, end_date, parseInt(traveler_count || '1'));
+        const partnerCandidates = (0, partnerService_1.convertPartnersToPlaceCandidates)(relevantPartners);
+        const mergedAccommodations = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'accommodation'), ...accommodations]);
+        const mergedDining = deduplicatePlaces([...extraDining, ...partnerCandidates.filter(p => p.category === 'dining'), ...dining]);
+        const mergedAttractions = deduplicatePlaces([...extraAttractions, ...partnerCandidates.filter(p => p.category === 'attraction'), ...attractions]);
+        const mergedRentals = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'rental'), ...rentals]);
         const candidatePlaces = {
-            accommodation: accommodations,
-            dining,
-            attraction: attractions,
-            rental: rentals
+            accommodation: mergedAccommodations,
+            dining: mergedDining,
+            attraction: mergedAttractions,
+            rental: mergedRentals
         };
         // 4. Generate AI itinerary using Gemini
         const itinerary = await (0, geminiService_1.generateItinerary)(req.body, weatherForecast, candidatePlaces);
@@ -169,17 +389,19 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
                 let itemLat = lat;
                 let itemLng = lng;
                 let itemAddress = '';
+                let itemBookingUrl = '';
                 if (item.google_place_id) {
                     const matched = [
-                        ...accommodations,
-                        ...dining,
-                        ...attractions,
-                        ...rentals
+                        ...mergedAccommodations,
+                        ...mergedDining,
+                        ...mergedAttractions,
+                        ...mergedRentals
                     ].find(c => c.google_place_id === item.google_place_id);
                     if (matched) {
                         itemLat = matched.lat;
                         itemLng = matched.lng;
                         itemAddress = matched.address;
+                        itemBookingUrl = matched.booking_url || '';
                     }
                 }
                 itemsToInsert.push({
@@ -194,6 +416,7 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
                     location_lng: itemLng,
                     google_place_id: item.google_place_id || null,
                     estimated_cost: parseOptionalCost(item.estimated_cost),
+                    booking_url: itemBookingUrl || null,
                     order_index: item.order_index,
                     status: 'planned'
                 });
@@ -205,6 +428,17 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
                 .insert(itemsToInsert);
             if (itemsError)
                 throw itemsError;
+            // Log partner booking events
+            for (const item of itemsToInsert) {
+                if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
+                    const partnerId = item.google_place_id.replace('partner_', '');
+                    await (0, partnerService_1.logPartnerEvent)(partnerId, 'booking', trip.id, req.user.id, { item_type: item.item_type });
+                }
+            }
+        }
+        // Log impressions for all partner candidates sent to AI
+        for (const partner of relevantPartners) {
+            await (0, partnerService_1.logPartnerEvent)(partner.id, 'impression', trip.id, req.user.id, {});
         }
         // Fetch the full assembled trip details to return
         const { data: fullTrip, error: fetchError } = await client
@@ -309,13 +543,28 @@ router.post('/:id/disruptions/preview', authMiddleware_1.authMiddleware, async (
         // C. Gọi AI để lấy các phương án thay thế đề xuất
         const { lat, lng } = (0, placesService_1.getCityCoordinates)(trip.destination_city);
         const weatherForecast = await (0, weatherService_1.getWeatherForecast)(lat, lng, trip.start_date, trip.end_date);
-        const [accommodations, dining, attractions, rentals] = await Promise.all([
-            (0, placesService_1.searchPlaces)('khách sạn', 'accommodation', lat, lng),
-            (0, placesService_1.searchPlaces)('nhà hàng ngon', 'dining', lat, lng),
-            (0, placesService_1.searchPlaces)('địa điểm tham quan', 'attraction', lat, lng),
-            (0, placesService_1.searchPlaces)('thuê xe máy', 'rental', lat, lng)
+        const queries = buildDynamicSearchQueries(trip.preferences);
+        const combinedRequirements = [trip.special_requirements, description].filter(Boolean).join('\n');
+        const [accommodations, dining, attractions, rentals, { extraDining, extraAttractions }] = await Promise.all([
+            (0, placesService_1.searchPlaces)(queries.accommodationQuery, 'accommodation', lat, lng),
+            (0, placesService_1.searchPlaces)(queries.diningQuery, 'dining', lat, lng),
+            (0, placesService_1.searchPlaces)(queries.attractionQuery, 'attraction', lat, lng),
+            (0, placesService_1.searchPlaces)(queries.rentalQuery, 'rental', lat, lng),
+            fetchDynamicCandidates(combinedRequirements, trip.title || '', lat, lng, trip.destination_city)
         ]);
-        const candidatePlaces = { accommodation: accommodations, dining, attraction: attractions, rental: rentals };
+        // Fetch relevant partners and merge them
+        const relevantPartners = await (0, partnerService_1.getRelevantPartners)(trip.destination_city, lat, lng, trip.preferences || {}, parseFloat(trip.budget_total) || 0, trip.start_date, trip.end_date, parseInt(trip.traveler_count || '1'));
+        const partnerCandidates = (0, partnerService_1.convertPartnersToPlaceCandidates)(relevantPartners);
+        const mergedAccommodations = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'accommodation'), ...accommodations]);
+        const mergedDining = deduplicatePlaces([...extraDining, ...partnerCandidates.filter(p => p.category === 'dining'), ...dining]);
+        const mergedAttractions = deduplicatePlaces([...extraAttractions, ...partnerCandidates.filter(p => p.category === 'attraction'), ...attractions]);
+        const mergedRentals = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'rental'), ...rentals]);
+        const candidatePlaces = {
+            accommodation: mergedAccommodations,
+            dining: mergedDining,
+            attraction: mergedAttractions,
+            rental: mergedRentals
+        };
         const { itinerary: adaptedItinerary, diff } = await (0, geminiService_1.adaptItinerary)(trip, previousSnapshot, disruption_type, description, weatherForecast, candidatePlaces);
         return res.json({
             success: true,
@@ -399,9 +648,11 @@ router.post('/:id/disruptions/apply', authMiddleware_1.authMiddleware, async (re
                 throw updateError;
         }
         // F. Lấy tọa độ để fallback
-        const { data: trip } = await client.from('trips').select('destination_city').eq('id', tripId).single();
+        const { data: trip } = await client.from('trips').select('*').eq('id', tripId).single();
         const city = trip?.destination_city || 'Da Nang';
         const { lat, lng } = (0, placesService_1.getCityCoordinates)(city);
+        // Fetch partners list to match booking_url
+        const relevantPartners = await (0, partnerService_1.getRelevantPartners)(city, lat, lng, trip?.preferences || {}, parseFloat(trip?.budget_total) || 0, trip?.start_date, trip?.end_date, parseInt(trip?.traveler_count || '1'));
         // G. Chèn các hoạt động thay thế đã chọn
         const itemsToInsert = [];
         selected_items.forEach((item) => {
@@ -409,6 +660,13 @@ router.post('/:id/disruptions/apply', authMiddleware_1.authMiddleware, async (re
             const dbDay = dbDays.find(d => Number(d.day_number) === Number(item.day_number));
             if (!dbDay)
                 return;
+            let itemBookingUrl = item.booking_url || null;
+            if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
+                const matched = relevantPartners.find(p => `partner_${p.id}` === item.google_place_id);
+                if (matched) {
+                    itemBookingUrl = matched.booking_url || null;
+                }
+            }
             itemsToInsert.push({
                 day_id: dbDay.id,
                 item_type: item.item_type,
@@ -421,6 +679,7 @@ router.post('/:id/disruptions/apply', authMiddleware_1.authMiddleware, async (re
                 location_lng: item.location_lng || lng,
                 google_place_id: item.google_place_id || null,
                 estimated_cost: parseOptionalCost(item.estimated_cost),
+                booking_url: itemBookingUrl,
                 order_index: item.order_index,
                 status: 'planned'
             });
@@ -431,6 +690,13 @@ router.post('/:id/disruptions/apply', authMiddleware_1.authMiddleware, async (re
                 .insert(itemsToInsert);
             if (insertError)
                 throw insertError;
+            // Log partner booking events for applied alternative items
+            for (const item of itemsToInsert) {
+                if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
+                    const partnerId = item.google_place_id.replace('partner_', '');
+                    await (0, partnerService_1.logPartnerEvent)(partnerId, 'booking', tripId, req.user.id, { item_type: item.item_type, disruption_applied: true });
+                }
+            }
         }
         return res.json({
             success: true,
@@ -550,10 +816,36 @@ router.post('/items/:itemId/ai-replace', authMiddleware_1.authMiddleware, async 
             category = 'attraction';
         }
         // Nếu người dùng có yêu cầu cụ thể, bổ sung vào từ khóa tìm kiếm
+        let customDiningResults = [];
+        if (user_requirement) {
+            customDiningResults = await (0, placesService_1.searchPlaces)(user_requirement, category, lat, lng);
+            // If no result found for the specific requirement, create a dynamic fallback
+            if (customDiningResults.length === 0) {
+                const cleanName = user_requirement.trim().replace(/^\w/, (c) => c.toUpperCase());
+                const candidateName = cleanName.toLowerCase().includes('quán') || cleanName.toLowerCase().includes('nhà hàng') || cleanName.toLowerCase().includes('khu') || cleanName.toLowerCase().includes('khách sạn')
+                    ? cleanName
+                    : (category === 'dining' ? `Quán ${cleanName}` : (category === 'attraction' ? `Khu du lịch ${cleanName}` : cleanName));
+                customDiningResults.push({
+                    google_place_id: `dynamic-replace-${category}-${trip.destination_city.replace(/\s+/g, '-')}-${Date.now()}`,
+                    name: candidateName,
+                    category,
+                    lat: lat + (Math.random() - 0.5) * 0.02,
+                    lng: lng + (Math.random() - 0.5) * 0.02,
+                    rating: parseFloat((4.4 + Math.random() * 0.5).toFixed(1)),
+                    price_level: 1,
+                    address: `Địa điểm ${cleanName} tại ${trip.destination_city}`
+                });
+            }
+        }
         if (user_requirement) {
             searchQuery = `${user_requirement} ${searchQuery}`;
         }
-        const candidatePlaces = await (0, placesService_1.searchPlaces)(searchQuery, category, lat, lng);
+        const searchPlacesResults = await (0, placesService_1.searchPlaces)(searchQuery, category, lat, lng);
+        // Fetch relevant partners and merge them
+        const relevantPartners = await (0, partnerService_1.getRelevantPartners)(trip.destination_city, lat, lng, trip.preferences || {}, parseFloat(trip.budget_total) || 0, trip.start_date, trip.end_date, parseInt(trip.traveler_count || '1'));
+        const partnerCandidates = (0, partnerService_1.convertPartnersToPlaceCandidates)(relevantPartners);
+        const categoryPartners = partnerCandidates.filter(p => p.category === category);
+        const candidatePlaces = deduplicatePlaces([...categoryPartners, ...customDiningResults, ...searchPlacesResults]);
         // D. Gọi AI để tạo 3 phương án thay thế
         const alternatives = await (0, geminiService_1.generateAlternatives)(trip, item, user_requirement, candidatePlaces);
         return res.json({

@@ -26,17 +26,75 @@ const LOADING_STAGES = [
   'Đang khởi tạo cơ sở dữ liệu chuyến đi của bạn...',
 ];
 
+const getTodayString = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseDate = (dateStr: string): Date | null => {
+  if (!dateStr) return null;
+  const clean = dateStr.trim();
+  
+  // Try YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+    const d = new Date(clean);
+    if (!isNaN(d.getTime())) return d;
+  }
+  
+  // Try DD/MM/YYYY or DD-MM-YYYY
+  const match = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (match) {
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10) - 1; // 0-indexed
+    const year = parseInt(match[3], 10);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) return d;
+  }
+  
+  // Fallback
+  const d = new Date(clean);
+  if (!isNaN(d.getTime())) return d;
+  
+  return null;
+};
+
+const formatToISODate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDateForDisplay = (dateStr: string): string => {
+  const parsed = parseDate(dateStr);
+  if (!parsed) return dateStr;
+  const day = String(parsed.getDate()).padStart(2, '0');
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const year = parsed.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
 // Web-only: render <input type="date">; Native: plain TextInput
 function DateInput({
-  value, onChange, placeholder,
-}: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  value, onChange, placeholder, min,
+}: { value: string; onChange: (v: string) => void; placeholder: string; min?: string }) {
   if (Platform.OS === 'web') {
+    // Convert value to YYYY-MM-DD if it's in DD/MM/YYYY for the HTML input
+    let webValue = value;
+    const parsed = parseDate(value);
+    if (parsed) {
+      webValue = formatToISODate(parsed);
+    }
     return (
       // @ts-ignore — web-only input type
       <input
         type="date"
-        value={value}
+        value={webValue}
         onChange={(e: any) => onChange(e.target.value)}
+        min={min}
         style={{
           width: '100%',
           padding: '12px 16px',
@@ -151,6 +209,50 @@ export default function TripWizard() {
     }
   }, []);
 
+  // Real-time validation for dates
+  useEffect(() => {
+    if (!startDate && !endDate) {
+      setErrorMsg('');
+      return;
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (startDate) {
+      const start = parseDate(startDate);
+      if (start) {
+        if (start < today) {
+          setErrorMsg('Ngày đi không được ở quá khứ');
+          return;
+        }
+      }
+    }
+    
+    if (endDate) {
+      const end = parseDate(endDate);
+      if (end) {
+        if (end < today) {
+          setErrorMsg('Ngày về không được ở quá khứ');
+          return;
+        }
+      }
+    }
+    
+    if (startDate && endDate) {
+      const start = parseDate(startDate);
+      const end = parseDate(endDate);
+      if (start && end) {
+        if (start > end) {
+          setErrorMsg('Ngày về phải sau ngày đi');
+          return;
+        }
+      }
+    }
+    
+    setErrorMsg('');
+  }, [startDate, endDate]);
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState(0);
@@ -188,7 +290,25 @@ export default function TripWizard() {
         setErrorMsg('Vui lòng chọn ngày đi và ngày về');
         return;
       }
-      if (new Date(startDate) > new Date(endDate)) {
+      
+      const start = parseDate(startDate);
+      const end = parseDate(endDate);
+      if (!start || isNaN(start.getTime()) || !end || isNaN(end.getTime())) {
+        setErrorMsg('Ngày đi hoặc ngày về không đúng định dạng');
+        return;
+      }
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (start < today) {
+        setErrorMsg('Ngày đi không được ở quá khứ');
+        return;
+      }
+      if (end < today) {
+        setErrorMsg('Ngày về không được ở quá khứ');
+        return;
+      }
+      if (start > end) {
         setErrorMsg('Ngày về phải sau ngày đi');
         return;
       }
@@ -226,12 +346,17 @@ export default function TripWizard() {
         : 'Sở thích lưu trú: Đổi nhiều khách sạn để trải nghiệm'
     ].filter(Boolean).join('\n');
 
+    const parsedStart = parseDate(startDate);
+    const parsedEnd = parseDate(endDate);
+    const formattedStartDate = parsedStart ? formatToISODate(parsedStart) : startDate;
+    const formattedEndDate = parsedEnd ? formatToISODate(parsedEnd) : endDate;
+
     try {
       const res = await apiClient.post('/trips', {
         title: title || `Du hí ${destinationCity}`,
         destination_city: destinationCity,
-        start_date: startDate,
-        end_date: endDate,
+        start_date: formattedStartDate,
+        end_date: formattedEndDate,
         budget_total: budgetTotal,
         traveler_count: travelerCount,
         traveler_type: travelerType,
@@ -340,11 +465,11 @@ export default function TripWizard() {
                   <View className="flex-row gap-4">
                     <View className="flex-1 gap-1.5">
                       <Text className="text-sm font-bold text-brand-textSoft">Ngày đi</Text>
-                      <DateInput value={startDate} onChange={setStartDate} placeholder="YYYY-MM-DD" />
+                      <DateInput value={startDate} onChange={setStartDate} placeholder="YYYY-MM-DD" min={getTodayString()} />
                     </View>
                     <View className="flex-1 gap-1.5">
                       <Text className="text-sm font-bold text-brand-textSoft">Ngày về</Text>
-                      <DateInput value={endDate} onChange={setEndDate} placeholder="YYYY-MM-DD" />
+                      <DateInput value={endDate} onChange={setEndDate} placeholder="YYYY-MM-DD" min={getTodayString()} />
                     </View>
                   </View>
 
@@ -560,8 +685,8 @@ export default function TripWizard() {
                     <View className="flex-row flex-wrap gap-x-4 gap-y-1.5">
                       <Text className="text-xs text-brand-textSoft">Điểm đến: <Text className="font-bold text-brand-text">{destinationCity}</Text></Text>
                       <Text className="text-xs text-brand-textSoft">Thành viên: <Text className="font-bold text-brand-text">{travelerCount} khách ({travelerType})</Text></Text>
-                      <Text className="text-xs text-brand-textSoft">Bắt đầu: <Text className="font-bold text-brand-text">{startDate}</Text></Text>
-                      <Text className="text-xs text-brand-textSoft">Kết thúc: <Text className="font-bold text-brand-text">{endDate}</Text></Text>
+                      <Text className="text-xs text-brand-textSoft">Bắt đầu: <Text className="font-bold text-brand-text">{formatDateForDisplay(startDate)}</Text></Text>
+                      <Text className="text-xs text-brand-textSoft">Kết thúc: <Text className="font-bold text-brand-text">{formatDateForDisplay(endDate)}</Text></Text>
                       <Text className="text-xs text-brand-textSoft">
                         Ngân sách:{' '}
                         <Text className="font-bold text-brand-text">
@@ -590,7 +715,8 @@ export default function TripWizard() {
               {step < 4 ? (
                 <Pressable
                   onPress={handleNext}
-                  className="flex-row items-center gap-1.5 px-5 py-3 rounded-xl bg-brand-primary"
+                  disabled={!!errorMsg}
+                  className={`flex-row items-center gap-1.5 px-5 py-3 rounded-xl ${!!errorMsg ? 'bg-brand-primary/40 opacity-50' : 'bg-brand-primary'}`}
                 >
                   <Text className="text-white text-sm font-bold">Tiếp tục</Text>
                   <ArrowRight size={16} color="white" />
@@ -598,7 +724,8 @@ export default function TripWizard() {
               ) : (
                 <Pressable
                   onPress={handleSubmit}
-                  className="flex-row items-center gap-2 px-6 py-3.5 rounded-xl bg-brand-accent"
+                  disabled={!!errorMsg}
+                  className={`flex-row items-center gap-2 px-6 py-3.5 rounded-xl ${!!errorMsg ? 'bg-brand-accent/40 opacity-50' : 'bg-brand-accent'}`}
                 >
                   <Sparkles size={16} color="white" />
                   <Text className="text-white text-sm font-bold">Tạo lịch trình AI</Text>

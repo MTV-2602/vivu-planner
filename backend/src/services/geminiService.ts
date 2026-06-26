@@ -446,7 +446,7 @@ function shuffleArray<T>(array: T[]): T[] {
   return arr;
 }
 
-function filterByBudget(places: PlaceCandidate[], dailyBudget: number): PlaceCandidate[] {
+function filterByBudget(places: PlaceCandidate[], dailyBudget: number, neededCount: number = 0): PlaceCandidate[] {
   if (places.length === 0) return places;
   
   let preferredLevels: number[] = [1, 2];
@@ -456,7 +456,22 @@ function filterByBudget(places: PlaceCandidate[], dailyBudget: number): PlaceCan
     preferredLevels = [0, 1];
   }
   
-  const filtered = places.filter(p => preferredLevels.includes(p.price_level));
+  let filtered = places.filter(p => preferredLevels.includes(p.price_level));
+  
+  // If the filtered list is too short to guarantee unique options for the itinerary,
+  // gradually expand the preferred levels to include neighboring price levels.
+  if (neededCount > 0 && filtered.length < neededCount) {
+    const expandedLevels = new Set(preferredLevels);
+    for (let diff = 1; diff <= 4; diff++) {
+      preferredLevels.forEach(lvl => {
+        if (lvl - diff >= 0) expandedLevels.add(lvl - diff);
+        if (lvl + diff <= 4) expandedLevels.add(lvl + diff);
+      });
+      filtered = places.filter(p => expandedLevels.has(p.price_level));
+      if (filtered.length >= neededCount) break;
+    }
+  }
+  
   return filtered.length > 0 ? filtered : places;
 }
 
@@ -469,6 +484,7 @@ function generateMockItinerary(
   const budget_total = Number(tripData.budget_total) || 5000000;
   const daysCount = weatherForecast.length || 1;
   const dailyBudget = budget_total / daysCount;
+  const totalNights = Math.max(0, daysCount - 1);
 
   // Sort attractions based on user preferences (interests/sở thích)
   const preferences = tripData.preferences || {};
@@ -513,9 +529,52 @@ function generateMockItinerary(
       sortedAttractions.push(...shuffleArray(groups[score]));
     });
 
-  const accommodations = filterByBudget(shuffleArray(candidatePlaces.accommodation || []), dailyBudget);
-  const dining = filterByBudget(shuffleArray(candidatePlaces.dining || []), dailyBudget);
-  const attractions = filterByBudget(sortedAttractions, dailyBudget);
+  // Sort dining based on special requirements (e.g. "ăn bánh ướt lòng gà", "lẩu cá đuối")
+  const specialReq = (tripData.special_requirements || '').toLowerCase();
+  const tripTitle = (tripData.title || '').toLowerCase();
+  const searchTerms = [specialReq, tripTitle].filter(Boolean);
+
+  const scoredDining = (candidatePlaces.dining || []).map(place => {
+    let score = 0;
+    const nameLower = place.name.toLowerCase();
+    
+    searchTerms.forEach(term => {
+      if (term.includes(nameLower) || nameLower.includes(term)) {
+        score += 20; // high priority match
+      } else {
+        const keywords = term.split(/[\s,]+/);
+        keywords.forEach(kw => {
+          if (kw.length > 2 && nameLower.includes(kw)) {
+            score += 2;
+          }
+        });
+      }
+    });
+    
+    return { place, score };
+  });
+
+  // Sort by score descending
+  scoredDining.sort((a, b) => b.score - a.score);
+
+  // Group and shuffle within score groups to maintain diversity
+  const diningGroups: Record<number, PlaceCandidate[]> = {};
+  scoredDining.forEach(item => {
+    if (!diningGroups[item.score]) diningGroups[item.score] = [];
+    diningGroups[item.score].push(item.place);
+  });
+
+  const sortedDining: PlaceCandidate[] = [];
+  Object.keys(diningGroups)
+    .map(Number)
+    .sort((a, b) => b - a)
+    .forEach(score => {
+      sortedDining.push(...shuffleArray(diningGroups[score]));
+    });
+
+  const accommodations = filterByBudget(shuffleArray(candidatePlaces.accommodation || []), dailyBudget, totalNights);
+  const dining = filterByBudget(sortedDining, dailyBudget, daysCount * 2);
+  const attractions = filterByBudget(sortedAttractions, dailyBudget, daysCount * 2);
 
   // Set up depletion pools for popping and avoiding duplicates across the itinerary
   const attractionsPool = [...attractions];
@@ -622,7 +681,6 @@ function generateMockItinerary(
     return defaults[dayIdx % defaults.length];
   };
 
-  const totalNights = Math.max(0, daysCount - 1);
   const selectedAccommodation = accommodations.reduce<PlaceCandidate | undefined>((cheapest, place) => {
     if (!cheapest) return place;
     return place.price_level < cheapest.price_level ? place : cheapest;
