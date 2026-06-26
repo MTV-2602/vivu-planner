@@ -2,19 +2,20 @@
 
 Ứng dụng lập kế hoạch du lịch Việt Nam tích hợp AI, giúp tạo lịch trình cá nhân hóa từ thời tiết thực, địa điểm thật và các tình huống phát sinh trong chuyến đi.
 
-Chạy trên **Web**, **Android** và **iOS** từ một codebase Expo duy nhất.
+Hệ thống được thiết kế tối ưu chạy trên nền tảng **Web** (React Native Web).
 
 ---
 
 ## Tính Năng Chính
 
 - **Lịch trình AI**: Gemini 2.5 Flash tạo lịch trình chi tiết theo ngày, tối ưu theo ngân sách, loại khách và sở thích.
-- **Địa điểm thực tế**: tích hợp Google Places API, có mock data để chạy local khi chưa cấu hình API key.
+- **Tìm kiếm địa điểm**: Tích hợp OpenStreetMap Nominatim API miễn phí, không cần cấu hình API key trả phí.
+- **Ràng buộc ngân sách tối thiểu**: Dự đoán chi phí sàn tối thiểu (phòng nghỉ dorm & ăn uống cơ bản) dựa trên số khách, số ngày/đêm và tự động cảnh báo, chặn các yêu cầu ngân sách phi thực tế.
+- **Đa dạng ẩm thực & Tránh lặp món**: Thuật toán bể chứa cạn kiệt (Depletion Pool) và nới lỏng ngân sách động giúp phân bổ ẩm thực đa dạng, tránh lặp món (ví dụ: bánh khọt Vũng Tàu).
 - **Thích ứng sự cố**: AI preview và áp dụng lịch trình mới khi có mưa bão, trễ chuyến, hụt ngân sách hoặc vấn đề sức khỏe.
 - **Hỗ trợ 11 điểm đến**: Hà Nội, Đà Nẵng, TP. Hồ Chí Minh, Hội An, Huế, Nha Trang, Đà Lạt, Phú Quốc, Sa Pa, Ninh Bình, Vũng Tàu.
-- **Push notifications**: nhắc lịch trình trước ngày khởi hành trên mobile.
+- **Xuất cẩm nang PDF**: Tải trực tiếp cẩm nang lịch trình, chi tiêu và thông tin thời tiết PDF sắc nét dạng vector, tối ưu dàn trang in ấn.
 - **Offline cache**: lưu danh sách/chuyến đi đã tải với TTL 30 phút.
-- **OTA updates**: cập nhật JS bundle qua Expo Updates sau khi app đã phát hành.
 
 ---
 
@@ -22,15 +23,15 @@ Chạy trên **Web**, **Android** và **iOS** từ một codebase Expo duy nhấ
 
 | Layer | Công nghệ |
 | --- | --- |
-| Frontend | Expo SDK 56, React Native 0.85, React 19 |
+| Frontend | Expo SDK 56 (React Native Web), React 19 |
 | Routing | Expo Router |
-| Styling | NativeWind v4 |
+| Styling | NativeWind v4, Custom CSS variables |
 | State/Data | TanStack Query, AsyncStorage cache |
 | Backend | Node.js, Express, Vercel Serverless |
 | Database/Auth | Supabase PostgreSQL, RLS, Supabase Auth |
 | AI | Google Gemini 2.5 Flash |
-| Maps/Places | Google Places API Text Search |
-| Deploy | Vercel Web, EAS Build/Submit |
+| Maps/Places | OpenStreetMap Nominatim API (Free) |
+| Deploy | Vercel Web |
 
 ---
 
@@ -38,7 +39,7 @@ Chạy trên **Web**, **Android** và **iOS** từ một codebase Expo duy nhấ
 
 ```text
 vivu-planner/
-├── frontend/                    # Expo app (React Native + Web)
+├── frontend/                    # Web App (React Native Web)
 │   ├── app/
 │   │   ├── _layout.tsx          # Root layout, fonts, QueryClient
 │   │   ├── index.tsx            # Redirect theo trạng thái đăng nhập
@@ -57,7 +58,6 @@ vivu-planner/
 │   ├── hooks/                   # Location helpers
 │   ├── lib/                     # API client, Supabase client, cache, notifications
 │   ├── app.json                 # Expo config
-│   ├── eas.json                 # EAS build profiles
 │   └── vercel.json              # Vercel config khi deploy riêng frontend
 ├── backend/                     # Express API
 │   └── src/
@@ -76,17 +76,13 @@ vivu-planner/
 
 - Node.js 18+
 - npm 9+
-- Expo CLI hiện đại qua `npx expo` hoặc các script npm có sẵn.
 
 ### Frontend
 
 ```bash
 cd frontend
 npm install
-npm start
 npm run web
-npm run android
-npm run ios
 ```
 
 ### Backend
@@ -119,13 +115,10 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 GEMINI_API_KEY=your-gemini-api-key
-GOOGLE_MAPS_API_KEY=your-google-maps-api-key
 FRONTEND_ORIGIN=http://localhost:8081,http://localhost:19006
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=change-this-password
 ```
-
-Nếu thiếu Supabase env ở frontend, app sẽ chạy mock auth/demo mode. Nếu thiếu Google Maps hoặc Gemini key ở backend, backend có fallback mock data cho một số luồng.
 
 ---
 
@@ -160,24 +153,6 @@ npx vercel --prod
 
 Nếu deploy từ root repo, Vercel sẽ đọc [vercel.json](vercel.json) để route `/api/*` sang backend và phần còn lại sang frontend. Cần đảm bảo Vercel project có đủ env cho cả frontend và backend.
 
-### Android / iOS Qua EAS
-
-```bash
-cd frontend
-eas build --platform android --profile preview
-eas build --platform android --profile production
-eas build --platform ios --profile production
-eas submit --platform android
-eas submit --platform ios
-```
-
-### OTA Update
-
-```bash
-cd frontend
-eas update --branch production --message "Mô tả thay đổi"
-```
-
 ---
 
 ## API Endpoints Chính
@@ -211,14 +186,5 @@ Schema nằm tại [supabase/schema.sql](supabase/schema.sql), gồm:
 - `itinerary_items`: hoạt động trong từng ngày.
 - `disruption_events`: sự cố phát sinh.
 - `itinerary_revisions`: lịch sử thay đổi lịch trình.
-- `places_cache`: cache địa điểm Google Places.
+- `places_cache`: cache địa điểm OpenStreetMap Nominatim.
 - `gemini_api_keys`: pool API key Gemini cho backend.
-
----
-
-## EAS Project
-
-- **Expo Project:** [@tinascott2005/vivu-planner](https://expo.dev/accounts/tinascott2005/projects/vivu-planner)
-- **iOS Bundle ID:** `com.vivuplanner.app`
-- **Android Package:** `com.vivuplanner.app`
-- **Runtime Version Policy:** `appVersion`
