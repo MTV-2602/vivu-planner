@@ -202,6 +202,23 @@ function LoadingScreen({ stage }: { stage: number }) {
 
 export default function TripWizard() {
   const router = useRouter();
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [loadingStage, setLoadingStage] = useState(0);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Form state
+  const [title, setTitle] = useState('');
+  const [destinationCity, setDestinationCity] = useState(VIETNAMESE_CITIES[0]);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [travelerCount, setTravelerCount] = useState(1);
+  const [travelerType, setTravelerType] = useState('solo');
+  const [budgetTotal, setBudgetTotal] = useState(5000000);
+  const [selectedPrefs, setSelectedPrefs] = useState<string[]>([]);
+  const [healthConditions, setHealthConditions] = useState('');
+  const [specialRequirements, setSpecialRequirements] = useState('');
+  const [lodgingPreference, setLodgingPreference] = useState<'single' | 'multiple'>('single');
 
   useEffect(() => {
     if (canUseLocalStorage && localStorage.getItem('vivu_admin_token')) {
@@ -252,24 +269,6 @@ export default function TripWizard() {
     
     setErrorMsg('');
   }, [startDate, endDate]);
-
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [loadingStage, setLoadingStage] = useState(0);
-  const [errorMsg, setErrorMsg] = useState('');
-
-  // Form state
-  const [title, setTitle] = useState('');
-  const [destinationCity, setDestinationCity] = useState(VIETNAMESE_CITIES[0]);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [travelerCount, setTravelerCount] = useState(1);
-  const [travelerType, setTravelerType] = useState('solo');
-  const [budgetTotal, setBudgetTotal] = useState(5000000);
-  const [selectedPrefs, setSelectedPrefs] = useState<string[]>([]);
-  const [healthConditions, setHealthConditions] = useState('');
-  const [specialRequirements, setSpecialRequirements] = useState('');
-  const [lodgingPreference, setLodgingPreference] = useState<'single' | 'multiple'>('single');
 
   const handlePrefToggle = (id: string) => {
     setSelectedPrefs(prev =>
