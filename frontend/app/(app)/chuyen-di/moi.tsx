@@ -26,15 +26,15 @@ const LOADING_STAGES = [
   'Đang khởi tạo cơ sở dữ liệu chuyến đi của bạn...',
 ];
 
-const getTodayString = () => {
+function getTodayString() {
   const today = new Date();
   const year = today.getFullYear();
   const month = String(today.getMonth() + 1).padStart(2, '0');
   const day = String(today.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-};
+}
 
-const parseDate = (dateStr: string): Date | null => {
+function parseDate(dateStr: string): Date | null {
   if (!dateStr) return null;
   const clean = dateStr.trim();
   
@@ -59,23 +59,23 @@ const parseDate = (dateStr: string): Date | null => {
   if (!isNaN(d.getTime())) return d;
   
   return null;
-};
+}
 
-const formatToISODate = (date: Date): string => {
+function formatToISODate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-};
+}
 
-const formatDateForDisplay = (dateStr: string): string => {
+function formatDateForDisplay(dateStr: string): string {
   const parsed = parseDate(dateStr);
   if (!parsed) return dateStr;
   const day = String(parsed.getDate()).padStart(2, '0');
   const month = String(parsed.getMonth() + 1).padStart(2, '0');
   const year = parsed.getFullYear();
   return `${day}/${month}/${year}`;
-};
+}
 
 // Web-only: render <input type="date">; Native: plain TextInput
 function DateInput({
