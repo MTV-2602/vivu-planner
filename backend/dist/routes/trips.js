@@ -821,15 +821,60 @@ router.post('/:id/disruptions/apply', authMiddleware_1.authMiddleware, async (re
             previous_snapshot,
             new_snapshot: newSnapshot
         });
-        // E. Đánh dấu hoạt động cũ là replaced
+        // E. Phân tích sự khác biệt (Diffing) để tránh chèn lặp các hoạt động không thay đổi
         const affectedDays = dbDays.filter(d => Number(d.day_number) >= affectedDayNumber);
         const affectedDayIds = affectedDays.map(d => d.id);
+        let dbItems = [];
         if (affectedDayIds.length > 0) {
+            const { data, error: itemsError } = await client
+                .from('itinerary_items')
+                .select('*')
+                .in('day_id', affectedDayIds)
+                .eq('status', 'planned');
+            if (itemsError)
+                throw itemsError;
+            dbItems = data || [];
+        }
+        const normalizeString = (s) => {
+            if (!s)
+                return '';
+            return s.trim().toLowerCase().replace(/\s+/g, ' ');
+        };
+        const normalizeTime = (t) => {
+            if (!t)
+                return '';
+            return t.substring(0, 5);
+        };
+        const normalizeCost = (c) => {
+            if (c === null || c === undefined)
+                return 0;
+            return Number(c) || 0;
+        };
+        const itemIdsToReplace = [];
+        const remainingItemsToInsert = [...selected_items];
+        dbItems.forEach((dbItem) => {
+            const matchedDay = dbDays.find(d => d.id === dbItem.day_id);
+            const dayNum = matchedDay ? matchedDay.day_number : null;
+            const matchIndex = remainingItemsToInsert.findIndex((item) => Number(item.day_number) === Number(dayNum) &&
+                normalizeString(dbItem.title) === normalizeString(item.title) &&
+                normalizeTime(dbItem.start_time) === normalizeTime(item.start_time) &&
+                normalizeTime(dbItem.end_time) === normalizeTime(item.end_time) &&
+                normalizeCost(dbItem.estimated_cost) === normalizeCost(item.estimated_cost) &&
+                normalizeString(dbItem.description) === normalizeString(item.description));
+            if (matchIndex !== -1) {
+                // MATCH! Unchanged item, keep it, do not insert duplicate
+                remainingItemsToInsert.splice(matchIndex, 1);
+            }
+            else {
+                // NO MATCH! This item has been changed or removed, mark it replaced
+                itemIdsToReplace.push(dbItem.id);
+            }
+        });
+        if (itemIdsToReplace.length > 0) {
             const { error: updateError } = await client
                 .from('itinerary_items')
                 .update({ status: 'replaced' })
-                .in('day_id', affectedDayIds)
-                .eq('status', 'planned');
+                .in('id', itemIdsToReplace);
             if (updateError)
                 throw updateError;
         }
@@ -837,12 +882,11 @@ router.post('/:id/disruptions/apply', authMiddleware_1.authMiddleware, async (re
         const { data: trip } = await client.from('trips').select('*').eq('id', tripId).single();
         const city = trip?.destination_city || 'Da Nang';
         const { lat, lng } = (0, placesService_1.getCityCoordinates)(city);
-        // Fetch partners list to match booking_url
+        // Fetch relevant partners to match booking_url
         const relevantPartners = await (0, partnerService_1.getRelevantPartners)(city, lat, lng, trip?.preferences || {}, parseFloat(trip?.budget_total) || 0, trip?.start_date, trip?.end_date, parseInt(trip?.traveler_count || '1'));
-        // G. Chèn các hoạt động thay thế đã chọn
+        // G. Chèn các hoạt động thực sự mới/thay đổi
         const itemsToInsert = [];
-        selected_items.forEach((item) => {
-            // Tìm đúng ngày trong database
+        remainingItemsToInsert.forEach((item) => {
             const dbDay = dbDays.find(d => Number(d.day_number) === Number(item.day_number));
             if (!dbDay)
                 return;

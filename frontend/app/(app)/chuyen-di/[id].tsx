@@ -212,6 +212,21 @@ export default function TripDetail() {
         setDisruptionDayId(sorted[0].id);
       }
       
+      const normalizeString = (s: string) => {
+        if (!s) return '';
+        return s.trim().toLowerCase().replace(/\s+/g, ' ');
+      };
+
+      const normalizeTime = (t: string) => {
+        if (!t) return '';
+        return t.substring(0, 5);
+      };
+
+      const normalizeCost = (c: any) => {
+        if (c === null || c === undefined) return 0;
+        return Number(c) || 0;
+      };
+
       adaptedItinerary.days.forEach((day: any) => {
         // Find corresponding original day and its items
         const origDay = trip?.days?.find((d: any) => Number(d.day_number) === Number(day.day_number));
@@ -224,11 +239,11 @@ export default function TripDetail() {
 
           // Check if this item is unchanged compared to original day items
           const isUnchanged = origItems.some((orig: any) => 
-            orig.title === item.title &&
-            orig.start_time === item.start_time &&
-            orig.end_time === item.end_time &&
-            Number(orig.estimated_cost) === Number(item.estimated_cost) &&
-            orig.description === item.description
+            normalizeString(orig.title) === normalizeString(item.title) &&
+            normalizeTime(orig.start_time) === normalizeTime(item.start_time) &&
+            normalizeTime(orig.end_time) === normalizeTime(item.end_time) &&
+            normalizeCost(orig.estimated_cost) === normalizeCost(item.estimated_cost) &&
+            normalizeString(orig.description) === normalizeString(item.description)
           );
 
           if (!isUnchanged) {
