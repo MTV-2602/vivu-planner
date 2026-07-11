@@ -149,6 +149,7 @@ export default function TripDetail() {
   const [proposedDiff, setProposedDiff] = useState('');
   const [previousSnapshot, setPreviousSnapshot] = useState<any>(null);
   const [selectedItems, setSelectedItems] = useState<any[]>([]);
+  const [displayedItems, setDisplayedItems] = useState<any[]>([]);
   const [questionAnswers, setQuestionAnswers] = useState<Record<number, string>>({});
 
   // Edit modal
@@ -204,18 +205,40 @@ export default function TripDetail() {
       setPreviousSnapshot(previousSnapshot);
       
       const allNew: any[] = [];
+      const displayedList: any[] = [];
+      
       if (trip?.days?.length) {
         const sorted = [...trip.days].sort((a, b) => a.day_number - b.day_number);
         setDisruptionDayId(sorted[0].id);
       }
       
       adaptedItinerary.days.forEach((day: any) => {
+        // Find corresponding original day and its items
+        const origDay = trip?.days?.find((d: any) => Number(d.day_number) === Number(day.day_number));
+        const origItems = origDay?.items || [];
+
         day.items.forEach((item: any, i: number) => {
-          allNew.push({ ...item, day_number: day.day_number, temp_id: `temp-${day.day_number}-${i}` });
+          const tempId = `temp-${day.day_number}-${i}`;
+          const itemWithMeta = { ...item, day_number: day.day_number, temp_id: tempId };
+          allNew.push(itemWithMeta);
+
+          // Check if this item is unchanged compared to original day items
+          const isUnchanged = origItems.some((orig: any) => 
+            orig.title === item.title &&
+            orig.start_time === item.start_time &&
+            orig.end_time === item.end_time &&
+            Number(orig.estimated_cost) === Number(item.estimated_cost) &&
+            orig.description === item.description
+          );
+
+          if (!isUnchanged) {
+            displayedList.push(itemWithMeta);
+          }
         });
       });
       
       setSelectedItems(allNew);
+      setDisplayedItems(displayedList);
       setDisruptionOpen(false);
       setPreviewOpen(true);
       setQuestionAnswers({});
@@ -968,11 +991,23 @@ export default function TripDetail() {
                 {proposedItinerary.days.map((day: any) => {
                   const affDay = trip.days.find(d => d.id === disruptionDayId)?.day_number ?? 1;
                   if (Number(day.day_number) < affDay) return null;
+
+                  // Filter out items that are not in displayedItems
+                  const itemsToShow = day.items.filter((item: any, i: number) => {
+                    const tempId = `temp-${day.day_number}-${i}`;
+                    return displayedItems.some(d => d.temp_id === tempId);
+                  });
+
+                  if (itemsToShow.length === 0) return null;
+
                   return (
                     <View key={day.day_number} className="gap-2">
                       <Text className="text-xs font-bold text-brand-primary uppercase tracking-wider">Ngày {day.day_number} ({formatDate(day.date)})</Text>
                       {day.items.map((item: any, i: number) => {
                         const tempId = `temp-${day.day_number}-${i}`;
+                        const isDisplayed = displayedItems.some(d => d.temp_id === tempId);
+                        if (!isDisplayed) return null;
+
                         const checked = selectedItems.some(s => s.temp_id === tempId);
                         return (
                           <Pressable
