@@ -534,10 +534,10 @@ router.post('/chat', authMiddleware_1.authMiddleware, async (req, res) => {
     catch (error) {
         console.error('[General Chat Route] Error:', error.message);
         try {
-            fs_1.default.appendFileSync('D:\\ki7\\EXE\\TK1\\error_log.txt', `[${new Date().toISOString()}] [General Chat] Error: ${error.message}\nStack: ${error.stack}\n`);
+            fs_1.default.appendFileSync('error_log.txt', `[${new Date().toISOString()}] [General Chat] Error: ${error.message}\nStack: ${error.stack}\n`);
         }
         catch (_) { }
-        return res.status(500).json({ error: 'Failed to process general chat with AI', details: error.message });
+        return res.status(500).json({ error: `Failed to process general chat with AI. Details: ${error.message}` });
     }
 });
 // POST /api/trips/:id/chat - Trò chuyện trong chuyến đi có ngữ cảnh
@@ -600,10 +600,10 @@ router.post('/:id/chat', authMiddleware_1.authMiddleware, async (req, res) => {
     catch (error) {
         console.error('[Trip Chat Route] Error:', error.message);
         try {
-            fs_1.default.appendFileSync('D:\\ki7\\EXE\\TK1\\error_log.txt', `[${new Date().toISOString()}] [Trip Chat ${tripId}] Error: ${error.message}\nStack: ${error.stack}\n`);
+            fs_1.default.appendFileSync('error_log.txt', `[${new Date().toISOString()}] [Trip Chat ${tripId}] Error: ${error.message}\nStack: ${error.stack}\n`);
         }
         catch (_) { }
-        return res.status(500).json({ error: 'Failed to process chat with AI', details: error.message });
+        return res.status(500).json({ error: `Failed to process chat with AI. Details: ${error.message}` });
     }
 });
 // 1. POST /api/trips/:id/disruptions/preview - Gợi ý lịch trình thích ứng (Chưa lưu DB)
