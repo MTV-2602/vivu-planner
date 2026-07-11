@@ -1090,7 +1090,7 @@ export async function chatWithItinerary(
   tripData?: any,
   currentItinerary?: GeneratedItinerary,
   weatherForecast?: WeatherForecast[]
-): Promise<{ responseText: string; hasChanges: boolean; adaptedItinerary?: GeneratedItinerary; diff?: string }> {
+): Promise<{ responseText: string; hasChanges: boolean; adaptedItinerary?: GeneratedItinerary; diff?: string; isCreateTrip?: boolean; createTripParams?: any }> {
   
   const systemPrompt = `Bạn là ViVu AI, trợ lý ảo thông minh, thân thiện và là đại sứ thương hiệu độc quyền của nền tảng lập kế hoạch du lịch "ViVu Planner".
 Khi người dùng đặt câu hỏi về trang web này, cách sử dụng, hoặc các tính năng hỗ trợ, hãy nhiệt tình giới thiệu và hướng dẫn họ về các tính năng vượt trội của ViVu Planner:

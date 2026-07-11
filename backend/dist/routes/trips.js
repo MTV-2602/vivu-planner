@@ -518,6 +518,67 @@ router.delete('/:id', authMiddleware_1.authMiddleware, async (req, res) => {
         return res.status(500).json({ error: 'Failed to delete trip', details: error.message });
     }
 });
+async function saveChatMessage(tripId, userId, role, content, meta) {
+    try {
+        await supabaseAdmin_1.supabaseAdmin.from('trip_chat_messages').insert({
+            trip_id: tripId,
+            user_id: userId,
+            role,
+            content,
+            adapted_itinerary: meta?.adaptedItinerary || null,
+            diff: meta?.diff || null,
+            previous_snapshot: meta?.previousSnapshot || null,
+            is_create_trip: meta?.isCreateTrip || null,
+            create_trip_params: meta?.createTripParams || null
+        });
+    }
+    catch (err) {
+        console.warn('[saveChatMessage] Failed to save chat message to DB (table may not exist yet):', err.message);
+    }
+}
+// GET /api/trips/chat - Lấy lịch sử trò chuyện chung
+router.get('/chat', authMiddleware_1.authMiddleware, async (req, res) => {
+    try {
+        const { data: messages, error } = await supabaseAdmin_1.supabaseAdmin
+            .from('trip_chat_messages')
+            .select('*')
+            .is('trip_id', null)
+            .eq('user_id', req.user.id)
+            .order('created_at', { ascending: true });
+        if (error)
+            throw error;
+        return res.json({
+            success: true,
+            messages: messages || []
+        });
+    }
+    catch (err) {
+        console.warn('[GetGeneralChatHistory] Error:', err.message);
+        return res.json({ success: true, messages: [] });
+    }
+});
+// GET /api/trips/:id/chat - Lấy lịch sử trò chuyện của chuyến đi
+router.get('/:id/chat', authMiddleware_1.authMiddleware, async (req, res) => {
+    const tripId = req.params.id;
+    try {
+        const { data: messages, error } = await supabaseAdmin_1.supabaseAdmin
+            .from('trip_chat_messages')
+            .select('*')
+            .eq('trip_id', tripId)
+            .eq('user_id', req.user.id)
+            .order('created_at', { ascending: true });
+        if (error)
+            throw error;
+        return res.json({
+            success: true,
+            messages: messages || []
+        });
+    }
+    catch (err) {
+        console.warn('[GetTripChatHistory] Error:', err.message);
+        return res.json({ success: true, messages: [] });
+    }
+});
 // POST /api/trips/chat - Trò chuyện chung không có ngữ cảnh chuyến đi
 router.post('/chat', authMiddleware_1.authMiddleware, async (req, res) => {
     const { message, history } = req.body;
@@ -525,7 +586,14 @@ router.post('/chat', authMiddleware_1.authMiddleware, async (req, res) => {
         return res.status(400).json({ error: 'message is required' });
     }
     try {
+        // Save user message
+        await saveChatMessage(null, req.user.id, 'user', message);
         const chatResponse = await (0, geminiService_1.chatWithItinerary)(message, history || []);
+        // Save model response
+        await saveChatMessage(null, req.user.id, 'model', chatResponse.responseText, {
+            isCreateTrip: chatResponse.isCreateTrip,
+            createTripParams: chatResponse.createTripParams
+        });
         return res.json({
             success: true,
             ...chatResponse
@@ -553,6 +621,8 @@ router.post('/:id/chat', authMiddleware_1.authMiddleware, async (req, res) => {
         const { data: trip, error: tripError } = await client.from('trips').select('*').eq('id', tripId).single();
         if (tripError || !trip)
             return res.status(404).json({ error: 'Trip not found' });
+        // Save user message
+        await saveChatMessage(tripId, req.user.id, 'user', message);
         // 2. Lấy danh sách các ngày
         const { data: dbDays, error: daysError } = await client
             .from('itinerary_days')
@@ -591,6 +661,14 @@ router.post('/:id/chat', authMiddleware_1.authMiddleware, async (req, res) => {
             }
         }
         const chatResponse = await (0, geminiService_1.chatWithItinerary)(message, history || [], trip, previousSnapshot, weatherForecast);
+        // Save model response
+        await saveChatMessage(tripId, req.user.id, 'model', chatResponse.responseText, {
+            adaptedItinerary: chatResponse.hasChanges ? chatResponse.adaptedItinerary : undefined,
+            diff: chatResponse.hasChanges ? chatResponse.diff : undefined,
+            previousSnapshot: chatResponse.hasChanges ? previousSnapshot : undefined,
+            isCreateTrip: chatResponse.isCreateTrip,
+            createTripParams: chatResponse.createTripParams
+        });
         return res.json({
             success: true,
             ...chatResponse,

@@ -30,8 +30,7 @@ export function ChatbotWidget() {
   
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Initialize messages based on tripId context
-  useEffect(() => {
+  const setDefaultWelcomeMessage = () => {
     if (tripId) {
       setMessages([
         {
@@ -47,7 +46,43 @@ export function ChatbotWidget() {
         }
       ]);
     }
-  }, [tripId]);
+  };
+
+  const loadChatHistory = async () => {
+    try {
+      const endpoint = tripId ? `/trips/${tripId}/chat` : '/trips/chat';
+      const response = await apiClient.get(endpoint);
+      if (response.data?.success && response.data?.messages) {
+        const loadedMessages = response.data.messages.map((m: any) => ({
+          role: m.role,
+          content: m.content,
+          adaptedItinerary: m.adapted_itinerary,
+          diff: m.diff,
+          previousSnapshot: m.previous_snapshot,
+          isCreateTrip: m.is_create_trip,
+          createTripParams: m.create_trip_params
+        }));
+        
+        if (loadedMessages.length > 0) {
+          setMessages(loadedMessages);
+          return;
+        }
+      }
+      setDefaultWelcomeMessage();
+    } catch (err) {
+      console.warn('[ChatbotWidget] Failed to load chat history:', err);
+      setDefaultWelcomeMessage();
+    }
+  };
+
+  // Initialize messages based on tripId context or load history
+  useEffect(() => {
+    if (isOpen) {
+      loadChatHistory();
+    } else {
+      setDefaultWelcomeMessage();
+    }
+  }, [tripId, isOpen]);
 
   // Scroll to bottom whenever messages list updates
   useEffect(() => {

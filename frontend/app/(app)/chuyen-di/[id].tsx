@@ -239,6 +239,8 @@ export default function TripDetail() {
       
       setSelectedItems(allNew);
       setDisplayedItems(displayedList);
+      setDisruptionType('other');
+      setDisruptionDesc('AI điều chỉnh lịch trình qua Chatbot');
       setDisruptionOpen(false);
       setPreviewOpen(true);
       setQuestionAnswers({});
