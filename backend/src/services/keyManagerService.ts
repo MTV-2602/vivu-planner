@@ -16,15 +16,40 @@ export async function getNextGeminiApiKey(): Promise<string> {
 
   try {
     // Fetch active keys from database ordered by last_used_at ascending
-    const { data: keys, error } = await supabaseAdmin
+    let { data: keys, error } = await supabaseAdmin
       .from('gemini_api_keys')
       .select('*')
       .eq('is_active', true)
       .eq('status', 'active')
       .order('last_used_at', { ascending: true, nullsFirst: true });
 
+    if ((error || !keys || keys.length === 0) && !isDbMocked) {
+      console.log('[KeyManager] No active keys found in database. Attempting to reactivate keys...');
+      try {
+        await supabaseAdmin
+          .from('gemini_api_keys')
+          .update({ is_active: true, status: 'active' })
+          .neq('key_value', ''); // reactivate all keys
+        
+        const retryResult = await supabaseAdmin
+          .from('gemini_api_keys')
+          .select('*')
+          .eq('is_active', true)
+          .eq('status', 'active')
+          .order('last_used_at', { ascending: true, nullsFirst: true });
+        
+        if (retryResult.data && retryResult.data.length > 0) {
+          keys = retryResult.data;
+          error = null;
+          console.log(`[KeyManager] Reactivated ${keys.length} keys successfully.`);
+        }
+      } catch (reactivateErr: any) {
+        console.error('[KeyManager] Failed to auto-reactivate keys:', reactivateErr.message);
+      }
+    }
+
     if (error || !keys || keys.length === 0) {
-      console.warn('[KeyManager] No active keys found in database. Using environment variable or fallback.');
+      console.warn('[KeyManager] No active keys found after reactivation attempt. Using environment variable or fallback.');
       
       const envKey = process.env.GEMINI_API_KEY;
       if (envKey) return envKey;
