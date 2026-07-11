@@ -179,6 +179,19 @@ export function ChatbotWidget() {
         </Pressable>
       </View>
 
+      {/* Active Trip Banner Indicator */}
+      {tripId && (
+        <View 
+          className="flex-row items-center justify-center py-2 px-3 gap-1.5"
+          style={{ backgroundColor: '#1F6F54' }}
+        >
+          <Sparkles size={11} color="#FFF2E0" />
+          <Text className="text-[10px] text-white font-bold" style={{ color: '#FFF2E0' }}>
+            Chế độ tự động sửa lịch trình đang bật cho chuyến đi này
+          </Text>
+        </View>
+      )}
+
       {/* Message List */}
       <ScrollView
         ref={scrollViewRef}
