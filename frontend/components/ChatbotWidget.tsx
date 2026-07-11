@@ -196,10 +196,10 @@ export function ChatbotWidget() {
               <View
                 className={`p-3 rounded-2xl ${
                   isModel
-                    ? 'bg-brand-bgAlt rounded-bl-none text-brand-text'
-                    : 'bg-brand-primary rounded-br-none text-white'
+                    ? 'bg-brand-bgAlt rounded-bl-none'
+                    : 'bg-brand-primary rounded-br-none'
                 }`}
-                style={isModel ? { backgroundColor: '#F3ECDC' } : { backgroundColor: '#1F6F54' }}
+                style={isModel ? { backgroundColor: '#F3ECDC', flexShrink: 1 } : { backgroundColor: '#1F6F54', flexShrink: 1 }}
               >
                 <Text
                   className={`text-xs ${isModel ? 'text-brand-text font-serif' : 'text-white font-sans'}`}
@@ -234,7 +234,7 @@ export function ChatbotWidget() {
             <View className="w-6 h-6 rounded-full bg-brand-primary/20 items-center justify-center">
               <Bot size={12} color={BRAND_COLORS.primary} />
             </View>
-            <View className="p-3 rounded-2xl bg-brand-bgAlt rounded-bl-none flex-row gap-1.5 items-center" style={{ backgroundColor: '#F3ECDC' }}>
+            <View className="p-3 rounded-2xl bg-brand-bgAlt rounded-bl-none flex-row gap-1.5 items-center" style={{ backgroundColor: '#F3ECDC', flexShrink: 1 }}>
               <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
               <Text className="text-[10px] text-brand-textMuted font-serif italic">ViVu AI đang xử lý...</Text>
             </View>
