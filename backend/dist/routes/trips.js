@@ -317,9 +317,26 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
     if (!destination_city || !start_date || !end_date || !budget_total) {
         return res.status(400).json({ error: 'Missing required parameters: destination_city, start_date, end_date, budget_total' });
     }
+    // Auto-correct year if the date is too far in the past (> 30 days ago)
+    // This handles cases where the AI chatbot inferred the wrong year
+    const autoCorrectDate = (dateStr) => {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime()))
+            return dateStr;
+        const nowUtc = new Date();
+        const vietnamNow = new Date(nowUtc.getTime() + 7 * 60 * 60 * 1000);
+        const thirtyDaysAgo = new Date(vietnamNow.getTime() - 30 * 24 * 60 * 60 * 1000);
+        if (date < thirtyDaysAgo) {
+            date.setFullYear(date.getFullYear() + 1);
+            return date.toISOString().split('T')[0];
+        }
+        return dateStr;
+    };
+    const correctedStartDate = autoCorrectDate(start_date);
+    const correctedEndDate = autoCorrectDate(end_date);
     // Predict absolute minimum cost and validate budget
-    const start = new Date(start_date);
-    const end = new Date(end_date);
+    const start = new Date(correctedStartDate);
+    const end = new Date(correctedEndDate);
     let daysCount = 1;
     if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
         const diffTime = Math.abs(end.getTime() - start.getTime());
@@ -337,7 +354,7 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
         // 1. Resolve coordinates
         const { lat, lng } = (0, placesService_1.getCityCoordinates)(destination_city);
         // 2. Fetch weather
-        const weatherForecast = await (0, weatherService_1.getWeatherForecast)(lat, lng, start_date, end_date);
+        const weatherForecast = await (0, weatherService_1.getWeatherForecast)(lat, lng, correctedStartDate, correctedEndDate);
         // 3. Search real candidate places in the background
         const queries = buildDynamicSearchQueries(preferences);
         const [accommodations, dining, attractions, rentals, { extraDining, extraAttractions }] = await Promise.all([
@@ -348,7 +365,7 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
             fetchDynamicCandidates(special_requirements || '', title || '', lat, lng, destination_city)
         ]);
         // Fetch relevant partners and merge them
-        const relevantPartners = await (0, partnerService_1.getRelevantPartners)(destination_city, lat, lng, preferences || {}, parseFloat(budget_total) || 0, start_date, end_date, parseInt(traveler_count || '1'));
+        const relevantPartners = await (0, partnerService_1.getRelevantPartners)(destination_city, lat, lng, preferences || {}, parseFloat(budget_total) || 0, correctedStartDate, correctedEndDate, parseInt(traveler_count || '1'));
         const partnerCandidates = (0, partnerService_1.convertPartnersToPlaceCandidates)(relevantPartners);
         const mergedAccommodations = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'accommodation'), ...accommodations]);
         const mergedDining = deduplicatePlaces([...extraDining, ...partnerCandidates.filter(p => p.category === 'dining'), ...dining]);
@@ -361,7 +378,7 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
             rental: mergedRentals
         };
         // 4. Generate AI itinerary using Gemini
-        const itinerary = await (0, geminiService_1.generateItinerary)(req.body, weatherForecast, candidatePlaces);
+        const itinerary = await (0, geminiService_1.generateItinerary)({ ...req.body, start_date: correctedStartDate, end_date: correctedEndDate }, weatherForecast, candidatePlaces);
         // 5. Save trip to Supabase
         const { data: trip, error: tripError } = await client
             .from('trips')
@@ -370,8 +387,8 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
             title: title || `Chuyến đi ${destination_city}`,
             destination_city,
             destination_province: destination_city,
-            start_date,
-            end_date,
+            start_date: correctedStartDate,
+            end_date: correctedEndDate,
             budget_total: parseFloat(budget_total),
             traveler_count: parseInt(traveler_count || '1'),
             traveler_type: traveler_type || 'solo',

@@ -368,9 +368,27 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     return res.status(400).json({ error: 'Missing required parameters: destination_city, start_date, end_date, budget_total' });
   }
 
+  // Auto-correct year if the date is too far in the past (> 30 days ago)
+  // This handles cases where the AI chatbot inferred the wrong year
+  const autoCorrectDate = (dateStr: string): string => {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    const nowUtc = new Date();
+    const vietnamNow = new Date(nowUtc.getTime() + 7 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(vietnamNow.getTime() - 30 * 24 * 60 * 60 * 1000);
+    if (date < thirtyDaysAgo) {
+      date.setFullYear(date.getFullYear() + 1);
+      return date.toISOString().split('T')[0];
+    }
+    return dateStr;
+  };
+
+  const correctedStartDate = autoCorrectDate(start_date);
+  const correctedEndDate = autoCorrectDate(end_date);
+
   // Predict absolute minimum cost and validate budget
-  const start = new Date(start_date);
-  const end = new Date(end_date);
+  const start = new Date(correctedStartDate);
+  const end = new Date(correctedEndDate);
   let daysCount = 1;
   if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
     const diffTime = Math.abs(end.getTime() - start.getTime());
@@ -391,7 +409,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     const { lat, lng } = getCityCoordinates(destination_city);
 
     // 2. Fetch weather
-    const weatherForecast = await getWeatherForecast(lat, lng, start_date, end_date);
+    const weatherForecast = await getWeatherForecast(lat, lng, correctedStartDate, correctedEndDate);
 
     // 3. Search real candidate places in the background
     const queries = buildDynamicSearchQueries(preferences);
@@ -410,8 +428,8 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       lng,
       preferences || {},
       parseFloat(budget_total) || 0,
-      start_date,
-      end_date,
+      correctedStartDate,
+      correctedEndDate,
       parseInt(traveler_count || '1')
     );
     const partnerCandidates = convertPartnersToPlaceCandidates(relevantPartners);
@@ -429,7 +447,11 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     };
 
     // 4. Generate AI itinerary using Gemini
-    const itinerary = await generateItinerary(req.body, weatherForecast, candidatePlaces);
+    const itinerary = await generateItinerary(
+      { ...req.body, start_date: correctedStartDate, end_date: correctedEndDate },
+      weatherForecast,
+      candidatePlaces
+    );
 
     // 5. Save trip to Supabase
     const { data: trip, error: tripError } = await client
@@ -439,8 +461,8 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         title: title || `Chuyến đi ${destination_city}`,
         destination_city,
         destination_province: destination_city,
-        start_date,
-        end_date,
+        start_date: correctedStartDate,
+        end_date: correctedEndDate,
         budget_total: parseFloat(budget_total),
         traveler_count: parseInt(traveler_count || '1'),
         traveler_type: traveler_type || 'solo',

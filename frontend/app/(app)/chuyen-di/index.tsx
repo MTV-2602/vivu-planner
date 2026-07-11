@@ -48,7 +48,10 @@ function formatCurrency(amount: number) {
 }
 
 function getTripStatusInfo(startDateStr: string, endDateStr: string, dbStatus: string) {
-  const todayStr = new Date().toISOString().split('T')[0]; 
+  // Use Vietnam timezone (UTC+7) for accurate date comparison
+  const nowUtc = new Date();
+  const vietnamTime = new Date(nowUtc.getTime() + 7 * 60 * 60 * 1000);
+  const todayStr = vietnamTime.toISOString().split('T')[0];
 
   if (dbStatus === 'completed' || (endDateStr && endDateStr < todayStr)) {
     return {
