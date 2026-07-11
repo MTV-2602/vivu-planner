@@ -15,6 +15,23 @@ export async function getNextGeminiApiKey(): Promise<string> {
   }
 
   try {
+    // 0. Cool down and reactivate rate_limited keys (after 3 minutes) and invalid keys (after 15 minutes) automatically
+    const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+
+    await Promise.all([
+      supabaseAdmin
+        .from('gemini_api_keys')
+        .update({ status: 'active', is_active: true })
+        .eq('status', 'rate_limited')
+        .lt('last_used_at', threeMinutesAgo),
+      supabaseAdmin
+        .from('gemini_api_keys')
+        .update({ status: 'active', is_active: true })
+        .eq('status', 'invalid')
+        .lt('last_used_at', fifteenMinutesAgo)
+    ]).catch(err => console.error('[KeyManager] Failed to auto cool down keys:', err.message));
+
     // Fetch active keys from database ordered by last_used_at ascending
     let { data: keys, error } = await supabaseAdmin
       .from('gemini_api_keys')
