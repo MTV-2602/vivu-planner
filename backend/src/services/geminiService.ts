@@ -1125,7 +1125,7 @@ QUY TẮC PHẢN HỒI:
 3. Nếu người dùng chỉ đang trò chuyện, hỏi đáp, tư vấn (ví dụ: hỏi thời tiết, hỏi danh lam thắng cảnh, hoặc hỏi cách sử dụng các tính năng của website ViVu Planner):
    - Đặt "hasChanges" = false.
    - Không cần trả về "adaptedItinerary".
-4. Nếu chưa có thông tin chuyến đi ("current_itinerary" không được cung cấp), bạn đặt "hasChanges" = false. Nếu người dùng yêu cầu tạo chuyến đi mới (ví dụ: "tạo chuyến đi Đà Lạt ngày 11/7..."), hãy đặt "isCreateTrip" = true và điền đầy đủ các thông số trong "createTripParams". Ngược lại đặt "isCreateTrip" = false và điền các giá trị mặc định vào "createTripParams".`;
+4. Nếu chưa có thông tin chuyến đi ("current_itinerary" không được cung cấp), bạn đặt "hasChanges" = false. Chỉ đặt "isCreateTrip" = true khi người dùng đã cung cấp đủ thông tin chi tiết (bao gồm cả điểm đến và ngày đi cụ thể) HOẶC khi người dùng hối thúc tạo ngay lập tức (ví dụ: "tạo chuyến đi đà lạt 3tr ngày 11/7", "tạo luôn đi"). Nếu thông tin còn thiếu hoặc chưa rõ ngày đi (ví dụ: chỉ nói chung chung "tạo chuyến đi Đà Lạt 3tr"), bạn phải đặt "isCreateTrip" = false, phản hồi ngắn gọn đặt câu hỏi để làm rõ thông tin và điền các giá trị mặc định vào "createTripParams".`;
 
   const contents: any[] = [];
   
@@ -1175,7 +1175,7 @@ QUY TẮC PHẢN HỒI:
       },
       isCreateTrip: {
         type: 'boolean',
-        description: 'Đặt là true nếu người dùng muốn tạo chuyến đi mới. Ngược lại đặt là false.'
+        description: 'Chỉ đặt là true khi người dùng đã xác nhận thông tin cụ thể hoặc hối thúc tạo ngay lập tức. Đặt là false nếu cần hỏi thêm để làm rõ ngày đi, số người, v.v.'
       },
       createTripParams: {
         type: 'object',
