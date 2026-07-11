@@ -23,7 +23,7 @@ const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'und
 interface AdminStats { totalUsers: number; totalTrips: number; totalDisruptions: number; totalApiKeys: number; totalPartners: number; }
 interface UserRecord { id: string; email: string; full_name: string; created_at: string; banned_until?: string | null; }
 interface TripRecord { id: string; title: string; destination_city: string; start_date: string; end_date: string; budget_total: number; status: string; user_email: string; created_at: string; }
-interface ApiKeyRecord { id: string; key_value: string; is_active: boolean; status: string; last_used_at: string | null; created_at: string; }
+interface ApiKeyRecord { id: string; key_value: string; is_active: boolean; status: string; last_used_at: string | null; created_at: string; usage_count?: number; }
 interface PartnerRecord {
   id: string;
   name: string;
