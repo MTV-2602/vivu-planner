@@ -1143,11 +1143,9 @@ QUY TẮC PHẢN HỒI:
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: [
-          { role: 'system', parts: [{ text: systemPrompt }] },
-          ...contents
-        ],
+        contents: contents,
         config: {
+          systemInstruction: systemPrompt,
           responseMimeType: 'application/json',
           responseSchema: {
             type: 'object',

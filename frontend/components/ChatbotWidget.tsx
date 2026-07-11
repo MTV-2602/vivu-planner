@@ -67,11 +67,14 @@ export function ChatbotWidget() {
     try {
       // Map messages history to format requested by backend
       // Backend expects: history: Array<{ role: 'user' | 'model', content: string }>
-      // Excluding the last user message which is sent in the body
-      const history = messages.map(m => ({
-        role: m.role,
-        content: m.content
-      }));
+      // Excluding the last user message which is sent in the body.
+      // Skip the first static welcome message (role: 'model') to ensure history starts with a user message.
+      const history = messages
+        .slice(1)
+        .map(m => ({
+          role: m.role,
+          content: m.content
+        }));
 
       const endpoint = tripId ? `/trips/${tripId}/chat` : '/trips/chat';
       const response = await apiClient.post(endpoint, {
