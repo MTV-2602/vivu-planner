@@ -1,4 +1,5 @@
-import React, { createContext, useState, useContext, useCallback } from 'react';
+import React, { createContext, useState, useContext, useCallback, useEffect } from 'react';
+import { usePathname } from 'expo-router';
 
 interface ChatbotContextType {
   tripId: string | null;
@@ -19,6 +20,24 @@ export const ChatbotContext = createContext<ChatbotContextType>({
 export const ChatbotProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [tripId, setTripIdState] = useState<string | null>(null);
   const [previewHandler, setPreviewHandler] = useState<((adaptedItinerary: any, diff: string, previousSnapshot: any) => void) | null>(null);
+  const pathname = usePathname();
+
+  // Automatically sync tripId with pathname changes
+  useEffect(() => {
+    // Match /chuyen-di/[id]
+    // Under Web, pathname might contain slash, query params, etc.
+    const match = pathname.match(/\/chuyen-di\/([^\/\?]+)/);
+    if (match) {
+      const idFromPath = match[1];
+      if (tripId !== idFromPath) {
+        setTripIdState(idFromPath);
+      }
+    } else {
+      if (tripId !== null) {
+        setTripIdState(null);
+      }
+    }
+  }, [pathname, tripId]);
 
   const setTripId = useCallback((id: string | null) => {
     setTripIdState(id);
