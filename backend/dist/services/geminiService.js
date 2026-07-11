@@ -954,7 +954,7 @@ ${weatherForecast && weatherForecast.length > 0 ? `Dự báo thời tiết thự
 ${JSON.stringify(weatherForecast)}` : ''}
 
 QUY TẮC PHẢN HỒI:
-1. Giao tiếp thân thiện, CỰC KỲ NGẮN GỌN (tối đa 2-3 câu ngắn), đi thẳng vào vấn đề bằng tiếng Việt. Tránh giải thích dài dòng hoặc chào hỏi lặp đi lặp lại.
+1. Giao tiếp thân thiện, CỰC KỲ NGẮN GỌN (tối đa 1-2 câu ngắn), đi thẳng vào vấn đề bằng tiếng Việt. Tuyệt đối không viết thành đoạn văn dài dòng, không giải thích dông dài lê thê.
 2. Nếu người dùng yêu cầu thay đổi lịch trình du lịch hiện tại (ví dụ: thêm hoạt động, đổi khách sạn, xóa địa điểm, thay đổi thời gian hoặc sắp xếp lại các ngày):
    - Bạn BẮT BUỘC phải đặt "hasChanges" = true.
    - Bạn phải sửa đổi lịch trình hiện tại một cách hợp lý và trả về lịch trình mới hoàn chỉnh trong "adaptedItinerary" (tuân thủ cấu trúc của lịch trình cũ).

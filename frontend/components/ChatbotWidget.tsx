@@ -257,8 +257,8 @@ export function ChatbotWidget() {
                 style={isModel ? { backgroundColor: '#F3ECDC', flexShrink: 1 } : { backgroundColor: '#1F6F54', flexShrink: 1 }}
               >
                 <Text
-                  className={`text-xs ${isModel ? 'text-brand-text font-serif' : 'text-white font-sans'}`}
-                  style={isModel ? { color: '#1B2420' } : { color: '#ffffff' }}
+                  className="font-sans"
+                  style={isModel ? { color: '#090F0C', fontSize: 14, lineHeight: 20 } : { color: '#ffffff', fontSize: 14, lineHeight: 20 }}
                 >
                   {msg.content}
                 </Text>
@@ -327,12 +327,13 @@ export function ChatbotWidget() {
           onSubmitEditing={handleSend}
           placeholder="Nhập tin nhắn..."
           placeholderTextColor="#6E7B70"
-          className="flex-1 px-4 py-2.5 rounded-full border border-brand-line/30 text-white text-xs"
+          className="flex-1 px-4 py-2.5 rounded-full border border-brand-line/30 text-white text-sm"
           style={{
             backgroundColor: '#1b2d26',
             borderColor: 'rgba(27,36,32,0.3)',
             height: 38,
-            paddingVertical: 0
+            paddingVertical: 0,
+            fontSize: 13.5
           }}
         />
         <Pressable
