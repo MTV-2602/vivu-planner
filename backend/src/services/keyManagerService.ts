@@ -81,10 +81,13 @@ export async function getNextGeminiApiKey(): Promise<string> {
 
     const selectedKeyRecord = keys[0];
     
-    // Update last_used_at
+    // Update last_used_at and increment usage_count
     await supabaseAdmin
       .from('gemini_api_keys')
-      .update({ last_used_at: new Date().toISOString() })
+      .update({ 
+        last_used_at: new Date().toISOString(),
+        usage_count: (selectedKeyRecord.usage_count || 0) + 1
+      })
       .eq('id', selectedKeyRecord.id);
 
     return selectedKeyRecord.key_value;

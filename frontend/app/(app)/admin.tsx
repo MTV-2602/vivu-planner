@@ -854,7 +854,13 @@ export default function Admin() {
                 <Text className="font-bold text-base text-brand-text">Danh sách Keys đang xoay vòng</Text>
               </View>
               <View className="rounded-2xl border border-brand-line/40 overflow-hidden bg-brand-bgAlt/30">
-                <TableHeader cols={['API Key', 'Ngày thêm', 'Trạng thái', 'Xoay', '']} />
+                <View className="flex-row px-4 py-3 border-b border-brand-line/40 bg-brand-bgAlt/60 items-center">
+                  <Text className="flex-[3] text-[10px] font-extrabold text-brand-textMuted uppercase tracking-wider">API Key</Text>
+                  <Text className="w-24 text-center text-[10px] font-extrabold text-brand-textMuted uppercase tracking-wider">Số lượt gọi</Text>
+                  <Text className="w-32 text-center text-[10px] font-extrabold text-brand-textMuted uppercase tracking-wider">Trạng thái</Text>
+                  <Text className="w-20 text-center text-[10px] font-extrabold text-brand-textMuted uppercase tracking-wider">Xoay</Text>
+                  <Text className="w-16 text-center text-[10px] font-extrabold text-brand-textMuted uppercase tracking-wider"></Text>
+                </View>
                 {keysLoading ? (
                   <View className="py-12 items-center gap-2">
                     <ActivityIndicator color={BRAND_COLORS.primary} />
@@ -869,9 +875,9 @@ export default function Admin() {
                     ? { label: 'Hạn chế', icon: <AlertTriangle size={10} color={BRAND_COLORS.gold} />, bg: `${BRAND_COLORS.gold}20`, color: BRAND_COLORS.gold }
                     : { label: 'Không hợp lệ', icon: <X size={10} color={BRAND_COLORS.danger} />, bg: `${BRAND_COLORS.danger}1A`, color: BRAND_COLORS.danger };
                   return (
-                    <View key={k.id} className="flex-row items-center px-4 py-4 border-b border-brand-line/20 gap-2">
-                      {/* Key value */}
-                      <View className="flex-1 flex-row items-center gap-2">
+                    <View key={k.id} className="flex-row items-center px-4 py-3 border-b border-brand-line/20">
+                      {/* API Key */}
+                      <View className="flex-[3] flex-row items-center gap-2 pr-4">
                         <Text className="text-[11px] font-mono text-brand-textSoft flex-1" numberOfLines={1}>
                           {visibleKeys[k.id] ? k.key_value : maskKey(k.key_value)}
                         </Text>
@@ -879,10 +885,14 @@ export default function Admin() {
                           <Eye size={13} color={BRAND_COLORS.textSoft} />
                         </Pressable>
                       </View>
-                      {/* Date */}
-                      <Text className="text-[11px] text-brand-textSoft w-16 text-center">{formatDate(k.created_at)}</Text>
-                      {/* Status + reset */}
-                      <View className="gap-1 items-center">
+                      
+                      {/* Call usage count */}
+                      <Text className="w-24 text-center text-[11px] font-bold text-brand-textSoft">
+                        {k.usage_count || 0} lượt
+                      </Text>
+
+                      {/* Status */}
+                      <View className="w-32 items-center gap-1">
                         <View className="flex-row items-center gap-1 px-1.5 py-0.5 rounded" style={{ backgroundColor: statusMeta.bg }}>
                           {statusMeta.icon}
                           <Text className="text-[9px] font-bold uppercase" style={{ color: statusMeta.color }}>{statusMeta.label}</Text>
@@ -893,16 +903,22 @@ export default function Admin() {
                           </Pressable>
                         )}
                       </View>
+
                       {/* Toggle rotation */}
-                      <Pressable onPress={() => confirmToggleRotation(k.id, k.key_value, k.is_active, k.status)} className="px-2">
-                        <View className="w-10 h-5 rounded-full items-center justify-center" style={{ backgroundColor: k.is_active ? `${BRAND_COLORS.primary}20` : `${BRAND_COLORS.textSoft}20` }}>
-                          <View className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: k.is_active ? BRAND_COLORS.primary : BRAND_COLORS.textSoft, marginLeft: k.is_active ? 6 : -6 }} />
-                        </View>
-                      </Pressable>
+                      <View className="w-20 items-center">
+                        <Pressable onPress={() => confirmToggleRotation(k.id, k.key_value, k.is_active, k.status)}>
+                          <View className="w-10 h-5 rounded-full items-center justify-center" style={{ backgroundColor: k.is_active ? `${BRAND_COLORS.primary}20` : `${BRAND_COLORS.textSoft}20` }}>
+                            <View className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: k.is_active ? BRAND_COLORS.primary : BRAND_COLORS.textSoft, marginLeft: k.is_active ? 6 : -6 }} />
+                          </View>
+                        </Pressable>
+                      </View>
+
                       {/* Delete */}
-                      <Pressable onPress={() => confirmDeleteKey(k.id, k.key_value)} className="p-2 rounded-lg" style={{ backgroundColor: `${BRAND_COLORS.danger}1A` }}>
-                        <Trash2 size={14} color={BRAND_COLORS.danger} />
-                      </Pressable>
+                      <View className="w-16 items-center">
+                        <Pressable onPress={() => confirmDeleteKey(k.id, k.key_value)} className="p-2 rounded-lg" style={{ backgroundColor: `${BRAND_COLORS.danger}1A` }}>
+                          <Trash2 size={14} color={BRAND_COLORS.danger} />
+                        </Pressable>
+                      </View>
                     </View>
                   );
                 })}
