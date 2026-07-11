@@ -239,11 +239,7 @@ export default function TripDetail() {
 
           // Check if this item is unchanged compared to original day items
           const isUnchanged = origItems.some((orig: any) => 
-            normalizeString(orig.title) === normalizeString(item.title) &&
-            normalizeTime(orig.start_time) === normalizeTime(item.start_time) &&
-            normalizeTime(orig.end_time) === normalizeTime(item.end_time) &&
-            normalizeCost(orig.estimated_cost) === normalizeCost(item.estimated_cost) &&
-            normalizeString(orig.description) === normalizeString(item.description)
+            normalizeString(orig.title) === normalizeString(item.title)
           );
 
           if (!isUnchanged) {

@@ -1026,11 +1026,7 @@ router.post('/:id/disruptions/apply', authMiddleware, async (req: AuthenticatedR
 
       const matchIndex = remainingItemsToInsert.findIndex((item: any) => 
         Number(item.day_number) === Number(dayNum) &&
-        normalizeString(dbItem.title) === normalizeString(item.title) &&
-        normalizeTime(dbItem.start_time) === normalizeTime(item.start_time) &&
-        normalizeTime(dbItem.end_time) === normalizeTime(item.end_time) &&
-        normalizeCost(dbItem.estimated_cost) === normalizeCost(item.estimated_cost) &&
-        normalizeString(dbItem.description) === normalizeString(item.description)
+        normalizeString(dbItem.title) === normalizeString(item.title)
       );
 
       if (matchIndex !== -1) {
