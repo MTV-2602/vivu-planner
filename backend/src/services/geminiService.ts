@@ -319,7 +319,7 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
         config: {
           responseMimeType: 'application/json',
           responseSchema: ITINERARY_JSON_SCHEMA as any,
-          tools: [{ googleSearchRetrieval: {} }]
+          tools: [{ googleSearch: {} }]
         }
       });
 
@@ -415,7 +415,7 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
         config: {
           responseMimeType: 'application/json',
           responseSchema: ITINERARY_JSON_SCHEMA as any,
-          tools: [{ googleSearchRetrieval: {} }]
+          tools: [{ googleSearch: {} }]
         }
       });
 
@@ -1025,7 +1025,7 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
         config: {
           responseMimeType: 'application/json',
           responseSchema: ALTERNATIVES_JSON_SCHEMA as any,
-          tools: [{ googleSearchRetrieval: {} }]
+          tools: [{ googleSearch: {} }]
         }
       });
 
@@ -1182,7 +1182,7 @@ QUY TẮC PHẢN HỒI:
           systemInstruction: systemPrompt,
           responseMimeType: 'application/json',
           responseSchema: responseSchema as any,
-          tools: [{ googleSearchRetrieval: {} }]
+          tools: [{ googleSearch: {} }]
         }
       });
 
