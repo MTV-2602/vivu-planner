@@ -100,11 +100,12 @@ export function ChatbotWidget() {
       }
     } catch (error: any) {
       console.error('[Chatbot] Error sending message:', error);
+      const errorMsg = error.response?.data?.error || error.response?.data?.details || error.message || 'Lỗi không xác định';
       setMessages(prev => [
         ...prev,
         {
           role: 'model',
-          content: 'Xin lỗi, tôi đã gặp lỗi khi xử lý tin nhắn của bạn. Vui lòng thử lại sau.'
+          content: `Xin lỗi, tôi đã gặp lỗi khi xử lý tin nhắn của bạn. Chi tiết: ${errorMsg}`
         }
       ]);
     } finally {

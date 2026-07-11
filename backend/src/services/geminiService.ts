@@ -1138,6 +1138,40 @@ QUY TẮC PHẢN HỒI:
     parts: [{ text: message }]
   });
 
+  const responseSchema = currentItinerary ? {
+    type: 'object',
+    properties: {
+      responseText: {
+        type: 'string',
+        description: 'Câu trả lời tự nhiên của trợ lý AI bằng tiếng Việt, giải thích những gì AI đã tìm hiểu, khuyên nhủ hoặc sửa đổi lịch trình.'
+      },
+      hasChanges: {
+        type: 'boolean',
+        description: 'true nếu tin nhắn yêu cầu thay đổi lịch trình hiện tại. false nếu chỉ trò chuyện bình thường.'
+      },
+      adaptedItinerary: {
+        type: 'object',
+        description: 'Lịch trình mới đã được cập nhật/chỉnh sửa dựa trên yêu cầu của người dùng. Nếu hasChanges là false, hãy sao chép nguyên lịch trình cũ ("current_itinerary") vào đây.',
+        properties: ITINERARY_JSON_SCHEMA.properties,
+        required: ITINERARY_JSON_SCHEMA.required
+      }
+    },
+    required: ['responseText', 'hasChanges', 'adaptedItinerary']
+  } : {
+    type: 'object',
+    properties: {
+      responseText: {
+        type: 'string',
+        description: 'Câu trả lời tự nhiên của trợ lý AI bằng tiếng Việt.'
+      },
+      hasChanges: {
+        type: 'boolean',
+        description: 'Luôn luôn đặt là false.'
+      }
+    },
+    required: ['responseText', 'hasChanges']
+  };
+
   try {
     return await executeWithApiKeyRotation(async (apiKey) => {
       const ai = new GoogleGenAI({ apiKey });
@@ -1147,26 +1181,7 @@ QUY TẮC PHẢN HỒI:
         config: {
           systemInstruction: systemPrompt,
           responseMimeType: 'application/json',
-          responseSchema: {
-            type: 'object',
-            properties: {
-              responseText: {
-                type: 'string',
-                description: 'Câu trả lời tự nhiên của trợ lý AI bằng tiếng Việt, giải thích những gì AI đã tìm hiểu, khuyên nhủ hoặc sửa đổi lịch trình.'
-              },
-              hasChanges: {
-                type: 'boolean',
-                description: 'true nếu tin nhắn yêu cầu thay đổi lịch trình hiện tại. false nếu chỉ trò chuyện bình thường.'
-              },
-              adaptedItinerary: {
-                type: 'object',
-                description: 'Lịch trình mới đã được cập nhật/chỉnh sửa dựa trên yêu cầu của người dùng. Chỉ có khi hasChanges = true.',
-                properties: ITINERARY_JSON_SCHEMA.properties,
-                required: ITINERARY_JSON_SCHEMA.required
-              }
-            },
-            required: ['responseText', 'hasChanges']
-          } as any,
+          responseSchema: responseSchema as any,
           tools: [{ googleSearchRetrieval: {} }]
         }
       });
