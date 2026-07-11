@@ -3,7 +3,7 @@ import { authMiddleware, AuthenticatedRequest } from '../middleware/authMiddlewa
 import { getSupabaseUserClient, supabaseAdmin } from '../services/supabaseAdmin';
 import { getCityCoordinates, searchPlaces, PlaceCandidate } from '../services/placesService';
 import { getWeatherForecast } from '../services/weatherService';
-import { generateItinerary, adaptItinerary, generateAlternatives } from '../services/geminiService';
+import { generateItinerary, adaptItinerary, generateAlternatives, chatWithItinerary } from '../services/geminiService';
 import { getRelevantPartners, convertPartnersToPlaceCandidates, logPartnerEvent } from '../services/partnerService';
 
 const router = Router();
@@ -599,6 +599,93 @@ router.delete('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Res
     return res.json({ success: true, message: 'Trip deleted successfully' });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to delete trip', details: error.message });
+  }
+});
+
+// POST /api/trips/chat - Trò chuyện chung không có ngữ cảnh chuyến đi
+router.post('/chat', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  const { message, history } = req.body;
+
+  if (!message) {
+    return res.status(400).json({ error: 'message is required' });
+  }
+
+  try {
+    const chatResponse = await chatWithItinerary(message, history || []);
+    return res.json({
+      success: true,
+      ...chatResponse
+    });
+  } catch (error: any) {
+    console.error('[General Chat Route] Error:', error.message);
+    return res.status(500).json({ error: 'Failed to process general chat with AI', details: error.message });
+  }
+});
+
+// POST /api/trips/:id/chat - Trò chuyện trong chuyến đi có ngữ cảnh
+router.post('/:id/chat', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  const client = getSupabaseUserClient(req.token!);
+  const tripId = req.params.id;
+  const { message, history } = req.body;
+
+  if (!message) {
+    return res.status(400).json({ error: 'message is required' });
+  }
+
+  try {
+    // 1. Lấy thông tin chuyến đi
+    const { data: trip, error: tripError } = await client.from('trips').select('*').eq('id', tripId).single();
+    if (tripError || !trip) return res.status(404).json({ error: 'Trip not found' });
+
+    // 2. Lấy danh sách các ngày
+    const { data: dbDays, error: daysError } = await client
+      .from('itinerary_days')
+      .select('*')
+      .eq('trip_id', tripId)
+      .order('day_number', { ascending: true });
+    
+    let previousSnapshot: any = null;
+    let weatherForecast: any[] = [];
+    if (dbDays && dbDays.length > 0) {
+      const dayIds = dbDays.map(d => d.id);
+      // Lấy danh sách các hoạt động
+      const { data: dbItems, error: itemsError } = await client
+        .from('itinerary_items')
+        .select('*')
+        .in('day_id', dayIds)
+        .order('order_index', { ascending: true });
+
+      if (!itemsError && dbItems) {
+        previousSnapshot = {
+          days: dbDays.map(d => ({
+            day_number: d.day_number,
+            date: d.date,
+            weather_note: d.weather_summary?.note || '',
+            items: dbItems.filter(item => item.day_id === d.id)
+          })),
+          budget_summary: {
+            estimated_total: dbItems.reduce((sum, item) => sum + (Number(item.estimated_cost) || 0), 0)
+          }
+        };
+      }
+      
+      const { lat, lng } = getCityCoordinates(trip.destination_city);
+      try {
+        weatherForecast = await getWeatherForecast(lat, lng, trip.start_date, trip.end_date);
+      } catch (err) {
+        console.warn('[Trip Chat Route] Weather fetch failed, continuing without weather:', err);
+      }
+    }
+
+    const chatResponse = await chatWithItinerary(message, history || [], trip, previousSnapshot, weatherForecast);
+    return res.json({
+      success: true,
+      ...chatResponse,
+      previousSnapshot
+    });
+  } catch (error: any) {
+    console.error('[Trip Chat Route] Error:', error.message);
+    return res.status(500).json({ error: 'Failed to process chat with AI', details: error.message });
   }
 });
 

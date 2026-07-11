@@ -1087,3 +1087,115 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
   }
 }
 
+export async function chatWithItinerary(
+  message: string,
+  history: Array<{ role: 'user' | 'model'; content: string }>,
+  tripData?: any,
+  currentItinerary?: GeneratedItinerary,
+  weatherForecast?: WeatherForecast[]
+): Promise<{ responseText: string; hasChanges: boolean; adaptedItinerary?: GeneratedItinerary; diff?: string }> {
+  
+  const systemPrompt = `Bạn là ViVu AI, trợ lý ảo thông minh và thân thiện chuyên hỗ trợ lập kế hoạch du lịch tại Việt Nam.
+${tripData ? `Hiện tại bạn đang hỗ trợ người dùng quản lý chuyến đi của họ đến "${tripData.destination_city}" từ ngày ${tripData.start_date} đến ngày ${tripData.end_date}.
+Tổng ngân sách chuyến đi là: ${tripData.budget_total} VND cho ${tripData.traveler_count || 1} người (${tripData.traveler_type || 'solo'}).
+Sở thích của họ là: ${JSON.stringify(tripData.preferences || {})}.
+Yêu cầu sức khỏe/đặc biệt: ${tripData.health_conditions || 'Không có'} | ${tripData.special_requirements || 'Không có'}.` : 'Bạn đang trò chuyện chung với người dùng để tư vấn và gợi ý thông tin du lịch Việt Nam.'}
+
+${currentItinerary ? `Lịch trình hiện tại của chuyến đi ("current_itinerary"):
+${JSON.stringify(currentItinerary)}` : ''}
+
+${weatherForecast && weatherForecast.length > 0 ? `Dự báo thời tiết thực tế tại điểm đến ("weather_forecast"):
+${JSON.stringify(weatherForecast)}` : ''}
+
+QUY TẮC PHẢN HỒI:
+1. Giao tiếp thân thiện, ngắn gọn và hữu ích bằng tiếng Việt.
+2. Nếu người dùng yêu cầu thay đổi lịch trình du lịch hiện tại (ví dụ: thêm hoạt động, đổi khách sạn, xóa địa điểm, thay đổi thời gian hoặc sắp xếp lại các ngày):
+   - Bạn BẮT BUỘC phải đặt "hasChanges" = true.
+   - Bạn phải sửa đổi lịch trình hiện tại một cách hợp lý và trả về lịch trình mới hoàn chỉnh trong "adaptedItinerary" (tuân thủ cấu trúc của lịch trình cũ).
+   - Hãy cố gắng giữ lại các thông tin của các ngày/hoạt động khác không bị yêu cầu thay đổi.
+   - Khi chỉnh sửa lịch trình, luôn đảm bảo các ràng buộc:
+     * Tổng chi phí ("estimated_total") phải nằm trong giới hạn ngân sách ban đầu của khách hàng (${tripData?.budget_total || 'không vượt quá mức cũ'}).
+     * Mỗi hoạt động mới thêm hoặc chỉnh sửa cần có chi phí ước lượng thực tế ("estimated_cost") hợp lý, không để trống hoặc null cho các dịch vụ cơ bản.
+     * Hãy dùng kiến thức của bạn hoặc Google Search để tìm kiếm các địa điểm thực tế, địa chỉ cụ thể ở Việt Nam nếu người dùng muốn thêm một địa điểm (ví dụ: một quán cafe, quán ăn cụ thể tại điểm đến chứ không ghi chung chung "Quán cà phê").
+3. Nếu người dùng chỉ đang trò chuyện, hỏi đáp, tư vấn (ví dụ: "Thời tiết ở đó thế nào?", "Địa danh này có gì hay?", "Xin chào trợ lý"):
+   - Đặt "hasChanges" = false.
+   - Không cần trả về "adaptedItinerary".
+4. Nếu chưa có thông tin chuyến đi ("current_itinerary" không được cung cấp), bạn chỉ trò chuyện tư vấn thông thường và BẮT BUỘC đặt "hasChanges" = false.`;
+
+  const contents: any[] = [];
+  
+  // Format history for Gemini API
+  history.forEach(item => {
+    contents.push({
+      role: item.role === 'user' ? 'user' : 'model',
+      parts: [{ text: item.content }]
+    });
+  });
+  
+  // Add the current user message
+  contents.push({
+    role: 'user',
+    parts: [{ text: message }]
+  });
+
+  try {
+    return await executeWithApiKeyRotation(async (apiKey) => {
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          { role: 'system', parts: [{ text: systemPrompt }] },
+          ...contents
+        ],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'object',
+            properties: {
+              responseText: {
+                type: 'string',
+                description: 'Câu trả lời tự nhiên của trợ lý AI bằng tiếng Việt, giải thích những gì AI đã tìm hiểu, khuyên nhủ hoặc sửa đổi lịch trình.'
+              },
+              hasChanges: {
+                type: 'boolean',
+                description: 'true nếu tin nhắn yêu cầu thay đổi lịch trình hiện tại. false nếu chỉ trò chuyện bình thường.'
+              },
+              adaptedItinerary: {
+                type: 'object',
+                description: 'Lịch trình mới đã được cập nhật/chỉnh sửa dựa trên yêu cầu của người dùng. Chỉ có khi hasChanges = true.',
+                properties: ITINERARY_JSON_SCHEMA.properties,
+                required: ITINERARY_JSON_SCHEMA.required
+              }
+            },
+            required: ['responseText', 'hasChanges']
+          } as any,
+          tools: [{ googleSearchRetrieval: {} }]
+        }
+      });
+
+      const text = response.text;
+      if (!text) throw new Error('Gemini response is empty');
+
+      const parsed = JSON.parse(text);
+      let diff = '';
+      
+      if (parsed.hasChanges && parsed.adaptedItinerary && currentItinerary && tripData) {
+        const budgetTotal = Number(tripData.budget_total) || currentItinerary.budget_summary.estimated_total + currentItinerary.budget_summary.remaining;
+        parsed.adaptedItinerary = enforceBudgetLimit(parsed.adaptedItinerary, budgetTotal, tripData);
+        diff = generateItineraryDiff(currentItinerary, parsed.adaptedItinerary, 'other');
+      }
+
+      return {
+        responseText: parsed.responseText,
+        hasChanges: !!parsed.hasChanges,
+        adaptedItinerary: parsed.adaptedItinerary,
+        diff
+      };
+    });
+  } catch (error: any) {
+    console.error('Error in chatWithItinerary:', error.message);
+    throw error;
+  }
+}
+
+

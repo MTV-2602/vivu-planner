@@ -313,6 +313,22 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
     if (!destination_city || !start_date || !end_date || !budget_total) {
         return res.status(400).json({ error: 'Missing required parameters: destination_city, start_date, end_date, budget_total' });
     }
+    // Predict absolute minimum cost and validate budget
+    const start = new Date(start_date);
+    const end = new Date(end_date);
+    let daysCount = 1;
+    if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        const diffTime = Math.abs(end.getTime() - start.getTime());
+        daysCount = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    }
+    const nightsCount = Math.max(0, daysCount - 1);
+    const travelers = parseInt(traveler_count || '1');
+    const minRequiredBudget = travelers * ((nightsCount * 100000) + (daysCount * 120000));
+    if (parseFloat(budget_total) < minRequiredBudget) {
+        return res.status(400).json({
+            error: `Ngân sách tối thiểu dự kiến cho chuyến đi ${daysCount} ngày (${nightsCount} đêm) của ${travelers} khách tại ${destination_city} là ${minRequiredBudget.toLocaleString('vi-VN')}đ. Vui lòng tăng ngân sách để tiếp tục.`
+        });
+    }
     try {
         // 1. Resolve coordinates
         const { lat, lng } = (0, placesService_1.getCityCoordinates)(destination_city);
@@ -496,6 +512,86 @@ router.delete('/:id', authMiddleware_1.authMiddleware, async (req, res) => {
     }
     catch (error) {
         return res.status(500).json({ error: 'Failed to delete trip', details: error.message });
+    }
+});
+// POST /api/trips/chat - Trò chuyện chung không có ngữ cảnh chuyến đi
+router.post('/chat', authMiddleware_1.authMiddleware, async (req, res) => {
+    const { message, history } = req.body;
+    if (!message) {
+        return res.status(400).json({ error: 'message is required' });
+    }
+    try {
+        const chatResponse = await (0, geminiService_1.chatWithItinerary)(message, history || []);
+        return res.json({
+            success: true,
+            ...chatResponse
+        });
+    }
+    catch (error) {
+        console.error('[General Chat Route] Error:', error.message);
+        return res.status(500).json({ error: 'Failed to process general chat with AI', details: error.message });
+    }
+});
+// POST /api/trips/:id/chat - Trò chuyện trong chuyến đi có ngữ cảnh
+router.post('/:id/chat', authMiddleware_1.authMiddleware, async (req, res) => {
+    const client = (0, supabaseAdmin_1.getSupabaseUserClient)(req.token);
+    const tripId = req.params.id;
+    const { message, history } = req.body;
+    if (!message) {
+        return res.status(400).json({ error: 'message is required' });
+    }
+    try {
+        // 1. Lấy thông tin chuyến đi
+        const { data: trip, error: tripError } = await client.from('trips').select('*').eq('id', tripId).single();
+        if (tripError || !trip)
+            return res.status(404).json({ error: 'Trip not found' });
+        // 2. Lấy danh sách các ngày
+        const { data: dbDays, error: daysError } = await client
+            .from('itinerary_days')
+            .select('*')
+            .eq('trip_id', tripId)
+            .order('day_number', { ascending: true });
+        let previousSnapshot = null;
+        let weatherForecast = [];
+        if (dbDays && dbDays.length > 0) {
+            const dayIds = dbDays.map(d => d.id);
+            // Lấy danh sách các hoạt động
+            const { data: dbItems, error: itemsError } = await client
+                .from('itinerary_items')
+                .select('*')
+                .in('day_id', dayIds)
+                .order('order_index', { ascending: true });
+            if (!itemsError && dbItems) {
+                previousSnapshot = {
+                    days: dbDays.map(d => ({
+                        day_number: d.day_number,
+                        date: d.date,
+                        weather_note: d.weather_summary?.note || '',
+                        items: dbItems.filter(item => item.day_id === d.id)
+                    })),
+                    budget_summary: {
+                        estimated_total: dbItems.reduce((sum, item) => sum + (Number(item.estimated_cost) || 0), 0)
+                    }
+                };
+            }
+            const { lat, lng } = (0, placesService_1.getCityCoordinates)(trip.destination_city);
+            try {
+                weatherForecast = await (0, weatherService_1.getWeatherForecast)(lat, lng, trip.start_date, trip.end_date);
+            }
+            catch (err) {
+                console.warn('[Trip Chat Route] Weather fetch failed, continuing without weather:', err);
+            }
+        }
+        const chatResponse = await (0, geminiService_1.chatWithItinerary)(message, history || [], trip, previousSnapshot, weatherForecast);
+        return res.json({
+            success: true,
+            ...chatResponse,
+            previousSnapshot
+        });
+    }
+    catch (error) {
+        console.error('[Trip Chat Route] Error:', error.message);
+        return res.status(500).json({ error: 'Failed to process chat with AI', details: error.message });
     }
 });
 // 1. POST /api/trips/:id/disruptions/preview - Gợi ý lịch trình thích ứng (Chưa lưu DB)

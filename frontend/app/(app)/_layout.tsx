@@ -2,6 +2,8 @@ import { Stack, Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Platform } from 'react-native';
 import { supabase } from '../../lib/supabaseClient';
+import { ChatbotProvider } from '../../context/ChatbotContext';
+import { ChatbotWidget } from '../../components/ChatbotWidget';
 
 export default function AppLayout() {
   const [session, setSession] = useState<any>(undefined);
@@ -46,5 +48,12 @@ export default function AppLayout() {
 
   if (!session && !hasAdminToken) return <Redirect href="/dang-nhap" />;
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <ChatbotProvider>
+      <View style={{ flex: 1 }}>
+        <Stack screenOptions={{ headerShown: false }} />
+        <ChatbotWidget />
+      </View>
+    </ChatbotProvider>
+  );
 }

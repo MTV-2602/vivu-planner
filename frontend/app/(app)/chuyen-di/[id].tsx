@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useContext } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   Modal, Alert, ActivityIndicator, Platform, Linking, Share,
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react-native';
 import { apiClient } from '../../../lib/apiClient';
 import { getCache, setCache } from '../../../lib/cache';
+import { ChatbotContext } from '../../../context/ChatbotContext';
 import { cancelTripReminder } from '../../../lib/notifications';
 import { useDistanceToCity } from '../../../hooks/useLocation';
 import Reveal from '../../../components/Reveal';
@@ -186,6 +187,41 @@ export default function TripDetail() {
 
   const tripData = trip ?? cachedTrip;
   const { distanceKm, loading: locLoading } = useDistanceToCity(tripData?.destination_city ?? '');
+
+  const { setTripId, registerPreviewTrigger, unregisterPreviewTrigger } = useContext(ChatbotContext);
+
+  useEffect(() => {
+    if (id) {
+      setTripId(id);
+    }
+    return () => setTripId(null);
+  }, [id, setTripId]);
+
+  useEffect(() => {
+    registerPreviewTrigger((adaptedItinerary, diff, previousSnapshot) => {
+      setProposedItinerary(adaptedItinerary);
+      setProposedDiff(diff);
+      setPreviousSnapshot(previousSnapshot);
+      
+      const allNew: any[] = [];
+      if (trip?.days?.length) {
+        const sorted = [...trip.days].sort((a, b) => a.day_number - b.day_number);
+        setDisruptionDayId(sorted[0].id);
+      }
+      
+      adaptedItinerary.days.forEach((day: any) => {
+        day.items.forEach((item: any, i: number) => {
+          allNew.push({ ...item, day_number: day.day_number, temp_id: `temp-${day.day_number}-${i}` });
+        });
+      });
+      
+      setSelectedItems(allNew);
+      setDisruptionOpen(false);
+      setPreviewOpen(true);
+      setQuestionAnswers({});
+    });
+    return () => unregisterPreviewTrigger();
+  }, [registerPreviewTrigger, unregisterPreviewTrigger, trip]);
 
   useEffect(() => {
     if (trip?.days?.length && !activeTabId) {
