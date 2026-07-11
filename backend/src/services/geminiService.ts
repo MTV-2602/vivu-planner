@@ -1125,7 +1125,7 @@ QUY TẮC PHẢN HỒI:
 3. Nếu người dùng chỉ đang trò chuyện, hỏi đáp, tư vấn (ví dụ: hỏi thời tiết, hỏi danh lam thắng cảnh, hoặc hỏi cách sử dụng các tính năng của website ViVu Planner):
    - Đặt "hasChanges" = false.
    - Không cần trả về "adaptedItinerary".
-4. Nếu chưa có thông tin chuyến đi ("current_itinerary" không được cung cấp), bạn chỉ trò chuyện tư vấn thông thường và BẮT BUỘC đặt "hasChanges" = false.`;
+4. Nếu chưa có thông tin chuyến đi ("current_itinerary" không được cung cấp), bạn đặt "hasChanges" = false. Nếu người dùng yêu cầu tạo chuyến đi mới (ví dụ: "tạo chuyến đi Đà Lạt ngày 11/7..."), hãy đặt "isCreateTrip" = true và điền đầy đủ các thông số trong "createTripParams". Ngược lại đặt "isCreateTrip" = false và điền các giá trị mặc định vào "createTripParams".`;
 
   const contents: any[] = [];
   
@@ -1172,9 +1172,28 @@ QUY TẮC PHẢN HỒI:
       hasChanges: {
         type: 'boolean',
         description: 'Luôn luôn đặt là false.'
+      },
+      isCreateTrip: {
+        type: 'boolean',
+        description: 'Đặt là true nếu người dùng muốn tạo chuyến đi mới. Ngược lại đặt là false.'
+      },
+      createTripParams: {
+        type: 'object',
+        description: 'Các thông số chuyến đi trích xuất được để tạo chuyến đi mới. Nếu isCreateTrip là false, hãy điền các chuỗi rỗng hoặc giá trị mặc định.',
+        properties: {
+          title: { type: 'string', description: 'Tiêu đề chuyến đi (ví dụ: "Du hí Đà Lạt", "Khám phá Hà Nội").' },
+          destination_city: { type: 'string', description: 'Tên thành phố điểm đến thực tế tại Việt Nam (ví dụ: "Đà Lạt", "Hà Nội", "Đà Nẵng").' },
+          start_date: { type: 'string', description: 'Ngày bắt đầu theo định dạng YYYY-MM-DD. Nếu người dùng không nói rõ năm, hãy lấy năm hiện tại 2026. Định dạng bắt buộc YYYY-MM-DD.' },
+          end_date: { type: 'string', description: 'Ngày kết thúc theo định dạng YYYY-MM-DD. Nếu không nói rõ số ngày, mặc định chuyến đi kéo dài 3 ngày (tức là cách ngày bắt đầu 2 ngày). Định dạng bắt buộc YYYY-MM-DD.' },
+          budget_total: { type: 'number', description: 'Tổng ngân sách dự kiến (VND). Nếu người dùng không nói, mặc định là 5000000.' },
+          traveler_count: { type: 'number', description: 'Số lượng người đi. Mặc định là 1.' },
+          traveler_type: { type: 'string', description: 'Kiểu khách du lịch: "solo", "couple", "family", "friends". Mặc định là "solo".' },
+          special_requirements: { type: 'string', description: 'Yêu cầu đặc biệt nếu có trích xuất.' }
+        },
+        required: ['title', 'destination_city', 'start_date', 'end_date', 'budget_total', 'traveler_count', 'traveler_type', 'special_requirements']
       }
     },
-    required: ['responseText', 'hasChanges']
+    required: ['responseText', 'hasChanges', 'isCreateTrip', 'createTripParams']
   };
 
   try {
@@ -1206,6 +1225,8 @@ QUY TẮC PHẢN HỒI:
         responseText: parsed.responseText,
         hasChanges: !!parsed.hasChanges,
         adaptedItinerary: parsed.adaptedItinerary,
+        isCreateTrip: !!parsed.isCreateTrip,
+        createTripParams: parsed.createTripParams,
         diff
       };
     });

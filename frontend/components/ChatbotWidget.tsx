@@ -4,6 +4,7 @@ import {
   ActivityIndicator, Platform, Dimensions
 } from 'react-native';
 import { MessageSquare, Send, Sparkles, X, Bot, User } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { useChatbot } from '../context/ChatbotContext';
 import { apiClient } from '../lib/apiClient';
 import { BRAND_COLORS } from '../constants';
@@ -14,14 +15,18 @@ interface ChatMessage {
   adaptedItinerary?: any;
   diff?: string;
   previousSnapshot?: any;
+  isCreateTrip?: boolean;
+  createTripParams?: any;
 }
 
 export function ChatbotWidget() {
   const { tripId, triggerPreview } = useChatbot();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreatingTrip, setIsCreatingTrip] = useState(false);
   
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -83,7 +88,7 @@ export function ChatbotWidget() {
       });
 
       if (response.data?.success) {
-        const { responseText, hasChanges, adaptedItinerary, diff, previousSnapshot } = response.data;
+        const { responseText, hasChanges, adaptedItinerary, diff, previousSnapshot, isCreateTrip, createTripParams } = response.data;
         
         setMessages(prev => [
           ...prev,
@@ -92,7 +97,9 @@ export function ChatbotWidget() {
             content: responseText,
             adaptedItinerary: hasChanges ? adaptedItinerary : undefined,
             diff: hasChanges ? diff : undefined,
-            previousSnapshot: hasChanges ? previousSnapshot : undefined
+            previousSnapshot: hasChanges ? previousSnapshot : undefined,
+            isCreateTrip: isCreateTrip ? true : undefined,
+            createTripParams: isCreateTrip ? createTripParams : undefined
           }
         ]);
       } else {
@@ -110,6 +117,37 @@ export function ChatbotWidget() {
       ]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCreateTripFromChat = async (params: any) => {
+    if (isCreatingTrip) return;
+    setIsCreatingTrip(true);
+    try {
+      const response = await apiClient.post('/trips', {
+        title: params.title || `Du hí ${params.destination_city}`,
+        destination_city: params.destination_city,
+        start_date: params.start_date,
+        end_date: params.end_date,
+        budget_total: Number(params.budget_total) || 5000000,
+        traveler_count: Number(params.traveler_count) || 1,
+        traveler_type: params.traveler_type || 'solo',
+        special_requirements: params.special_requirements || '',
+        preferences: { food: true, nature: true, culture: true, entertainment: true } // default preferences
+      });
+
+      if (response.status === 201 && response.data?.id) {
+        setIsOpen(false); // Close chatbot
+        router.push(`/chuyen-di/${response.data.id}`); // Redirect to details page
+      } else {
+        alert(response.data?.error || 'Không thể tạo chuyến đi. Vui lòng kiểm tra lại ngân sách.');
+      }
+    } catch (err: any) {
+      console.error('[ChatbotWidget] Create trip failed:', err);
+      const errMsg = err.response?.data?.error || err.message || 'Lỗi kết nối';
+      alert(`Lỗi tạo chuyến đi: ${errMsg}`);
+    } finally {
+      setIsCreatingTrip(false);
     }
   };
 
@@ -234,6 +272,25 @@ export function ChatbotWidget() {
                   >
                     <Sparkles size={12} color="white" />
                     <Text className="text-white text-[10px] font-bold">Xem thay đổi & Áp dụng</Text>
+                  </Pressable>
+                )}
+
+                {/* If it's a create trip recommendation, show the creation button */}
+                {isModel && msg.isCreateTrip && msg.createTripParams && (
+                  <Pressable
+                    onPress={() => handleCreateTripFromChat(msg.createTripParams)}
+                    disabled={isCreatingTrip}
+                    className="mt-3.5 bg-brand-primary px-3 py-2 rounded-xl flex-row items-center gap-1.5 align-middle self-start"
+                    style={{ backgroundColor: '#1F6F54', opacity: isCreatingTrip ? 0.6 : 1 }}
+                  >
+                    {isCreatingTrip ? (
+                      <ActivityIndicator size="small" color="white" style={{ marginRight: 2 }} />
+                    ) : (
+                      <Sparkles size={12} color="white" />
+                    )}
+                    <Text className="text-white text-[10px] font-bold">
+                      {isCreatingTrip ? 'Đang tạo...' : `Tạo chuyến đi: ${msg.createTripParams.destination_city}`}
+                    </Text>
                   </Pressable>
                 )}
               </View>
