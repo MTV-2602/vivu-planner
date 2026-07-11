@@ -259,8 +259,7 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
                 contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
                 config: {
                     responseMimeType: 'application/json',
-                    responseSchema: ITINERARY_JSON_SCHEMA,
-                    tools: [{ googleSearch: {} }]
+                    responseSchema: ITINERARY_JSON_SCHEMA
                 }
             });
             const text = response.text;
@@ -341,8 +340,7 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
                 contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
                 config: {
                     responseMimeType: 'application/json',
-                    responseSchema: ITINERARY_JSON_SCHEMA,
-                    tools: [{ googleSearch: {} }]
+                    responseSchema: ITINERARY_JSON_SCHEMA
                 }
             });
             const text = response.text;
@@ -876,8 +874,7 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
                 contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
                 config: {
                     responseMimeType: 'application/json',
-                    responseSchema: ALTERNATIVES_JSON_SCHEMA,
-                    tools: [{ googleSearch: {} }]
+                    responseSchema: ALTERNATIVES_JSON_SCHEMA
                 }
             });
             const text = response.text;
@@ -1017,8 +1014,7 @@ QUY TẮC PHẢN HỒI:
                 config: {
                     systemInstruction: systemPrompt,
                     responseMimeType: 'application/json',
-                    responseSchema: responseSchema,
-                    tools: [{ googleSearch: {} }]
+                    responseSchema: responseSchema
                 }
             });
             const text = response.text;
