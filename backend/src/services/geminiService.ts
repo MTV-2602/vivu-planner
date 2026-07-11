@@ -1091,8 +1091,20 @@ export async function chatWithItinerary(
   currentItinerary?: GeneratedItinerary,
   weatherForecast?: WeatherForecast[]
 ): Promise<{ responseText: string; hasChanges: boolean; adaptedItinerary?: GeneratedItinerary; diff?: string; isCreateTrip?: boolean; createTripParams?: any }> {
-  
+  // Get current local date in Vietnam timezone (GMT+7)
+  const nowUtc = new Date();
+  const vietnamTime = new Date(nowUtc.getTime() + 7 * 60 * 60 * 1000);
+  const todayStr = vietnamTime.toISOString().split('T')[0]; // YYYY-MM-DD
+  const currentYear = vietnamTime.getFullYear();
+  const nextYear = currentYear + 1;
+
   const systemPrompt = `Bạn là ViVu AI, trợ lý ảo thông minh, thân thiện và là đại sứ thương hiệu độc quyền của nền tảng lập kế hoạch du lịch "ViVu Planner".
+Hôm nay là ngày ${todayStr} (năm ${currentYear}). Khi người dùng đề cập đến ngày/tháng đi du lịch:
+- Hãy so sánh linh hoạt với ngày hôm nay (${todayStr}) để tự suy luận ra năm phù hợp nhất:
+  * Nếu ngày/tháng được chỉ định nằm trong tương lai hoặc trùng với hôm nay (ví dụ: người dùng nói "15/7" khi hôm nay là "11/7/${currentYear}"), hãy tự động hiểu năm là năm nay ${currentYear}. KHÔNG ĐƯỢC HỎI LẠI khách hàng về năm!
+  * Nếu ngày/tháng được chỉ định nằm trong quá khứ so với hôm nay (ví dụ: người dùng nói "15/5" khi hôm nay là "11/7/${currentYear}"), hãy tự động hiểu khách muốn đi vào năm sau ${nextYear}. KHÔNG ĐƯỢC HỎI LẠI khách hàng về năm!
+  * Chỉ khi nào hoàn toàn không thể xác định được ngày tháng (ví dụ: chỉ nói "ngày 15" mà không rõ tháng nào), bạn mới lịch sự hỏi làm rõ tháng. Khi đã rõ ngày tháng, tuyệt đối không hỏi câu hỏi thừa thãi như "Bạn muốn đi vào năm nào?".
+- Khi đã xác định được ngày bắt đầu (start_date) theo quy tắc trên, hãy cập nhật vào createTripParams.
 Khi người dùng đặt câu hỏi về trang web này, cách sử dụng, hoặc các tính năng hỗ trợ, hãy nhiệt tình giới thiệu và hướng dẫn họ về các tính năng vượt trội của ViVu Planner:
 1. Lập lịch trình tự động: Chỉ cần nhập điểm đến ở Việt Nam, số ngày, ngân sách và sở thích du lịch, ViVu Planner sẽ thiết kế một lịch trình chi tiết sáng - chiều - tối tối ưu chỉ trong vài giây.
 2. Quản lý ngân sách thông minh: Tự động theo dõi tổng chi phí dự kiến, số tiền còn lại và cảnh báo đỏ nếu kế hoạch chi tiêu vượt quá giới hạn ngân sách đã đặt.
@@ -1183,7 +1195,7 @@ QUY TẮC PHẢN HỒI:
         properties: {
           title: { type: 'string', description: 'Tiêu đề chuyến đi (ví dụ: "Du hí Đà Lạt", "Khám phá Hà Nội").' },
           destination_city: { type: 'string', description: 'Tên thành phố điểm đến thực tế tại Việt Nam (ví dụ: "Đà Lạt", "Hà Nội", "Đà Nẵng").' },
-          start_date: { type: 'string', description: 'Ngày bắt đầu theo định dạng YYYY-MM-DD. Nếu người dùng không nói rõ năm, hãy lấy năm hiện tại 2026. Định dạng bắt buộc YYYY-MM-DD.' },
+          start_date: { type: 'string', description: `Ngày bắt đầu theo định dạng YYYY-MM-DD. Hãy tự động suy luận ra năm dựa trên ngày hôm nay (${todayStr}) theo quy tắc trong system instruction. Định dạng bắt buộc YYYY-MM-DD.` },
           end_date: { type: 'string', description: 'Ngày kết thúc theo định dạng YYYY-MM-DD. Nếu không nói rõ số ngày, mặc định chuyến đi kéo dài 3 ngày (tức là cách ngày bắt đầu 2 ngày). Định dạng bắt buộc YYYY-MM-DD.' },
           budget_total: { type: 'number', description: 'Tổng ngân sách dự kiến (VND). Nếu người dùng không nói, mặc định là 5000000.' },
           traveler_count: { type: 'number', description: 'Số lượng người đi. Mặc định là 1.' },
