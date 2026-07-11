@@ -850,8 +850,17 @@ router.post('/:id/disruptions/apply', authMiddleware_1.authMiddleware, async (re
                 return 0;
             return Number(c) || 0;
         };
+        // F. Lấy tọa độ để fallback
+        const { data: trip } = await client.from('trips').select('*').eq('id', tripId).single();
+        const city = trip?.destination_city || 'Da Nang';
+        const { lat, lng } = (0, placesService_1.getCityCoordinates)(city);
+        // Fetch relevant partners to match booking_url
+        const relevantPartners = await (0, partnerService_1.getRelevantPartners)(city, lat, lng, trip?.preferences || {}, parseFloat(trip?.budget_total) || 0, trip?.start_date, trip?.end_date, parseInt(trip?.traveler_count || '1'));
         const itemIdsToReplace = [];
+        const dbItemsToUpdate = [];
         const remainingItemsToInsert = [...selected_items];
+        // 1. Phân loại các hoạt động không thay đổi (giữ nguyên)
+        const unmatchedDbItems = [];
         dbItems.forEach((dbItem) => {
             const matchedDay = dbDays.find(d => d.id === dbItem.day_id);
             const dayNum = matchedDay ? matchedDay.day_number : null;
@@ -862,14 +871,74 @@ router.post('/:id/disruptions/apply', authMiddleware_1.authMiddleware, async (re
                 normalizeCost(dbItem.estimated_cost) === normalizeCost(item.estimated_cost) &&
                 normalizeString(dbItem.description) === normalizeString(item.description));
             if (matchIndex !== -1) {
-                // MATCH! Unchanged item, keep it, do not insert duplicate
+                // Trùng khớp hoàn toàn -> Bỏ khỏi danh sách chèn mới
                 remainingItemsToInsert.splice(matchIndex, 1);
             }
             else {
-                // NO MATCH! This item has been changed or removed, mark it replaced
-                itemIdsToReplace.push(dbItem.id);
+                // Không trùng khớp -> Hoạt động cũ bị sửa đổi hoặc xóa bỏ
+                unmatchedDbItems.push(dbItem);
             }
         });
+        // 2. Phân bổ hoạt động thay thế tại chỗ theo từng ngày
+        affectedDayIds.forEach((dayId) => {
+            const matchedDay = dbDays.find(d => d.id === dayId);
+            const dayNum = matchedDay ? matchedDay.day_number : null;
+            if (!dayNum)
+                return;
+            const dayDbItems = unmatchedDbItems.filter(item => item.day_id === dayId)
+                .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+            const dayNewItems = remainingItemsToInsert.filter(item => Number(item.day_number) === Number(dayNum))
+                .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+            const minLen = Math.min(dayDbItems.length, dayNewItems.length);
+            // Sửa đè trực tiếp (Update in place) cho các slot tương ứng
+            for (let i = 0; i < minLen; i++) {
+                dbItemsToUpdate.push({
+                    dbItem: dayDbItems[i],
+                    newItem: dayNewItems[i]
+                });
+            }
+            // Các hoạt động dư ra ở bản cũ -> Đánh dấu là replaced (đã bị xóa/thay thế)
+            for (let i = minLen; i < dayDbItems.length; i++) {
+                itemIdsToReplace.push(dayDbItems[i].id);
+            }
+        });
+        // 3. Thực thi cập nhật tại chỗ (Update)
+        if (dbItemsToUpdate.length > 0) {
+            for (const pair of dbItemsToUpdate) {
+                let itemBookingUrl = pair.newItem.booking_url || null;
+                if (pair.newItem.google_place_id && pair.newItem.google_place_id.startsWith('partner_')) {
+                    const matched = relevantPartners.find(p => `partner_${p.id}` === pair.newItem.google_place_id);
+                    if (matched) {
+                        itemBookingUrl = matched.booking_url || null;
+                    }
+                }
+                const { error: updateErr } = await client
+                    .from('itinerary_items')
+                    .update({
+                    item_type: pair.newItem.item_type,
+                    title: pair.newItem.title,
+                    description: pair.newItem.description || '',
+                    start_time: formatTimeForDb(pair.newItem.start_time),
+                    end_time: formatTimeForDb(pair.newItem.end_time),
+                    location_name: pair.newItem.title,
+                    location_lat: pair.newItem.location_lat || lat,
+                    location_lng: pair.newItem.location_lng || lng,
+                    google_place_id: pair.newItem.google_place_id || null,
+                    estimated_cost: parseOptionalCost(pair.newItem.estimated_cost),
+                    booking_url: itemBookingUrl,
+                    order_index: pair.newItem.order_index
+                })
+                    .eq('id', pair.dbItem.id);
+                if (updateErr)
+                    throw updateErr;
+                // Log đối tác nếu có
+                if (pair.newItem.google_place_id && pair.newItem.google_place_id.startsWith('partner_')) {
+                    const partnerId = pair.newItem.google_place_id.replace('partner_', '');
+                    await (0, partnerService_1.logPartnerEvent)(partnerId, 'booking', tripId, req.user.id, { item_type: pair.newItem.item_type, disruption_applied: true });
+                }
+            }
+        }
+        // 4. Thực thi đánh dấu các hoạt động bị xóa hẳn
         if (itemIdsToReplace.length > 0) {
             const { error: updateError } = await client
                 .from('itinerary_items')
@@ -878,15 +947,13 @@ router.post('/:id/disruptions/apply', authMiddleware_1.authMiddleware, async (re
             if (updateError)
                 throw updateError;
         }
-        // F. Lấy tọa độ để fallback
-        const { data: trip } = await client.from('trips').select('*').eq('id', tripId).single();
-        const city = trip?.destination_city || 'Da Nang';
-        const { lat, lng } = (0, placesService_1.getCityCoordinates)(city);
-        // Fetch relevant partners to match booking_url
-        const relevantPartners = await (0, partnerService_1.getRelevantPartners)(city, lat, lng, trip?.preferences || {}, parseFloat(trip?.budget_total) || 0, trip?.start_date, trip?.end_date, parseInt(trip?.traveler_count || '1'));
-        // G. Chèn các hoạt động thực sự mới/thay đổi
-        const itemsToInsert = [];
+        // 5. Thực thi chèn các hoạt động mới hoàn toàn (nếu số lượng hoạt động mới nhiều hơn cũ)
+        const finalItemsToInsert = [];
         remainingItemsToInsert.forEach((item) => {
+            // Bỏ qua các hoạt động đã được update tại chỗ
+            const isAlreadyUpdated = dbItemsToUpdate.some(pair => pair.newItem === item);
+            if (isAlreadyUpdated)
+                return;
             const dbDay = dbDays.find(d => Number(d.day_number) === Number(item.day_number));
             if (!dbDay)
                 return;
@@ -897,7 +964,7 @@ router.post('/:id/disruptions/apply', authMiddleware_1.authMiddleware, async (re
                     itemBookingUrl = matched.booking_url || null;
                 }
             }
-            itemsToInsert.push({
+            finalItemsToInsert.push({
                 day_id: dbDay.id,
                 item_type: item.item_type,
                 title: item.title,
@@ -914,14 +981,14 @@ router.post('/:id/disruptions/apply', authMiddleware_1.authMiddleware, async (re
                 status: 'planned'
             });
         });
-        if (itemsToInsert.length > 0) {
+        if (finalItemsToInsert.length > 0) {
             const { error: insertError } = await client
                 .from('itinerary_items')
-                .insert(itemsToInsert);
+                .insert(finalItemsToInsert);
             if (insertError)
                 throw insertError;
             // Log partner booking events for applied alternative items
-            for (const item of itemsToInsert) {
+            for (const item of finalItemsToInsert) {
                 if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
                     const partnerId = item.google_place_id.replace('partner_', '');
                     await (0, partnerService_1.logPartnerEvent)(partnerId, 'booking', tripId, req.user.id, { item_type: item.item_type, disruption_applied: true });
