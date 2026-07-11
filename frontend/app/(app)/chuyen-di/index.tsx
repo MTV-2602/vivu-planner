@@ -47,6 +47,32 @@ function formatCurrency(amount: number) {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 }
 
+function getTripStatusInfo(startDateStr: string, endDateStr: string, dbStatus: string) {
+  const todayStr = new Date().toISOString().split('T')[0]; 
+
+  if (dbStatus === 'completed' || (endDateStr && endDateStr < todayStr)) {
+    return {
+      label: 'Hoàn thành',
+      bgClass: 'bg-brand-bgAlt border border-brand-line/40',
+      textClass: 'text-brand-textSoft'
+    };
+  }
+  
+  if (startDateStr && startDateStr <= todayStr && endDateStr && todayStr <= endDateStr) {
+    return {
+      label: 'Đang diễn ra',
+      bgClass: 'bg-emerald-100 border border-emerald-300/40',
+      textClass: 'text-emerald-700'
+    };
+  }
+
+  return {
+    label: 'Đang lập kế hoạch',
+    bgClass: 'bg-brand-gold/25 border border-brand-gold/45',
+    textClass: 'text-brand-primaryStrong'
+  };
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState('');
@@ -261,15 +287,16 @@ export default function Dashboard() {
                             {trip.destination_city}
                           </Text>
                         </View>
-                        <View
-                          className={`px-2 py-1 rounded-md ${trip.status === 'completed' ? 'bg-brand-bgAlt' : 'bg-brand-gold/25'}`}
-                        >
-                          <Text
-                            className={`text-[10px] font-bold uppercase tracking-wider ${trip.status === 'completed' ? 'text-brand-textSoft' : 'text-brand-primaryStrong'}`}
-                          >
-                            {trip.status === 'completed' ? 'Hoàn thành' : 'Đang lập kế hoạch'}
-                          </Text>
-                        </View>
+                        {(() => {
+                          const statusInfo = getTripStatusInfo(trip.start_date, trip.end_date, trip.status);
+                          return (
+                            <View className={`px-2 py-1 rounded-md ${statusInfo.bgClass}`}>
+                              <Text className={`text-[10px] font-bold uppercase tracking-wider ${statusInfo.textClass}`}>
+                                {statusInfo.label}
+                              </Text>
+                            </View>
+                          );
+                        })()}
                       </View>
                       <Text className="text-xl font-bold text-brand-text">{trip.title}</Text>
                     </View>
