@@ -1,6 +1,10 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
+const fs_1 = __importDefault(require("fs"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const supabaseAdmin_1 = require("../services/supabaseAdmin");
 const placesService_1 = require("../services/placesService");
@@ -529,6 +533,10 @@ router.post('/chat', authMiddleware_1.authMiddleware, async (req, res) => {
     }
     catch (error) {
         console.error('[General Chat Route] Error:', error.message);
+        try {
+            fs_1.default.appendFileSync('D:\\ki7\\EXE\\TK1\\error_log.txt', `[${new Date().toISOString()}] [General Chat] Error: ${error.message}\nStack: ${error.stack}\n`);
+        }
+        catch (_) { }
         return res.status(500).json({ error: 'Failed to process general chat with AI', details: error.message });
     }
 });
@@ -591,6 +599,10 @@ router.post('/:id/chat', authMiddleware_1.authMiddleware, async (req, res) => {
     }
     catch (error) {
         console.error('[Trip Chat Route] Error:', error.message);
+        try {
+            fs_1.default.appendFileSync('D:\\ki7\\EXE\\TK1\\error_log.txt', `[${new Date().toISOString()}] [Trip Chat ${tripId}] Error: ${error.message}\nStack: ${error.stack}\n`);
+        }
+        catch (_) { }
         return res.status(500).json({ error: 'Failed to process chat with AI', details: error.message });
     }
 });
