@@ -500,6 +500,17 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       throw tripError || new Error('Failed to create trip record');
     }
 
+    // Associate previous general chat messages (where trip_id IS NULL) with this new trip
+    try {
+      await supabaseAdmin
+        .from('trip_chat_messages')
+        .update({ trip_id: trip.id })
+        .eq('user_id', req.user!.id)
+        .is('trip_id', null);
+    } catch (chatLinkErr: any) {
+      console.warn('[CreateTrip] Failed to associate chat history with new trip:', chatLinkErr.message);
+    }
+
     // 6. Save itinerary days
     const daysToInsert = itinerary.days.map(d => ({
       trip_id: trip.id,
