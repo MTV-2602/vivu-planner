@@ -199,6 +199,27 @@ router.get('/', authMiddleware_1.authMiddleware, async (req, res) => {
         return res.status(500).json({ error: 'Failed to retrieve trips', details: error.message });
     }
 });
+// GET /api/trips/chat - Lấy lịch sử trò chuyện chung
+router.get('/chat', authMiddleware_1.authMiddleware, async (req, res) => {
+    try {
+        const { data: messages, error } = await supabaseAdmin_1.supabaseAdmin
+            .from('trip_chat_messages')
+            .select('*')
+            .is('trip_id', null)
+            .eq('user_id', req.user.id)
+            .order('created_at', { ascending: true });
+        if (error)
+            throw error;
+        return res.json({
+            success: true,
+            messages: messages || []
+        });
+    }
+    catch (err) {
+        console.warn('[GetGeneralChatHistory] Error:', err.message);
+        return res.json({ success: true, messages: [] });
+    }
+});
 // GET /api/trips/:id - Get a specific trip detail with days and items
 router.get('/:id', authMiddleware_1.authMiddleware, async (req, res) => {
     const client = (0, supabaseAdmin_1.getSupabaseUserClient)(req.token);
@@ -553,27 +574,6 @@ async function saveChatMessage(tripId, userId, role, content, meta) {
         console.warn('[saveChatMessage] Failed to save chat message to DB (table may not exist yet):', err.message);
     }
 }
-// GET /api/trips/chat - Lấy lịch sử trò chuyện chung
-router.get('/chat', authMiddleware_1.authMiddleware, async (req, res) => {
-    try {
-        const { data: messages, error } = await supabaseAdmin_1.supabaseAdmin
-            .from('trip_chat_messages')
-            .select('*')
-            .is('trip_id', null)
-            .eq('user_id', req.user.id)
-            .order('created_at', { ascending: true });
-        if (error)
-            throw error;
-        return res.json({
-            success: true,
-            messages: messages || []
-        });
-    }
-    catch (err) {
-        console.warn('[GetGeneralChatHistory] Error:', err.message);
-        return res.json({ success: true, messages: [] });
-    }
-});
 // GET /api/trips/:id/chat - Lấy lịch sử trò chuyện của chuyến đi
 router.get('/:id/chat', authMiddleware_1.authMiddleware, async (req, res) => {
     const tripId = req.params.id;

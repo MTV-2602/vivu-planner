@@ -75,14 +75,20 @@ export function ChatbotWidget() {
     }
   };
 
-  // Initialize messages based on tripId context or load history
+  // Reset messages when tripId changes, and load history if widget is open
   useEffect(() => {
+    setDefaultWelcomeMessage();
     if (isOpen) {
       loadChatHistory();
-    } else {
-      setDefaultWelcomeMessage();
     }
-  }, [tripId, isOpen]);
+  }, [tripId]);
+
+  // Load history when chatbot is opened and it hasn't loaded yet
+  useEffect(() => {
+    if (isOpen && messages.length <= 1) {
+      loadChatHistory();
+    }
+  }, [isOpen]);
 
   // Scroll to bottom whenever messages list updates
   useEffect(() => {

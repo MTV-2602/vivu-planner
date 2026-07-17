@@ -224,6 +224,28 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response)
   }
 });
 
+// GET /api/trips/chat - Lấy lịch sử trò chuyện chung
+router.get('/chat', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { data: messages, error } = await supabaseAdmin
+      .from('trip_chat_messages')
+      .select('*')
+      .is('trip_id', null)
+      .eq('user_id', req.user!.id)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      messages: messages || []
+    });
+  } catch (err: any) {
+    console.warn('[GetGeneralChatHistory] Error:', err.message);
+    return res.json({ success: true, messages: [] });
+  }
+});
+
 // GET /api/trips/:id - Get a specific trip detail with days and items
 router.get('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const client = getSupabaseUserClient(req.token!);
@@ -655,27 +677,6 @@ async function saveChatMessage(
   }
 }
 
-// GET /api/trips/chat - Lấy lịch sử trò chuyện chung
-router.get('/chat', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { data: messages, error } = await supabaseAdmin
-      .from('trip_chat_messages')
-      .select('*')
-      .is('trip_id', null)
-      .eq('user_id', req.user!.id)
-      .order('created_at', { ascending: true });
-
-    if (error) throw error;
-
-    return res.json({
-      success: true,
-      messages: messages || []
-    });
-  } catch (err: any) {
-    console.warn('[GetGeneralChatHistory] Error:', err.message);
-    return res.json({ success: true, messages: [] });
-  }
-});
 
 // GET /api/trips/:id/chat - Lấy lịch sử trò chuyện của chuyến đi
 router.get('/:id/chat', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {

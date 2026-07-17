@@ -378,11 +378,70 @@ function getCityCoordinates(city) {
 }
 async function searchPlacesOSM(query, category, lat, lng) {
     try {
+        // 1. Try querying Supabase places_cache table first
+        const geoDelta = 0.25;
+        const { data: cachedItems, error: cacheError } = await supabaseAdmin_1.supabaseAdmin
+            .from('places_cache')
+            .select('*')
+            .eq('category', category)
+            .gte('lat', lat - geoDelta)
+            .lte('lat', lat + geoDelta)
+            .gte('lng', lng - geoDelta)
+            .lte('lng', lng + geoDelta)
+            .limit(50);
+        if (!cacheError && cachedItems && cachedItems.length > 0) {
+            let filtered = cachedItems.map(item => ({
+                google_place_id: item.google_place_id,
+                name: item.name || 'Địa điểm không tên',
+                category: item.category,
+                lat: item.lat || lat,
+                lng: item.lng || lng,
+                rating: Number(item.rating) || 4.5,
+                price_level: item.price_level || 2,
+                address: item.address || ''
+            }));
+            if (query) {
+                const queryClean = query.trim().toLowerCase();
+                // Look for partial matches in name or address
+                filtered = filtered.filter(item => item.name.toLowerCase().includes(queryClean) ||
+                    item.address.toLowerCase().includes(queryClean));
+            }
+            // If we got at least 3 matches, return them!
+            if (filtered.length >= 3) {
+                console.log(`[placesService] Cache HIT (Geo Box) for category ${category}, query: "${query}". Found ${filtered.length} items.`);
+                return filtered.slice(0, 10);
+            }
+        }
+        // 2. Try query-name search in Supabase places_cache if query is specific
+        if (query && query.trim().length > 2) {
+            const queryClean = query.trim().toLowerCase();
+            const { data: nameMatches, error: nameError } = await supabaseAdmin_1.supabaseAdmin
+                .from('places_cache')
+                .select('*')
+                .eq('category', category)
+                .ilike('name', `%${queryClean}%`)
+                .limit(10);
+            if (!nameError && nameMatches && nameMatches.length >= 3) {
+                console.log(`[placesService] Cache HIT (Name Search) for category ${category}, query: "${query}". Found ${nameMatches.length} items.`);
+                return nameMatches.map(item => ({
+                    google_place_id: item.google_place_id,
+                    name: item.name || 'Địa điểm không tên',
+                    category: item.category,
+                    lat: item.lat || lat,
+                    lng: item.lng || lng,
+                    rating: Number(item.rating) || 4.5,
+                    price_level: item.price_level || 2,
+                    address: item.address || ''
+                }));
+            }
+        }
+        // 3. Cache Miss — Query Nominatim OSM with a low timeout (2000ms)
+        console.log(`[placesService] Cache MISS. Querying Nominatim for category ${category}, query: "${query}"...`);
         const delta = 0.15;
         const viewbox = `${lng - delta},${lat + delta},${lng + delta},${lat - delta}`;
         const response = await axios_1.default.get('https://nominatim.openstreetmap.org/search', {
             params: {
-                q: query,
+                q: query || category,
                 format: 'json',
                 addressdetails: 1,
                 limit: 10,
@@ -393,7 +452,7 @@ async function searchPlacesOSM(query, category, lat, lng) {
             headers: {
                 'User-Agent': 'ViVu-Planner-App/1.0 (team89a6@gmail.com)'
             },
-            timeout: 5000
+            timeout: 2000
         });
         const items = response.data || [];
         const candidates = [];
@@ -436,7 +495,7 @@ async function searchPlacesOSM(query, category, lat, lng) {
         return candidates;
     }
     catch (error) {
-        console.error('OSM search places error:', error.message);
+        console.warn(`[placesService] OSM search places failed or timed out: ${error.message}. Returning mock places.`);
         return getMockPlaces(category, lat, lng, query);
     }
 }
