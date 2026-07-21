@@ -77,9 +77,12 @@ export function ChatbotWidget() {
     }
   };
 
-  // Reset messages when tripId changes, and load history if widget is open
+  // Reset messages khi tripId thay đổi, đồng thời reset trạng thái loading và load lại lịch sử nếu đang mở widget
   useEffect(() => {
     setDefaultWelcomeMessage();
+    setIsCreatingTrip(false);
+    setCreationProgress(0);
+    setCreationStage('');
     if (isOpen) {
       loadChatHistory();
     }
@@ -216,6 +219,7 @@ export function ChatbotWidget() {
 
       if (response.status === 201 && response.data?.id) {
         setIsOpen(false); // Close chatbot
+        setIsCreatingTrip(false); // Reset loading state
         router.push(`/chuyen-di/${response.data.id}`); // Redirect to details page
       } else {
         alert(response.data?.error || 'Không thể tạo chuyến đi. Vui lòng kiểm tra lại ngân sách.');
@@ -391,8 +395,8 @@ export function ChatbotWidget() {
                       </Pressable>
                     )}
 
-                    {/* If it's a create trip recommendation, show the creation button */}
-                    {isModel && msg.isCreateTrip && msg.createTripParams && (
+                    {/* Chỉ hiển thị nút tạo chuyến đi nếu chưa ở trong một chuyến đi cụ thể */}
+                    {isModel && msg.isCreateTrip && msg.createTripParams && !tripId && (
                       <Pressable
                         onPress={() => handleCreateTripFromChat(msg.createTripParams)}
                         disabled={isCreatingTrip}
