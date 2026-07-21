@@ -386,10 +386,10 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
         const mergedAttractions = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'attraction'), ...batchPlaces.attraction]);
         const mergedRentals = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'rental'), ...batchPlaces.rental]);
         const candidatePlaces = {
-            accommodation: mergedAccommodations,
-            dining: mergedDining,
-            attraction: mergedAttractions,
-            rental: mergedRentals
+            accommodation: mergedAccommodations.slice(0, 4),
+            dining: mergedDining.slice(0, 8),
+            attraction: mergedAttractions.slice(0, 8),
+            rental: mergedRentals.slice(0, 3)
         };
         // 4. Generate AI itinerary using Gemini
         const itinerary = await (0, geminiService_1.generateItinerary)({ ...req.body, start_date: correctedStartDate, end_date: correctedEndDate }, weatherForecast, candidatePlaces);
@@ -762,10 +762,10 @@ router.post('/:id/disruptions/preview', authMiddleware_1.authMiddleware, async (
         const mergedAttractions = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'attraction'), ...batchPlaces.attraction]);
         const mergedRentals = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'rental'), ...batchPlaces.rental]);
         const candidatePlaces = {
-            accommodation: mergedAccommodations,
-            dining: mergedDining,
-            attraction: mergedAttractions,
-            rental: mergedRentals
+            accommodation: mergedAccommodations.slice(0, 4),
+            dining: mergedDining.slice(0, 8),
+            attraction: mergedAttractions.slice(0, 8),
+            rental: mergedRentals.slice(0, 3)
         };
         const { itinerary: adaptedItinerary, diff } = await (0, geminiService_1.adaptItinerary)(trip, previousSnapshot, disruption_type, description, weatherForecast, candidatePlaces);
         return res.json({

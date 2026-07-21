@@ -462,10 +462,10 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     const mergedRentals = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'rental'), ...batchPlaces.rental]);
  
     const candidatePlaces = {
-      accommodation: mergedAccommodations,
-      dining: mergedDining,
-      attraction: mergedAttractions,
-      rental: mergedRentals
+      accommodation: mergedAccommodations.slice(0, 4),
+      dining: mergedDining.slice(0, 8),
+      attraction: mergedAttractions.slice(0, 8),
+      rental: mergedRentals.slice(0, 3)
     };
 
     // 4. Generate AI itinerary using Gemini
@@ -913,10 +913,10 @@ router.post('/:id/disruptions/preview', authMiddleware, async (req: Authenticate
     const mergedRentals = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'rental'), ...batchPlaces.rental]);
  
     const candidatePlaces = { 
-      accommodation: mergedAccommodations, 
-      dining: mergedDining, 
-      attraction: mergedAttractions, 
-      rental: mergedRentals 
+      accommodation: mergedAccommodations.slice(0, 4), 
+      dining: mergedDining.slice(0, 8), 
+      attraction: mergedAttractions.slice(0, 8), 
+      rental: mergedRentals.slice(0, 3) 
     };
 
     const { itinerary: adaptedItinerary, diff } = await adaptItinerary(
