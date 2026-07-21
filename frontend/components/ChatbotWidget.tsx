@@ -209,7 +209,7 @@ export function ChatbotWidget() {
         special_requirements: params.special_requirements || '',
         preferences: { food: true, nature: true, culture: true, entertainment: true } // default preferences
       }, {
-        timeout: 25000 // 25s timeout to prevent hanging forever
+        timeout: 120000 // 2 minutes (120s) timeout to prevent premature aborts
       });
 
       clearInterval(progressInterval);

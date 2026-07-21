@@ -254,18 +254,14 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
     try {
         return await (0, keyManagerService_1.executeWithApiKeyRotation)(async (apiKey) => {
             const ai = new genai_1.GoogleGenAI({ apiKey });
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini API call timed out (8s limit)')), 8000));
-            const response = await Promise.race([
-                ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
-                    config: {
-                        responseMimeType: 'application/json',
-                        responseSchema: ITINERARY_JSON_SCHEMA
-                    }
-                }),
-                timeoutPromise
-            ]);
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
+                config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: ITINERARY_JSON_SCHEMA
+                }
+            });
             const text = response.text;
             if (!text) {
                 throw new Error('Gemini returned empty response text');
@@ -1051,19 +1047,15 @@ QUY TẮC PHẢN HỒI:
     try {
         return await (0, keyManagerService_1.executeWithApiKeyRotation)(async (apiKey) => {
             const ai = new genai_1.GoogleGenAI({ apiKey });
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini API call timed out (8s limit)')), 8000));
-            const response = await Promise.race([
-                ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: contents,
-                    config: {
-                        systemInstruction: systemPrompt,
-                        responseMimeType: 'application/json',
-                        responseSchema: responseSchema
-                    }
-                }),
-                timeoutPromise
-            ]);
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: contents,
+                config: {
+                    systemInstruction: systemPrompt,
+                    responseMimeType: 'application/json',
+                    responseSchema: responseSchema
+                }
+            });
             const text = response.text;
             if (!text)
                 throw new Error('Gemini response is empty');
