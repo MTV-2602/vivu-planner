@@ -552,3 +552,105 @@ export async function searchPlaces(
 ): Promise<PlaceCandidate[]> {
   return searchPlacesOSM(query, category, lat, lng);
 }
+
+export async function fetchCandidatePlacesForCity(
+  city: string,
+  lat: number,
+  lng: number,
+  preferences: any = {},
+  specialRequirements: string = '',
+  title: string = ''
+): Promise<{
+  accommodation: PlaceCandidate[];
+  dining: PlaceCandidate[];
+  attraction: PlaceCandidate[];
+  rental: PlaceCandidate[];
+}> {
+  try {
+    // 1. Quét nhanh tất cả các địa điểm thuộc khu vực thành phố này từ cơ sở dữ liệu cache (vùng bán kính geoDelta)
+    const geoDelta = 0.25;
+    const { data: cachedItems, error } = await supabaseAdmin
+      .from('places_cache')
+      .select('*')
+      .gte('lat', lat - geoDelta)
+      .lte('lat', lat + geoDelta)
+      .gte('lng', lng - geoDelta)
+      .lte('lng', lng + geoDelta)
+      .limit(150);
+
+    if (!error && cachedItems && cachedItems.length >= 10) {
+      console.log(`[placesService] Batch Cache HIT cho thành phố "${city}". Tìm thấy ${cachedItems.length} địa điểm trong DB.`);
+      
+      const accommodation: PlaceCandidate[] = [];
+      const dining: PlaceCandidate[] = [];
+      const attraction: PlaceCandidate[] = [];
+      const rental: PlaceCandidate[] = [];
+
+      cachedItems.forEach(item => {
+        const candidate: PlaceCandidate = {
+          google_place_id: item.google_place_id,
+          name: item.name || 'Địa điểm không tên',
+          category: (item.category || 'attraction') as any,
+          lat: item.lat || lat,
+          lng: item.lng || lng,
+          rating: Number(item.rating) || 4.5,
+          price_level: item.price_level || 2,
+          address: item.address || ''
+        };
+
+        if (candidate.category === 'accommodation') accommodation.push(candidate);
+        else if (candidate.category === 'dining') dining.push(candidate);
+        else if (candidate.category === 'attraction') attraction.push(candidate);
+        else if (candidate.category === 'rental') rental.push(candidate);
+      });
+
+      // Nếu có yêu cầu đặc biệt hoặc tiêu đề chứa từ khóa, tìm kiếm và ưu tiên xếp lên đầu các mảng
+      const lowerReq = (specialRequirements + ' ' + title).toLowerCase();
+      if (lowerReq.trim().length > 2) {
+        const filterByKeyword = (list: PlaceCandidate[]) => {
+          return list.sort((a, b) => {
+            const aMatch = a.name.toLowerCase().split(' ').some(w => w.length > 2 && lowerReq.includes(w)) ? 1 : 0;
+            const bMatch = b.name.toLowerCase().split(' ').some(w => w.length > 2 && lowerReq.includes(w)) ? 1 : 0;
+            return bMatch - aMatch; // xếp cái khớp từ khóa lên trước
+          });
+        };
+        filterByKeyword(dining);
+        filterByKeyword(attraction);
+      }
+
+      return {
+        accommodation: accommodation.length >= 2 ? accommodation : getMockPlaces('accommodation', lat, lng, ''),
+        dining: dining.length >= 4 ? dining : getMockPlaces('dining', lat, lng, ''),
+        attraction: attraction.length >= 4 ? attraction : getMockPlaces('attraction', lat, lng, ''),
+        rental: rental.length >= 1 ? rental : getMockPlaces('rental', lat, lng, '')
+      };
+    }
+  } catch (err: any) {
+    console.warn('[placesService] Failed to load batch cache from DB:', err.message);
+  }
+
+  // 2. Cache Miss hoặc thành phố hoàn toàn mới -> Gọi Nominatim tuần tự cho Điểm ăn uống và Điểm tham quan
+  console.log(`[placesService] Batch Cache MISS cho thành phố "${city}". Gọi Nominatim để lấy dữ liệu nền...`);
+  try {
+    const diningPromise = searchPlacesOSM('restaurant', 'dining', lat, lng).catch(() => []);
+    const attractionPromise = searchPlacesOSM('tourist attraction', 'attraction', lat, lng).catch(() => []);
+    
+    const [dining, attraction] = await Promise.all([diningPromise, attractionPromise]);
+
+    return {
+      accommodation: getMockPlaces('accommodation', lat, lng, ''),
+      dining: dining.length > 0 ? dining : getMockPlaces('dining', lat, lng, ''),
+      attraction: attraction.length > 0 ? attraction : getMockPlaces('attraction', lat, lng, ''),
+      rental: getMockPlaces('rental', lat, lng, '')
+    };
+  } catch (fallbackErr: any) {
+    console.warn('[placesService] OSM fallback failed:', fallbackErr.message);
+    return {
+      accommodation: getMockPlaces('accommodation', lat, lng, ''),
+      dining: getMockPlaces('dining', lat, lng, ''),
+      attraction: getMockPlaces('attraction', lat, lng, ''),
+      rental: getMockPlaces('rental', lat, lng, '')
+    };
+  }
+}
+

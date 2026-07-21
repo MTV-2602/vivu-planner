@@ -52,7 +52,7 @@ export function ChatbotWidget() {
 
   const loadChatHistory = async () => {
     try {
-      const endpoint = tripId ? `/trips/${tripId}/chat` : '/trips/chat';
+      const endpoint = tripId ? `/trips/${tripId}/chat?t=${Date.now()}` : `/trips/chat?t=${Date.now()}`;
       const response = await apiClient.get(endpoint);
       if (response.data?.success && response.data?.messages) {
         const loadedMessages = response.data.messages.map((m: any) => ({
@@ -208,6 +208,8 @@ export function ChatbotWidget() {
         traveler_type: params.traveler_type || 'solo',
         special_requirements: params.special_requirements || '',
         preferences: { food: true, nature: true, culture: true, entertainment: true } // default preferences
+      }, {
+        timeout: 25000 // 25s timeout to prevent hanging forever
       });
 
       clearInterval(progressInterval);
@@ -220,6 +222,7 @@ export function ChatbotWidget() {
       if (response.status === 201 && response.data?.id) {
         setIsOpen(false); // Close chatbot
         setIsCreatingTrip(false); // Reset loading state
+        setDefaultWelcomeMessage(); // Reset messages to avoid cache state on redirect
         router.push(`/chuyen-di/${response.data.id}`); // Redirect to details page
       } else {
         alert(response.data?.error || 'Không thể tạo chuyến đi. Vui lòng kiểm tra lại ngân sách.');

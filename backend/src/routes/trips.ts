@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import fs from 'fs';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/authMiddleware';
 import { getSupabaseUserClient, supabaseAdmin } from '../services/supabaseAdmin';
-import { getCityCoordinates, searchPlaces, PlaceCandidate } from '../services/placesService';
+import { getCityCoordinates, searchPlaces, PlaceCandidate, fetchCandidatePlacesForCity } from '../services/placesService';
 import { getWeatherForecast } from '../services/weatherService';
 import { generateItinerary, adaptItinerary, generateAlternatives, chatWithItinerary } from '../services/geminiService';
 import { getRelevantPartners, convertPartnersToPlaceCandidates, logPartnerEvent } from '../services/partnerService';
@@ -433,17 +433,17 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     // 2. Fetch weather
     const weatherForecast = await getWeatherForecast(lat, lng, correctedStartDate, correctedEndDate);
 
-    // 3. Search real candidate places in the background
-    const queries = buildDynamicSearchQueries(preferences);
-    const [accommodations, dining, attractions, rentals, { extraDining, extraAttractions }] = await Promise.all([
-      searchPlaces(queries.accommodationQuery, 'accommodation', lat, lng),
-      searchPlaces(queries.diningQuery, 'dining', lat, lng),
-      searchPlaces(queries.attractionQuery, 'attraction', lat, lng),
-      searchPlaces(queries.rentalQuery, 'rental', lat, lng),
-      fetchDynamicCandidates(special_requirements || '', title || '', lat, lng, destination_city)
-    ]);
-
-    // Fetch relevant partners and merge them
+    // 3. Quét toàn bộ địa điểm du lịch ứng viên trong 1 truy vấn duy nhất từ cache DB
+    const batchPlaces = await fetchCandidatePlacesForCity(
+      destination_city,
+      lat,
+      lng,
+      preferences,
+      special_requirements || '',
+      title || ''
+    );
+ 
+    // Lấy đối tác liên quan
     const relevantPartners = await getRelevantPartners(
       destination_city,
       lat,
@@ -455,12 +455,12 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       parseInt(traveler_count || '1')
     );
     const partnerCandidates = convertPartnersToPlaceCandidates(relevantPartners);
-
-    const mergedAccommodations = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'accommodation'), ...accommodations]);
-    const mergedDining = deduplicatePlaces([...extraDining, ...partnerCandidates.filter(p => p.category === 'dining'), ...dining]);
-    const mergedAttractions = deduplicatePlaces([...extraAttractions, ...partnerCandidates.filter(p => p.category === 'attraction'), ...attractions]);
-    const mergedRentals = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'rental'), ...rentals]);
-
+ 
+    const mergedAccommodations = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'accommodation'), ...batchPlaces.accommodation]);
+    const mergedDining = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'dining'), ...batchPlaces.dining]);
+    const mergedAttractions = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'attraction'), ...batchPlaces.attraction]);
+    const mergedRentals = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'rental'), ...batchPlaces.rental]);
+ 
     const candidatePlaces = {
       accommodation: mergedAccommodations,
       dining: mergedDining,
@@ -500,15 +500,17 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       throw tripError || new Error('Failed to create trip record');
     }
 
-    // Associate previous general chat messages (where trip_id IS NULL) with this new trip
-    try {
-      await supabaseAdmin
-        .from('trip_chat_messages')
-        .update({ trip_id: trip.id })
-        .eq('user_id', req.user!.id)
-        .is('trip_id', null);
-    } catch (chatLinkErr: any) {
-      console.warn('[CreateTrip] Failed to associate chat history with new trip:', chatLinkErr.message);
+    // Liên kết toàn bộ tin nhắn chat chung cũ (với trip_id IS NULL) sang chuyến đi mới này
+    const { error: chatLinkErr } = await supabaseAdmin
+      .from('trip_chat_messages')
+      .update({ trip_id: trip.id })
+      .eq('user_id', req.user!.id)
+      .is('trip_id', null);
+
+    if (chatLinkErr) {
+      console.error('[CreateTrip] Failed to associate chat history with new trip:', chatLinkErr.message);
+    } else {
+      console.log(`[CreateTrip] Successfully associated general chat history with trip ${trip.id}`);
     }
 
     // 6. Save itinerary days
@@ -881,17 +883,18 @@ router.post('/:id/disruptions/preview', authMiddleware, async (req: Authenticate
     const { lat, lng } = getCityCoordinates(trip.destination_city);
     const weatherForecast = await getWeatherForecast(lat, lng, trip.start_date, trip.end_date);
     
-    const queries = buildDynamicSearchQueries(trip.preferences);
+    // Quét toàn bộ địa điểm du lịch ứng viên trong 1 truy vấn duy nhất từ cache DB cho phương án thay thế
     const combinedRequirements = [trip.special_requirements, description].filter(Boolean).join('\n');
-    const [accommodations, dining, attractions, rentals, { extraDining, extraAttractions }] = await Promise.all([
-      searchPlaces(queries.accommodationQuery, 'accommodation', lat, lng),
-      searchPlaces(queries.diningQuery, 'dining', lat, lng),
-      searchPlaces(queries.attractionQuery, 'attraction', lat, lng),
-      searchPlaces(queries.rentalQuery, 'rental', lat, lng),
-      fetchDynamicCandidates(combinedRequirements, trip.title || '', lat, lng, trip.destination_city)
-    ]);
-    
-    // Fetch relevant partners and merge them
+    const batchPlaces = await fetchCandidatePlacesForCity(
+      trip.destination_city,
+      lat,
+      lng,
+      trip.preferences,
+      combinedRequirements,
+      trip.title || ''
+    );
+ 
+    // Lấy đối tác liên quan
     const relevantPartners = await getRelevantPartners(
       trip.destination_city,
       lat,
@@ -903,12 +906,12 @@ router.post('/:id/disruptions/preview', authMiddleware, async (req: Authenticate
       parseInt(trip.traveler_count || '1')
     );
     const partnerCandidates = convertPartnersToPlaceCandidates(relevantPartners);
-
-    const mergedAccommodations = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'accommodation'), ...accommodations]);
-    const mergedDining = deduplicatePlaces([...extraDining, ...partnerCandidates.filter(p => p.category === 'dining'), ...dining]);
-    const mergedAttractions = deduplicatePlaces([...extraAttractions, ...partnerCandidates.filter(p => p.category === 'attraction'), ...attractions]);
-    const mergedRentals = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'rental'), ...rentals]);
-
+ 
+    const mergedAccommodations = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'accommodation'), ...batchPlaces.accommodation]);
+    const mergedDining = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'dining'), ...batchPlaces.dining]);
+    const mergedAttractions = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'attraction'), ...batchPlaces.attraction]);
+    const mergedRentals = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'rental'), ...batchPlaces.rental]);
+ 
     const candidatePlaces = { 
       accommodation: mergedAccommodations, 
       dining: mergedDining, 
