@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
+const crypto_1 = __importDefault(require("crypto"));
 const fs_1 = __importDefault(require("fs"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const supabaseAdmin_1 = require("../services/supabaseAdmin");
@@ -428,24 +429,17 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
         else {
             console.log(`[CreateTrip] Successfully associated general chat history with trip ${trip.id}`);
         }
-        // 6. Save itinerary days
-        const daysToInsert = itinerary.days.map(d => ({
+        // 6. Tối ưu hóa: Sinh UUID client-side và lưu song song các ngày và hoạt động (Parallel DB Writes)
+        const daysToInsert = itinerary.days.map(day => ({
+            id: crypto_1.default.randomUUID(), // Chủ động sinh UUID để liên kết song song
             trip_id: trip.id,
-            day_number: d.day_number,
-            date: d.date,
-            weather_summary: { note: d.weather_note }
+            day_number: day.day_number,
+            date: day.date,
+            weather_summary: { note: day.weather_note }
         }));
-        const { data: dbDays, error: daysError } = await client
-            .from('itinerary_days')
-            .insert(daysToInsert)
-            .select();
-        if (daysError || !dbDays) {
-            throw daysError || new Error('Failed to insert itinerary days');
-        }
-        // 7. Save itinerary items
         const itemsToInsert = [];
         itinerary.days.forEach(day => {
-            const dbDay = dbDays.find(d => Number(d.day_number) === Number(day.day_number));
+            const dbDay = daysToInsert.find(d => Number(d.day_number) === Number(day.day_number));
             if (!dbDay)
                 return;
             day.items.forEach(item => {
@@ -468,7 +462,7 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
                     }
                 }
                 itemsToInsert.push({
-                    day_id: dbDay.id,
+                    day_id: dbDay.id, // Sử dụng UUID đã sinh ở trên để liên kết
                     item_type: item.item_type,
                     title: item.title,
                     description: item.description || itemAddress || '',
@@ -485,18 +479,20 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
                 });
             });
         });
-        if (itemsToInsert.length > 0) {
-            const { error: itemsError } = await client
-                .from('itinerary_items')
-                .insert(itemsToInsert);
-            if (itemsError)
-                throw itemsError;
-            // Log partner booking events
-            for (const item of itemsToInsert) {
-                if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
-                    const partnerId = item.google_place_id.replace('partner_', '');
-                    await (0, partnerService_1.logPartnerEvent)(partnerId, 'booking', trip.id, req.user.id, { item_type: item.item_type });
-                }
+        // Thực hiện ghi song song cả ngày và hoạt động cùng lúc để giảm 1 vòng roundtrip DB
+        const [daysResult, itemsResult] = await Promise.all([
+            client.from('itinerary_days').insert(daysToInsert),
+            itemsToInsert.length > 0 ? client.from('itinerary_items').insert(itemsToInsert) : Promise.resolve({ error: null })
+        ]);
+        if (daysResult.error)
+            throw daysResult.error;
+        if (itemsResult.error)
+            throw itemsResult.error;
+        // Log partner booking events
+        for (const item of itemsToInsert) {
+            if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
+                const partnerId = item.google_place_id.replace('partner_', '');
+                await (0, partnerService_1.logPartnerEvent)(partnerId, 'booking', trip.id, req.user.id, { item_type: item.item_type });
             }
         }
         // Log impressions for all partner candidates sent to AI
@@ -509,7 +505,7 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
             .select('*')
             .eq('id', trip.id)
             .single();
-        const dbDaysWithItems = dbDays
+        const dbDaysWithItems = daysToInsert
             .sort((a, b) => a.day_number - b.day_number)
             .map(day => ({
             ...day,

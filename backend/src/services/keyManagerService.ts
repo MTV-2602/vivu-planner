@@ -19,7 +19,7 @@ export async function getNextGeminiApiKey(): Promise<string> {
     const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000).toISOString();
     const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
-    await Promise.all([
+    Promise.all([
       supabaseAdmin
         .from('gemini_api_keys')
         .update({ status: 'active', is_active: true })
@@ -82,13 +82,16 @@ export async function getNextGeminiApiKey(): Promise<string> {
     const selectedKeyRecord = keys[0];
     
     // Update last_used_at and increment usage_count
-    await supabaseAdmin
+    supabaseAdmin
       .from('gemini_api_keys')
       .update({ 
         last_used_at: new Date().toISOString(),
         usage_count: (selectedKeyRecord.usage_count || 0) + 1
       })
-      .eq('id', selectedKeyRecord.id);
+      .eq('id', selectedKeyRecord.id)
+      .then(({ error }) => {
+        if (error) console.error('[KeyManager] Failed to update key usage log:', error.message);
+      });
 
     return selectedKeyRecord.key_value;
   } catch (err) {

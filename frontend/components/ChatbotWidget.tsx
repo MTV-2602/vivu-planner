@@ -31,6 +31,7 @@ export function ChatbotWidget() {
   const [creationStage, setCreationStage] = useState('');
   
   const scrollViewRef = useRef<ScrollView>(null);
+  const isCreatingRef = useRef(false);
 
   const setDefaultWelcomeMessage = () => {
     if (tripId) {
@@ -167,7 +168,8 @@ export function ChatbotWidget() {
   };
 
   const handleCreateTripFromChat = async (params: any) => {
-    if (isCreatingTrip) return;
+    if (isCreatingTrip || isCreatingRef.current) return;
+    isCreatingRef.current = true;
     setIsCreatingTrip(true);
     setCreationProgress(0);
     setCreationStage('Bắt đầu khởi tạo chuyến đi...');
@@ -222,15 +224,18 @@ export function ChatbotWidget() {
       if (response.status === 201 && response.data?.id) {
         setIsOpen(false); // Close chatbot
         setIsCreatingTrip(false); // Reset loading state
+        isCreatingRef.current = false; // Reset block ref
         setDefaultWelcomeMessage(); // Reset messages to avoid cache state on redirect
         router.push(`/chuyen-di/${response.data.id}`); // Redirect to details page
       } else {
+        isCreatingRef.current = false; // Reset block ref
         alert(response.data?.error || 'Không thể tạo chuyến đi. Vui lòng kiểm tra lại ngân sách.');
       }
     } catch (err: any) {
       clearInterval(progressInterval);
       setCreationProgress(0);
       setIsCreatingTrip(false);
+      isCreatingRef.current = false; // Reset block ref
       console.error('[ChatbotWidget] Create trip failed:', err);
       const errMsg = err.response?.data?.error || err.message || 'Lỗi kết nối';
       alert(`Lỗi tạo chuyến đi: ${errMsg}`);
