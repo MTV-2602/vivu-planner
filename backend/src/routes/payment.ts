@@ -8,6 +8,7 @@ import { generateBookingConfirmationHTML } from '../services/emailService';
 const router = Router();
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://vivu-planner.vercel.app';
+const BACKEND_URL = process.env.BACKEND_URL || process.env.RENDER_EXTERNAL_URL || 'https://vivu-planner-backend.onrender.com';
 const PREMIUM_PRICE = 49000; // VND per month
 
 // ─── Premium Plans ───────────────────────────────────────────────────────────
@@ -31,7 +32,8 @@ router.post('/create-order', authMiddleware, async (req: AuthenticatedRequest, r
     const description = `ViVu Pro ${planConfig.label}`;
     const returnUrl = `${FRONTEND_URL}/chuyen-di?payment=success&orderId=${orderId}`;
     const cancelUrl = `${FRONTEND_URL}/chuyen-di?payment=cancelled`;
-    const ipnUrl = `${FRONTEND_URL}/api/payment/momo-ipn`;
+    // IPN/Webhook must point to BACKEND URL, not frontend!
+    const ipnUrl = `${BACKEND_URL}/api/payment/momo-ipn`;
 
     // Save pending order to DB (safely caught)
     try {
@@ -215,18 +217,56 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
 });
 
 // ─── GET /api/payment/verify-return ──────────────────────────────────────────
+// Called by frontend after payment provider redirects back to the app.
+// For MoMo: resultCode=0 means success. For PayOS: code=00 or status=PAID.
 router.get('/verify-return', async (req: Request, res: Response) => {
   try {
     const { orderId, resultCode, code, status } = req.query;
-    const isSuccess = String(resultCode) === '0' || String(code) === '00' || String(status) === 'PAID' || !resultCode;
-    
-    if (orderId && isSuccess) {
-      await activatePremiumByOrderId(String(orderId));
-      return res.json({ success: true, message: 'Đã kích hoạt cước thành công!' });
+
+    // Must have an orderId to do anything
+    if (!orderId) {
+      return res.json({ success: false, message: 'Thiếu orderId.' });
     }
-    
-    return res.json({ success: false, message: 'Thanh toán chưa hoàn tất hoặc bị hủy.' });
+
+    // Check if payment was cancelled
+    const isCancelled = String(resultCode) === '1006' || String(resultCode) === '49' || String(status) === 'CANCELLED';
+    if (isCancelled) {
+      return res.json({ success: false, message: 'Giao dịch đã bị hủy.' });
+    }
+
+    // Success codes: MoMo resultCode=0, PayOS code=00 or status=PAID
+    // Also activate if no resultCode (returnUrl visited after payment without code)
+    const isSuccess =
+      String(resultCode) === '0' ||
+      String(code) === '00' ||
+      String(status) === 'PAID' ||
+      (!resultCode && !code && !status);
+
+    if (!isSuccess) {
+      return res.json({ success: false, message: 'Thanh toán chưa hoàn tất.' });
+    }
+
+    // Check if order already completed (idempotent — safe to call multiple times)
+    const { data: order } = await supabaseAdmin
+      .from('payment_orders')
+      .select('id, status, user_id, plan')
+      .eq('id', String(orderId))
+      .single();
+
+    if (!order) {
+      return res.json({ success: false, message: 'Không tìm thấy đơn hàng.' });
+    }
+
+    if (order.status === 'completed') {
+      // Already activated (e.g. IPN arrived first) — just return success
+      return res.json({ success: true, message: 'Đã kích hoạt trước đó. Lượt AI đã sẵn sàng!' });
+    }
+
+    // Activate now
+    await activatePremiumByOrderId(String(orderId));
+    return res.json({ success: true, message: 'Đã kích hoạt cước thành công! Lượt AI đã được cộng vào tài khoản.' });
   } catch (err: any) {
+    console.error('[Payment] verify-return error:', err);
     return res.status(500).json({ error: err.message });
   }
 });

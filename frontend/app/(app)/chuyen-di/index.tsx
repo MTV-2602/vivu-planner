@@ -112,7 +112,9 @@ export default function Dashboard() {
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const search = window.location.search;
-      if (search && (search.includes('payment=success') || search.includes('orderId') || search.includes('resultCode=0') || search.includes('code=00'))) {
+      if (search && (search.includes('payment=success') || search.includes('resultCode=0') || search.includes('code=00'))) {
+        // Clean the URL immediately so user doesn't see ugly query params
+        window.history.replaceState({}, document.title, window.location.pathname);
         apiClient.get(`/payment/verify-return${search}`).then(res => {
           if (res.data?.success) {
             setPaymentSuccessMsg('🎉 Thanh toán thành công! Hệ thống đã tự động cộng dồn lượt tạo chuyến đi AI mới vào tài khoản của bạn.');
@@ -431,6 +433,10 @@ export default function Dashboard() {
     <PremiumModal
       visible={showPremiumModal}
       onClose={() => setShowPremiumModal(false)}
+      onActivated={() => {
+        setShowPremiumModal(false);
+        refetchStatus();
+      }}
     />
   </View>
   );

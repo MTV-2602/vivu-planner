@@ -41,21 +41,28 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     }
   }, [visible]);
 
-  // Poll status while QR is visible
+  // Poll payment status while QR is visible — detect when quota increases
   useEffect(() => {
     if (!orderData || activated) return;
+    let lastQuota = statusData?.tripsQuota ?? 0;
     const interval = setInterval(async () => {
       try {
         const { data } = await apiClient.get('/payment/status');
-        if (data.isPremium) {
+        // Activate if user newly became premium OR their quota increased
+        if (data.isPremium && !statusData?.isPremium) {
           clearInterval(interval);
+          setActivated(true);
+          onActivated?.();
+        } else if (data.tripsQuota > lastQuota) {
+          clearInterval(interval);
+          lastQuota = data.tripsQuota;
           setActivated(true);
           onActivated?.();
         }
       } catch {}
     }, 3000);
     return () => clearInterval(interval);
-  }, [orderData, activated]);
+  }, [orderData, activated, statusData?.tripsQuota, statusData?.isPremium]);
 
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -101,19 +108,23 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
   };
 
   if (activated) {
+    const currentPlan = PLANS.find(p => p.id === selectedPlan) || PLANS[1];
     return (
       <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           <View style={{ backgroundColor: '#fff', borderRadius: 28, padding: 36, alignItems: 'center', width: '100%', maxWidth: 420 }}>
             <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: '#e8f5f0', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
-              <Text style={{ fontSize: 44 }}>👑</Text>
+              <Text style={{ fontSize: 44 }}>🎉</Text>
             </View>
-            <Text style={{ fontSize: 24, fontWeight: '800', color: '#1B3A2D', marginBottom: 8, textAlign: 'center' }}>Chào mừng ViVu Pro!</Text>
-            <Text style={{ color: '#666', textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>
-              Tài khoản của bạn đã được nâng cấp lên gói <Text style={{ fontWeight: '700', color: BRAND_COLORS.primary }}>Pro (10 lượt tạo chuyến đi)</Text>. Tận hưởng tất cả đặc quyền cao cấp nhé!
+            <Text style={{ fontSize: 24, fontWeight: '800', color: '#1B3A2D', marginBottom: 8, textAlign: 'center' }}>Thanh toán thành công!</Text>
+            <Text style={{ color: '#047857', textAlign: 'center', marginBottom: 6, lineHeight: 20, fontWeight: '700', fontSize: 16 }}>
+              {currentPlan.quota} đã được cộng vào tài khoản ✨
+            </Text>
+            <Text style={{ color: '#666', textAlign: 'center', marginBottom: 24, lineHeight: 20, fontSize: 13 }}>
+              Lượt tạo chuyến đi AI được <Text style={{ fontWeight: '700', color: BRAND_COLORS.primary }}>cộng dồn vĩnh viễn</Text>, không hết hạn. Tận hưởng nhé!
             </Text>
             <Pressable onPress={onClose} style={{ backgroundColor: BRAND_COLORS.primary, borderRadius: 50, paddingHorizontal: 36, paddingVertical: 14, width: '100%', alignItems: 'center' }}>
-              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>Bắt đầu sử dụng ngay ✨</Text>
+              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>Bắt đầu tạo chuyến đi ngay ✨</Text>
             </Pressable>
           </View>
         </View>
