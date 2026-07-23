@@ -30,7 +30,7 @@ export async function createPayOSOrder(params: {
   buyerName?: string;
   buyerEmail?: string;
   buyerPhone?: string;
-}): Promise<{ checkoutUrl: string; qrCode: string; orderCode: number }> {
+}): Promise<{ checkoutUrl: string; qrCode: string; orderCode: number; accountNumber?: string; accountName?: string; bin?: string }> {
   const clientId = process.env.PAYOS_CLIENT_ID || '';
   const apiKey = process.env.PAYOS_API_KEY || '';
   const checksumKey = process.env.PAYOS_CHECKSUM_KEY || '';
@@ -74,7 +74,10 @@ export async function createPayOSOrder(params: {
     const resData = response.data?.data || response.data;
     return {
       checkoutUrl: resData.checkoutUrl || resData.paymentUrl,
-      qrCode: resData.qrCode || resData.qrCodeUrl || resData.checkoutUrl,
+      qrCode: resData.qrCode || '',
+      accountNumber: resData.accountNumber || '',
+      accountName: resData.accountName || '',
+      bin: resData.bin || '',
       orderCode,
     };
   } catch (err: any) {

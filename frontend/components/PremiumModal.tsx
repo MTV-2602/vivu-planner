@@ -123,11 +123,22 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
 
   let qrImage = '';
   if (orderData) {
-    const qrTarget = orderData.payUrl || orderData.checkoutUrl || orderData.qrCode || orderData.qrCodeUrl;
-    if (qrTarget && (qrTarget.includes('vietqr.io') || qrTarget.match(/\.(png|jpg|jpeg|svg)(\?.*)?$/i))) {
-      qrImage = qrTarget;
-    } else if (qrTarget) {
-      qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrTarget)}`;
+    // Prioritize direct EMVCo bank string or official QR image URL over web checkout URLs
+    const directQr = orderData.qrCode || orderData.qrCodeUrl;
+    const webUrl = orderData.checkoutUrl || orderData.payUrl;
+
+    if (directQr) {
+      if (directQr.startsWith('http://') || directQr.startsWith('https://') || directQr.startsWith('data:image/')) {
+        qrImage = directQr;
+      } else {
+        // EMVCo standard bank payload (000201...) -> generate standard bank QR code
+        qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(directQr)}`;
+      }
+    } else if (orderData.accountNumber && orderData.amount) {
+      const bin = orderData.bin || 'MB';
+      qrImage = `https://img.vietqr.io/image/${bin}-${orderData.accountNumber}-compact2.png?amount=${orderData.amount}&addInfo=VIVU${orderData.orderCode || ''}&accountName=${encodeURIComponent(orderData.accountName || 'VIVU PLANNER')}`;
+    } else if (webUrl) {
+      qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(webUrl)}`;
     }
   }
 
