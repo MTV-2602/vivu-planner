@@ -15,6 +15,7 @@ import Reveal from '../../../components/Reveal';
 import SystemClock from '../../../components/SystemClock';
 import { BRAND_COLORS } from '../../../constants';
 import PremiumModal from '../../../components/PremiumModal';
+import ConfirmModal from '../../../components/ConfirmModal';
 
 interface Trip {
   id: string;
@@ -85,6 +86,13 @@ export default function Dashboard() {
   const [cachedTrips, setCachedTrips] = useState<Trip[] | null>(null);
   const [fromCache, setFromCache] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    isDestructive?: boolean;
+  } | null>(null);
 
   useEffect(() => {
     getCache<Trip[]>('trips').then(data => {
@@ -156,16 +164,16 @@ export default function Dashboard() {
   });
 
   const handleDeleteTrip = (tripId: string, title: string) => {
-    if (Platform.OS === 'web') {
-      if (window.confirm(`Bạn có chắc chắn muốn xóa chuyến đi "${title}"?`)) {
+    setConfirmModal({
+      visible: true,
+      title: 'Xác nhận xóa chuyến đi',
+      message: `Bạn có chắc chắn muốn xóa chuyến đi "${title}"? Hành động này không thể hoàn tác.`,
+      isDestructive: true,
+      onConfirm: () => {
         deleteMutation.mutate(tripId);
+        setConfirmModal(null);
       }
-    } else {
-      Alert.alert('Xác nhận xóa', `Bạn có chắc chắn muốn xóa chuyến đi "${title}"?`, [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Xóa', style: 'destructive', onPress: () => deleteMutation.mutate(tripId) },
-      ]);
-    }
+    });
   };
 
   const handleLogout = async () => {
@@ -438,6 +446,14 @@ export default function Dashboard() {
         setShowPremiumModal(false);
         refetchStatus();
       }}
+    />
+    <ConfirmModal
+      visible={!!confirmModal?.visible}
+      title={confirmModal?.title || ''}
+      message={confirmModal?.message || ''}
+      isDestructive={confirmModal?.isDestructive}
+      onConfirm={confirmModal?.onConfirm || (() => {})}
+      onCancel={() => setConfirmModal(null)}
     />
   </View>
   );

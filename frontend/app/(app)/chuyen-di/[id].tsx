@@ -24,6 +24,7 @@ import InteractiveMap, { MapItem } from '../../../components/InteractiveMap';
 import ShareModal from '../../../components/ShareModal';
 import BookingModal, { BookableItem } from '../../../components/BookingModal';
 import PremiumModal from '../../../components/PremiumModal';
+import ConfirmModal from '../../../components/ConfirmModal';
 
 const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
 
@@ -179,6 +180,13 @@ export default function TripDetail() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    isDestructive?: boolean;
+  } | null>(null);
   const [bookedItemIds, setBookedItemIds] = useState<Set<string>>(new Set());
   const [selectedBookingItems, setSelectedBookingItems] = useState<BookableItem[]>([]);
 
@@ -354,16 +362,16 @@ export default function TripDetail() {
   });
 
   const handleConfirmDeleteTrip = () => {
-    if (Platform.OS === 'web') {
-      if (window.confirm(`Bạn có chắc chắn muốn xóa chuyến đi "${tripData?.title}"? Hành động này không thể hoàn tác.`)) {
+    setConfirmModal({
+      visible: true,
+      title: 'Xác nhận xóa chuyến đi',
+      message: `Bạn có chắc chắn muốn xóa chuyến đi "${tripData?.title}"? Hành động này không thể hoàn tác.`,
+      isDestructive: true,
+      onConfirm: () => {
         deleteTripMutation.mutate();
+        setConfirmModal(null);
       }
-    } else {
-      Alert.alert('Xác nhận xóa chuyến đi', `Bạn có chắc chắn muốn xóa chuyến đi "${tripData?.title}"? Hành động này không thể hoàn tác.`, [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Xóa chuyến đi', style: 'destructive', onPress: () => deleteTripMutation.mutate() },
-      ]);
-    }
+    });
   };
 
   const openEdit = (item: any) => {
@@ -379,16 +387,16 @@ export default function TripDetail() {
   };
 
   const confirmDelete = (itemId: string, title: string) => {
-    if (Platform.OS === 'web') {
-      if (window.confirm(`Bạn có chắc muốn xóa hoạt động "${title}"?`)) {
+    setConfirmModal({
+      visible: true,
+      title: 'Xác nhận xóa hoạt động',
+      message: `Bạn có chắc muốn xóa hoạt động "${title}"?`,
+      isDestructive: true,
+      onConfirm: () => {
         deleteMutation.mutate(itemId);
+        setConfirmModal(null);
       }
-    } else {
-      Alert.alert('Xác nhận xóa', `Bạn có chắc muốn xóa hoạt động "${title}"?`, [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Xóa', style: 'destructive', onPress: () => deleteMutation.mutate(itemId) },
-      ]);
-    }
+    });
   };
 
   const handleResubmitWithAnswers = () => {
@@ -1365,6 +1373,14 @@ export default function TripDetail() {
           </ScrollView>
         </ModalShell>
       )}
+      <ConfirmModal
+        visible={!!confirmModal?.visible}
+        title={confirmModal?.title || ''}
+        message={confirmModal?.message || ''}
+        isDestructive={confirmModal?.isDestructive}
+        onConfirm={confirmModal?.onConfirm || (() => {})}
+        onCancel={() => setConfirmModal(null)}
+      />
       </View>
 
       {/* Web print-friendly stylesheet injection */}
