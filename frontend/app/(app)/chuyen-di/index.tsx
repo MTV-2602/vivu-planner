@@ -3,10 +3,10 @@ import {
   View, Text, ScrollView, Pressable, ActivityIndicator, Alert, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Compass, Plus, LogOut, Calendar, MapPin, Wallet, DollarSign,
-  RefreshCw, User, GitFork, Shield, WifiOff,
+  RefreshCw, User, GitFork, Shield, WifiOff, Crown, Trash2, Sparkles,
 } from 'lucide-react-native';
 import { supabase } from '../../../lib/supabaseClient';
 import { apiClient } from '../../../lib/apiClient';
@@ -14,6 +14,7 @@ import { getCache, setCache } from '../../../lib/cache';
 import Reveal from '../../../components/Reveal';
 import SystemClock from '../../../components/SystemClock';
 import { BRAND_COLORS } from '../../../constants';
+import PremiumModal from '../../../components/PremiumModal';
 
 interface Trip {
   id: string;
@@ -83,6 +84,7 @@ export default function Dashboard() {
   const [syncing, setSyncing] = useState(false);
   const [cachedTrips, setCachedTrips] = useState<Trip[] | null>(null);
   const [fromCache, setFromCache] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
 
   useEffect(() => {
     getCache<Trip[]>('trips').then(data => {
@@ -118,6 +120,38 @@ export default function Dashboard() {
     placeholderData: cachedTrips ?? undefined,
   });
 
+  const { data: paymentStatus, refetch: refetchStatus } = useQuery({
+    queryKey: ['payment-status'],
+    queryFn: async () => {
+      const r = await apiClient.get('/payment/status');
+      return r.data;
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (tripId: string) => {
+      await apiClient.delete(`/trips/${tripId}`);
+    },
+    onSuccess: () => {
+      refetch();
+      refetchStatus();
+    },
+    onError: (err: any) => Alert.alert('Lỗi xóa chuyến đi', err.response?.data?.error || err.message),
+  });
+
+  const handleDeleteTrip = (tripId: string, title: string) => {
+    if (Platform.OS === 'web') {
+      if (confirm(`Bạn có chắc chắn muốn xóa chuyến đi "${title}"?`)) {
+        deleteMutation.mutate(tripId);
+      }
+    } else {
+      Alert.alert('Xác nhận xóa', `Bạn có chắc chắn muốn xóa chuyến đi "${title}"?`, [
+        { text: 'Hủy', style: 'cancel' },
+        { text: 'Xóa', style: 'destructive', onPress: () => deleteMutation.mutate(tripId) },
+      ]);
+    }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     if (canUseLocalStorage) {
@@ -142,6 +176,7 @@ export default function Dashboard() {
   };
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView className="flex-1 bg-brand-bg" contentContainerStyle={{ flexGrow: 1 }}>
       {/* Navbar */}
       <View className="bg-brand-bg border-b border-brand-line px-6 py-4">
@@ -153,6 +188,24 @@ export default function Dashboard() {
 
           <View className="flex-row items-center gap-2">
             <SystemClock />
+            <Pressable
+              onPress={() => setShowPremiumModal(true)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 14,
+                paddingVertical: 7,
+                borderRadius: 20,
+                backgroundColor: '#059669',
+                cursor: 'pointer' as any,
+              }}
+            >
+              <Sparkles size={14} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>
+                Còn {paymentStatus?.remainingTrips ?? '...'} lượt AI (+ Nạp)
+              </Text>
+            </Pressable>
             {isAdmin && (
               <Pressable
                 onPress={() => router.push('/admin' as any)}
@@ -251,12 +304,10 @@ export default function Dashboard() {
               <Text className="text-white text-xs font-bold">Thử lại</Text>
             </Pressable>
           </View>
-        ) : trips?.length === 0 ? (
+        ) : !trips || trips.length === 0 ? (
           <Reveal>
-            <View className="items-center py-16 border border-dashed border-brand-line rounded-2xl bg-brand-bgAlt/50 gap-5">
-              <View className="w-16 h-16 rounded-full bg-brand-primary/10 items-center justify-center">
-                <Compass size={32} color={BRAND_COLORS.primary} />
-              </View>
+            <View className="bg-brand-bgAlt border border-brand-line/50 rounded-2xl p-12 items-center gap-4">
+              <Compass size={48} color={BRAND_COLORS.primary} />
               <View className="items-center gap-1">
                 <Text className="text-lg font-bold text-brand-text">Bạn chưa tạo chuyến đi nào</Text>
                 <Text className="text-xs text-brand-textSoft text-center px-4">
@@ -290,16 +341,28 @@ export default function Dashboard() {
                             {trip.destination_city}
                           </Text>
                         </View>
-                        {(() => {
-                          const statusInfo = getTripStatusInfo(trip.start_date, trip.end_date, trip.status);
-                          return (
-                            <View className={`px-2 py-1 rounded-md ${statusInfo.bgClass}`}>
-                              <Text className={`text-[10px] font-bold uppercase tracking-wider ${statusInfo.textClass}`}>
-                                {statusInfo.label}
-                              </Text>
-                            </View>
-                          );
-                        })()}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          {(() => {
+                            const statusInfo = getTripStatusInfo(trip.start_date, trip.end_date, trip.status);
+                            return (
+                              <View className={`px-2 py-1 rounded-md ${statusInfo.bgClass}`}>
+                                <Text className={`text-[10px] font-bold uppercase tracking-wider ${statusInfo.textClass}`}>
+                                  {statusInfo.label}
+                                </Text>
+                              </View>
+                            );
+                          })()}
+                          <Pressable
+                            onPress={(e) => {
+                              // @ts-ignore
+                              if (e.stopPropagation) e.stopPropagation();
+                              handleDeleteTrip(trip.id, trip.title);
+                            }}
+                            style={{ padding: 6, backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 8 }}
+                          >
+                            <Trash2 size={14} color={BRAND_COLORS.danger} />
+                          </Pressable>
+                        </View>
                       </View>
                       <Text className="text-xl font-bold text-brand-text">{trip.title}</Text>
                     </View>
@@ -339,5 +402,10 @@ export default function Dashboard() {
         )}
       </View>
     </ScrollView>
+    <PremiumModal
+      visible={showPremiumModal}
+      onClose={() => setShowPremiumModal(false)}
+    />
+  </View>
   );
 }

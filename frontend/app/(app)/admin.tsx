@@ -82,7 +82,16 @@ export default function Admin() {
   const qc = useQueryClient();
   const [isAdmin, setIsAdmin] = useState(false);
   const [checking, setChecking] = useState(true);
-  const [activeTab, setActiveTab] = useState<'users'|'trips'|'keys'|'partners'>('users');
+  const [activeTab, setActiveTab] = useState<'users'|'packages'|'revenue'|'trips'|'keys'|'partners'>('revenue');
+
+  const { data: revenueData, isLoading: revenueLoading } = useQuery({
+    queryKey: ['adminRevenue'],
+    queryFn: async () => {
+      const res = await apiClient.get('/admin/revenue');
+      return res.data;
+    },
+    enabled: isAdmin && activeTab === 'revenue',
+  });
   const [bulkKeys, setBulkKeys] = useState('');
   const [visibleKeys, setVisibleKeys] = useState<Record<string,boolean>>({});
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -247,6 +256,23 @@ export default function Admin() {
     queryKey: ['adminPartnerStats'],
     queryFn: async () => (await apiClient.get('/admin/partners/analytics/summary')).data,
     enabled: isAdmin && activeTab === 'partners',
+  });
+
+  const { data: userPackages, isLoading: pkgsLoading, refetch: refetchPkgs } = useQuery<any[]>({
+    queryKey: ['adminUserPackages'],
+    queryFn: async () => (await apiClient.get('/admin/user-packages')).data,
+    enabled: isAdmin && activeTab === 'packages',
+  });
+
+  const updatePackageMutation = useMutation({
+    mutationFn: async ({ userId, is_premium, custom_quota }: { userId: string; is_premium: boolean; custom_quota: number }) => {
+      await apiClient.put(`/admin/users/${userId}/package`, { is_premium, custom_quota });
+    },
+    onSuccess: () => {
+      showToast('Cập nhật gói thành công!', 'success');
+      refetchPkgs();
+    },
+    onError: (err: any) => showToast('Lỗi cập nhật gói: ' + (err.response?.data?.error || err.message), 'error'),
   });
 
   // ── Mutations ────────────────────────────────────────────────────────────────
@@ -686,9 +712,16 @@ export default function Admin() {
         </Reveal>
 
         {/* Tabs */}
-        <View className="flex-row border-b border-brand-line/40 gap-0">
-          {(['users','trips','keys','partners'] as const).map(tab => {
-            const labels = { users: 'Người dùng', trips: 'Chuyến đi', keys: 'Gemini Keys', partners: 'Đối tác' };
+        <View className="flex-row border-b border-brand-line/40 gap-0 flex-wrap">
+          {(['users', 'packages', 'revenue', 'trips', 'keys', 'partners'] as const).map(tab => {
+            const labels = {
+              users: 'Người dùng',
+              packages: 'Gói & Lượt tạo 👑',
+              revenue: 'Doanh thu & Đơn hàng 📊',
+              trips: 'Chuyến đi',
+              keys: 'Gemini Keys',
+              partners: 'Đối tác',
+            };
             const active = activeTab === tab;
             return (
               <Pressable key={tab} onPress={() => setActiveTab(tab)} className="px-5 py-3 border-b-2" style={{ borderBottomColor: active ? BRAND_COLORS.primary : 'transparent' }}>
@@ -697,6 +730,152 @@ export default function Admin() {
             );
           })}
         </View>
+
+        {/* ── REVENUE TAB ─────────────────────────────────────────────────── */}
+        {activeTab === 'revenue' && (
+          <View className="gap-6">
+            <View className="flex-row flex-wrap gap-4">
+              <View className="p-5 rounded-2xl border border-brand-line/40 flex-1 bg-brand-bgAlt/40" style={{ minWidth: 200 }}>
+                <Text className="text-[11px] font-bold text-brand-textSoft uppercase tracking-wider">💰 Tổng doanh thu</Text>
+                <Text className="font-display font-bold text-2xl text-brand-primary mt-1">
+                  {revenueLoading ? '...' : `${(revenueData?.totalRevenue || 0).toLocaleString('vi-VN')}đ`}
+                </Text>
+                <Text className="text-[10px] text-brand-textMuted mt-1">Giao dịch đã thanh toán thành công</Text>
+              </View>
+
+              <View className="p-5 rounded-2xl border border-brand-line/40 flex-1 bg-brand-bgAlt/40" style={{ minWidth: 200 }}>
+                <Text className="text-[11px] font-bold text-brand-textSoft uppercase tracking-wider">📅 Doanh thu tháng này</Text>
+                <Text className="font-display font-bold text-2xl text-brand-accent mt-1">
+                  {revenueLoading ? '...' : `${(revenueData?.monthlyRevenue || 0).toLocaleString('vi-VN')}đ`}
+                </Text>
+                <Text className="text-[10px] text-brand-textMuted mt-1">Cập nhật tháng hiện tại</Text>
+              </View>
+
+              <View className="p-5 rounded-2xl border border-brand-line/40 flex-1 bg-brand-bgAlt/40" style={{ minWidth: 200 }}>
+                <Text className="text-[11px] font-bold text-brand-textSoft uppercase tracking-wider">💳 Tổng đơn hàng</Text>
+                <Text className="font-display font-bold text-2xl text-brand-text mt-1">
+                  {revenueLoading ? '...' : `${revenueData?.completedOrdersCount || 0} / ${revenueData?.totalOrders || 0}`}
+                </Text>
+                <Text className="text-[10px] text-brand-textMuted mt-1">Tỷ lệ chuyển đổi: {revenueData?.conversionRate || 0}%</Text>
+              </View>
+            </View>
+
+            {/* Plan Breakdown */}
+            <View className="p-5 rounded-2xl border border-brand-line/40 bg-brand-bgAlt/30 gap-3">
+              <Text className="font-bold text-base text-brand-text">👑 Phân tích doanh thu theo gói Pro</Text>
+              <View className="flex-row flex-wrap gap-4">
+                {Object.entries(revenueData?.planStats || {}).map(([key, stat]: [string, any]) => (
+                  <View key={key} className="p-4 rounded-xl border border-brand-line/30 flex-1 bg-white" style={{ minWidth: 160 }}>
+                    <Text className="font-bold text-xs text-brand-text">{stat.label}</Text>
+                    <Text className="text-lg font-bold text-brand-primary mt-1">{(stat.revenue || 0).toLocaleString('vi-VN')}đ</Text>
+                    <Text className="text-[11px] text-brand-textSoft mt-0.5">{stat.count || 0} đơn thành công</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Recent Transactions Table */}
+            <View className="rounded-2xl border border-brand-line/40 overflow-hidden bg-brand-bgAlt/30">
+              <TableHeader cols={['Mã đơn', 'Phương thức', 'Gói', 'Số tiền', 'Trạng thái', 'Thời gian']} />
+              {revenueLoading ? (
+                <View className="py-12 items-center gap-2">
+                  <ActivityIndicator color={BRAND_COLORS.primary} />
+                  <Text className="text-xs text-brand-textSoft">Đang tải báo cáo doanh thu...</Text>
+                </View>
+              ) : !revenueData?.recentOrders?.length ? (
+                <Text className="text-center py-12 text-brand-textSoft text-sm">Chưa có giao dịch thanh toán nào phát sinh.</Text>
+              ) : (
+                revenueData.recentOrders.map((o: any) => (
+                  <View key={o.id} className="flex-row items-center px-4 py-3.5 border-b border-brand-line/20 gap-2">
+                    <Text className="flex-1 text-xs font-mono font-bold text-brand-text" numberOfLines={1}>{o.id}</Text>
+                    <Text className="flex-1 text-xs text-brand-textMuted uppercase font-bold">{o.method}</Text>
+                    <Text className="flex-1 text-xs text-brand-textSoft font-semibold">{o.plan === 'monthly' ? 'Gói Tháng (49k)' : o.plan}</Text>
+                    <Text className="flex-1 text-xs font-bold text-brand-primary">{(Number(o.amount) || 0).toLocaleString('vi-VN')}đ</Text>
+                    <View className="flex-1">
+                      <View className="px-2.5 py-1 rounded-full align-self-start" style={{
+                        backgroundColor: o.status === 'completed' || o.status === 'success' ? '#e8f5f0' : o.status === 'pending' ? '#fef9c3' : '#fee2e2'
+                      }}>
+                        <Text style={{
+                          fontSize: 10, fontWeight: '800',
+                          color: o.status === 'completed' || o.status === 'success' ? BRAND_COLORS.primary : o.status === 'pending' ? '#854d0e' : '#991b1b'
+                        }}>
+                          {o.status === 'completed' || o.status === 'success' ? '✅ Thành công' : o.status === 'pending' ? '⏳ Đang chờ' : '❌ Đã hủy'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text className="flex-1 text-[11px] text-brand-textMuted">{formatDate(o.created_at)}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* ── PACKAGES TAB ─────────────────────────────────────────────────── */}
+        {activeTab === 'packages' && (
+          <View className="rounded-2xl border border-brand-line/40 overflow-hidden bg-brand-bgAlt/30">
+            <TableHeader cols={['Tên / Email', 'Gói hiện tại', 'Lượt tạo chuyến đi', 'Thao tác Admin']} />
+            {pkgsLoading ? (
+              <View className="py-12 items-center gap-2">
+                <ActivityIndicator color={BRAND_COLORS.primary} />
+                <Text className="text-xs text-brand-textSoft">Đang tải dữ liệu gói cước...</Text>
+              </View>
+            ) : !userPackages?.length ? (
+              <Text className="text-center py-12 text-brand-textSoft text-sm">Chưa có dữ liệu thành viên.</Text>
+            ) : userPackages.map((u: any) => (
+              <View key={u.id} className="flex-row items-center px-4 py-4 border-b border-brand-line/20 gap-2">
+                <View className="flex-1 gap-0.5">
+                  <Text className="font-bold text-sm text-brand-text" numberOfLines={1}>{u.full_name || 'Thành viên'}</Text>
+                  <Text className="text-[11px] text-brand-textSoft" numberOfLines={1}>{u.email}</Text>
+                </View>
+
+                {/* Plan Badge */}
+                <View className="w-36 items-center">
+                  <View className="px-3 py-1 rounded-full" style={{ backgroundColor: u.is_premium ? '#e8f5f0' : '#f0ebe0' }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: u.is_premium ? BRAND_COLORS.primary : '#555' }}>
+                      {u.is_premium ? '👑 Gói Pro' : '⚪ Gói Miễn Phí'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Quota */}
+                <View className="w-32 items-center">
+                  <Text className="font-bold text-sm text-brand-text">
+                    {u.trips_used} / {u.trips_quota} lượt
+                  </Text>
+                  <Text className="text-[10px] text-brand-textSoft">
+                    Còn {Math.max(0, u.trips_quota - u.trips_used)} lượt
+                  </Text>
+                </View>
+
+                {/* Actions */}
+                <View className="flex-row items-center gap-2">
+                  {!u.is_premium ? (
+                    <Pressable
+                      onPress={() => updatePackageMutation.mutate({ userId: u.id, is_premium: true, custom_quota: 10 })}
+                      style={{ backgroundColor: '#D4A017', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>+ Nâng Pro (10 lượt)</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      onPress={() => updatePackageMutation.mutate({ userId: u.id, is_premium: false, custom_quota: 3 })}
+                      style={{ backgroundColor: '#f0ebe0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                    >
+                      <Text style={{ color: '#555', fontSize: 11, fontWeight: '700' }}>Về Free (3 lượt)</Text>
+                    </Pressable>
+                  )}
+                  <Pressable
+                    onPress={() => updatePackageMutation.mutate({ userId: u.id, is_premium: u.is_premium, custom_quota: (u.trips_quota || 3) + 5 })}
+                    style={{ backgroundColor: BRAND_COLORS.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>+5 lượt</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* ── USERS TAB ───────────────────────────────────────────────────── */}
         {activeTab === 'users' && (

@@ -46,7 +46,8 @@ export default function AppLayout() {
     return true;
   })();
 
-  if (!session && !hasAdminToken) return <Redirect href="/dang-nhap" />;
+  const isSharePage = typeof window !== 'undefined' && window.location.pathname.includes('/share');
+  if (!session && !hasAdminToken && !isSharePage) return <Redirect href="/dang-nhap" />;
 
   return (
     <ChatbotProvider>

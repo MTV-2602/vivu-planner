@@ -20,6 +20,10 @@ import Reveal from '../../../components/Reveal';
 import SystemClock from '../../../components/SystemClock';
 import BackToTop from '../../../components/BackToTop';
 import { BRAND_COLORS } from '../../../constants';
+import InteractiveMap, { MapItem } from '../../../components/InteractiveMap';
+import ShareModal from '../../../components/ShareModal';
+import BookingModal, { BookableItem } from '../../../components/BookingModal';
+import PremiumModal from '../../../components/PremiumModal';
 
 const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
 
@@ -169,6 +173,14 @@ export default function TripDetail() {
   const [aiAlternatives, setAiAlternatives] = useState<any[]>([]);
   const [aiRequirement, setAiRequirement] = useState('');
   const [fetchingAlts, setFetchingAlts] = useState(false);
+
+  // New features state
+  const [showMapView, setShowMapView] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [bookedItemIds, setBookedItemIds] = useState<Set<string>>(new Set());
+  const [selectedBookingItems, setSelectedBookingItems] = useState<BookableItem[]>([]);
 
   useEffect(() => {
     if (id) {
@@ -333,6 +345,27 @@ export default function TripDetail() {
     onError: (err: any) => Alert.alert('Lỗi xóa hoạt động', err.response?.data?.error || err.message),
   });
 
+  const deleteTripMutation = useMutation({
+    mutationFn: async () => { await apiClient.delete(`/trips/${id}`); },
+    onSuccess: () => {
+      router.replace(isAdmin ? '/admin' as any : '/chuyen-di');
+    },
+    onError: (err: any) => Alert.alert('Lỗi xóa chuyến đi', err.response?.data?.error || err.message),
+  });
+
+  const handleConfirmDeleteTrip = () => {
+    if (Platform.OS === 'web') {
+      if (confirm(`Bạn có chắc chắn muốn xóa chuyến đi "${tripData?.title}"? Hành động này không thể hoàn tác.`)) {
+        deleteTripMutation.mutate();
+      }
+    } else {
+      Alert.alert('Xác nhận xóa chuyến đi', `Bạn có chắc chắn muốn xóa chuyến đi "${tripData?.title}"? Hành động này không thể hoàn tác.`, [
+        { text: 'Hủy', style: 'cancel' },
+        { text: 'Xóa chuyến đi', style: 'destructive', onPress: () => deleteTripMutation.mutate() },
+      ]);
+    }
+  };
+
   const openEdit = (item: any) => {
     setEditingItem(item);
     setEditTitle(item.title);
@@ -421,22 +454,29 @@ export default function TripDetail() {
     if (Platform.OS === 'web') {
       const runHtml2Pdf = () => {
         const htmlString = `
-          <div style="font-family: system-ui, -apple-system, sans-serif; padding: 25px; color: #1B2420; background-color: white; width: 794px; margin: 0 auto; box-sizing: border-box;">
-            <div style="border-b: 2px solid #14201B; border-bottom: 2px solid #14201B; padding-bottom: 15px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: flex-start;">
+          <div style="font-family: 'Be Vietnam Pro', 'Helvetica Neue', Arial, sans-serif; padding: 32px; color: #0F172A; background-color: #ffffff; width: 794px; margin: 0 auto; box-sizing: border-box;">
+            <style>
+              @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap');
+            </style>
+            
+            <!-- PDF Header Bar -->
+            <div style="border-bottom: 2px solid #059669; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start;">
               <div>
-                <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: bold; color: #14201B;">${trip.title}</h1>
-                <p style="margin: 0; font-size: 13px; color: #555555;">📍 Điểm đến: <strong>${trip.destination_city}</strong></p>
+                <span style="font-size: 10px; font-weight: 800; color: #059669; background-color: #ECFDF5; padding: 4px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.5px;">Kế hoạch du lịch</span>
+                <h1 style="margin: 8px 0 4px 0; font-size: 24px; font-weight: 800; color: #064E3B; letter-spacing: -0.3px;">${trip.title}</h1>
+                <p style="margin: 0; font-size: 13px; font-weight: 500; color: #475569;">📍 Điểm đến: <strong style="color: #0F172A;">${trip.destination_city}</strong></p>
               </div>
               <div style="text-align: right;">
-                <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: bold; color: #14201B;">ViVu Planner</h2>
-                <p style="margin: 0; font-size: 11px; color: #777777;">Lịch trình du lịch cá nhân hóa</p>
+                <h2 style="margin: 0 0 2px 0; font-size: 20px; font-weight: 800; color: #059669;">ViVu Planner</h2>
+                <p style="margin: 0; font-size: 11px; font-weight: 500; color: #64748B;">Lịch trình du lịch thông minh</p>
               </div>
             </div>
             
-            <div style="border-bottom: 1px solid #eeeeee; padding-bottom: 12px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 20px;">
-              <span style="font-size: 12px; color: #333333;">📅 <strong>Thời gian:</strong> ${formatDate(trip.start_date)} — ${formatDate(trip.end_date)}</span>
-              <span style="font-size: 12px; color: #333333;">💰 <strong>Tổng ngân sách:</strong> ${formatVND(trip.budget_total)}</span>
-              <span style="font-size: 12px; color: #333333;">👥 <strong>Thành viên:</strong> ${trip.traveler_count} khách (${trip.traveler_type})</span>
+            <!-- Metadata Info Grid -->
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px;">
+              <span style="font-size: 12px; color: #334155;">📅 <strong>Thời gian:</strong> ${formatDate(trip.start_date)} — ${formatDate(trip.end_date)}</span>
+              <span style="font-size: 12px; color: #334155;">💰 <strong>Ngân sách:</strong> <strong style="color: #059669;">${formatVND(trip.budget_total)}</strong></span>
+              <span style="font-size: 12px; color: #334155;">👥 <strong>Thành viên:</strong> ${trip.traveler_count} khách (${trip.traveler_type})</span>
             </div>
             
             ${sortedDays.map(day => {
@@ -668,11 +708,42 @@ export default function TripDetail() {
                   <Share2 size={16} color="white" />
                   <Text className="text-white font-bold">{Platform.OS === 'web' ? 'Tải PDF' : 'Chia sẻ'}</Text>
                 </Pressable>
+                <Pressable
+                  onPress={() => setShowShareModal(true)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, backgroundColor: '#f0ebe0', borderWidth: 1, borderColor: '#e0dbd0' }}
+                >
+                  <Text style={{ fontSize: 15 }}>🔗</Text>
+                  <Text style={{ fontWeight: '700', color: '#1B3A2D', fontSize: 13 }}>Chia sẻ</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    const allItems: BookableItem[] = trip.days.flatMap(day =>
+                      day.items
+                        .filter(item => ['accommodation', 'dining', 'attraction', 'rental'].includes(item.item_type))
+                        .map(item => ({ ...item, day_number: day.day_number }))
+                    );
+                    setSelectedBookingItems(allItems);
+                    setShowBookingModal(true);
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, backgroundColor: '#D4A017' }}
+                >
+                  <Text style={{ fontSize: 15 }}>⚡</Text>
+                  <Text style={{ fontWeight: '800', color: '#fff', fontSize: 13 }}>1-Click Booking</Text>
+                </Pressable>
                 {!isAdmin && (
-                  <Pressable onPress={() => setDisruptionOpen(true)} className="flex-row items-center gap-2 px-5 py-3.5 rounded-xl bg-brand-danger">
-                    <AlertTriangle size={16} color="white" />
-                    <Text className="text-white font-bold">Báo sự cố</Text>
-                  </Pressable>
+                  <>
+                    <Pressable onPress={() => setDisruptionOpen(true)} className="flex-row items-center gap-2 px-5 py-3.5 rounded-xl bg-brand-danger">
+                      <AlertTriangle size={16} color="white" />
+                      <Text className="text-white font-bold">Báo sự cố</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleConfirmDeleteTrip}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' }}
+                    >
+                      <Trash2 size={16} color={BRAND_COLORS.danger} />
+                      <Text style={{ fontWeight: '700', color: BRAND_COLORS.danger, fontSize: 13 }}>Xóa</Text>
+                    </Pressable>
+                  </>
                 )}
               </View>
             </View>
@@ -713,6 +784,41 @@ export default function TripDetail() {
                   );
                 })}
               </View>
+            </View>
+
+            {/* Interactive Map Toggle */}
+            <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: '#f0ebe0' }}>
+              <Pressable
+                onPress={() => setShowMapView(!showMapView)}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Text style={{ fontSize: 20 }}>🗺️</Text>
+                  <View>
+                    <Text style={{ fontWeight: '800', color: '#1B3A2D', fontSize: 15 }}>Bản đồ tương tác</Text>
+                    <Text style={{ color: '#888', fontSize: 12 }}>Xem tất cả địa điểm trên bản đồ</Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 18, color: '#888' }}>{showMapView ? '▲' : '▼'}</Text>
+              </Pressable>
+              {showMapView && (
+                <View style={{ marginTop: 16 }}>
+                  <InteractiveMap
+                    items={trip.days.flatMap(day => day.items.map(item => ({
+                      id: item.id,
+                      title: item.title,
+                      item_type: item.item_type,
+                      start_time: item.start_time,
+                      estimated_cost: item.estimated_cost,
+                      location_lat: (item as any).location_lat,
+                      location_lng: (item as any).location_lng,
+                      day_number: day.day_number,
+                      google_place_id: item.google_place_id,
+                    })) as MapItem[])}
+                    cityName={trip.destination_city}
+                  />
+                </View>
+              )}
             </View>
 
             {/* Weather */}
@@ -878,6 +984,34 @@ export default function TripDetail() {
 
       {/* Back to top */}
       <BackToTop visible={showBackToTop} onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })} />
+
+      {/* ── SHARE MODAL ─────────────────────────────────────────────────────── */}
+      <ShareModal
+        visible={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        tripId={trip.id}
+        tripTitle={trip.title}
+      />
+
+      {/* ── BOOKING MODAL ───────────────────────────────────────────────────── */}
+      <BookingModal
+        visible={showBookingModal}
+        onClose={() => setShowBookingModal(false)}
+        tripId={trip.id}
+        tripTitle={trip.title}
+        destinationCity={trip.destination_city}
+        startDate={trip.start_date}
+        endDate={trip.end_date}
+        travelerCount={trip.traveler_count}
+        selectedItems={selectedBookingItems}
+      />
+
+      {/* ── PREMIUM MODAL ───────────────────────────────────────────────────── */}
+      <PremiumModal
+        visible={showPremiumModal}
+        onClose={() => setShowPremiumModal(false)}
+        onActivated={() => setShowPremiumModal(false)}
+      />
 
       {/* ── DISRUPTION MODAL ───────────────────────────────────────────────── */}
       <ModalShell visible={disruptionOpen} onClose={() => setDisruptionOpen(false)}>
