@@ -379,10 +379,16 @@ export default function TripDetail() {
   };
 
   const confirmDelete = (itemId: string, title: string) => {
-    Alert.alert('Xác nhận xóa', `Bạn có chắc muốn xóa hoạt động "${title}"?`, [
-      { text: 'Hủy', style: 'cancel' },
-      { text: 'Xóa', style: 'destructive', onPress: () => deleteMutation.mutate(itemId) },
-    ]);
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Bạn có chắc muốn xóa hoạt động "${title}"?`)) {
+        deleteMutation.mutate(itemId);
+      }
+    } else {
+      Alert.alert('Xác nhận xóa', `Bạn có chắc muốn xóa hoạt động "${title}"?`, [
+        { text: 'Hủy', style: 'cancel' },
+        { text: 'Xóa', style: 'destructive', onPress: () => deleteMutation.mutate(itemId) },
+      ]);
+    }
   };
 
   const handleResubmitWithAnswers = () => {
