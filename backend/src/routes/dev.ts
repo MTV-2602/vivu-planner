@@ -46,4 +46,22 @@ router.post('/sync-repositories', async (req: Request, res: Response) => {
   }
 });
 
+import { supabaseAdmin } from '../services/supabaseAdmin';
+
+router.get('/check-keys', async (req: Request, res: Response) => {
+  try {
+    const { data: keys, error } = await supabaseAdmin
+      .from('gemini_api_keys')
+      .select('*');
+
+    return res.json({
+      success: true,
+      error: error ? error.message : null,
+      keys
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
