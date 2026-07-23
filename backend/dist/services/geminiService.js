@@ -32,7 +32,10 @@ const ITINERARY_JSON_SCHEMA = {
                                 end_time: { type: 'string' },
                                 google_place_id: { type: 'string' },
                                 estimated_cost: { type: 'number' },
-                                order_index: { type: 'integer' }
+                                order_index: { type: 'integer' },
+                                lat: { type: 'number' },
+                                lng: { type: 'number' },
+                                address: { type: 'string' }
                             },
                             required: ['item_type', 'title', 'description', 'order_index']
                         }
@@ -195,7 +198,9 @@ function hasExplicitAccommodationPreference(specialRequirements) {
     return /(đổi|doi|thay đổi|thay doi|nhiều nơi|nhieu noi|nhiều chỗ|nhieu cho|khách sạn thứ|khach san thu|ngày 2|ngay 2|ngày 3|ngay 3)/i.test(text);
 }
 async function generateItinerary(tripData, weatherForecast, candidatePlaces) {
-    const systemPrompt = `Bạn là một chuyên gia lập kế hoạch du lịch (Travel Expert) chuyên nghiệp tại Việt Nam.
+    const systemPrompt = `0. TOẠ ĐỘ THỰC TẾ TRONG KHI TẠO (REALTIME COORDINATES): Đối với mỗi hoạt động trong lịch trình, bạn PHẢI tìm kiếm trong kiến thức của mình để điền chính xác tọa độ Vĩ độ ("lat") và Kinh độ ("lng") cùng địa chỉ thực tế ("address") của địa điểm đó tại Việt Nam. Không điền tọa độ chung chung giống nhau hay tọa độ giả lập. Phải đảm bảo tọa độ khớp chính xác với địa điểm thực tế (ví dụ: Cầu Rồng Đà Nẵng phải là 16.0612, 108.2268; chợ Bến Thành là 10.7726, 106.6980; Hồ Hoàn Kiếm là 21.0287, 105.8524). Nếu địa điểm là di chuyển (transport) hoặc tự do, bạn có thể để lat/lng là null.
+
+Bạn là một chuyên gia lập kế hoạch du lịch (Travel Expert) chuyên nghiệp tại Việt Nam.
 Nhiệm vụ của bạn là xây dựng lịch trình du lịch tối ưu, an toàn và cá nhân hóa sâu sắc dựa trên thông tin yêu cầu của khách hàng.
 
 QUY TẮC CỐT LÕI:

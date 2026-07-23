@@ -639,9 +639,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       if (!dbDay) return;
 
       day.items.forEach(item => {
-        let itemLat = lat;
-        let itemLng = lng;
-        let itemAddress = '';
+        let itemLat = item.lat || lat;
+        let itemLng = item.lng || lng;
+        let itemAddress = item.address || '';
         let itemBookingUrl = '';
 
         if (item.google_place_id) {
@@ -653,20 +653,22 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
           ].find(c => c.google_place_id === item.google_place_id);
           
           if (matched) {
-            itemLat = matched.lat;
-            itemLng = matched.lng;
-            itemAddress = matched.address;
+            if (!item.lat) itemLat = matched.lat;
+            if (!item.lng) itemLng = matched.lng;
+            if (!itemAddress) itemAddress = matched.address;
             itemBookingUrl = matched.booking_url || '';
           }
         }
 
-        // Fuzzy coordinate lookup fallback from high-quality library
-        const resolvedGeo = resolveItemCoordinate(item.title, destination_city);
-        if (resolvedGeo) {
-          itemLat = resolvedGeo.lat;
-          itemLng = resolvedGeo.lng;
-          if (!itemAddress) {
-            itemAddress = resolvedGeo.address || '';
+        // Fuzzy coordinate lookup fallback if still using city center default coordinates
+        if (itemLat === lat && itemLng === lng) {
+          const resolvedGeo = resolveItemCoordinate(item.title, destination_city);
+          if (resolvedGeo) {
+            itemLat = resolvedGeo.lat;
+            itemLng = resolvedGeo.lng;
+            if (!itemAddress) {
+              itemAddress = resolvedGeo.address || '';
+            }
           }
         }
 
