@@ -191,7 +191,7 @@ export default function Admin() {
         process.env.EXPO_PUBLIC_ADMIN_EMAIL
       ].filter(Boolean).map(e => e!.toLowerCase().trim());
 
-      const isUserAdmin = email && allAdminEmails.includes(email.toLowerCase().trim());
+      const isUserAdmin = (email && allAdminEmails.includes(email.toLowerCase().trim())) || (session?.user?.role === 'admin');
 
       if (isUserAdmin) {
         setIsAdmin(true);

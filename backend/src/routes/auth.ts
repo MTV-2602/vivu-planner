@@ -112,7 +112,8 @@ router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Respons
       user: {
         id: req.user.id,
         email: req.user.email,
-        user_metadata: { full_name: 'ViVu Administrator' }
+        user_metadata: { full_name: 'ViVu Administrator' },
+        role: 'admin'
       }
     });
   }
@@ -122,7 +123,19 @@ router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Respons
     if (error || !user) {
       return res.status(401).json({ error: 'Phiên đăng nhập đã hết hạn' });
     }
-    return res.json({ user });
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    return res.json({
+      user: {
+        ...user,
+        role: profile?.role || 'user'
+      }
+    });
   } catch (err: any) {
     return res.status(500).json({ error: 'Không thể tải thông tin định danh', details: err.message });
   }
