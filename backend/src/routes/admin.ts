@@ -472,5 +472,122 @@ router.delete('/keys/:id', async (req: AuthenticatedRequest, res: Response) => {
     return res.status(500).json({ error: 'Failed to delete API key', details: err.message });
   }
 });
+// GET /api/admin/user-packages - List all users with package & trip quota status
+router.get('/user-packages', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
+    const { data: profiles } = await supabaseAdmin.from('profiles').select('*');
+    const { data: trips } = await supabaseAdmin.from('trips').select('user_id');
+
+    const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+    const tripsCountMap = new Map<string, number>();
+    (trips || []).forEach((t: any) => {
+      tripsCountMap.set(t.user_id, (tripsCountMap.get(t.user_id) || 0) + 1);
+    });
+
+    const userPackages = (users || []).map((u: any) => {
+      const prof: any = profileMap.get(u.id);
+      const isPremium = !!(prof?.is_premium || (prof?.premium_until && new Date(prof.premium_until) > new Date()));
+      const tripsUsed = tripsCountMap.get(u.id) || 0;
+      const tripsQuota = prof?.custom_quota || (isPremium ? 10 : 3);
+
+      return {
+        id: u.id,
+        email: u.email,
+        full_name: u.user_metadata?.full_name || '',
+        is_premium: isPremium,
+        premium_until: prof?.premium_until || null,
+        plan_name: isPremium ? 'Gói Pro (10 lượt)' : 'Gói Miễn Phí (3 lượt)',
+        trips_used: tripsUsed,
+        trips_quota: tripsQuota,
+        created_at: u.created_at,
+      };
+    });
+
+    return res.json(userPackages);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to retrieve user packages', details: err.message });
+  }
+});
+
+// PUT /api/admin/users/:id/package - Update user package & quota
+router.put('/users/:id/package', async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.params.id;
+  const { is_premium, custom_quota, duration_days = 30 } = req.body;
+
+  try {
+    const premium_until = is_premium
+      ? new Date(Date.now() + duration_days * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .upsert({
+        id: userId,
+        is_premium: !!is_premium,
+        premium_until,
+        custom_quota: custom_quota != null ? Number(custom_quota) : (is_premium ? 10 : 3),
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return res.json({ success: true, message: 'User package updated successfully', data });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to update user package', details: err.message });
+  }
+});
+
+// GET /api/admin/revenue - Financial Revenue & Order Statistics
+router.get('/revenue', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { data: orders } = await supabaseAdmin
+      .from('payment_orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    const orderList = orders || [];
+    const completedOrders = orderList.filter((o: any) => o.status === 'completed' || o.status === 'success');
+    
+    const totalRevenue = completedOrders.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
+    
+    const now = new Date();
+    const currentMonthPrefix = now.toISOString().slice(0, 7);
+    const monthlyOrders = completedOrders.filter((o: any) => o.created_at && o.created_at.startsWith(currentMonthPrefix));
+    const monthlyRevenue = monthlyOrders.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
+
+    const planStats: Record<string, { label: string; count: number; revenue: number }> = {
+      plus: { label: 'Gói ViVu Plus (29k - +5 lượt)', count: 0, revenue: 0 },
+      pro: { label: 'Gói ViVu Pro (49k - +10 lượt)', count: 0, revenue: 0 },
+      vip: { label: 'Gói ViVu VIP (99k - +25 lượt)', count: 0, revenue: 0 },
+    };
+
+    completedOrders.forEach((o: any) => {
+      let p = (o.plan || 'pro') as string;
+      if (p === 'monthly') p = 'pro';
+      if (p === 'yearly' || p === 'quarterly') p = 'vip';
+
+      if (!planStats[p]) {
+        planStats[p] = { label: `Gói ${p}`, count: 0, revenue: 0 };
+      }
+      planStats[p].count += 1;
+      planStats[p].revenue += Number(o.amount) || 0;
+    });
+
+    return res.json({
+      totalRevenue,
+      monthlyRevenue,
+      totalOrders: orderList.length,
+      completedOrdersCount: completedOrders.length,
+      pendingOrdersCount: orderList.length - completedOrders.length,
+      conversionRate: orderList.length > 0 ? parseFloat(((completedOrders.length / orderList.length) * 100).toFixed(1)) : 0,
+      planStats,
+      recentOrders: orderList.slice(0, 30),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to retrieve revenue statistics', details: err.message });
+  }
+});
 
 export default router;

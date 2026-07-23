@@ -8,6 +8,7 @@ import devRouter from './routes/dev';
 import adminRouter from './routes/admin';
 import authRouter from './routes/auth';
 import partnersRouter from './routes/partners';
+import paymentRouter from './routes/payment';
 
 process.env.TZ = 'Asia/Ho_Chi_Minh';
 dotenv.config();
@@ -43,6 +44,7 @@ app.use('/api/dev', devRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/admin/partners', partnersRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/payment', paymentRouter);
 
 // Catch-all 404 handler
 app.use((req, res) => {
