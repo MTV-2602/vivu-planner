@@ -17,121 +17,121 @@ export interface PlaceCandidate {
 const MOCK_PLACES_LIBRARY: Record<string, Record<string, Partial<PlaceCandidate>[]>> = {
   'hanoi': {
     accommodation: [
-      { name: 'Hanoi La Siesta Hotel & Spa', rating: 4.8, price_level: 3, address: '94 Mã Mây, Hàng Buồm, Hoàn Kiếm, Hà Nội' },
-      { name: 'Sofitel Legend Metropole Hanoi', rating: 4.9, price_level: 4, address: '15 Ngô Quyền, Tràng Tiền, Hoàn Kiếm, Hà Nội' },
-      { name: 'Little Hanoi Deluxe Hotel', rating: 4.6, price_level: 2, address: '1 Hàng Gai, Hoàn Kiếm, Hà Nội' },
-      { name: 'Old Quarter Homestay', rating: 4.4, price_level: 1, address: '36 Hàng Bè, Hàng Bạc, Hoàn Kiếm, Hà Nội' }
+      { name: 'Hanoi La Siesta Hotel & Spa', rating: 4.8, price_level: 3, address: '94 Mã Mây, Hàng Buồm, Hoàn Kiếm, Hà Nội', lat: 21.0341, lng: 105.8524 },
+      { name: 'Sofitel Legend Metropole Hanoi', rating: 4.9, price_level: 4, address: '15 Ngô Quyền, Tràng Tiền, Hoàn Kiếm, Hà Nội', lat: 21.0251, lng: 105.8564 },
+      { name: 'Little Hanoi Deluxe Hotel', rating: 4.6, price_level: 2, address: '1 Hàng Gai, Hoàn Kiếm, Hà Nội', lat: 21.0322, lng: 105.8504 },
+      { name: 'Old Quarter Homestay', rating: 4.4, price_level: 1, address: '36 Hàng Bè, Hàng Bạc, Hoàn Kiếm, Hà Nội', lat: 21.0336, lng: 105.8530 }
     ],
     dining: [
-      { name: 'Bún Chả Hương Liên (Obama Bun Cha)', rating: 4.5, price_level: 2, address: '24 Lê Văn Hưu, Phan Chu Trinh, Hai Bà Trưng, Hà Nội' },
-      { name: 'Phở Thìn Lò Đúc', rating: 4.3, price_level: 1, address: '13 Lò Đúc, Phạm Đình Hổ, Hai Bà Trưng, Hà Nội' },
-      { name: 'Chả cá Lã Vọng Anh Vũ', rating: 4.6, price_level: 3, address: '120 Giảng Võ, Cát Linh, Đống Đa, Hà Nội' },
-      { name: 'Bún đậu mắm tôm Trung Hương', rating: 4.5, price_level: 1, address: '49 Ngõ Phất Lộc, Hàng Bạc, Hoàn Kiếm, Hà Nội' },
-      { name: 'Phở cuốn Hương Mai Ngũ Xã', rating: 4.4, price_level: 2, address: '25 Ngũ Xã, Trúc Bạch, Ba Đình, Hà Nội' },
-      { name: 'Giang Cafe (Cà phê trứng)', rating: 4.6, price_level: 1, address: '39 Nguyễn Hữu Huân, Lý Thái Tổ, Hoàn Kiếm, Hà Nội' }
+      { name: 'Bún Chả Hương Liên (Obama Bun Cha)', rating: 4.5, price_level: 2, address: '24 Lê Văn Hưu, Phan Chu Trinh, Hai Bà Trưng, Hà Nội', lat: 21.0195, lng: 105.8557 },
+      { name: 'Phở Thìn Lò Đúc', rating: 4.3, price_level: 1, address: '13 Lò Đúc, Phạm Đình Hổ, Hai Bà Trưng, Hà Nội', lat: 21.0172, lng: 105.8576 },
+      { name: 'Chả cá Lã Vọng Anh Vũ', rating: 4.6, price_level: 3, address: '120 Giảng Võ, Cát Linh, Đống Đa, Hà Nội', lat: 21.0270, lng: 105.8190 },
+      { name: 'Bún đậu mắm tôm Trung Hương', rating: 4.5, price_level: 1, address: '49 Ngõ Phất Lộc, Hàng Bạc, Hoàn Kiếm, Hà Nội', lat: 21.0337, lng: 105.8540 },
+      { name: 'Phở cuốn Hương Mai Ngũ Xã', rating: 4.4, price_level: 2, address: '25 Ngũ Xã, Trúc Bạch, Ba Đình, Hà Nội', lat: 21.0470, lng: 105.8378 },
+      { name: 'Giang Cafe (Cà phê trứng)', rating: 4.6, price_level: 1, address: '39 Nguyễn Hữu Huân, Lý Thái Tổ, Hoàn Kiếm, Hà Nội', lat: 21.0327, lng: 105.8544 }
     ],
     attraction: [
-      { name: 'Hồ Hoàn Kiếm và Đền Ngọc Sơn', rating: 4.7, price_level: 1, address: 'Đinh Tiên Hoàng, Hàng Trống, Hoàn Kiếm, Hà Nội' },
-      { name: 'Lăng Chủ tịch Hồ Chí Minh', rating: 4.8, price_level: 1, address: 'Hùng Vương, Điện Biên, Ba Đình, Hà Nội' },
-      { name: 'Văn Miếu - Quốc Tử Giám', rating: 4.7, price_level: 1, address: '58 Quốc Tử Giám, Văn Miếu, Đống Đa, Hà Nội' },
-      { name: 'Nhà tù Hỏa Lò', rating: 4.6, price_level: 1, address: '1 Hỏa Lò, Trần Hưng Đạo, Hoàn Kiếm, Hà Nội' },
-      { name: 'Chùa Một Cột', rating: 4.6, price_level: 1, address: 'Chùa Một Cột, Đội Cấn, Ba Đình, Hà Nội' },
-      { name: 'Hoàng thành Thăng Long', rating: 4.5, price_level: 1, address: '19C Hoàng Diệu, Điện Biên, Ba Đình, Hà Nội' },
-      { name: 'Nhà hát Lớn Hà Nội', rating: 4.7, price_level: 2, address: '1 Tràng Tiền, Phan Chu Trinh, Hoàn Kiếm, Hà Nội' },
-      { name: 'Cầu Long Biên', rating: 4.5, price_level: 0, address: 'Cầu Long Biên, Ngọc Lâm, Long Biên, Hà Nội' }
+      { name: 'Hồ Hoàn Kiếm và Đền Ngọc Sơn', rating: 4.7, price_level: 1, address: 'Đinh Tiên Hoàng, Hàng Trống, Hoàn Kiếm, Hà Nội', lat: 21.0287, lng: 105.8524 },
+      { name: 'Lăng Chủ tịch Hồ Chí Minh', rating: 4.8, price_level: 1, address: 'Hùng Vương, Điện Biên, Ba Đình, Hà Nội', lat: 21.0368, lng: 105.8347 },
+      { name: 'Văn Miếu - Quốc Tử Giám', rating: 4.7, price_level: 1, address: '58 Quốc Tử Giám, Văn Miếu, Đống Đa, Hà Nội', lat: 21.0294, lng: 105.8355 },
+      { name: 'Nhà tù Hỏa Lò', rating: 4.6, price_level: 1, address: '1 Hỏa Lò, Trần Hưng Đạo, Hoàn Kiếm, Hà Nội', lat: 21.0253, lng: 105.8465 },
+      { name: 'Chùa Một Cột', rating: 4.6, price_level: 1, address: 'Chùa Một Cột, Đội Cấn, Ba Đình, Hà Nội', lat: 21.0358, lng: 105.8335 },
+      { name: 'Hoàng thành Thăng Long', rating: 4.5, price_level: 1, address: '19C Hoàng Diệu, Điện Biên, Ba Đình, Hà Nội', lat: 21.0360, lng: 105.8403 },
+      { name: 'Nhà hát Lớn Hà Nội', rating: 4.7, price_level: 2, address: '1 Tràng Tiền, Phan Chu Trinh, Hoàn Kiếm, Hà Nội', lat: 21.0242, lng: 105.8579 },
+      { name: 'Cầu Long Biên', rating: 4.5, price_level: 0, address: 'Cầu Long Biên, Ngọc Lâm, Long Biên, Hà Nội', lat: 21.0435, lng: 105.8595 }
     ],
     rental: [
-      { name: 'Thuê xe máy Gia Hưng Hà Nội', rating: 4.5, price_level: 1, address: '41 Ngõ 115 Nguyễn Lương Bằng, Đống Đa, Hà Nội' },
-      { name: 'Hanoi Motorbike Rental - Phùng Hưng', rating: 4.7, price_level: 1, address: '135 Phùng Hưng, Cửa Đông, Hoàn Kiếm, Hà Nội' }
+      { name: 'Thuê xe máy Gia Hưng Hà Nội', rating: 4.5, price_level: 1, address: '41 Ngõ 115 Nguyễn Lương Bằng, Đống Đa, Hà Nội', lat: 21.0185, lng: 105.8236 },
+      { name: 'Hanoi Motorbike Rental - Phùng Hưng', rating: 4.7, price_level: 1, address: '135 Phùng Hưng, Cửa Đông, Hoàn Kiếm, Hà Nội', lat: 21.0345, lng: 105.8467 }
     ]
   },
   'da nang': {
     accommodation: [
-      { name: 'InterContinental Danang Sun Peninsula Resort', rating: 4.9, price_level: 4, address: 'Bãi Bắc, Bán đảo Sơn Trà, Đà Nẵng' },
-      { name: 'Sala Danang Beach Hotel', rating: 4.7, price_level: 2, address: '36 Lâm Hoành, Phước Mỹ, Sơn Trà, Đà Nẵng' },
-      { name: 'Haian Beach Hotel & Spa', rating: 4.6, price_level: 2, address: '278 Võ Nguyên Giáp, Mỹ An, Ngũ Hành Sơn, Đà Nẵng' },
-      { name: 'Minh House Homestay', rating: 4.5, price_level: 1, address: '104 Tô Hiến Thành, Phước Mỹ, Sơn Trà, Đà Nẵng' }
+      { name: 'InterContinental Danang Sun Peninsula Resort', rating: 4.9, price_level: 4, address: 'Bãi Bắc, Bán đảo Sơn Trà, Đà Nẵng', lat: 16.1218, lng: 108.2781 },
+      { name: 'Sala Danang Beach Hotel', rating: 4.7, price_level: 2, address: '36 Lâm Hoành, Phước Mỹ, Sơn Trà, Đà Nẵng', lat: 16.0683, lng: 108.2464 },
+      { name: 'Haian Beach Hotel & Spa', rating: 4.6, price_level: 2, address: '278 Võ Nguyên Giáp, Mỹ An, Ngũ Hành Sơn, Đà Nẵng', lat: 16.0526, lng: 108.2460 },
+      { name: 'Minh House Homestay', rating: 4.5, price_level: 1, address: '104 Tô Hiến Thành, Phước Mỹ, Sơn Trà, Đà Nẵng', lat: 16.0664, lng: 108.2427 }
     ],
     dining: [
-      { name: 'Mỳ Quảng Ếch Bếp Trang', rating: 4.4, price_level: 2, address: '24 Lê Hồng Phong, Phước Ninh, Hải Châu, Đà Nẵng' },
-      { name: 'Bánh xèo Bà Dưỡng', rating: 4.3, price_level: 1, address: 'K280/23 Hoàng Diệu, Bình Hiên, Hải Châu, Đà Nẵng' },
-      { name: 'Bánh tráng thịt heo Trần', rating: 4.5, price_level: 2, address: '04 Lê Duẩn, Hải Châu, Đà Nẵng' },
-      { name: 'Bún chả cá Hờn', rating: 4.3, price_level: 1, address: '113/3 Nguyễn Chí Thanh, Hải Châu, Đà Nẵng' },
-      { name: 'Hải sản Năm Đảnh', rating: 4.2, price_level: 1, address: 'K139/H59/38 Trần Quang Khải, Thọ Quang, Sơn Trà, Đà Nẵng' },
-      { name: 'Nhà hàng Cá Lửa', rating: 4.5, price_level: 3, address: '04 Bình Minh 4, Bình Hiên, Hải Châu, Đà Nẵng' }
+      { name: 'Mỳ Quảng Ếch Bếp Trang', rating: 4.4, price_level: 2, address: '24 Lê Hồng Phong, Phước Ninh, Hải Châu, Đà Nẵng', lat: 16.0673, lng: 108.2238 },
+      { name: 'Bánh xèo Bà Dưỡng', rating: 4.3, price_level: 1, address: 'K280/23 Hoàng Diệu, Bình Hiên, Hải Châu, Đà Nẵng', lat: 16.0520, lng: 108.2198 },
+      { name: 'Bánh tráng thịt heo Trần', rating: 4.5, price_level: 2, address: '04 Lê Duẩn, Hải Châu, Đà Nẵng', lat: 16.0718, lng: 108.2201 },
+      { name: 'Bún chả cá Hờn', rating: 4.3, price_level: 1, address: '113/3 Nguyễn Chí Thanh, Hải Châu, Đà Nẵng', lat: 16.0772, lng: 108.2217 },
+      { name: 'Hải sản Năm Đảnh', rating: 4.2, price_level: 1, address: 'K139/H59/38 Trần Quang Khải, Thọ Quang, Sơn Trà, Đà Nẵng', lat: 16.1025, lng: 108.2612 },
+      { name: 'Nhà hàng Cá Lửa', rating: 4.5, price_level: 3, address: '04 Bình Minh 4, Bình Hiên, Hải Châu, Đà Nẵng', lat: 16.0583, lng: 108.2214 }
     ],
     attraction: [
-      { name: 'Bán đảo Sơn Trà & Chùa Linh Ứng', rating: 4.8, price_level: 1, address: 'Sơn Trà, Đà Nẵng' },
-      { name: 'Cầu Vàng (Bà Nà Hills)', rating: 4.7, price_level: 4, address: 'Hòa Phú, Hòa Vang, Đà Nẵng' },
-      { name: 'Ngũ Hành Sơn', rating: 4.6, price_level: 1, address: '81 Huyền Trân Công Chúa, Hòa Hải, Ngũ Hành Sơn, Đà Nẵng' },
-      { name: 'Cầu Rồng Đà Nẵng', rating: 4.8, price_level: 1, address: 'An Hải Tây, Sơn Trà, Đà Nẵng' },
-      { name: 'Bãi biển Mỹ Khê', rating: 4.8, price_level: 0, address: 'Võ Nguyên Giáp, Phước Mỹ, Sơn Trà, Đà Nẵng' },
-      { name: 'Bảo tàng Điêu khắc Chăm', rating: 4.4, price_level: 1, address: 'Số 02 2 Tháng 9, Bình Hiên, Hải Châu, Đà Nẵng' },
-      { name: 'Chợ Cồn', rating: 4.3, price_level: 1, address: '290 Hùng Vương, Vĩnh Trung, Hải Châu, Đà Nẵng' },
-      { name: 'Công viên Châu Á (Asia Park)', rating: 4.5, price_level: 2, address: '1 Phan Đăng Lưu, Hòa Cường Bắc, Hải Châu, Đà Nẵng' }
+      { name: 'Bán đảo Sơn Trà & Chùa Linh Ứng', rating: 4.8, price_level: 1, address: 'Sơn Trà, Đà Nẵng', lat: 16.1001, lng: 108.2779 },
+      { name: 'Cầu Vàng (Bà Nà Hills)', rating: 4.7, price_level: 4, address: 'Hòa Phú, Hòa Vang, Đà Nẵng', lat: 15.9950, lng: 107.9967 },
+      { name: 'Ngũ Hành Sơn', rating: 4.6, price_level: 1, address: '81 Huyền Trân Công Chúa, Hòa Hải, Ngũ Hành Sơn, Đà Nẵng', lat: 16.0029, lng: 108.2638 },
+      { name: 'Cầu Rồng Đà Nẵng', rating: 4.8, price_level: 1, address: 'An Hải Tây, Sơn Trà, Đà Nẵng', lat: 16.0612, lng: 108.2268 },
+      { name: 'Bãi biển Mỹ Khê', rating: 4.8, price_level: 0, address: 'Võ Nguyên Giáp, Phước Mỹ, Sơn Trà, Đà Nẵng', lat: 16.0678, lng: 108.2461 },
+      { name: 'Bảo tàng Điêu khắc Chăm', rating: 4.4, price_level: 1, address: 'Số 02 2 Tháng 9, Bình Hiên, Hải Châu, Đà Nẵng', lat: 16.0610, lng: 108.2222 },
+      { name: 'Chợ Cồn', rating: 4.3, price_level: 1, address: '290 Hùng Vương, Vĩnh Trung, Hải Châu, Đà Nẵng', lat: 16.0682, lng: 108.2160 },
+      { name: 'Công viên Châu Á (Asia Park)', rating: 4.5, price_level: 2, address: '1 Phan Đăng Lưu, Hòa Cường Bắc, Hải Châu, Đà Nẵng', lat: 16.0392, lng: 108.2245 }
     ],
     rental: [
-      { name: 'Cho thuê xe máy Đà Nẵng Gia Huy', rating: 4.6, price_level: 1, address: '126/6 Trần Cao Vân, Tam Thuận, Thanh Khê, Đà Nẵng' },
-      { name: 'Thuê xe tự lái Da Nang Travel Car', rating: 4.8, price_level: 2, address: '10 Bùi Tá Hán, Khuê Mỹ, Ngũ Hành Sơn, Đà Nẵng' }
+      { name: 'Cho thuê xe máy Đà Nẵng Gia Huy', rating: 4.6, price_level: 1, address: '126/6 Trần Cao Vân, Tam Thuận, Thanh Khê, Đà Nẵng', lat: 16.0754, lng: 108.2045 },
+      { name: 'Thuê xe tự lái Da Nang Travel Car', rating: 4.8, price_level: 2, address: '10 Bùi Tá Hán, Khuê Mỹ, Ngũ Hành Sơn, Đà Nẵng', lat: 16.0274, lng: 108.2530 }
     ]
   },
   'ho chi minh': {
     accommodation: [
-      { name: 'The Reverie Saigon', rating: 4.9, price_level: 4, address: '22-36 Nguyễn Huệ, Bến Nghé, Quận 1, TP. HCM' },
-      { name: 'Silverland Sakyo Hotel', rating: 4.6, price_level: 2, address: '10A Lê Thánh Tôn, Bến Nghé, Quận 1, TP. HCM' },
-      { name: 'Fusion Suites Saigon', rating: 4.5, price_level: 2, address: '3-5 Sương Nguyệt Ánh, Bến Thành, Quận 1, TP. HCM' },
-      { name: 'The Common Room Homestay', rating: 4.3, price_level: 1, address: '80/8 Nguyễn Trãi, Phường 3, Quận 5, TP. HCM' }
+      { name: 'The Reverie Saigon', rating: 4.9, price_level: 4, address: '22-36 Nguyễn Huệ, Bến Nghé, Quận 1, TP. HCM', lat: 10.7726, lng: 106.7032 },
+      { name: 'Silverland Sakyo Hotel', rating: 4.6, price_level: 2, address: '10A Lê Thánh Tôn, Bến Nghé, Quận 1, TP. HCM', lat: 10.7801, lng: 106.7042 },
+      { name: 'Fusion Suites Saigon', rating: 4.5, price_level: 2, address: '3-5 Sương Nguyệt Ánh, Bến Thành, Quận 1, TP. HCM', lat: 10.7745, lng: 106.6908 },
+      { name: 'The Common Room Homestay', rating: 4.3, price_level: 1, address: '80/8 Nguyễn Trãi, Phường 3, Quận 5, TP. HCM', lat: 10.7581, lng: 106.6811 }
     ],
     dining: [
-      { name: 'Cục Gạch Quán', rating: 4.4, price_level: 3, address: '10 Đặng Tất, Tân Định, Quận 1, TP. HCM' },
-      { name: 'Phở Lệ', rating: 4.3, price_level: 1, address: '415 Nguyễn Trãi, Phường 7, Quận 5, TP. HCM' },
-      { name: 'Cơm tấm Ba Ghiền', rating: 4.5, price_level: 2, address: '84 Đặng Văn Ngữ, Phường 10, Phú Nhuận, TP. HCM' },
-      { name: 'Hủ tiếu Nam Vang Thành Đạt', rating: 4.4, price_level: 1, address: '34 Cô Bắc, Cầu Ông Lãnh, Quận 1, TP. HCM' },
-      { name: 'Bánh Mì Huỳnh Hoa', rating: 4.5, price_level: 1, address: '26 Lê Thị Riêng, Phạm Ngũ Lão, Quận 1, TP. HCM' },
-      { name: 'Nhà hàng ngon SHÂN', rating: 4.4, price_level: 2, address: '88 Nguyễn Huệ, Bến Nghé, Quận 1, TP. HCM' }
+      { name: 'Cục Gạch Quán', rating: 4.4, price_level: 3, address: '10 Đặng Tất, Tân Định, Quận 1, TP. HCM', lat: 10.7932, lng: 106.6902 },
+      { name: 'Phở Lệ', rating: 4.3, price_level: 1, address: '415 Nguyễn Trãi, Phường 7, Quận 5, TP. HCM', lat: 10.7532, lng: 106.6781 },
+      { name: 'Cơm tấm Ba Ghiền', rating: 4.5, price_level: 2, address: '84 Đặng Văn Ngữ, Phường 10, Phú Nhuận, TP. HCM', lat: 10.7997, lng: 106.6711 },
+      { name: 'Hủ tiếu Nam Vang Thành Đạt', rating: 4.4, price_level: 1, address: '34 Cô Bắc, Cầu Ông Lãnh, Quận 1, TP. HCM', lat: 10.7681, lng: 106.6942 },
+      { name: 'Bánh Mì Huỳnh Hoa', rating: 4.5, price_level: 1, address: '26 Lê Thị Riêng, Phạm Ngũ Lão, Quận 1, TP. HCM', lat: 10.7725, lng: 106.6931 },
+      { name: 'Nhà hàng ngon SHÂN', rating: 4.4, price_level: 2, address: '88 Nguyễn Huệ, Bến Nghé, Quận 1, TP. HCM', lat: 10.7735, lng: 106.7022 }
     ],
     attraction: [
-      { name: 'Dinh Độc Lập', rating: 4.6, price_level: 1, address: '135 Nam Kỳ Khởi Nghĩa, Bến Thành, Quận 1, TP. HCM' },
-      { name: 'Bưu điện Trung tâm Thành phố', rating: 4.5, price_level: 1, address: '02 Công xã Paris, Bến Nghé, Quận 1, TP. HCM' },
-      { name: 'Bảo tàng Chứng tích Chiến tranh', rating: 4.7, price_level: 1, address: '28 Võ Văn Tần, Võ Thị Sáu, Quận 3, TP. HCM' },
-      { name: 'Chợ Bến Thành', rating: 4.2, price_level: 2, address: 'Lê Lợi, Bến Thành, Quận 1, TP. HCM' },
-      { name: 'Nhà thờ Đức Bà Sài Gòn', rating: 4.5, price_level: 0, address: '01 Công xã Paris, Bến Nghé, Quận 1, TP. HCM' },
-      { name: 'Thảo Cầm Viên Sài Gòn', rating: 4.3, price_level: 1, address: '2 Nguyễn Bỉnh Khiêm, Bến Nghé, Quận 1, TP. HCM' },
-      { name: 'Tòa nhà Landmark 81', rating: 4.7, price_level: 3, address: '208 Nguyễn Hữu Cảnh, Phường 22, Bình Thạnh, TP. HCM' },
-      { name: 'Phố đi bộ Nguyễn Huệ', rating: 4.6, price_level: 0, address: 'Đường Nguyễn Huệ, Bến Nghé, Quận 1, TP. HCM' }
+      { name: 'Dinh Độc Lập', rating: 4.6, price_level: 1, address: '135 Nam Kỳ Khởi Nghĩa, Bến Thành, Quận 1, TP. HCM', lat: 10.7770, lng: 106.6953 },
+      { name: 'Bưu điện Trung tâm Thành phố', rating: 4.5, price_level: 1, address: '02 Công xã Paris, Bến Nghé, Quận 1, TP. HCM', lat: 10.7798, lng: 106.6999 },
+      { name: 'Bảo tàng Chứng tích Chiến tranh', rating: 4.7, price_level: 1, address: '28 Võ Văn Tần, Võ Thị Sáu, Quận 3, TP. HCM', lat: 10.7790, lng: 106.6923 },
+      { name: 'Chợ Bến Thành', rating: 4.2, price_level: 2, address: 'Lê Lợi, Bến Thành, Quận 1, TP. HCM', lat: 10.7726, lng: 106.6980 },
+      { name: 'Nhà thờ Đức Bà Sài Gòn', rating: 4.5, price_level: 0, address: '01 Công xã Paris, Bến Nghé, Quận 1, TP. HCM', lat: 10.7797, lng: 106.6990 },
+      { name: 'Thảo Cầm Viên Sài Gòn', rating: 4.3, price_level: 1, address: '2 Nguyễn Bỉnh Khiêm, Bến Nghé, Quận 1, TP. HCM', lat: 10.7876, lng: 106.7052 },
+      { name: 'Tòa nhà Landmark 81', rating: 4.7, price_level: 3, address: '208 Nguyễn Hữu Cảnh, Phường 22, Bình Thạnh, TP. HCM', lat: 10.7948, lng: 106.7218 },
+      { name: 'Phố đi bộ Nguyễn Huệ', rating: 4.6, price_level: 0, address: 'Đường Nguyễn Huệ, Bến Nghé, Quận 1, TP. HCM', lat: 10.7738, lng: 106.7031 }
     ],
     rental: [
-      { name: 'Thuê xe máy Sài Gòn Biketown', rating: 4.6, price_level: 1, address: '152 Bùi Viện, Phạm Ngũ Lão, Quận 1, TP. HCM' },
-      { name: 'Thuê xe du lịch Hùng Dũng', rating: 4.7, price_level: 2, address: '68 Huỳnh Tấn Phát, Tân Thuận Đông, Quận 7, TP. HCM' }
+      { name: 'Thuê xe máy Sài Gòn Biketown', rating: 4.6, price_level: 1, address: '152 Bùi Viện, Phạm Ngũ Lão, Quận 1, TP. HCM', lat: 10.7682, lng: 106.6912 },
+      { name: 'Thuê xe du lịch Hùng Dũng', rating: 4.7, price_level: 2, address: '68 Huỳnh Tấn Phát, Tân Thuận Đông, Quận 7, TP. HCM', lat: 10.7225, lng: 106.7250 }
     ]
   },
   'da lat': {
     accommodation: [
-      { name: 'Ana Mandara Villas Dalat Resort & Spa', rating: 4.7, price_level: 3, address: 'Lê Lai, Phường 5, Đà Lạt' },
-      { name: 'Dalat Palace Heritage Hotel', rating: 4.8, price_level: 4, address: '2 Trần Phú, Phường 3, Đà Lạt' },
-      { name: 'Lalaland Homestay Dalat', rating: 4.5, price_level: 1, address: '10A Triệu Việt Vương, Phường 3, Đà Lạt' }
+      { name: 'Ana Mandara Villas Dalat Resort & Spa', rating: 4.7, price_level: 3, address: 'Lê Lai, Phường 5, Đà Lạt', lat: 11.9472, lng: 108.4231 },
+      { name: 'Dalat Palace Heritage Hotel', rating: 4.8, price_level: 4, address: '2 Trần Phú, Phường 3, Đà Lạt', lat: 11.9381, lng: 108.4398 },
+      { name: 'Lalaland Homestay Dalat', rating: 4.5, price_level: 1, address: '10A Triệu Việt Vương, Phường 3, Đà Lạt', lat: 11.9272, lng: 108.4295 }
     ],
     dining: [
-      { name: 'Lẩu gà lá é Tao Ngộ', rating: 4.4, price_level: 1, address: '5 Đường 3/4, Phường 3, Đà Lạt' },
-      { name: 'Bánh ướt lòng gà Long', rating: 4.3, price_level: 1, address: 'Hẻm 202 Phan Đình Phùng, Phường 2, Đà Lạt' },
-      { name: 'Bánh căn Lệ', rating: 4.5, price_level: 1, address: '27/44 Yersin, Phường 10, Đà Lạt' },
-      { name: 'Nem nướng Bà Hùng', rating: 4.4, price_level: 2, address: '328 Phan Đình Phùng, Phường 2, Đà Lạt' },
-      { name: 'Nhà hàng Léguda (Lẩu rau)', rating: 4.5, price_level: 2, address: 'Đồi Robin, Phường 3, Đà Lạt' },
-      { name: 'Quán nướng Chu', rating: 4.4, price_level: 2, address: '3 Phạm Ngũ Lão, Phường 3, Đà Lạt' }
+      { name: 'Lẩu gà lá é Tao Ngộ', rating: 4.4, price_level: 1, address: '5 Đường 3/4, Phường 3, Đà Lạt', lat: 11.9328, lng: 108.4485 },
+      { name: 'Bánh ướt lòng gà Long', rating: 4.3, price_level: 1, address: 'Hẻm 202 Phan Đình Phùng, Phường 2, Đà Lạt', lat: 11.9478, lng: 108.4357 },
+      { name: 'Bánh căn Lệ', rating: 4.5, price_level: 1, address: '27/44 Yersin, Phường 10, Đà Lạt', lat: 11.9412, lng: 108.4482 },
+      { name: 'Nem nướng Bà Hùng', rating: 4.4, price_level: 2, address: '328 Phan Đình Phùng, Phường 2, Đà Lạt', lat: 11.9501, lng: 108.4385 },
+      { name: 'Nhà hàng Léguda (Lẩu rau)', rating: 4.5, price_level: 2, address: 'Đồi Robin, Phường 3, Đà Lạt', lat: 11.9212, lng: 108.4431 },
+      { name: 'Quán nướng Chu', rating: 4.4, price_level: 2, address: '3 Phạm Ngũ Lão, Phường 3, Đà Lạt', lat: 11.9421, lng: 108.4362 }
     ],
     attraction: [
-      { name: 'Hồ Xuân Hương & Vườn hoa Thành phố', rating: 4.7, price_level: 1, address: 'Trần Quốc Toản, Phường 1, Đà Lạt' },
-      { name: 'Thung lũng Tình Yêu', rating: 4.5, price_level: 2, address: '3 - 5 - 7 Mai Anh Đào, Phường 8, Đà Lạt' },
-      { name: 'Thác Datanla & Máng trượt', rating: 4.6, price_level: 2, address: 'Quốc lộ 20, Phường 3, Đà Lạt' },
-      { name: 'Ga Đà Lạt cổ', rating: 4.4, price_level: 1, address: 'Quang Trung, Phường 9, Đà Lạt' },
-      { name: 'Đồi Chè Cầu Đất', rating: 4.5, price_level: 0, address: 'QL20, Xuân Trường, Thành phố Đà Lạt' },
-      { name: 'Dinh I Bảo Đại', rating: 4.4, price_level: 1, address: 'Trần Quang Diệu, Phường 10, Đà Lạt' },
-      { name: 'Chùa Linh Phước (Chùa Ve Chai)', rating: 4.7, price_level: 0, address: '120 Tự Phước, Trại Mát, Đà Lạt' },
-      { name: 'Quảng trường Lâm Viên', rating: 4.6, price_level: 0, address: 'Đường Trần Quốc Toản, Phường 1, Đà Lạt' }
+      { name: 'Hồ Xuân Hương & Vườn hoa Thành phố', rating: 4.7, price_level: 1, address: 'Trần Quốc Toản, Phường 1, Đà Lạt', lat: 11.9410, lng: 108.4438 },
+      { name: 'Thung lũng Tình Yêu', rating: 4.5, price_level: 2, address: '3 - 5 - 7 Mai Anh Đào, Phường 8, Đà Lạt', lat: 11.9772, lng: 108.4498 },
+      { name: 'Thác Datanla & Máng trượt', rating: 4.6, price_level: 2, address: 'Quốc lộ 20, Phường 3, Đà Lạt', lat: 11.9022, lng: 108.4485 },
+      { name: 'Ga Đà Lạt cổ', rating: 4.4, price_level: 1, address: 'Quang Trung, Phường 9, Đà Lạt', lat: 11.9418, lng: 108.4552 },
+      { name: 'Đồi Chè Cầu Đất', rating: 4.5, price_level: 0, address: 'QL20, Xuân Trường, Thành phố Đà Lạt', lat: 11.8542, lng: 108.5711 },
+      { name: 'Dinh I Bảo Đại', rating: 4.4, price_level: 1, address: 'Trần Quang Diệu, Phường 10, Đà Lạt', lat: 11.9301, lng: 108.4682 },
+      { name: 'Chùa Linh Phước (Chùa Ve Chai)', rating: 4.7, price_level: 0, address: '120 Tự Phước, Trại Mát, Đà Lạt', lat: 11.9442, lng: 108.4981 },
+      { name: 'Quảng trường Lâm Viên', rating: 4.6, price_level: 0, address: 'Đường Trần Quốc Toản, Phường 1, Đà Lạt', lat: 11.9362, lng: 108.4452 }
     ],
     rental: [
-      { name: 'Thuê xe máy Khánh Đoan Đà Lạt', rating: 4.6, price_level: 1, address: '15 Trần Bình Trọng, Phường 5, Đà Lạt' },
-      { name: 'Thuê xe tự lái Đà Lạt Happy Car', rating: 4.7, price_level: 2, address: '22 Bùi Thị Xuân, Phường 2, Đà Lạt' }
+      { name: 'Thuê xe máy Khánh Đoan Đà Lạt', rating: 4.6, price_level: 1, address: '15 Trần Bình Trọng, Phường 5, Đà Lạt', lat: 11.9467, lng: 108.4258 },
+      { name: 'Thuê xe tự lái Đà Lạt Happy Car', rating: 4.7, price_level: 2, address: '22 Bùi Thị Xuân, Phường 2, Đà Lạt', lat: 11.9482, lng: 108.4412 }
     ]
   },
   'sapa': {
@@ -648,5 +648,49 @@ export async function fetchCandidatePlacesForCity(
     attraction: getMockPlaces('attraction', lat, lng, ''),
     rental: getMockPlaces('rental', lat, lng, '')
   };
+}
+
+export function resolveItemCoordinate(placeName: string, city: string): { lat: number; lng: number; address?: string } | null {
+  if (!placeName) return null;
+  const normalized = city.toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '');
+  
+  let matchedCityKey = 'da nang';
+  for (const key of Object.keys(VIETNAM_PROVINCES)) {
+    const keyNormalized = key.replace(/\s+/g, '');
+    if (normalized.includes(keyNormalized)) {
+      matchedCityKey = key;
+      break;
+    }
+  }
+
+  const cityMock = MOCK_PLACES_LIBRARY[matchedCityKey];
+  if (!cityMock) return null;
+
+  const normInput = placeName.toLowerCase()
+    .replace(/đ/g, 'd')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+  for (const category of Object.keys(cityMock)) {
+    const list = cityMock[category];
+    for (const item of list) {
+      if (!item.name) continue;
+      const normItem = item.name.toLowerCase()
+        .replace(/đ/g, 'd')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+
+      // If either contains the other (fuzzy check)
+      if (normInput.includes(normItem) || normItem.includes(normInput)) {
+        if (item.lat && item.lng) {
+          return { lat: item.lat, lng: item.lng, address: item.address };
+        }
+      }
+    }
+  }
+
+  return null;
 }
 

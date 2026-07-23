@@ -560,6 +560,15 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
                         itemBookingUrl = matched.booking_url || '';
                     }
                 }
+                // Fuzzy coordinate lookup fallback from high-quality library
+                const resolvedGeo = (0, placesService_1.resolveItemCoordinate)(item.title, destination_city);
+                if (resolvedGeo) {
+                    itemLat = resolvedGeo.lat;
+                    itemLng = resolvedGeo.lng;
+                    if (!itemAddress) {
+                        itemAddress = resolvedGeo.address || '';
+                    }
+                }
                 itemsToInsert.push({
                     day_id: dbDay.id, // Sử dụng UUID đã sinh ở trên để liên kết
                     item_type: item.item_type,
