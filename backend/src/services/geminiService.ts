@@ -295,7 +295,7 @@ CONCISE DESCRIPTIONS FOR SPEED: Write the "description" for each activity in the
    - "warning_notes": Các lưu ý an toàn quan trọng (ví dụ: cảnh báo thời tiết xấu, đường đèo hiểm trở, hoặc lưu ý bảo quản hành lý, sức khỏe).
    - "missing_info_questions": Nếu dữ liệu đầu vào của khách quá mơ hồ hoặc thiếu, hãy đưa ra các câu hỏi làm rõ cụ thể để người dùng cung cấp thêm thông tin nhằm điều chỉnh lịch trình chuẩn xác hơn. Nếu thông tin đã rất đầy đủ, để danh sách này trống.
 
-CONCISE DESCRIPTIONS FOR SPEED: Write the "description" for each activity in the itinerary extremely short, concise and brief (maximum 8-12 words). Do not write verbose or filler text.
+CONCISE DESCRIPTIONS FOR SPEED: Write the "description" for each activity in the itinerary extremely short, concise and brief (maximum 15-20 words). Do not write verbose or filler text.
 
 Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp. Không viết thêm markdown, không thêm giải thích ngoài JSON.`;
 
@@ -324,11 +324,12 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
     return await executeWithApiKeyRotation(async (apiKey) => {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
         config: {
           responseMimeType: 'application/json',
-          responseSchema: ITINERARY_JSON_SCHEMA as any
+          responseSchema: ITINERARY_JSON_SCHEMA as any,
+          temperature: 0.2
         }
       });
 
@@ -401,9 +402,9 @@ YÊU CẦU ĐIỀU CHỈNH CHẶT CHẼ:
    - Thời tiết: Đọc kỹ "weather_forecast" cho từng ngày để điều chỉnh hoạt động. Nếu dự báo có mưa lớn vào buổi chiều, hãy chuyển các hoạt động ngoài trời lên buổi sáng (nếu trời hửng nắng) hoặc đổi sang điểm tham quan trong nhà. Tránh tuyệt đối các rủi ro nguy hiểm (như leo núi, đi đèo dốc hiểm trở hay đi thuyền khi có giông bão).
 6. Cung cấp đầy đủ phân tích chuyên môn của bạn ở trường "expert_advice" để khách hiểu rõ lý do của các thay đổi và các cảnh báo an toàn ở trường "warning_notes".
 7. Nếu thông tin báo sự cố của khách quá mơ hồ hoặc không đủ để lập kế hoạch an toàn (ví dụ: chỉ ghi "sự cố sức khỏe" mà không rõ là mệt mỏi hay chấn thương nghiêm trọng, hoặc ghi "mưa" mà không rõ mưa to hay nhỏ), hãy đưa ra các câu hỏi làm rõ cụ thể ở trường "missing_info_questions" để khách cung cấp thêm nhằm đưa ra phương án tối ưu nhất.
-8. TIẾT KIỆM TỪ KHÓA & PHẢN HỒI NHANH: Viết mô tả ("description") cho mỗi hoạt động điều chỉnh mới cực kỳ súc tích và ngắn gọn (tối đa 8-12 từ), không viết lan man dài dòng.
+8. TIẾT KIỆM TỪ KHÓA & PHẢN HỒI NHANH: Viết mô tả ("description") cho mỗi hoạt động điều chỉnh mới cực kỳ súc tích và ngắn gọn (tối đa 15-20 từ), không viết lan man dài dòng.
 
-CONCISE DESCRIPTIONS FOR SPEED: Write the "description" for each activity in the itinerary extremely short, concise and brief (maximum 8-12 words). Do not write verbose or filler text.
+CONCISE DESCRIPTIONS FOR SPEED: Write the "description" for each activity in the itinerary extremely short, concise and brief (maximum 15-20 words). Do not write verbose or filler text.
 
 Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp. Không viết thêm markdown, không thêm giải thích ngoài JSON.`;
 
@@ -422,7 +423,7 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
     return await executeWithApiKeyRotation(async (apiKey) => {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
         config: {
           responseMimeType: 'application/json',
@@ -1031,7 +1032,7 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
     return await executeWithApiKeyRotation(async (apiKey) => {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
         config: {
           responseMimeType: 'application/json',
@@ -1225,12 +1226,13 @@ QUY TẮC PHẢN HỒI:
     return await executeWithApiKeyRotation(async (apiKey) => {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         contents: contents,
         config: {
           systemInstruction: systemPrompt,
           responseMimeType: 'application/json',
-          responseSchema: responseSchema as any
+          responseSchema: responseSchema as any,
+          temperature: 0.2
         }
       });
 

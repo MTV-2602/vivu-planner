@@ -38,6 +38,7 @@ export async function getNextGeminiApiKey(): Promise<string> {
       .select('*')
       .eq('is_active', true)
       .eq('status', 'active')
+      .like('key_value', 'AIzaSy%')
       .order('last_used_at', { ascending: true, nullsFirst: true });
 
     if ((error || !keys || keys.length === 0) && !isDbMocked) {
@@ -46,13 +47,14 @@ export async function getNextGeminiApiKey(): Promise<string> {
         await supabaseAdmin
           .from('gemini_api_keys')
           .update({ is_active: true, status: 'active' })
-          .neq('key_value', ''); // reactivate all keys
+          .like('key_value', 'AIzaSy%'); // reactivate only valid keys
         
         const retryResult = await supabaseAdmin
           .from('gemini_api_keys')
           .select('*')
           .eq('is_active', true)
           .eq('status', 'active')
+          .like('key_value', 'AIzaSy%')
           .order('last_used_at', { ascending: true, nullsFirst: true });
         
         if (retryResult.data && retryResult.data.length > 0) {
