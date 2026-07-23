@@ -677,13 +677,13 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       });
     });
 
-    // Thực hiện ghi song song cả ngày và hoạt động cùng lúc để giảm 1 vòng roundtrip DB
-    const [daysResult, itemsResult] = await Promise.all([
-      client.from('itinerary_days').insert(daysToInsert),
-      itemsToInsert.length > 0 ? client.from('itinerary_items').insert(itemsToInsert) : Promise.resolve({ error: null })
-    ]);
-
+    // Ghi itinerary_days trước để tránh lỗi vi phạm RLS policy do race condition khi check foreign key ở itinerary_items
+    const daysResult = await client.from('itinerary_days').insert(daysToInsert);
     if (daysResult.error) throw daysResult.error;
+
+    const itemsResult = itemsToInsert.length > 0 
+      ? await client.from('itinerary_items').insert(itemsToInsert) 
+      : { error: null };
     if (itemsResult.error) throw itemsResult.error;
 
     // Log partner booking events
