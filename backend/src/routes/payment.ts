@@ -8,8 +8,11 @@ import { generateBookingConfirmationHTML } from '../services/emailService';
 const router = Router();
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://vivu-planner.vercel.app';
-const BACKEND_URL = process.env.BACKEND_URL || process.env.RENDER_EXTERNAL_URL || 'https://vivu-planner-backend.onrender.com';
+// SITE_URL = Render backend URL (where /api/* routes live)
+// MoMo IPN must call this URL to activate premium after payment
+const SITE_URL = process.env.SITE_URL || 'https://vivu-planner-backend.onrender.com';
 const PREMIUM_PRICE = 49000; // VND per month
+
 
 // ─── Premium Plans ───────────────────────────────────────────────────────────
 const PREMIUM_PLANS = {
@@ -32,8 +35,8 @@ router.post('/create-order', authMiddleware, async (req: AuthenticatedRequest, r
     const description = `ViVu Pro ${planConfig.label}`;
     const returnUrl = `${FRONTEND_URL}/chuyen-di?payment=success&orderId=${orderId}`;
     const cancelUrl = `${FRONTEND_URL}/chuyen-di?payment=cancelled`;
-    // IPN/Webhook must point to BACKEND URL, not frontend!
-    const ipnUrl = `${BACKEND_URL}/api/payment/momo-ipn`;
+    // IPN points to same Vercel domain since backend (/api/*) and frontend share the same origin
+    const ipnUrl = `${SITE_URL}/api/payment/momo-ipn`;
 
     // Save pending order to DB (safely caught)
     try {
@@ -178,16 +181,32 @@ router.post('/demo-activate', authMiddleware, async (req: AuthenticatedRequest, 
 router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('premium_until, is_premium, custom_quota, trips_used')
-      .eq('id', userId)
-      .single();
+    const userEmail = req.user?.email?.toLowerCase().trim();
+    const ADMIN_EMAILS = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'];
+    const isEmailAdmin = userEmail && ADMIN_EMAILS.includes(userEmail);
+    const isSpecialAdminId = userId === '00000000-0000-0000-0000-000000000001';
 
     const { count: dbTripsCount } = await supabaseAdmin
       .from('trips')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId);
+
+    if (isEmailAdmin || isSpecialAdminId) {
+      return res.json({
+        isPremium: true,
+        premiumUntil: '2099-12-31T23:59:59.000Z',
+        planName: 'Gói Admin Đặc Quyền (Vô hạn)',
+        tripsUsed: dbTripsCount || 0,
+        tripsQuota: 9999,
+        remainingTrips: 9999,
+      });
+    }
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('premium_until, is_premium, custom_quota, trips_used')
+      .eq('id', userId)
+      .single();
 
     const isPremium = !!(profile?.is_premium ||
       (profile?.premium_until && new Date(profile.premium_until) > new Date()));

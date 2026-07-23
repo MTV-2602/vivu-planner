@@ -5,16 +5,22 @@ import { supabase } from './supabaseClient';
 const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
 
 function getApiBaseUrl(): string {
-  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.API_BASE_URL;
-  if (envUrl) return envUrl;
-
-  if (__DEV__) {
-    if (Platform.OS === 'android') return 'http://10.0.2.2:4000/api';
-    return 'http://localhost:4000/api';
+  let url = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.API_BASE_URL;
+  
+  if (!url) {
+    if (__DEV__) {
+      if (Platform.OS === 'android') return 'http://10.0.2.2:4000/api';
+      return 'http://localhost:4000/api';
+    }
+    url = 'https://vivu-planner.onrender.com/api';
   }
 
-  if (Platform.OS === 'web') return '/api';
-  return 'https://vivu-planner-backend.vercel.app/api';
+  // Normalize: ensure URL ends with /api (e.g., https://vivu-planner.onrender.com -> https://vivu-planner.onrender.com/api)
+  const trimmed = url.trim().replace(/\/+$/, '');
+  if (!trimmed.endsWith('/api')) {
+    return `${trimmed}/api`;
+  }
+  return trimmed;
 }
 
 export const apiClient = axios.create({

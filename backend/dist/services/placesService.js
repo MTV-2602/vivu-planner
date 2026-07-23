@@ -274,34 +274,30 @@ const MOCK_PLACES_LIBRARY = {
     },
     'vung tau': {
         accommodation: [
-            { name: 'The Imperial Hotel Vung Tau', rating: 4.7, price_level: 3, address: '159 Thùy Vân, Thắng Tam, Vũng Tàu' },
-            { name: 'Marina Bay Vung Tau Resort & Spa', rating: 4.6, price_level: 3, address: '115 Trần Phú, Phường 5, Vũng Tàu' }
+            { name: 'The Imperial Hotel Vung Tau', rating: 4.7, price_level: 3, address: '159 Thùy Vân, Thắng Tam, Vũng Tàu', lat: 10.3377, lng: 107.0906 },
+            { name: 'Marina Bay Vung Tau Resort & Spa', rating: 4.6, price_level: 3, address: '115 Trần Phú, Phường 5, Vũng Tàu', lat: 10.3705, lng: 107.0565 }
         ],
         dining: [
-            { name: 'Bánh khọt Gốc Vú Sữa', rating: 4.2, price_level: 1, address: '14 Nguyễn Trường Tộ, Phường 2, Vũng Tàu' },
-            { name: 'Bánh khọt Cô Ba Vũng Tàu', rating: 4.4, price_level: 2, address: '1 Hoàng Hoa Thám, Phường 3, Vũng Tàu' },
-            { name: 'Lẩu cá đuối Hoàng Minh', rating: 4.3, price_level: 2, address: '44 Trương Công Định, Phường 3, Vũng Tàu' },
-            { name: 'Hải sản Gành Hào', rating: 4.6, price_level: 3, address: '3 Trần Phú, Phường 5, Vũng Tàu' },
-            { name: 'Quán nướng Cô Nên', rating: 4.4, price_level: 2, address: '6 Hạ Long, Phường 2, Vũng Tàu' },
-            { name: 'Bánh mì xíu mại Hàng Quyên', rating: 4.3, price_level: 1, address: '37 Phan Chu Trinh, Phường 2, Vũng Tàu' },
-            { name: 'Gỏi cá mai Vườn Xoài', rating: 4.5, price_level: 2, address: '34/5 Hoàng Hoa Thám, Phường 2, Vũng Tàu' },
-            { name: 'Bún riêu tôm Thuận Phúc', rating: 4.4, price_level: 1, address: '94 Hoàng Hoa Thám, Thắng Tam, Vũng Tàu' },
-            { name: 'Hải sản Lâm Đường', rating: 4.5, price_level: 3, address: '125A Trần Phú, Phường 5, Vũng Tàu' },
-            { name: 'Lẩu cháo bồ câu Phú Long', rating: 4.4, price_level: 2, address: '31 đường 30/4, Phường 9, Vũng Tàu' },
-            { name: 'Hủ tiếu mì sườn Tùng Hưng', rating: 4.3, price_level: 1, address: '144 Trương Công Định, Phường 3, Vũng Tàu' },
-            { name: 'Bánh ướt lòng gà Tú Xương', rating: 4.3, price_level: 1, address: '24 Tú Xương, Phường 4, Vũng Tàu' }
+            { name: 'Bánh mì xíu mại Hàng Quyên', rating: 4.3, price_level: 1, address: '268 Trương Công Định, Phường 3, Vũng Tàu', lat: 10.3547, lng: 107.0866 },
+            { name: 'Bánh mì xíu mại Hàng Quyên (Chi nhánh 1)', rating: 4.3, price_level: 1, address: '564 Trần Phú, Phường 5, Vũng Tàu', lat: 10.3708, lng: 107.0560 },
+            { name: 'Bánh khọt Gốc Vú Sữa', rating: 4.2, price_level: 1, address: '14 Nguyễn Trường Tộ, Phường 2, Vũng Tàu', lat: 10.3402, lng: 107.0784 },
+            { name: 'Bánh khọt Cô Ba Vũng Tàu', rating: 4.4, price_level: 2, address: '1 Hoàng Hoa Thám, Phường 3, Vũng Tàu', lat: 10.3440, lng: 107.0805 },
+            { name: 'Lẩu cá đuối Hoàng Minh', rating: 4.3, price_level: 2, address: '44 Trương Công Định, Phường 3, Vũng Tàu', lat: 10.3524, lng: 107.0818 },
+            { name: 'Hải sản Gành Hào', rating: 4.6, price_level: 3, address: '3 Trần Phú, Phường 5, Vũng Tàu', lat: 10.3621, lng: 107.0658 },
+            { name: 'Quán nướng Cô Nên', rating: 4.4, price_level: 2, address: '6 Hạ Long, Phường 2, Vũng Tàu', lat: 10.3408, lng: 107.0740 },
+            { name: 'Gỏi cá mai Vườn Xoài', rating: 4.5, price_level: 2, address: '34/5 Hoàng Hoa Thám, Phường 2, Vũng Tàu', lat: 10.3415, lng: 107.0820 },
+            { name: 'Bún riêu tôm Thuận Phúc', rating: 4.4, price_level: 1, address: '94 Hoàng Hoa Thám, Thắng Tam, Vũng Tàu', lat: 10.3398, lng: 107.0872 }
         ],
         attraction: [
-            { name: 'Tượng Chúa Kitô Vua Vũng Tàu', rating: 4.7, price_level: 1, address: 'Thùy Vân, Phường 2, Vũng Tàu' },
-            { name: 'Ngọn Hải Đăng Vũng Tàu', rating: 4.6, price_level: 1, address: 'Núi Nhỏ, Phường 2, Vũng Tàu' },
-            { name: 'Khu du lịch Hồ Mây', rating: 4.4, price_level: 3, address: 'Vi Ba, Phường 1, Vũng Tàu' },
-            { name: 'Bạch Dinh (Villa Blanche)', rating: 4.5, price_level: 1, address: '4 Trần Phú, Phường 1, Vũng Tàu' },
-            { name: 'Mũi Nghinh Phong', rating: 4.6, price_level: 0, address: '1 Đường Hạ Long, Phường 2, Vũng Tàu' },
-            { name: 'Đồi Con Heo', rating: 4.3, price_level: 0, address: 'Hẻm 222 Phan Chu Trinh, Phường 2, Vũng Tàu' },
-            { name: 'Thích Ca Phật Đài', rating: 4.5, price_level: 1, address: '608 Trần Phú, Phường 5, Vũng Tàu' }
+            { name: 'Tượng Chúa Kitô Vua Vũng Tàu', rating: 4.7, price_level: 1, address: 'Thùy Vân, Phường 2, Vũng Tàu', lat: 10.3259, lng: 107.0847 },
+            { name: 'Ngọn Hải Đăng Vũng Tàu', rating: 4.6, price_level: 1, address: 'Núi Nhỏ, Phường 2, Vũng Tàu', lat: 10.3340, lng: 107.0792 },
+            { name: 'Mũi Nghinh Phong', rating: 4.6, price_level: 0, address: '1 Đường Hạ Long, Phường 2, Vũng Tàu', lat: 10.3208, lng: 107.0850 },
+            { name: 'Khu du lịch Hồ Mây', rating: 4.4, price_level: 3, address: 'Vi Ba, Phường 1, Vũng Tàu', lat: 10.3533, lng: 107.0672 },
+            { name: 'Bạch Dinh (Villa Blanche)', rating: 4.5, price_level: 1, address: '4 Trần Phú, Phường 1, Vũng Tàu', lat: 10.3508, lng: 107.0694 },
+            { name: 'Đồi Con Heo', rating: 4.3, price_level: 0, address: 'Hẻm 222 Phan Chu Trinh, Phường 2, Vũng Tàu', lat: 10.3325, lng: 107.0881 }
         ],
         rental: [
-            { name: 'Thuê xe máy Vũng Tàu giá rẻ Minh Đức', rating: 4.7, price_level: 1, address: '18 Lương Văn Can, Phường 2, Vũng Tàu' }
+            { name: 'Thuê xe máy Vũng Tàu giá rẻ Minh Đức', rating: 4.7, price_level: 1, address: '18 Lương Văn Can, Phường 2, Vũng Tàu', lat: 10.3421, lng: 107.0812 }
         ]
     }
 };
@@ -318,6 +314,14 @@ const VIETNAM_PROVINCES = {
     'ninh binh': { lat: 20.2506, lng: 105.9745 },
     'vung tau': { lat: 10.3460, lng: 107.0843 }
 };
+function hashString(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = (hash << 5) - hash + str.charCodeAt(i);
+        hash |= 0;
+    }
+    return Math.abs(hash);
+}
 function getMockPlaces(category, lat, lng, query) {
     let matchedCity = 'da nang';
     // Check closest city in coordinates
@@ -331,16 +335,21 @@ function getMockPlaces(category, lat, lng, query) {
     }
     const cityKey = MOCK_PLACES_LIBRARY[matchedCity] ? matchedCity : 'da nang';
     const mockList = MOCK_PLACES_LIBRARY[cityKey][category] || [];
-    let candidates = mockList.map((item, idx) => ({
-        google_place_id: `mock-${category}-${cityKey}-${idx}`,
-        name: item.name,
-        category,
-        lat: lat + (Math.random() - 0.5) * 0.05,
-        lng: lng + (Math.random() - 0.5) * 0.05,
-        rating: item.rating || 4.5,
-        price_level: item.price_level || 2,
-        address: item.address || 'Địa chỉ thực tế tại Việt Nam'
-    }));
+    let candidates = mockList.map((item, idx) => {
+        const h = hashString(item.name || `item-${idx}`);
+        const offsetLat = ((h % 40) - 20) * 0.0006;
+        const offsetLng = (((Math.floor(h / 40)) % 40) - 20) * 0.0006;
+        return {
+            google_place_id: `mock-${category}-${cityKey}-${idx}`,
+            name: item.name,
+            category,
+            lat: item.lat || (lat + offsetLat),
+            lng: item.lng || (lng + offsetLng),
+            rating: item.rating || 4.5,
+            price_level: item.price_level || 2,
+            address: item.address || 'Địa chỉ thực tế tại Việt Nam'
+        };
+    });
     // Prioritize candidates matching the query keywords (e.g. "lẩu cá đuối")
     if (query) {
         const keywords = query.toLowerCase()
@@ -565,26 +574,12 @@ async function fetchCandidatePlacesForCity(city, lat, lng, preferences = {}, spe
     catch (err) {
         console.warn('[placesService] Failed to load batch cache from DB:', err.message);
     }
-    // 2. Cache Miss hoặc thành phố hoàn toàn mới -> Gọi Nominatim tuần tự cho Điểm ăn uống và Điểm tham quan
-    console.log(`[placesService] Batch Cache MISS cho thành phố "${city}". Gọi Nominatim để lấy dữ liệu nền...`);
-    try {
-        const diningPromise = searchPlacesOSM('restaurant', 'dining', lat, lng).catch(() => []);
-        const attractionPromise = searchPlacesOSM('tourist attraction', 'attraction', lat, lng).catch(() => []);
-        const [dining, attraction] = await Promise.all([diningPromise, attractionPromise]);
-        return {
-            accommodation: getMockPlaces('accommodation', lat, lng, ''),
-            dining: dining.length > 0 ? dining : getMockPlaces('dining', lat, lng, ''),
-            attraction: attraction.length > 0 ? attraction : getMockPlaces('attraction', lat, lng, ''),
-            rental: getMockPlaces('rental', lat, lng, '')
-        };
-    }
-    catch (fallbackErr) {
-        console.warn('[placesService] OSM fallback failed:', fallbackErr.message);
-        return {
-            accommodation: getMockPlaces('accommodation', lat, lng, ''),
-            dining: getMockPlaces('dining', lat, lng, ''),
-            attraction: getMockPlaces('attraction', lat, lng, ''),
-            rental: getMockPlaces('rental', lat, lng, '')
-        };
-    }
+    // 2. Cache Miss hoặc thành phố hoàn toàn mới -> Trả về dữ liệu ứng viên từ thư viện địa điểm cao cấp (Instant 0ms)
+    console.log(`[placesService] Batch Cache MISS cho thành phố "${city}". Sử dụng kho dữ liệu ứng viên cao cấp tức thì...`);
+    return {
+        accommodation: getMockPlaces('accommodation', lat, lng, ''),
+        dining: getMockPlaces('dining', lat, lng, ''),
+        attraction: getMockPlaces('attraction', lat, lng, ''),
+        rental: getMockPlaces('rental', lat, lng, '')
+    };
 }

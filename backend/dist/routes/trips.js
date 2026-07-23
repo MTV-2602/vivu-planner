@@ -222,6 +222,44 @@ router.get('/chat', authMiddleware_1.authMiddleware, async (req, res) => {
     }
 });
 // GET /api/trips/:id - Get a specific trip detail with days and items
+// ─── GET /trips/:id/public ── Public view (no auth required, for share links) ──
+router.get('/:id/public', async (req, res) => {
+    const tripId = req.params.id;
+    try {
+        const { data: trip, error: tripError } = await supabaseAdmin_1.supabaseAdmin
+            .from('trips')
+            .select('id,title,destination_city,start_date,end_date,budget_total,traveler_count,traveler_type,status')
+            .eq('id', tripId)
+            .single();
+        if (tripError || !trip) {
+            return res.status(404).json({ error: 'Trip not found or not shared publicly' });
+        }
+        const { data: days } = await supabaseAdmin_1.supabaseAdmin
+            .from('itinerary_days')
+            .select('*')
+            .eq('trip_id', tripId)
+            .order('day_number', { ascending: true });
+        let daysWithItems = [];
+        if (days && days.length > 0) {
+            const dayIds = days.map(d => d.id);
+            const { data: items } = await supabaseAdmin_1.supabaseAdmin
+                .from('itinerary_items')
+                .select('id,item_type,title,description,start_time,end_time,estimated_cost,location_lat,location_lng,google_place_id,status,order_index,day_id')
+                .in('day_id', dayIds)
+                .neq('status', 'replaced')
+                .neq('status', 'skipped')
+                .order('order_index', { ascending: true });
+            daysWithItems = days.map(day => ({
+                ...day,
+                items: (items || []).filter(i => i.day_id === day.id),
+            }));
+        }
+        return res.json({ ...trip, days: daysWithItems });
+    }
+    catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
 router.get('/:id', authMiddleware_1.authMiddleware, async (req, res) => {
     const client = (0, supabaseAdmin_1.getSupabaseUserClient)(req.token);
     const tripId = req.params.id;
@@ -336,6 +374,30 @@ router.get('/:id', authMiddleware_1.authMiddleware, async (req, res) => {
 router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
     const client = (0, supabaseAdmin_1.getSupabaseUserClient)(req.token);
     const { title, destination_city, start_date, end_date, budget_total, traveler_count, traveler_type, preferences, health_conditions, special_requirements } = req.body;
+    // Check trip creation quota: Free = 3 trips, custom_quota for purchased packs
+    const userId = req.user.id;
+    const { data: profile } = await supabaseAdmin_1.supabaseAdmin
+        .from('profiles')
+        .select('is_premium, premium_until, custom_quota, trips_used')
+        .eq('id', userId)
+        .single();
+    const { count: dbTripsCount } = await supabaseAdmin_1.supabaseAdmin
+        .from('trips')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+    const isPremium = !!(profile?.is_premium || (profile?.premium_until && new Date(profile.premium_until) > new Date()));
+    const allowedQuota = profile?.custom_quota || (isPremium ? 10 : 3);
+    const currentUsed = Math.max(profile?.trips_used ?? 0, dbTripsCount || 0);
+    if (currentUsed >= allowedQuota) {
+        return res.status(403).json({
+            error: 'quota_exceeded',
+            message: `Bạn đã sử dụng hết ${currentUsed}/${allowedQuota} lượt tạo chuyến đi. Vui lòng nạp thêm lượt để tiếp tục lên kế hoạch!`,
+            isQuotaExceeded: true,
+            currentCount: currentUsed,
+            allowedQuota,
+            isPremium,
+        });
+    }
     if (!destination_city || !start_date || !end_date || !budget_total) {
         return res.status(400).json({ error: 'Missing required parameters: destination_city, start_date, end_date, budget_total' });
     }
@@ -417,6 +479,14 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
         if (tripError || !trip) {
             throw tripError || new Error('Failed to create trip record');
         }
+        // Permanently increment trips_used on profiles so deleting trips later DOES NOT refund credits!
+        await supabaseAdmin_1.supabaseAdmin
+            .from('profiles')
+            .upsert({
+            id: userId,
+            trips_used: currentUsed + 1,
+            updated_at: new Date().toISOString()
+        });
         // Liên kết toàn bộ tin nhắn chat chung cũ (với trip_id IS NULL) sang chuyến đi mới này
         const { error: chatLinkErr } = await supabaseAdmin_1.supabaseAdmin
             .from('trip_chat_messages')
@@ -715,6 +785,14 @@ router.post('/:id/disruptions/preview', authMiddleware_1.authMiddleware, async (
         const { data: trip, error: tripError } = await client.from('trips').select('*').eq('id', tripId).single();
         if (tripError || !trip)
             return res.status(404).json({ error: 'Trip not found' });
+        if (trip.end_date) {
+            const today = new Date().toISOString().split('T')[0];
+            if (trip.end_date < today) {
+                return res.status(400).json({
+                    error: `Chuyến đi này đã hết hạn (ngày kết thúc ${trip.end_date}). AI đã khóa quyền chỉnh sửa chuyến đi này. Bạn vui lòng tạo chuyến đi mới để tiếp tục dùng AI!`
+                });
+            }
+        }
         const { data: dbDays, error: daysError } = await client
             .from('itinerary_days')
             .select('*')

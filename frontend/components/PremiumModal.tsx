@@ -350,15 +350,34 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                   <Text style={{ color: '#666', fontSize: 12, fontWeight: '600' }}>Tự động kiểm tra giao dịch...</Text>
                 </View>
 
+                {/* Instant Activation Button after Transfer */}
+                <Pressable
+                  onPress={handleDemoActivate}
+                  disabled={demoLoading}
+                  style={{
+                    marginTop: 14, width: '100%', backgroundColor: '#059669', borderRadius: 14,
+                    paddingHorizontal: 20, paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
+                    borderWidth: 1.5, borderColor: '#047857', cursor: 'pointer' as any,
+                  }}
+                >
+                  {demoLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
+                      ✅ Tôi đã chuyển khoản xong (Bấm để nhận +10 lượt AI ngay)
+                    </Text>
+                  )}
+                </Pressable>
+
                 {externalUrl && (
                   <Pressable
                     onPress={() => {
                       if (Platform.OS === 'web') window.open(externalUrl, '_blank');
                       else Linking.openURL(externalUrl);
                     }}
-                    style={{ marginTop: 14, backgroundColor: orderData.method === 'momo' ? '#a50064' : BRAND_COLORS.primary, borderRadius: 14, paddingHorizontal: 24, paddingVertical: 12 }}
+                    style={{ marginTop: 10, backgroundColor: orderData.method === 'momo' ? '#a50064' : '#334155', borderRadius: 14, paddingHorizontal: 20, paddingVertical: 10 }}
                   >
-                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
                       {orderData.method === 'momo' ? '💜 Mở trang thanh toán MoMo ↗' : '🏦 Mở trang thanh toán PayOS (pay.payos.vn) ↗'}
                     </Text>
                   </Pressable>

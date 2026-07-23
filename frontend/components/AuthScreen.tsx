@@ -64,26 +64,31 @@ export default function AuthScreen({ mode }: Props) {
       const isAdmin = adminEmails.includes(email.toLowerCase().trim());
 
       if (isSignUp) {
-        if (isAdmin) throw new Error('Email này đã được sử dụng!');
-
         await apiClient.post('/auth/signup', { email, password, fullName });
         const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password });
         if (loginErr) throw new Error('Đăng ký thành công nhưng đăng nhập thất bại. Vui lòng đăng nhập lại.');
-        router.replace('/chuyen-di');
+        router.replace(isAdmin ? '/admin' : '/chuyen-di');
       } else {
         if (isAdmin && Platform.OS === 'web') {
-          const res = await apiClient.post('/admin/login', { email, password });
-          if (res.data?.token) {
-            localStorage.setItem('vivu_admin_token', res.data.token);
-            localStorage.setItem('vivu_mock_user', JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: res.data.email }));
-            router.replace('/admin');
-            return;
+          try {
+            const res = await apiClient.post('/admin/login', { email, password });
+            if (res.data?.token) {
+              localStorage.setItem('vivu_admin_token', res.data.token);
+              localStorage.setItem('vivu_mock_user', JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: res.data.email }));
+              router.replace('/admin');
+              return;
+            }
+          } catch (_) {
+            // If admin endpoint fails, continue to standard Supabase login below
           }
         }
 
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw new Error('Email hoặc mật khẩu không chính xác!');
-        router.replace('/chuyen-di');
+        
+        const loggedInEmail = (data.user?.email || email).toLowerCase().trim();
+        const isUserAdmin = adminEmails.includes(loggedInEmail);
+        router.replace(isUserAdmin ? '/admin' : '/chuyen-di');
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Có lỗi xảy ra trong quá trình xử lý');

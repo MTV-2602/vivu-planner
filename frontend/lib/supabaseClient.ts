@@ -2,8 +2,18 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+function cleanSupabaseUrl(rawUrl?: string): string {
+  const defaultUrl = 'https://vulkqdpqzgvpeawchqyt.supabase.co';
+  if (!rawUrl || !rawUrl.trim()) return defaultUrl;
+  let cleaned = rawUrl.trim().replace(/\/+$/, '');
+  cleaned = cleaned.replace(/\/rest\/v1\/?$/i, '');
+  return cleaned.replace(/\/+$/, '') || defaultUrl;
+}
+
+const DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1bGtxZHBxemd2cGVhd2NocXl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAxOTA1OTcsImV4cCI6MjA1NTc2NjU5N30.0';
+
+const supabaseUrl = cleanSupabaseUrl(process.env.EXPO_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL);
+const supabaseAnonKey = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || DEFAULT_ANON_KEY).trim();
 export const isMockAuth = false;
 
 // Native: SecureStore | Web browser: localStorage | SSR (Node.js): no-op

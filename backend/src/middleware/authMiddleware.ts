@@ -2,13 +2,19 @@ import { Request, Response, NextFunction } from 'express';
 import { supabase } from '../services/supabaseAdmin';
 import crypto from 'crypto';
 
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    id: string;
-    email?: string;
-  };
-  token?: string;
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string;
+        email?: string;
+      };
+      token?: string;
+    }
+  }
 }
+
+export type AuthenticatedRequest = Request;
 
 export function verifyAdminToken(token: string): boolean {
   try {
@@ -49,7 +55,7 @@ export function verifyAdminToken(token: string): boolean {
   }
 }
 
-export async function authMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     return res.status(401).json({ error: 'Authorization header is missing' });
@@ -111,8 +117,6 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
     };
     return next();
   }
-
-
 
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);

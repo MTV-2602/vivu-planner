@@ -18,22 +18,28 @@ function adminMiddleware(req: AuthenticatedRequest, res: Response, next: NextFun
   next();
 }
 
-// POST /api/admin/login - Authenticate admin using Vercel env credentials
+// POST /api/admin/login - Authenticate admin using Render env credentials
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@vivu.vn';
-  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+  const adminEmail = (process.env.ADMIN_EMAIL || '').toLowerCase().trim();
+  const adminPassword = process.env.ADMIN_PASSWORD;
 
-  if (email === adminEmail && password === adminPassword) {
+  if (!adminEmail || !adminPassword) {
+    return res.status(500).json({ error: 'Chưa cấu hình ADMIN_EMAIL và ADMIN_PASSWORD trên máy chủ!' });
+  }
+
+  const inputEmail = (email || '').toLowerCase().trim();
+
+  if (inputEmail === adminEmail && password === adminPassword) {
     const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
-    const payload = `${email}:${expiresAt}`;
+    const payload = `${inputEmail}:${expiresAt}`;
     const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-admin-secret';
     const signature = crypto.createHmac('sha256', secret).update(payload).digest('hex');
     const token = `${payload}:${signature}`;
 
     return res.json({
       success: true,
-      email,
+      email: inputEmail,
       token
     });
   }
