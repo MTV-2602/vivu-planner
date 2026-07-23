@@ -355,7 +355,7 @@ export default function TripDetail() {
 
   const handleConfirmDeleteTrip = () => {
     if (Platform.OS === 'web') {
-      if (confirm(`Bạn có chắc chắn muốn xóa chuyến đi "${tripData?.title}"? Hành động này không thể hoàn tác.`)) {
+      if (window.confirm(`Bạn có chắc chắn muốn xóa chuyến đi "${tripData?.title}"? Hành động này không thể hoàn tác.`)) {
         deleteTripMutation.mutate();
       }
     } else {

@@ -157,7 +157,7 @@ export default function Dashboard() {
 
   const handleDeleteTrip = (tripId: string, title: string) => {
     if (Platform.OS === 'web') {
-      if (confirm(`Bạn có chắc chắn muốn xóa chuyến đi "${title}"?`)) {
+      if (window.confirm(`Bạn có chắc chắn muốn xóa chuyến đi "${title}"?`)) {
         deleteMutation.mutate(tripId);
       }
     } else {
