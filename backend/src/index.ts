@@ -19,7 +19,18 @@ const port = process.env.PORT || 4000;
 // Configure CORS — allow Vercel frontend and localhost dev
 const frontendOrigin = process.env.FRONTEND_ORIGIN || '*';
 app.use(cors({
-  origin: frontendOrigin === '*' ? '*' : frontendOrigin.split(',').map(o => o.trim()),
+  origin: (origin, callback) => {
+    if (frontendOrigin === '*') {
+      callback(null, origin || '*');
+    } else {
+      const allowedOrigins = frontendOrigin.split(',').map(o => o.trim());
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, origin);
+      } else {
+        callback(null, allowedOrigins[0]);
+      }
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
