@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Compass, Plus, LogOut, Calendar, MapPin, Wallet, DollarSign,
-  RefreshCw, User, GitFork, Shield, WifiOff, Crown, Trash2, Sparkles,
+  RefreshCw, User, GitFork, Shield, WifiOff, Crown, Trash2, Sparkles, X,
 } from 'lucide-react-native';
 import { supabase } from '../../../lib/supabaseClient';
 import { apiClient } from '../../../lib/apiClient';
@@ -92,6 +92,8 @@ export default function Dashboard() {
     });
   }, []);
 
+  const [paymentSuccessMsg, setPaymentSuccessMsg] = useState('');
+
   useEffect(() => {
     if (canUseLocalStorage && localStorage.getItem('vivu_admin_token')) {
       router.replace('/admin' as any);
@@ -107,6 +109,18 @@ export default function Dashboard() {
         }
       }
     });
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const search = window.location.search;
+      if (search && (search.includes('payment=success') || search.includes('orderId') || search.includes('resultCode=0') || search.includes('code=00'))) {
+        apiClient.get(`/payment/verify-return${search}`).then(res => {
+          if (res.data?.success) {
+            setPaymentSuccessMsg('🎉 Thanh toán thành công! Hệ thống đã tự động cộng dồn lượt tạo chuyến đi AI mới vào tài khoản của bạn.');
+            refetchStatus();
+          }
+        }).catch(() => {});
+      }
+    }
   }, []);
 
   const { data: trips, isLoading, isError, refetch } = useQuery<Trip[]>({
@@ -231,6 +245,18 @@ export default function Dashboard() {
           </View>
         </View>
       </View>
+
+      {/* Payment Success Banner */}
+      {paymentSuccessMsg ? (
+        <View style={{ backgroundColor: '#D1FAE5', borderColor: '#059669', borderWidth: 1.5, borderRadius: 16, padding: 16, marginHorizontal: 24, marginTop: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ color: '#065F46', fontWeight: '700', flex: 1, fontSize: 14 }}>
+            {paymentSuccessMsg}
+          </Text>
+          <Pressable onPress={() => setPaymentSuccessMsg('')} style={{ padding: 4 }}>
+            <X size={18} color="#065F46" />
+          </Pressable>
+        </View>
+      ) : null}
 
       {/* Main content */}
       <View className="px-6 py-10 gap-8">

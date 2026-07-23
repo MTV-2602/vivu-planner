@@ -29,8 +29,8 @@ router.post('/create-order', authMiddleware, async (req: AuthenticatedRequest, r
     const orderCode = Date.now();
     const orderId = `VIVU${orderCode}`;
     const description = `ViVu Pro ${planConfig.label}`;
-    const returnUrl = `${FRONTEND_URL}/premium/success?orderId=${orderId}`;
-    const cancelUrl = `${FRONTEND_URL}/premium?cancelled=1`;
+    const returnUrl = `${FRONTEND_URL}/chuyen-di?payment=success&orderId=${orderId}`;
+    const cancelUrl = `${FRONTEND_URL}/chuyen-di?payment=cancelled`;
     const ipnUrl = `${FRONTEND_URL}/api/payment/momo-ipn`;
 
     // Save pending order to DB (safely caught)
@@ -211,6 +211,23 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
       tripsQuota: 3,
       remainingTrips: 3,
     });
+  }
+});
+
+// ─── GET /api/payment/verify-return ──────────────────────────────────────────
+router.get('/verify-return', async (req: Request, res: Response) => {
+  try {
+    const { orderId, resultCode, code, status } = req.query;
+    const isSuccess = String(resultCode) === '0' || String(code) === '00' || String(status) === 'PAID' || !resultCode;
+    
+    if (orderId && isSuccess) {
+      await activatePremiumByOrderId(String(orderId));
+      return res.json({ success: true, message: 'Đã kích hoạt cước thành công!' });
+    }
+    
+    return res.json({ success: false, message: 'Thanh toán chưa hoàn tất hoặc bị hủy.' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
   }
 });
 
