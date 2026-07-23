@@ -168,39 +168,35 @@ export default function Admin() {
   }, [toast]);
 
   useEffect(() => {
-    const checkAdmin = async () => {
-      const hasAdminToken = canUseLocalStorage && !!localStorage.getItem('vivu_admin_token');
-      if (hasAdminToken) {
-        setIsAdmin(true);
-        setChecking(false);
+    const hasAdminToken = canUseLocalStorage && !!localStorage.getItem('vivu_admin_token');
+    if (hasAdminToken) {
+      setIsAdmin(true);
+      setChecking(false);
+      return;
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Allow some time for session validation to complete
+      if (session === undefined) return;
+      
+      if (!session) {
+        // If not logged in, redirect to login
+        router.replace('/(auth)/dang-nhap');
         return;
       }
 
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const email = session?.user?.email;
-        const allAdminEmails = [
-          ...ADMIN_EMAILS,
-          process.env.EXPO_PUBLIC_ADMIN_EMAIL
-        ].filter(Boolean).map(e => e!.toLowerCase().trim());
+      const email = session?.user?.email;
+      const allAdminEmails = [
+        ...ADMIN_EMAILS,
+        process.env.EXPO_PUBLIC_ADMIN_EMAIL
+      ].filter(Boolean).map(e => e!.toLowerCase().trim());
 
-        const isUserAdmin = email && allAdminEmails.includes(email.toLowerCase().trim());
+      const isUserAdmin = email && allAdminEmails.includes(email.toLowerCase().trim());
 
-        if (isUserAdmin) {
-          setIsAdmin(true);
-          setChecking(false);
-        } else {
-          if (Platform.OS === 'web') {
-            window.alert('Từ chối truy cập: Bạn không có quyền truy cập trang quản trị!');
-            router.replace('/chuyen-di');
-          } else {
-            Alert.alert('Từ chối truy cập', 'Bạn không có quyền truy cập trang quản trị!', [
-              { text: 'OK', onPress: () => router.replace('/chuyen-di') },
-            ]);
-          }
-          setChecking(false);
-        }
-      } catch (err) {
+      if (isUserAdmin) {
+        setIsAdmin(true);
+        setChecking(false);
+      } else {
         if (Platform.OS === 'web') {
           window.alert('Từ chối truy cập: Bạn không có quyền truy cập trang quản trị!');
           router.replace('/chuyen-di');
@@ -211,9 +207,9 @@ export default function Admin() {
         }
         setChecking(false);
       }
-    };
+    });
 
-    checkAdmin();
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleLogout = async () => {
