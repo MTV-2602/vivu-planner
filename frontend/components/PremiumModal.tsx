@@ -17,13 +17,6 @@ const PLANS = [
   { id: 'vip', label: 'Gói VIP', price: '99.000đ', duration: '', quota: '+25 lượt AI', popular: false, badge: 'Tiết kiệm 40%' },
 ];
 
-const COMPARISON = [
-  { feature: 'Số lượt tạo chuyến đi AI', free: '3 lượt', pro: '+5, +10, +25 lượt', highlight: true },
-  { feature: 'Bản đồ Google Maps 1-Click', free: 'Cơ bản', pro: 'Ghim & Chỉ đường', highlight: true },
-  { feature: 'Đặt dịch vụ & Email trọn gói', free: 'Tự xem', pro: '1-Click Booking', highlight: true },
-  { feature: 'Dự báo thời tiết & Xuất PDF', free: '3 ngày', pro: '14 ngày + PDF in màu', highlight: false },
-];
-
 export default function PremiumModal({ visible, onClose, onActivated }: PremiumModalProps) {
   const [selectedPlan, setSelectedPlan] = useState('pro');
   const [paymentMethod, setPaymentMethod] = useState<'payos' | 'momo'>('payos');
@@ -235,70 +228,35 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
               </View>
             </View>
 
-            {/* Feature Comparison Table */}
-            <View style={{ backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', borderWidth: 1, borderRadius: 18, padding: 16 }}>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#064E3B', marginBottom: 12 }}>
-                ⚖️ Bảng so sánh đặc quyền các gói
-              </Text>
-              <View style={{ gap: 8 }}>
-                {COMPARISON.map((c, idx) => (
-                  <View key={idx} style={{
-                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                    paddingVertical: 6, borderBottomWidth: idx < COMPARISON.length - 1 ? 1 : 0, borderBottomColor: '#ede8da',
-                  }}>
-                    <Text style={{ flex: 1, fontSize: 13, color: c.highlight ? '#1B3A2D' : '#555', fontWeight: c.highlight ? '700' : '400' }}>
-                      {c.feature}
-                    </Text>
-                    <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
-                      <Text style={{ fontSize: 12, color: '#888', width: 60, textAlign: 'center' }}>{c.free}</Text>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: BRAND_COLORS.primary, width: 130, textAlign: 'center' }}>{c.pro}</Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
-
             {/* Selected Plan Features Card */}
             {(() => {
               const currentPlan = PLANS.find(p => p.id === selectedPlan) || PLANS[1];
-              const featuresMap: Record<string, string[]> = {
-                plus: [
-                  '✨ Cộng dồn +5 lượt tạo chuyến đi AI mới (Vĩnh viễn)',
-                  '🗺️ Google Maps Việt Hóa chính chủ + Nút chỉ đường 1-Click',
-                  '🌤️ Dự báo thời tiết 14 ngày tự động tại điểm đến',
-                  '📄 Xuất file PDF lịch trình du lịch in màu sắc nét'
-                ],
-                pro: [
-                  '✨ Cộng dồn +10 lượt tạo chuyến đi AI mới (Vĩnh viễn)',
-                  '🛎️ 1-Click Bulk Booking: Đặt trọn gói Khách sạn + Quán ăn + Thuê xe',
-                  '✉️ Gửi HTML Email xác nhận booking trọn gói về Gmail',
-                  '🗺️ Google Maps chỉ đường 1-Click + 🌤️ Thời tiết 14 ngày + 📄 PDF in màu'
-                ],
-                vip: [
-                  '✨ Cộng dồn +25 lượt tạo chuyến đi AI mới (Tiết kiệm 40% chi phí)',
-                  '🎁 Voucher & Ưu đãi đặc biệt từ Đối tác du lịch xác minh (Verified Partners)',
-                  '🛎️ 1-Click Bulk Booking + ✉️ Email xác nhận trọn gói',
-                  '👑 Thẻ huy hiệu VIP trên hệ thống + Ưu tiên hỗ trợ từ Admin'
-                ]
-              };
-              const activeFeatures = featuresMap[selectedPlan] || featuresMap.pro;
-
               return (
                 <View style={{ backgroundColor: '#ECFDF5', borderColor: '#059669', borderWidth: 1.5, borderRadius: 16, padding: 18, gap: 10 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#A7F3D0', paddingBottom: 8 }}>
                     <Text style={{ fontSize: 16, fontWeight: '800', color: '#064E3B' }}>
-                      Đặc quyền {currentPlan.label} ({currentPlan.price})
+                      ✨ Mở khóa trọn bộ đặc quyền {currentPlan.label} ({currentPlan.price})
                     </Text>
                     <Text style={{ fontSize: 12, fontWeight: '800', color: '#059669', backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
                       {currentPlan.quota}
                     </Text>
                   </View>
                   <View style={{ gap: 6 }}>
-                    {activeFeatures.map((ft, idx) => (
-                      <Text key={idx} style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>
-                        {ft}
-                      </Text>
-                    ))}
+                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '700', lineHeight: 18 }}>
+                      🚀 Cộng dồn {currentPlan.quota} tạo chuyến đi AI mới (Sử dụng VĨNH VIỄN, không hết hạn)
+                    </Text>
+                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>
+                      🗺️ Google Maps Việt Hóa chính chủ + Nút chỉ đường 1-Click
+                    </Text>
+                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>
+                      🛎️ 1-Click Bulk Booking: Đặt trọn gói Khách sạn + Quán ăn + Thuê xe
+                    </Text>
+                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>
+                      ✉️ Gửi HTML Email xác nhận booking trọn gói về Gmail
+                    </Text>
+                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>
+                      🌤️ Dự báo thời tiết 14 ngày tự động + 📄 Xuất file PDF lịch trình in màu sắc nét
+                    </Text>
                   </View>
                 </View>
               );
