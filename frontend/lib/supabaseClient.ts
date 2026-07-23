@@ -1,40 +1,23 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+import { apiClient } from './apiClient';
 
-function cleanSupabaseUrl(rawUrl?: string): string {
-  const defaultUrl = 'https://vulkqdpqzgvpeawchqyt.supabase.co';
-  if (!rawUrl || !rawUrl.trim()) return defaultUrl;
-  let cleaned = rawUrl.trim().replace(/\/+$/, '');
-  cleaned = cleaned.replace(/\/rest\/v1\/?$/i, '');
-  return cleaned.replace(/\/+$/, '') || defaultUrl;
-}
-
-const DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1bGtxZHBxemd2cGVhd2NocXl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAxOTA1OTcsImV4cCI6MjA1NTc2NjU5N30.0';
-
-const supabaseUrl = cleanSupabaseUrl(process.env.EXPO_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL);
-const supabaseAnonKey = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || DEFAULT_ANON_KEY).trim();
-export const isMockAuth = false;
-
-// Native: SecureStore | Web browser: localStorage | SSR (Node.js): no-op
 const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
-const MOCK_TOKEN = 'mock-token';
-const MOCK_USER_KEY = 'vivu_mock_user';
-const MOCK_TOKEN_KEY = 'vivu_mock_token';
+const SESSION_KEY = 'vivu_user_session';
 
 const SecureStoreAdapter = {
-  getItem: (key: string) => {
+  getItem: (key: string): Promise<string | null> => {
     if (Platform.OS !== 'web') return SecureStore.getItemAsync(key);
     if (!canUseLocalStorage) return Promise.resolve(null);
     return Promise.resolve(localStorage.getItem(key));
   },
-  setItem: (key: string, value: string) => {
+  setItem: (key: string, value: string): Promise<void> => {
     if (Platform.OS !== 'web') return SecureStore.setItemAsync(key, value);
     if (!canUseLocalStorage) return Promise.resolve();
     localStorage.setItem(key, value);
     return Promise.resolve();
   },
-  removeItem: (key: string) => {
+  removeItem: (key: string): Promise<void> => {
     if (Platform.OS !== 'web') return SecureStore.deleteItemAsync(key);
     if (!canUseLocalStorage) return Promise.resolve();
     localStorage.removeItem(key);
@@ -42,76 +25,147 @@ const SecureStoreAdapter = {
   },
 };
 
-async function getStoredMockUser() {
-  const raw = await SecureStoreAdapter.getItem(MOCK_USER_KEY);
-  return raw ? JSON.parse(raw) : null;
+type AuthChangeListener = (event: string, session: any) => void;
+const listeners = new Set<AuthChangeListener>();
+let currentSession: any = null;
+let isSessionLoaded = false;
+
+// Async initializer
+async function initializeSession() {
+  try {
+    const stored = await SecureStoreAdapter.getItem(SESSION_KEY);
+    if (stored) {
+      currentSession = JSON.parse(stored);
+      // Validate session with backend
+      const res = await apiClient.get('/auth/me', {
+        headers: {
+          Authorization: `Bearer ${currentSession.access_token}`
+        }
+      });
+      if (res.data?.user) {
+        currentSession.user = res.data.user;
+        await SecureStoreAdapter.setItem(SESSION_KEY, JSON.stringify(currentSession));
+        notifyListeners('SIGNED_IN', currentSession);
+      } else {
+        currentSession = null;
+        await SecureStoreAdapter.removeItem(SESSION_KEY);
+        notifyListeners('SIGNED_OUT', null);
+      }
+    } else {
+      notifyListeners('SIGNED_OUT', null);
+    }
+  } catch (err) {
+    currentSession = null;
+    await SecureStoreAdapter.removeItem(SESSION_KEY);
+    notifyListeners('SIGNED_OUT', null);
+  } finally {
+    isSessionLoaded = true;
+  }
 }
 
-async function setStoredMockUser(email: string, fullName?: string) {
-  const user = {
-    id: '00000000-0000-0000-0000-000000000000',
-    email,
-    user_metadata: fullName ? { full_name: fullName } : {},
-  };
+// Call session initialization
+initializeSession();
 
-  await SecureStoreAdapter.setItem(MOCK_USER_KEY, JSON.stringify(user));
-  await SecureStoreAdapter.setItem(MOCK_TOKEN_KEY, MOCK_TOKEN);
-  return user;
+function notifyListeners(event: string, session: any) {
+  listeners.forEach(cb => {
+    try {
+      cb(event, session);
+    } catch (e) {
+      console.error(e);
+    }
+  });
 }
 
-async function clearStoredMockUser() {
-  await SecureStoreAdapter.removeItem(MOCK_USER_KEY);
-  await SecureStoreAdapter.removeItem(MOCK_TOKEN_KEY);
-}
+export const isMockAuth = false;
 
-function createMockSession(user: any) {
-  if (!user) return null;
-  return {
-    access_token: MOCK_TOKEN,
-    token_type: 'bearer',
-    user,
-  };
-}
-
-const mockSupabase = {
+export const supabase: {
+  auth: {
+    getSession: () => Promise<{ data: { session: any }; error: any }>;
+    getUser: () => Promise<{ data: { user: any }; error: any }>;
+    signInWithPassword: (credentials: any) => Promise<{ data: { session: any; user: any }; error: any }>;
+    signUp: (credentials: any) => Promise<{ data: { user: any; session: any }; error: any }>;
+    signOut: () => Promise<{ error: any }>;
+    onAuthStateChange: (cb: (event: any, session: any) => void) => { data: { subscription: { unsubscribe: () => void } } };
+  }
+} = {
   auth: {
     getSession: async () => {
-      const user = await getStoredMockUser();
-      return { data: { session: createMockSession(user) }, error: null };
+      if (isSessionLoaded) {
+        return { data: { session: currentSession }, error: null };
+      }
+      try {
+        const stored = await SecureStoreAdapter.getItem(SESSION_KEY);
+        const session = stored ? JSON.parse(stored) : null;
+        currentSession = session;
+        return { data: { session }, error: null };
+      } catch {
+        return { data: { session: null }, error: null };
+      }
     },
     getUser: async () => {
-      const user = await getStoredMockUser();
-      return { data: { user }, error: null };
+      if (currentSession?.user) {
+        return { data: { user: currentSession.user }, error: null };
+      }
+      try {
+        const stored = await SecureStoreAdapter.getItem(SESSION_KEY);
+        const session = stored ? JSON.parse(stored) : null;
+        currentSession = session;
+        return { data: { user: session?.user || null }, error: null };
+      } catch {
+        return { data: { user: null }, error: null };
+      }
     },
-    signUp: async ({ email, options }: any) => {
-      const user = await setStoredMockUser(email, options?.data?.full_name);
-      return { data: { user, session: createMockSession(user) }, error: null };
+    signInWithPassword: async ({ email, password }: any) => {
+      try {
+        const res = await apiClient.post('/auth/login', { email, password });
+        if (res.data?.session) {
+          currentSession = res.data.session;
+          await SecureStoreAdapter.setItem(SESSION_KEY, JSON.stringify(currentSession));
+          notifyListeners('SIGNED_IN', currentSession);
+          return { data: { session: currentSession, user: currentSession.user }, error: null };
+        }
+        throw new Error(res.data?.error || 'Đăng nhập không thành công');
+      } catch (err: any) {
+        const message = err.response?.data?.error || err.message || 'Đăng nhập không thành công';
+        return { data: { session: null, user: null }, error: new Error(message) };
+      }
     },
-    signInWithPassword: async ({ email }: any) => {
-      const user = await setStoredMockUser(email);
-      return { data: { user, session: createMockSession(user) }, error: null };
+    signUp: async ({ email, password, options }: any) => {
+      try {
+        const fullName = options?.data?.full_name || '';
+        const res = await apiClient.post('/auth/signup', { email, password, fullName });
+        if (res.data?.success) {
+          return { data: { user: res.data.user, session: null }, error: null };
+        }
+        throw new Error(res.data?.error || 'Đăng ký không thành công');
+      } catch (err: any) {
+        const message = err.response?.data?.error || err.message || 'Đăng ký không thành công';
+        return { data: { user: null, session: null }, error: new Error(message) };
+      }
     },
     signOut: async () => {
-      await clearStoredMockUser();
+      try {
+        await apiClient.post('/auth/logout');
+      } catch (_) {}
+      currentSession = null;
+      await SecureStoreAdapter.removeItem(SESSION_KEY);
+      notifyListeners('SIGNED_OUT', null);
       return { error: null };
     },
-    onAuthStateChange: () => ({
-      data: {
-        subscription: {
-          unsubscribe: () => {},
-        },
-      },
-    }),
-  },
+    onAuthStateChange: (cb: AuthChangeListener) => {
+      listeners.add(cb);
+      if (isSessionLoaded) {
+        cb(currentSession ? 'SIGNED_IN' : 'SIGNED_OUT', currentSession);
+      }
+      return {
+        data: {
+          subscription: {
+            unsubscribe: () => {
+              listeners.delete(cb);
+            }
+          }
+        }
+      };
+    }
+  }
 };
-
-const realSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: SecureStoreAdapter,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: Platform.OS === 'web',
-  },
-});
-
-export const supabase = realSupabase;

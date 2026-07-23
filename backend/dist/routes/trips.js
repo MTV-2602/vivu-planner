@@ -374,11 +374,15 @@ router.get('/:id', authMiddleware_1.authMiddleware, async (req, res) => {
 router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
     const client = (0, supabaseAdmin_1.getSupabaseUserClient)(req.token);
     const { title, destination_city, start_date, end_date, budget_total, traveler_count, traveler_type, preferences, health_conditions, special_requirements } = req.body;
-    // Check trip creation quota: Free = 3 trips, custom_quota for purchased packs
+    // Check trip creation quota: Free = 3 trips, custom_quota for purchased packs, Admin = 9999
     const userId = req.user.id;
+    const userEmail = req.user?.email?.toLowerCase().trim();
+    const ADMIN_EMAILS = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'];
+    const isEmailAdmin = userEmail && ADMIN_EMAILS.includes(userEmail);
+    const isSpecialAdminId = userId === '00000000-0000-0000-0000-000000000001';
     const { data: profile } = await supabaseAdmin_1.supabaseAdmin
         .from('profiles')
-        .select('is_premium, premium_until, custom_quota, trips_used')
+        .select('is_premium, premium_until, custom_quota, trips_used, role')
         .eq('id', userId)
         .single();
     const { count: dbTripsCount } = await supabaseAdmin_1.supabaseAdmin
@@ -386,7 +390,8 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
         .select('id', { count: 'exact', head: true })
         .eq('user_id', userId);
     const isPremium = !!(profile?.is_premium || (profile?.premium_until && new Date(profile.premium_until) > new Date()));
-    const allowedQuota = profile?.custom_quota || (isPremium ? 10 : 3);
+    const isDbAdmin = profile?.role === 'admin';
+    const allowedQuota = (isEmailAdmin || isSpecialAdminId || isDbAdmin) ? 9999 : (profile?.custom_quota || (isPremium ? 10 : 3));
     const currentUsed = Math.max(profile?.trips_used ?? 0, dbTripsCount || 0);
     if (currentUsed >= allowedQuota) {
         return res.status(403).json({
@@ -418,7 +423,7 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
     };
     const correctedStartDate = autoCorrectDate(start_date);
     const correctedEndDate = autoCorrectDate(end_date);
-    // Predict absolute minimum cost and validate budget
+    // Predict realistic minimum cost for trip validation
     const start = new Date(correctedStartDate);
     const end = new Date(correctedEndDate);
     let daysCount = 1;
@@ -427,11 +432,16 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
         daysCount = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
     }
     const nightsCount = Math.max(0, daysCount - 1);
-    const travelers = parseInt(traveler_count || '1');
-    const minRequiredBudget = travelers * ((nightsCount * 100000) + (daysCount * 120000));
-    if (parseFloat(budget_total) < minRequiredBudget) {
+    const travelers = Math.max(1, parseInt(traveler_count || '1'));
+    // Real-world estimation: 1 room per 2 travelers (200k/night/room), meals & transport 120k/guest/day
+    const roomCount = Math.ceil(travelers / 2);
+    const estimatedRoomCost = roomCount * nightsCount * 200000;
+    const estimatedDailyCost = travelers * daysCount * 120000;
+    const minRequiredBudget = estimatedRoomCost + estimatedDailyCost;
+    const parsedBudget = parseFloat(budget_total);
+    if (isNaN(parsedBudget) || parsedBudget < minRequiredBudget) {
         return res.status(400).json({
-            error: `Ngân sách tối thiểu dự kiến cho chuyến đi ${daysCount} ngày (${nightsCount} đêm) của ${travelers} khách tại ${destination_city} là ${minRequiredBudget.toLocaleString('vi-VN')}đ. Vui lòng tăng ngân sách để tiếp tục.`
+            error: `Ngân sách tối thiểu dự kiến cho chuyến đi ${daysCount} ngày (${nightsCount} đêm) của ${travelers} khách tại ${destination_city} là ${minRequiredBudget.toLocaleString('vi-VN')}đ. Vui lòng tăng ngân sách hợp lệ để tiếp tục.`
         });
     }
     try {
@@ -479,14 +489,33 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
         if (tripError || !trip) {
             throw tripError || new Error('Failed to create trip record');
         }
-        // Permanently increment trips_used on profiles so deleting trips later DOES NOT refund credits!
-        await supabaseAdmin_1.supabaseAdmin
-            .from('profiles')
-            .upsert({
-            id: userId,
-            trips_used: currentUsed + 1,
-            updated_at: new Date().toISOString()
-        });
+        // Permanently increment trips_used on profiles safely (using update/insert instead of raw upsert)
+        if (profile) {
+            const { error: updateErr } = await supabaseAdmin_1.supabaseAdmin
+                .from('profiles')
+                .update({
+                trips_used: currentUsed + 1,
+                updated_at: new Date().toISOString()
+            })
+                .eq('id', userId);
+            if (updateErr) {
+                console.error('[CreateTrip] Safe profile update error:', updateErr.message);
+            }
+        }
+        else {
+            const { error: insertErr } = await supabaseAdmin_1.supabaseAdmin
+                .from('profiles')
+                .insert({
+                id: userId,
+                trips_used: currentUsed + 1,
+                is_premium: false,
+                custom_quota: 3,
+                updated_at: new Date().toISOString()
+            });
+            if (insertErr) {
+                console.error('[CreateTrip] Safe profile insert error:', insertErr.message);
+            }
+        }
         // Liên kết toàn bộ tin nhắn chat chung cũ (với trip_id IS NULL) sang chuyến đi mới này
         const { error: chatLinkErr } = await supabaseAdmin_1.supabaseAdmin
             .from('trip_chat_messages')

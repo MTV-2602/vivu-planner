@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, ActivityIndicator, Platform, Linking } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { X, Crown, Check, Zap, Sparkles, ShieldCheck, Map, Calendar, ArrowRight } from 'lucide-react-native';
+import { X, Crown, Sparkles } from 'lucide-react-native';
 import { apiClient } from '../lib/apiClient';
 import { BRAND_COLORS } from '../constants';
 
@@ -12,18 +12,18 @@ interface PremiumModalProps {
 }
 
 const PLANS = [
-  { id: 'plus', label: 'Gói Plus', price: '29.000đ', duration: '', quota: '+5 lượt AI', popular: false, badge: '5.8k/chuyến' },
-  { id: 'pro', label: 'Gói Pro', price: '49.000đ', duration: '', quota: '+10 lượt AI', popular: true, badge: 'ĐỀ XUẤT (4.9k/chuyến)' },
-  { id: 'vip', label: 'Gói VIP', price: '99.000đ', duration: '', quota: '+25 lượt AI', popular: false, badge: 'Tiết kiệm 40%' },
+  { id: 'plus', label: 'Gói Plus', price: '29.000đ', quota: '+5 lượt AI', popular: false, badge: '5.8k/chuyến' },
+  { id: 'pro', label: 'Gói Pro', price: '49.000đ', quota: '+10 lượt AI', popular: true, badge: 'ĐỀ XUẤT (4.9k/chuyến)' },
+  { id: 'vip', label: 'Gói VIP', price: '99.000đ', quota: '+25 lượt AI', popular: false, badge: 'Tiết kiệm 40%' },
 ];
 
 export default function PremiumModal({ visible, onClose, onActivated }: PremiumModalProps) {
   const [selectedPlan, setSelectedPlan] = useState('pro');
   const [paymentMethod, setPaymentMethod] = useState<'payos' | 'momo'>('payos');
   const [loading, setLoading] = useState(false);
-  const [demoLoading, setDemoLoading] = useState(false);
   const [orderData, setOrderData] = useState<any>(null);
   const [activated, setActivated] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const { data: statusData } = useQuery({
     queryKey: ['paymentStatusModal'],
@@ -38,17 +38,29 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     if (!visible) {
       setOrderData(null);
       setActivated(false);
+      setErrorMessage('');
     }
   }, [visible]);
 
-  // Poll payment status while QR is visible — detect when quota increases
+  // 100% automatic server-side polling — no manual button
   useEffect(() => {
     if (!orderData || activated) return;
+    // Always use orderId (VIVU-prefixed) — backend check-order normalizes both formats
+    const targetCode = orderData.orderId || orderData.orderCode;
     let lastQuota = statusData?.tripsQuota ?? 0;
+
     const interval = setInterval(async () => {
       try {
+        if (targetCode) {
+          const checkRes = await apiClient.get(`/payment/check-order/${targetCode}`);
+          if (checkRes.data?.paid) {
+            clearInterval(interval);
+            setActivated(true);
+            onActivated?.();
+            return;
+          }
+        }
         const { data } = await apiClient.get('/payment/status');
-        // Activate if user newly became premium OR their quota increased
         if (data.isPremium && !statusData?.isPremium) {
           clearInterval(interval);
           setActivated(true);
@@ -60,11 +72,9 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
           onActivated?.();
         }
       } catch {}
-    }, 3000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [orderData, activated, statusData?.tripsQuota, statusData?.isPremium]);
-
-  const [errorMessage, setErrorMessage] = useState('');
 
   const handleCreateOrder = async () => {
     setLoading(true);
@@ -84,29 +94,12 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     }
   };
 
-  const handleDemoActivate = async () => {
-    setDemoLoading(true);
-    try {
-      await apiClient.post('/payment/demo-activate', { plan: selectedPlan });
-      setActivated(true);
-      onActivated?.();
-    } catch (err: any) {
-      // Even if API fails in offline test, activate locally
-      setActivated(true);
-      onActivated?.();
-    } finally {
-      setDemoLoading(false);
-    }
+  const handleCancelOrder = () => {
+    setOrderData(null);
+    setErrorMessage('');
   };
 
-  const handleOpenExternal = () => {
-    const url = orderData?.checkoutUrl || orderData?.payUrl;
-    if (url) {
-      if (Platform.OS === 'web') window.open(url, '_blank');
-      else Linking.openURL(url);
-    }
-  };
-
+  // Success screen
   if (activated) {
     const currentPlan = PLANS.find(p => p.id === selectedPlan) || PLANS[1];
     return (
@@ -132,17 +125,25 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     );
   }
 
+  // Build QR image URL
   let qrImage = '';
   if (orderData) {
-    // Prioritize direct EMVCo bank string or official QR image URL over web checkout URLs
     const directQr = orderData.qrCode || orderData.qrCodeUrl;
     const webUrl = orderData.checkoutUrl || orderData.payUrl;
+    const momoDeeplink = orderData.deeplink;
 
     if (directQr) {
-      if (directQr.startsWith('http://') || directQr.startsWith('https://') || directQr.startsWith('data:image/')) {
+      // Check if it's a real image URL (png/jpg/vietqr) or a QR payload
+      const isImageUrl = directQr.startsWith('data:image/') ||
+        (directQr.startsWith('http') && (
+          directQr.includes('vietqr.io') ||
+          directQr.includes('.png') ||
+          directQr.includes('.jpg')
+        ));
+      if (isImageUrl) {
         qrImage = directQr;
       } else {
-        // EMVCo standard bank payload (000201...) -> generate standard bank QR code
+        // EMVCo bank payload (000201...) or MoMo/PayOS web links → generate clean scannable QR
         qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(directQr)}`;
       }
     } else if (orderData.accountNumber && orderData.amount) {
@@ -150,6 +151,11 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
       qrImage = `https://img.vietqr.io/image/${bin}-${orderData.accountNumber}-compact2.png?amount=${orderData.amount}&addInfo=VIVU${orderData.orderCode || ''}&accountName=${encodeURIComponent(orderData.accountName || 'VIVU PLANNER')}`;
     } else if (webUrl) {
       qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(webUrl)}`;
+    }
+
+    // For MoMo: prefer deeplink (opens MoMo app directly) over web URL for QR
+    if (orderData.method === 'momo' && momoDeeplink && !directQr) {
+      qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(momoDeeplink)}`;
     }
   }
 
@@ -159,13 +165,9 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
         <View style={{ backgroundColor: '#fff', borderRadius: 28, width: '100%', maxWidth: 680, maxHeight: '90%', overflow: 'hidden' }}>
-          
-          {/* Header Banner */}
-          <View style={{
-            backgroundColor: '#064E3B',
-            padding: 24, paddingBottom: 20,
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-          }}>
+
+          {/* Header */}
+          <View style={{ backgroundColor: '#064E3B', padding: 24, paddingBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
               <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(16,185,129,0.25)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Sparkles size={24} color="#10B981" />
@@ -183,12 +185,9 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24, gap: 20 }}>
-            
-            {/* Current Credit Display */}
-            <View style={{
-              backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', borderWidth: 1.5,
-              borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'
-            }}>
+
+            {/* Credit Display */}
+            <View style={{ backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', borderWidth: 1.5, borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Crown size={22} color="#059669" />
                 <View>
@@ -221,28 +220,20 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                         flex: 1, minWidth: 180, borderRadius: 16, borderWidth: isSelected ? 2.5 : 1.5,
                         borderColor: isSelected ? '#059669' : '#e2e8f0',
                         backgroundColor: isSelected ? '#F0FDF4' : '#ffffff',
-                        padding: 16, position: 'relative',
-                        cursor: 'pointer' as any,
+                        padding: 16, position: 'relative', cursor: 'pointer' as any,
                       }}
                     >
                       {plan.badge && (
-                        <View style={{
-                          position: 'absolute', top: -10, right: 12,
-                          backgroundColor: plan.popular ? '#D4A017' : '#059669',
-                          borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2,
-                        }}>
+                        <View style={{ position: 'absolute', top: -10, right: 12, backgroundColor: plan.popular ? '#D4A017' : '#059669', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
                           <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>{plan.badge}</Text>
                         </View>
                       )}
                       <Text style={{ fontWeight: '800', color: isSelected ? '#064E3B' : '#1e293b', fontSize: 15 }}>{plan.label}</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, marginVertical: 6 }}>
                         <Text style={{ fontWeight: '800', color: '#059669', fontSize: 20 }}>{plan.price}</Text>
-                        <Text style={{ color: '#64748b', fontSize: 12 }}>{plan.duration}</Text>
                       </View>
                       <View style={{ backgroundColor: isSelected ? '#DCFCE7' : '#f1f5f9', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, alignSelf: 'flex-start' }}>
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: isSelected ? '#047857' : '#475569' }}>
-                          ✨ {plan.quota}
-                        </Text>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: isSelected ? '#047857' : '#475569' }}>✨ {plan.quota}</Text>
                       </View>
                     </Pressable>
                   );
@@ -250,76 +241,64 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
               </View>
             </View>
 
-            {/* Selected Plan Features Card */}
+            {/* Selected Plan Features */}
             {(() => {
               const currentPlan = PLANS.find(p => p.id === selectedPlan) || PLANS[1];
               return (
                 <View style={{ backgroundColor: '#ECFDF5', borderColor: '#059669', borderWidth: 1.5, borderRadius: 16, padding: 18, gap: 10 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#A7F3D0', paddingBottom: 8 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#064E3B' }}>
-                      ✨ Mở khóa trọn bộ đặc quyền {currentPlan.label} ({currentPlan.price})
-                    </Text>
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#059669', backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-                      {currentPlan.quota}
-                    </Text>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#064E3B' }}>✨ Mở khóa trọn bộ đặc quyền {currentPlan.label} ({currentPlan.price})</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#059669', backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>{currentPlan.quota}</Text>
                   </View>
                   <View style={{ gap: 6 }}>
-                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '700', lineHeight: 18 }}>
-                      🚀 Cộng dồn {currentPlan.quota} tạo chuyến đi AI mới (Sử dụng VĨNH VIỄN, không hết hạn)
-                    </Text>
-                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>
-                      🗺️ Google Maps Việt Hóa chính chủ + Nút chỉ đường 1-Click
-                    </Text>
-                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>
-                      🛎️ 1-Click Bulk Booking: Đặt trọn gói Khách sạn + Quán ăn + Thuê xe
-                    </Text>
-                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>
-                      ✉️ Gửi HTML Email xác nhận booking trọn gói về Gmail
-                    </Text>
-                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>
-                      🌤️ Dự báo thời tiết 14 ngày tự động + 📄 Xuất file PDF lịch trình in màu sắc nét
-                    </Text>
+                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '700', lineHeight: 18 }}>🚀 Cộng dồn {currentPlan.quota} tạo chuyến đi AI mới (Sử dụng VĨNH VIỄN, không hết hạn)</Text>
+                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>🗺️ Google Maps Việt Hóa chính chủ + Nút chỉ đường 1-Click</Text>
+                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>🛎️ 1-Click Bulk Booking: Đặt trọn gói Khách sạn + Quán ăn + Thuê xe</Text>
+                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>✉️ Gửi HTML Email xác nhận booking trọn gói về Gmail</Text>
+                    <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>🌤️ Dự báo thời tiết 14 ngày tự động + 📄 Xuất file PDF lịch trình in màu sắc nét</Text>
                   </View>
                 </View>
               );
             })()}
 
-            {/* Payment Method Selector */}
-            <View>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#064E3B', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                2. Phương thức thanh toán
-              </Text>
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                {(['payos', 'momo'] as const).map(method => {
-                  const isSel = paymentMethod === method;
-                  return (
-                    <Pressable
-                      key={method}
-                      onPress={() => { setPaymentMethod(method); setOrderData(null); setErrorMessage(''); }}
-                      style={{
-                        flex: 1, borderRadius: 14, borderWidth: isSel ? 2.5 : 1.5,
-                        borderColor: isSel ? '#059669' : '#e2e8f0',
-                        backgroundColor: isSel ? '#F0FDF4' : '#ffffff',
-                        padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12,
-                        cursor: 'pointer' as any,
-                      }}
-                    >
-                      <Text style={{ fontSize: 26 }}>{method === 'payos' ? '🏦' : '💜'}</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontWeight: '800', color: isSel ? '#064E3B' : '#1e293b', fontSize: 14 }}>
-                          {method === 'payos' ? 'PayOS (Ngân hàng)' : 'Ví MoMo'}
-                        </Text>
-                        <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
-                          {method === 'payos' ? 'Cổng thanh toán PayOS' : 'Cổng thanh toán Ví MoMo'}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
+            {/* Payment Method Selector — only show when no active order */}
+            {!orderData && (
+              <View>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#064E3B', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  2. Phương thức thanh toán
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  {(['payos', 'momo'] as const).map(method => {
+                    const isSel = paymentMethod === method;
+                    return (
+                      <Pressable
+                        key={method}
+                        onPress={() => { setPaymentMethod(method); setErrorMessage(''); }}
+                        style={{
+                          flex: 1, borderRadius: 14, borderWidth: isSel ? 2.5 : 1.5,
+                          borderColor: isSel ? '#059669' : '#e2e8f0',
+                          backgroundColor: isSel ? '#F0FDF4' : '#ffffff',
+                          padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12,
+                          cursor: 'pointer' as any,
+                        }}
+                      >
+                        <Text style={{ fontSize: 26 }}>{method === 'payos' ? '🏦' : '💜'}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontWeight: '800', color: isSel ? '#064E3B' : '#1e293b', fontSize: 14 }}>
+                            {method === 'payos' ? 'PayOS (Ngân hàng)' : 'Ví MoMo'}
+                          </Text>
+                          <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                            {method === 'payos' ? 'Cổng thanh toán PayOS' : 'Cổng thanh toán Ví MoMo'}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
-            </View>
+            )}
 
-            {/* QR Code / Order Display */}
+            {/* QR Code Display */}
             {orderData && (
               <View style={{ backgroundColor: '#f8f4ec', borderRadius: 20, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: '#e0dbd0' }}>
                 <Text style={{ fontWeight: '800', color: '#1B3A2D', fontSize: 16, marginBottom: 4 }}>
@@ -328,7 +307,7 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                 <Text style={{ color: '#888', fontSize: 12, marginBottom: 16, textAlign: 'center' }}>
                   Quét mã QR bên dưới hoặc nhấn nút để mở trang thanh toán chính thức
                 </Text>
-                
+
                 {qrImage ? (
                   Platform.OS === 'web' ? (
                     // @ts-ignore
@@ -350,38 +329,28 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                   <Text style={{ color: '#666', fontSize: 12, fontWeight: '600' }}>Tự động kiểm tra giao dịch...</Text>
                 </View>
 
-                {/* Instant Activation Button after Transfer */}
-                <Pressable
-                  onPress={handleDemoActivate}
-                  disabled={demoLoading}
-                  style={{
-                    marginTop: 14, width: '100%', backgroundColor: '#059669', borderRadius: 14,
-                    paddingHorizontal: 20, paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
-                    borderWidth: 1.5, borderColor: '#047857', cursor: 'pointer' as any,
-                  }}
-                >
-                  {demoLoading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
-                      ✅ Tôi đã chuyển khoản xong (Bấm để nhận +10 lượt AI ngay)
-                    </Text>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, width: '100%' }}>
+                  {externalUrl && (
+                    <Pressable
+                      onPress={() => {
+                        if (Platform.OS === 'web') window.open(externalUrl, '_blank');
+                        else Linking.openURL(externalUrl);
+                      }}
+                      style={{ flex: 1, backgroundColor: orderData.method === 'momo' ? '#a50064' : '#334155', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center' }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
+                        {orderData.method === 'momo' ? '💜 Mở MoMo ↗' : '🏦 Mở PayOS ↗'}
+                      </Text>
+                    </Pressable>
                   )}
-                </Pressable>
-
-                {externalUrl && (
+                  {/* Cancel button — switch payment method */}
                   <Pressable
-                    onPress={() => {
-                      if (Platform.OS === 'web') window.open(externalUrl, '_blank');
-                      else Linking.openURL(externalUrl);
-                    }}
-                    style={{ marginTop: 10, backgroundColor: orderData.method === 'momo' ? '#a50064' : '#334155', borderRadius: 14, paddingHorizontal: 20, paddingVertical: 10 }}
+                    onPress={handleCancelOrder}
+                    style={{ flex: 1, backgroundColor: '#f1f5f9', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0' }}
                   >
-                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
-                      {orderData.method === 'momo' ? '💜 Mở trang thanh toán MoMo ↗' : '🏦 Mở trang thanh toán PayOS (pay.payos.vn) ↗'}
-                    </Text>
+                    <Text style={{ color: '#64748b', fontWeight: '700', fontSize: 13 }}>✕ Đổi phương thức</Text>
                   </Pressable>
-                )}
+                </View>
               </View>
             )}
 
@@ -394,28 +363,24 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
             ) : null}
 
             {/* Main Action Button */}
-            {(() => {
+            {!orderData && (() => {
               const currentPlan = PLANS.find(p => p.id === selectedPlan) || PLANS[1];
               return (
-                <View style={{ gap: 10 }}>
-                  {!orderData ? (
-                    <Pressable
-                      onPress={handleCreateOrder}
-                      disabled={loading}
-                      style={{ backgroundColor: '#059669', borderRadius: 16, padding: 18, alignItems: 'center', cursor: 'pointer' as any }}
-                    >
-                      {loading ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>
-                          {paymentMethod === 'payos'
-                            ? `🏦 Tạo mã VietQR nạp ${currentPlan.label} (${currentPlan.price})`
-                            : `💜 Thanh toán MoMo ${currentPlan.label} (${currentPlan.price})`}
-                        </Text>
-                      )}
-                    </Pressable>
-                  ) : null}
-                </View>
+                <Pressable
+                  onPress={handleCreateOrder}
+                  disabled={loading}
+                  style={{ backgroundColor: '#059669', borderRadius: 16, padding: 18, alignItems: 'center', cursor: 'pointer' as any }}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>
+                      {paymentMethod === 'payos'
+                        ? `🏦 Tạo mã VietQR nạp ${currentPlan.label} (${currentPlan.price})`
+                        : `💜 Thanh toán MoMo ${currentPlan.label} (${currentPlan.price})`}
+                    </Text>
+                  )}
+                </Pressable>
               );
             })()}
 

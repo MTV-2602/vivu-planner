@@ -26,6 +26,7 @@ function getApiBaseUrl(): string {
 export const apiClient = axios.create({
   baseURL: getApiBaseUrl(),
   headers: { 'Content-Type': 'application/json' },
+  timeout: 0, // No timeout — AI trip generation waits as long as server needs
 });
 
 apiClient.interceptors.request.use(

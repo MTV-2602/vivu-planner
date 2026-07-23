@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { supabaseAdmin, isDbMocked } from '../services/supabaseAdmin';
+import { supabase, supabaseAdmin, isDbMocked } from '../services/supabaseAdmin';
+import { authMiddleware, AuthenticatedRequest } from '../middleware/authMiddleware';
 
 const router = Router();
 
@@ -67,6 +68,69 @@ router.post('/signup', async (req: Request, res: Response) => {
     console.error('[Auth Backend] signup exception:', err);
     return res.status(500).json({ error: 'Có lỗi xảy ra trong quá trình xử lý đăng ký', details: err.message });
   }
+});
+
+// POST /api/auth/login - Đăng nhập tài khoản
+router.post('/login', async (req: Request, res: Response) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email và mật khẩu là bắt buộc' });
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: password
+    });
+
+    if (error || !data.session) {
+      return res.status(400).json({ error: error?.message || 'Email hoặc mật khẩu không chính xác' });
+    }
+
+    return res.json({
+      session: data.session,
+      user: data.user
+    });
+  } catch (err: any) {
+    console.error('[Auth Backend] login exception:', err);
+    return res.status(500).json({ error: 'Có lỗi xảy ra trong quá trình xử lý đăng nhập', details: err.message });
+  }
+});
+
+// GET /api/auth/me - Lấy thông tin phiên làm việc người dùng hiện tại
+router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Không tìm thấy mã xác thực' });
+  }
+
+  // Check if special Admin user
+  if (req.user?.id === '00000000-0000-0000-0000-000000000001') {
+    return res.json({
+      user: {
+        id: req.user.id,
+        email: req.user.email,
+        user_metadata: { full_name: 'ViVu Administrator' }
+      }
+    });
+  }
+
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) {
+      return res.status(401).json({ error: 'Phiên đăng nhập đã hết hạn' });
+    }
+    return res.json({ user });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Không thể tải thông tin định danh', details: err.message });
+  }
+});
+
+// POST /api/auth/logout - Đăng xuất
+router.post('/logout', async (req: Request, res: Response) => {
+  return res.json({ success: true });
 });
 
 export default router;

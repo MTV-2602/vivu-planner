@@ -40,7 +40,9 @@ export async function createPayOSOrder(params: {
   }
 
   const { amount, returnUrl, cancelUrl, buyerName, buyerEmail, buyerPhone } = params;
-  const orderCode = Number(String(params.orderCode).slice(-9));
+  // PayOS orderCode must be a positive integer <= 9007199254740991 (Number.MAX_SAFE_INTEGER)
+  // Date.now() is 13 digits which is safe — no slicing needed
+  const orderCode = params.orderCode;
   const description = sanitizePayOSDescription(params.description || 'ViVu Pro');
 
   // Build signature string (sorted alphabetically by key)
@@ -90,11 +92,20 @@ export function verifyPayOSWebhook(body: any): boolean {
   try {
     const checksumKey = process.env.PAYOS_CHECKSUM_KEY || '';
     const { data, signature } = body;
-    if (!data || !signature || !checksumKey) return false;
+    if (!signature || !checksumKey) return false;
 
-    // Sort keys and build checksum string
-    const sortedKeys = Object.keys(data).sort();
-    const signData = sortedKeys.map(k => `${k}=${data[k]}`).join('&');
+    // Handle string data or object data
+    const dataObj = typeof data === 'string' ? JSON.parse(data) : (data || {});
+
+    // Sort keys alphabetically and format as key=value&...
+    const sortedKeys = Object.keys(dataObj).sort();
+    const signData = sortedKeys
+      .map(k => {
+        const val = dataObj[k];
+        return `${k}=${val === null || val === undefined ? '' : val}`;
+      })
+      .join('&');
+
     const expectedSig = crypto.createHmac('sha256', checksumKey).update(signData).digest('hex');
     return expectedSig === signature;
   } catch {
@@ -102,7 +113,28 @@ export function verifyPayOSWebhook(body: any): boolean {
   }
 }
 
-// ─── MoMo ───────────────────────────────────────────────────────────────────
+export async function getPayOSOrderInfo(orderCode: number | string): Promise<any> {
+  const clientId = process.env.PAYOS_CLIENT_ID || '';
+  const apiKey = process.env.PAYOS_API_KEY || '';
+
+  if (!clientId || !apiKey) return null;
+
+  try {
+    const response = await axios.get(`https://api-merchant.payos.vn/v2/payment-requests/${orderCode}`, {
+      headers: {
+        'x-client-id': clientId,
+        'x-api-key': apiKey,
+      },
+      timeout: 8000,
+    });
+    return response.data?.data || response.data;
+  } catch (err: any) {
+    console.error('[PayOS Check Order Error]:', err.response?.data || err.message);
+    return null;
+  }
+}
+
+// ─── MoMo (Production Gateway Only) ─────────────────────────────────────────
 const MOMO_API_URL = 'https://payment.momo.vn/v2/gateway/api/create';
 
 function sanitizeMoMoOrderInfo(text: string): string {
@@ -219,6 +251,42 @@ export function verifyMoMoIPN(body: any): boolean {
     return expectedSig === signature;
   } catch {
     return false;
+  }
+}
+
+export async function queryMoMoOrderInfo(orderId: string, requestId: string): Promise<any> {
+  const partnerCode = process.env.MOMO_PARTNER_CODE || '';
+  const accessKey = process.env.MOMO_ACCESS_KEY || '';
+  const secretKey = process.env.MOMO_SECRET_KEY || '';
+
+  if (!partnerCode || !accessKey || !secretKey) return null;
+
+  const rawSignature = [
+    `accessKey=${accessKey}`,
+    `orderId=${orderId}`,
+    `partnerCode=${partnerCode}`,
+    `requestId=${requestId}`,
+  ].join('&');
+
+  const signature = crypto.createHmac('sha256', secretKey).update(rawSignature).digest('hex');
+
+  const body = {
+    partnerCode,
+    requestId,
+    orderId,
+    signature,
+    lang: 'vi',
+  };
+
+  try {
+    const response = await axios.post('https://payment.momo.vn/v2/gateway/api/query', body, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 8000,
+    });
+    return response.data;
+  } catch (err: any) {
+    console.error('[MoMo Query Error]:', err.response?.data || err.message);
+    return null;
   }
 }
 

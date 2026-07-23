@@ -134,8 +134,8 @@ function DateInput({
   );
 }
 
-// Loading screen with spinning compass + progress
-function LoadingScreen({ stage }: { stage: number }) {
+// Loading screen with spinning compass + progress + cancel
+function LoadingScreen({ stage, onCancel }: { stage: number; onCancel: () => void }) {
   const spinAnim = useRef(new Animated.Value(0)).current;
   const ringAnim = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -208,6 +208,14 @@ function LoadingScreen({ stage }: { stage: number }) {
         <Text className="text-sm font-semibold text-brand-primary text-center">
           {LOADING_STAGES[stage]}
         </Text>
+
+        {/* Cancel button */}
+        <Pressable
+          onPress={onCancel}
+          style={{ marginTop: 8, paddingHorizontal: 32, paddingVertical: 12, borderRadius: 24, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)', backgroundColor: 'rgba(255,255,255,0.05)' }}
+        >
+          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '600' }}>✕ Hủy tạo lịch trình</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -219,6 +227,15 @@ export default function TripWizard() {
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const handleCancelLoading = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setLoading(false);
+    setErrorMsg('');
+    setStep(1);
+  };
 
   // Form state
   const [title, setTitle] = useState('');
@@ -361,6 +378,9 @@ export default function TripWizard() {
     setLoading(true);
     setLoadingStage(0);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     const stageInterval = setInterval(() => {
       setLoadingStage(prev => {
         if (prev < LOADING_STAGES.length - 1) return prev + 1;
@@ -398,7 +418,7 @@ export default function TripWizard() {
         preferences: formattedPrefs,
         health_conditions: healthConditions,
         special_requirements: fullSpecialRequirements,
-      });
+      }, { signal: controller.signal });
       clearInterval(stageInterval);
       // Invalidate trips cache + schedule reminder notification
       await clearCache('trips');
@@ -414,12 +434,14 @@ export default function TripWizard() {
     } catch (err: any) {
       clearInterval(stageInterval);
       setLoading(false);
+      // Ignore abort errors (user cancelled)
+      if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') return;
       setErrorMsg(err.response?.data?.error || 'Có lỗi xảy ra khi tạo chuyến đi');
       setStep(4);
     }
   };
 
-  if (loading) return <LoadingScreen stage={loadingStage} />;
+  if (loading) return <LoadingScreen stage={loadingStage} onCancel={handleCancelLoading} />;
 
   return (
     <KeyboardAvoidingView

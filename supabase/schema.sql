@@ -13,6 +13,7 @@ create table public.profiles (
   full_name text,
   phone text,
   avatar_url text,
+  role text default 'user' check (role in ('user', 'admin')),
   created_at timestamptz default now()
 );
 alter table public.profiles enable row level security;
@@ -140,6 +141,7 @@ create table public.gemini_api_keys (
   key_value text unique not null,
   is_active boolean default true,
   status text default 'active', -- 'active', 'rate_limited', 'invalid'
+  usage_count int default 0,
   last_used_at timestamptz,
   created_at timestamptz default now()
 );
@@ -190,4 +192,57 @@ create table public.partner_analytics (
   created_at timestamptz default now()
 );
 alter table public.partner_analytics enable row level security;
+
+-- ===== 11. bookings =====
+create table public.bookings (
+  id text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  token text unique not null,
+  guest_name text not null,
+  guest_email text not null,
+  guest_phone text,
+  guest_count int default 1,
+  items jsonb default '[]'::jsonb,
+  total_cost numeric default 0,
+  status text default 'pending', -- 'pending', 'confirmed', 'cancelled'
+  confirmed_at timestamptz,
+  created_at timestamptz default now()
+);
+alter table public.bookings enable row level security;
+create policy "bookings_owner_all" on public.bookings
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ===== 12. payment_orders =====
+create table public.payment_orders (
+  id text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  method text not null,
+  plan text not null,
+  amount numeric not null,
+  status text default 'pending', -- 'pending', 'completed', 'cancelled'
+  order_code text not null,
+  created_at timestamptz default now()
+);
+alter table public.payment_orders enable row level security;
+create policy "payment_orders_owner_all" on public.payment_orders
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ===== 13. trip_chat_messages =====
+create table if not exists public.trip_chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid references public.trips(id) on delete cascade,
+  user_id uuid not null,
+  role text not null check (role in ('user', 'model')),
+  content text not null,
+  adapted_itinerary jsonb,
+  diff text,
+  previous_snapshot jsonb,
+  is_create_trip boolean,
+  create_trip_params jsonb,
+  created_at timestamptz default now()
+);
+alter table public.trip_chat_messages enable row level security;
+create policy "chat_messages_owner_all" on public.trip_chat_messages
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 

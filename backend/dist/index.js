@@ -33,7 +33,7 @@ app.get('/health', (_req, res) => {
         status: 'ok',
         timestamp: new Date().toISOString(),
         uptime: Math.floor(process.uptime()),
-        mode: process.env.GEMINI_API_KEY ? 'production' : 'mock-fallback',
+        mode: process.env.SUPABASE_URL ? 'production' : 'unconfigured',
     });
 });
 // Root endpoint for deployment status check
@@ -42,7 +42,7 @@ app.get('/', (_req, res) => {
         name: 'ViVu Planner Backend API',
         status: 'healthy',
         version: '1.0.0',
-        mode: process.env.GEMINI_API_KEY ? 'production' : 'mock-fallback',
+        mode: process.env.SUPABASE_URL ? 'production' : 'unconfigured',
     });
 });
 // Register routes
@@ -59,9 +59,11 @@ app.use((req, res) => {
     res.status(404).json({ error: 'Endpoint not found' });
 });
 // Always listen — Render runs as a persistent Node.js process (not serverless)
-app.listen(port, () => {
+const server = app.listen(port, () => {
     console.log(`[ViVu Backend] Running at http://localhost:${port}`);
     console.log(`[ViVu Backend] Mode: ${process.env.GEMINI_API_KEY ? 'Real APIs' : 'Mock Fallback'}`);
     console.log(`[ViVu Backend] CORS: ${frontendOrigin}`);
 });
+// Set server-level timeout to 180 seconds (Gemini AI generation can take 60-90s)
+server.setTimeout(180000);
 exports.default = app;

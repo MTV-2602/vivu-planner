@@ -8,14 +8,32 @@ const ADMIN_EMAILS = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@v
 import crypto from 'crypto';
 
 // Admin middleware to verify admin token
-function adminMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+async function adminMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const isSpecialAdminId = req.user && req.user.id === '00000000-0000-0000-0000-000000000001';
   const isEmailAdmin = req.user && req.user.email && ADMIN_EMAILS.map(e => e.toLowerCase().trim()).includes(req.user.email.toLowerCase().trim());
 
-  if (!isSpecialAdminId && !isEmailAdmin) {
-    return res.status(403).json({ error: 'Forbidden: Access denied. Admin rights required.' });
+  if (isSpecialAdminId || isEmailAdmin) {
+    return next();
   }
-  next();
+
+  // Check the database profile role
+  if (req.user?.id) {
+    try {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('role')
+        .eq('id', req.user.id)
+        .maybeSingle();
+
+      if (profile && profile.role === 'admin') {
+        return next();
+      }
+    } catch (err) {
+      console.error('[Admin Middleware] Error checking user role:', err);
+    }
+  }
+
+  return res.status(403).json({ error: 'Forbidden: Access denied. Admin rights required.' });
 }
 
 // POST /api/admin/login - Authenticate admin using Render env credentials

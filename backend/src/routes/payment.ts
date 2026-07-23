@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/authMiddleware';
 import { supabaseAdmin } from '../services/supabaseAdmin';
-import { createPayOSOrder, verifyPayOSWebhook, createMoMoOrder, verifyMoMoIPN, buildVietQRUrl } from '../services/paymentService';
+import { createPayOSOrder, verifyPayOSWebhook, getPayOSOrderInfo, createMoMoOrder, verifyMoMoIPN, queryMoMoOrderInfo, buildVietQRUrl } from '../services/paymentService';
 import { generateBookingConfirmationHTML } from '../services/emailService';
 
 const router = Router();
@@ -38,19 +38,19 @@ router.post('/create-order', authMiddleware, async (req: AuthenticatedRequest, r
     // IPN points to same Vercel domain since backend (/api/*) and frontend share the same origin
     const ipnUrl = `${SITE_URL}/api/payment/momo-ipn`;
 
-    // Save pending order to DB (safely caught)
-    try {
-      await supabaseAdmin.from('payment_orders').insert({
-        id: orderId,
-        user_id: userId,
-        method,
-        plan,
-        amount: planConfig.amount,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-      });
-    } catch (dbErr: any) {
-      console.warn('[Payment DB Insert Warning]:', dbErr.message);
+    // Save pending order to DB
+    const { error: dbErr } = await supabaseAdmin.from('payment_orders').insert({
+      id: orderId,          // VIVU{orderCode} — primary key
+      user_id: userId,
+      method,
+      plan,
+      amount: planConfig.amount,
+      status: 'pending',
+      order_code: String(orderCode), // numeric timestamp — for PayOS lookup
+      created_at: new Date().toISOString(),
+    });
+    if (dbErr) {
+      throw new Error(`Database error saving payment order: ${dbErr.message}`);
     }
 
     if (method === 'payos') {
@@ -73,8 +73,8 @@ router.post('/create-order', authMiddleware, async (req: AuthenticatedRequest, r
           accountNumber: payosData.accountNumber,
           accountName: payosData.accountName,
           bin: payosData.bin,
-          orderCode: payosData.orderCode,
-          orderId,
+          orderCode: payosData.orderCode, // numeric — for PayOS polling
+          orderId,                         // VIVU{orderCode} — for DB lookup
           amount: planConfig.amount,
           plan: planConfig,
         });
@@ -132,14 +132,26 @@ router.post('/create-order', authMiddleware, async (req: AuthenticatedRequest, r
 // ─── POST /api/payment/payos-webhook ────────────────────────────────────────
 router.post('/payos-webhook', async (req: Request, res: Response) => {
   try {
-    const isValid = verifyPayOSWebhook(req.body);
-    if (!isValid) return res.status(400).json({ error: 'Invalid webhook signature' });
+    const { code, desc, data } = req.body;
 
-    const { data } = req.body;
-    if (data?.status === 'PAID') {
-      const orderId = String(data.orderCode);
-      await activatePremiumByOrderId(orderId);
+    // Handle PayOS webhook registration test pings (/confirm-webhook)
+    if (!data && (code === '00' || desc === 'success')) {
+      return res.json({ success: true, message: 'Webhook endpoint active' });
     }
+
+    const isValid = verifyPayOSWebhook(req.body);
+    if (!isValid) {
+      console.warn('[PayOS Webhook] Signature verification failed');
+      return res.status(400).json({ error: 'Invalid webhook signature' });
+    }
+
+  // PayOS webhook: data.orderCode is the numeric code
+  // The DB id = VIVU{orderCode}, so build that
+  if (data?.code === '00' || data?.desc === 'success' || data?.status === 'PAID' || code === '00') {
+    const numericCode = String(data.orderCode);
+    const vivuOrderId = numericCode.startsWith('VIVU') ? numericCode : `VIVU${numericCode}`;
+    await activatePremiumByOrderId(vivuOrderId);
+  }
     return res.json({ success: true });
   } catch (err: any) {
     console.error('[Payment] PayOS webhook error:', err);
@@ -164,26 +176,14 @@ router.post('/momo-ipn', async (req: Request, res: Response) => {
   }
 });
 
-// ─── POST /api/payment/demo-activate ────────────────────────────────────────
-// Demo mode: activate premium without real payment (for presentations)
-router.post('/demo-activate', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const { plan = 'pro' } = req.body;
-    await activatePremiumForUser(userId, plan);
-    return res.json({ success: true, message: 'Demo Premium activated!' });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
-});
 
 // ─── GET /api/payment/status ─────────────────────────────────────────────────
 router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const userEmail = req.user?.email?.toLowerCase().trim();
-    const ADMIN_EMAILS = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'];
-    const isEmailAdmin = userEmail && ADMIN_EMAILS.includes(userEmail);
+    const envAdminEmail = (process.env.ADMIN_EMAIL || '').toLowerCase().trim();
+    const isEmailAdmin = !!(userEmail && ((envAdminEmail && userEmail === envAdminEmail) || ['team89a6@gmail.com', 'vinhvip4508@gmail.com'].includes(userEmail)));
     const isSpecialAdminId = userId === '00000000-0000-0000-0000-000000000001';
 
     const { count: dbTripsCount } = await supabaseAdmin
@@ -191,7 +191,15 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId);
 
-    if (isEmailAdmin || isSpecialAdminId) {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('premium_until, is_premium, custom_quota, trips_used, role')
+      .eq('id', userId)
+      .maybeSingle();
+
+    const isDbAdmin = profile?.role === 'admin';
+
+    if (isEmailAdmin || isSpecialAdminId || isDbAdmin) {
       return res.json({
         isPremium: true,
         premiumUntil: '2099-12-31T23:59:59.000Z',
@@ -201,12 +209,6 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
         remainingTrips: 9999,
       });
     }
-
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('premium_until, is_premium, custom_quota, trips_used')
-      .eq('id', userId)
-      .single();
 
     const isPremium = !!(profile?.is_premium ||
       (profile?.premium_until && new Date(profile.premium_until) > new Date()));
@@ -232,6 +234,50 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
       tripsQuota: 3,
       remainingTrips: 3,
     });
+  }
+});
+
+// ─── GET /api/payment/check-order/:orderCode ────────────────────────────────
+// orderCode can be: numeric (PayOS orderCode) OR full VIVU-prefixed string
+router.get('/check-order/:orderCode', async (req: Request, res: Response) => {
+  try {
+    const { orderCode } = req.params;
+    // Normalize to both formats
+    const vivuId = orderCode.startsWith('VIVU') ? orderCode : `VIVU${orderCode}`;
+    const numericCode = orderCode.startsWith('VIVU') ? orderCode.replace('VIVU', '') : orderCode;
+
+    // 1. Check DB by primary key (VIVU-prefixed)
+    const { data: order } = await supabaseAdmin
+      .from('payment_orders')
+      .select('id, status, user_id, plan, method')
+      .eq('id', vivuId)
+      .maybeSingle();
+
+    if (order?.status === 'completed') {
+      return res.json({ success: true, paid: true, status: 'PAID' });
+    }
+
+    // 2. Query PayOS directly using numeric orderCode
+    try {
+      const payosInfo = await getPayOSOrderInfo(numericCode);
+      if (payosInfo && (payosInfo.status === 'PAID' || payosInfo.code === '00')) {
+        await activatePremiumByOrderId(vivuId);
+        return res.json({ success: true, paid: true, status: 'PAID' });
+      }
+    } catch (_) {}
+
+    // 3. Query MoMo directly using VIVU-prefixed orderId
+    try {
+      const momoInfo = await queryMoMoOrderInfo(vivuId, vivuId);
+      if (momoInfo && momoInfo.resultCode === 0) {
+        await activatePremiumByOrderId(vivuId);
+        return res.json({ success: true, paid: true, status: 'PAID' });
+      }
+    } catch (_) {}
+
+    return res.json({ success: true, paid: false, status: order?.status || 'PENDING' });
+  } catch (err: any) {
+    return res.json({ success: false, paid: false, error: err.message });
   }
 });
 
@@ -331,6 +377,10 @@ router.post('/bookings', authMiddleware, async (req: AuthenticatedRequest, res: 
       .select()
       .single();
 
+    if (error) {
+      throw new Error(`Database error saving booking: ${error.message}`);
+    }
+
     // If table doesn't exist, still return demo email HTML
     return res.status(201).json({
       success: true,
@@ -372,15 +422,37 @@ router.get('/bookings/confirm/:token', async (req: Request, res: Response) => {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 async function activatePremiumByOrderId(orderId: string) {
   try {
-    const { data: order } = await supabaseAdmin
-      .from('payment_orders')
-      .select('user_id, plan')
-      .eq('id', orderId)
-      .single();
-    if (!order) return;
+    // Build both possible id formats: VIVU-prefixed and numeric
+    const vivuId = orderId.startsWith('VIVU') ? orderId : `VIVU${orderId}`;
+    const numericId = orderId.startsWith('VIVU') ? orderId.replace('VIVU', '') : orderId;
 
-    await activatePremiumForUser(order.user_id, order.plan || 'pro');
-    await supabaseAdmin.from('payment_orders').update({ status: 'completed' }).eq('id', orderId);
+    // Try VIVU-prefixed first, then numeric (atomic — prevents double-activation)
+    let updatedOrders: any[] | null = null;
+    const { data: d1 } = await supabaseAdmin
+      .from('payment_orders')
+      .update({ status: 'completed' })
+      .eq('id', vivuId)
+      .eq('status', 'pending')
+      .select('user_id, plan');
+    updatedOrders = d1;
+
+    if (!updatedOrders || updatedOrders.length === 0) {
+      const { data: d2 } = await supabaseAdmin
+        .from('payment_orders')
+        .update({ status: 'completed' })
+        .eq('id', numericId)
+        .eq('status', 'pending')
+        .select('user_id, plan');
+      updatedOrders = d2;
+    }
+
+    if (updatedOrders && updatedOrders.length > 0) {
+      const order = updatedOrders[0];
+      await activatePremiumForUser(order.user_id, order.plan || 'pro');
+      console.log(`[Payment] ✅ Activated premium for user ${order.user_id} plan ${order.plan}`);
+    } else {
+      console.log(`[Payment] ℹ️ Order ${orderId} already completed or not found`);
+    }
   } catch (err) {
     console.error('[Payment] activatePremiumByOrderId error:', err);
   }
@@ -392,23 +464,45 @@ async function activatePremiumForUser(userId: string, planKey: string = 'pro') {
   
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('custom_quota, is_premium')
+    .select('custom_quota, is_premium, trips_used')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
   const currentQuota = profile?.custom_quota || 3;
+  const currentUsed = profile?.trips_used || 0;
   const newQuota = currentQuota + quotaAdded;
   const premiumUntil = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
-  await supabaseAdmin
-    .from('profiles')
-    .upsert({
-      id: userId,
-      is_premium: true,
-      premium_until: premiumUntil,
-      custom_quota: newQuota,
-      updated_at: new Date().toISOString(),
-    });
+  if (profile) {
+    // If profile exists, update only the target fields to preserve other columns (like trips_used)
+    const { error: updateErr } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        is_premium: true,
+        premium_until: premiumUntil,
+        custom_quota: newQuota,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+    if (updateErr) {
+      console.error('[Payment] Safe profile update error:', updateErr.message);
+    }
+  } else {
+    // If profile doesn't exist, insert complete record
+    const { error: insertErr } = await supabaseAdmin
+      .from('profiles')
+      .insert({
+        id: userId,
+        is_premium: true,
+        premium_until: premiumUntil,
+        custom_quota: newQuota,
+        trips_used: 0,
+        updated_at: new Date().toISOString(),
+      });
+    if (insertErr) {
+      console.error('[Payment] Safe profile insert error:', insertErr.message);
+    }
+  }
 }
 
 export default router;
