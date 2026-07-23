@@ -219,6 +219,7 @@ export default function Admin() {
       localStorage.removeItem('vivu_mock_user');
       localStorage.removeItem('vivu_mock_token');
     }
+    await clearCache();
     router.replace('/(auth)/dang-nhap');
   };
 

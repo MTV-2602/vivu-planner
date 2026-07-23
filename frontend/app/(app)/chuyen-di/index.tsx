@@ -10,7 +10,7 @@ import {
 } from 'lucide-react-native';
 import { supabase } from '../../../lib/supabaseClient';
 import { apiClient } from '../../../lib/apiClient';
-import { getCache, setCache } from '../../../lib/cache';
+import { getCache, setCache, clearCache } from '../../../lib/cache';
 import Reveal from '../../../components/Reveal';
 import SystemClock from '../../../components/SystemClock';
 import { BRAND_COLORS } from '../../../constants';
@@ -175,6 +175,7 @@ export default function Dashboard() {
       localStorage.removeItem('vivu_mock_user');
       localStorage.removeItem('vivu_mock_token');
     }
+    await clearCache();
     router.replace('/dang-nhap');
   };
 

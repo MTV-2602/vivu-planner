@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { apiClient } from './apiClient';
+import { clearCache } from './cache';
 
 const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
 const SESSION_KEY = 'vivu_user_session';
@@ -115,12 +116,13 @@ export const supabase: {
         return { data: { user: null }, error: null };
       }
     },
-    signInWithPassword: async ({ email, password }: any) => {
+     signInWithPassword: async ({ email, password }: any) => {
       try {
         const res = await apiClient.post('/auth/login', { email, password });
         if (res.data?.session) {
           currentSession = res.data.session;
           await SecureStoreAdapter.setItem(SESSION_KEY, JSON.stringify(currentSession));
+          await clearCache(); // Clear old cached trips immediately
           notifyListeners('SIGNED_IN', currentSession);
           return { data: { session: currentSession, user: currentSession.user }, error: null };
         }
@@ -149,6 +151,7 @@ export const supabase: {
       } catch (_) {}
       currentSession = null;
       await SecureStoreAdapter.removeItem(SESSION_KEY);
+      await clearCache(); // Clear old cached trips on sign out
       notifyListeners('SIGNED_OUT', null);
       return { error: null };
     },
