@@ -75,9 +75,11 @@ apiClient.interceptors.response.use(
   async (error) => {
     const status = error?.response?.status;
     const reason = error?.response?.data?.reason;
+    const url = error?.config?.url || '';
+    const isLoginRequest = url.includes('/admin/login') || url.includes('/auth/login');
 
-    // Only auto-logout on 401 (unauthorized) — token expired or invalid
-    if (status === 401) {
+    // Only auto-logout on 401 (unauthorized) — token expired or invalid, and NOT on login requests
+    if (status === 401 && !isLoginRequest) {
       console.warn('[ViVu API] 401 Unauthorized — auto-logging out. Reason:', reason || 'Unknown');
 
       // Clear all auth tokens
