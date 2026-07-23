@@ -130,7 +130,10 @@ export const supabase: {
       try {
         const res = await apiClient.post('/auth/login', { email, password });
         if (res.data?.session) {
-          currentSession = res.data.session;
+          currentSession = {
+            ...res.data.session,
+            user: res.data.user || res.data.session?.user
+          };
           await SecureStoreAdapter.setItem(SESSION_KEY, JSON.stringify(currentSession));
           await clearCache(); // Clear old cached trips immediately
           notifyListeners('SIGNED_IN', currentSession);
