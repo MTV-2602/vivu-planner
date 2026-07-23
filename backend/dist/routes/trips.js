@@ -494,8 +494,7 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
             const { error: updateErr } = await supabaseAdmin_1.supabaseAdmin
                 .from('profiles')
                 .update({
-                trips_used: currentUsed + 1,
-                updated_at: new Date().toISOString()
+                trips_used: currentUsed + 1
             })
                 .eq('id', userId);
             if (updateErr) {
@@ -509,8 +508,7 @@ router.post('/', authMiddleware_1.authMiddleware, async (req, res) => {
                 id: userId,
                 trips_used: currentUsed + 1,
                 is_premium: false,
-                custom_quota: 3,
-                updated_at: new Date().toISOString()
+                custom_quota: 3
             });
             if (insertErr) {
                 console.error('[CreateTrip] Safe profile insert error:', insertErr.message);
