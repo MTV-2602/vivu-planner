@@ -88,6 +88,16 @@ export default function AuthScreen({ mode }: Props) {
         
         const loggedInEmail = (data.user?.email || email).toLowerCase().trim();
         const isUserAdmin = adminEmails.includes(loggedInEmail);
+        
+        if (isUserAdmin && canUseLocalStorage) {
+          if (data.session?.access_token) {
+            localStorage.setItem('vivu_admin_token', data.session.access_token);
+          } else {
+            localStorage.setItem('vivu_admin_token', 'bypass_token');
+          }
+          localStorage.setItem('vivu_mock_user', JSON.stringify({ id: data.user?.id, email: loggedInEmail }));
+        }
+
         router.replace(isUserAdmin ? '/admin' : '/chuyen-di');
       }
     } catch (err: any) {

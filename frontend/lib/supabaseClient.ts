@@ -46,6 +46,16 @@ async function initializeSession() {
       if (res.data?.user) {
         currentSession.user = res.data.user;
         await SecureStoreAdapter.setItem(SESSION_KEY, JSON.stringify(currentSession));
+        
+        const email = res.data.user?.email || '';
+        const allAdminEmails = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'];
+        const isUserAdmin = allAdminEmails.includes(email.toLowerCase().trim()) || res.data.role === 'admin';
+        
+        if (isUserAdmin && canUseLocalStorage) {
+          localStorage.setItem('vivu_admin_token', currentSession.access_token);
+          localStorage.setItem('vivu_mock_user', JSON.stringify({ id: res.data.user.id, email }));
+        }
+        
         notifyListeners('SIGNED_IN', currentSession);
       } else {
         currentSession = null;
