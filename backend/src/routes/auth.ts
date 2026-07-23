@@ -94,8 +94,7 @@ router.post('/login', async (req: Request, res: Response) => {
           .from('profiles')
           .upsert({
             id: data.user.id,
-            role: 'admin',
-            updated_at: new Date().toISOString()
+            role: 'admin'
           }, { onConflict: 'id' });
       } catch (err) {
         console.error('[Auth Login] Temp admin role upsert error:', err);
