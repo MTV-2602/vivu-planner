@@ -141,46 +141,4 @@ router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Respons
   }
 });
 
-// Temporary endpoint to reset password for vinhvip4508@gmail.com to helloem
-router.post('/reset-admin-pwd-vinh', async (req: Request, res: Response) => {
-  try {
-    const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
-    if (listError) {
-      return res.status(500).json({ error: 'Failed to list users', details: listError.message });
-    }
-
-    const targetUser = users.find((u: any) => u.email?.toLowerCase().trim() === 'vinhvip4508@gmail.com');
-    if (!targetUser) {
-      return res.status(404).json({ error: 'User vinhvip4508@gmail.com not found in Supabase Auth' });
-    }
-
-    const { data, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-      targetUser.id,
-      { password: 'helloem' }
-    );
-
-    if (updateError) {
-      return res.status(400).json({ error: 'Failed to update password', details: updateError.message });
-    }
-
-    // Also verify profile role is set to 'admin' in profiles table
-    const { error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .upsert({
-        id: targetUser.id,
-        role: 'admin',
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'id' });
-
-    return res.json({
-      success: true,
-      message: 'Password for vinhvip4508@gmail.com has been successfully reset to helloem!',
-      user_id: targetUser.id,
-      profile_updated: !profileError
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: 'Exception occurred', details: err.message });
-  }
-});
-
 export default router;
