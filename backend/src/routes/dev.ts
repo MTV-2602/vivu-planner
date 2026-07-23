@@ -46,47 +46,4 @@ router.post('/sync-repositories', async (req: Request, res: Response) => {
   }
 });
 
-import { supabaseAdmin } from '../services/supabaseAdmin';
-
-router.get('/db-check', async (req: Request, res: Response) => {
-  try {
-    const { data: selectData, error: selectError } = await supabaseAdmin
-      .from('profiles')
-      .select('*')
-      .limit(1);
-
-    const { data: columnsInfo, error: columnsError } = await supabaseAdmin
-      .rpc('get_profiles_columns'); // fallback in case we can use RPC, or just inspect selectData
-
-    const sampleRow = selectData && selectData.length > 0 ? selectData[0] : null;
-    const columns = sampleRow ? Object.keys(sampleRow) : [];
-
-    // Test inserting a dummy profile with trips_used and custom_quota
-    const testId = '00000000-0000-0000-0000-000000000009'; // dummy UUID
-    const { error: insertError } = await supabaseAdmin
-      .from('profiles')
-      .insert({
-        id: testId,
-        trips_used: 1,
-        custom_quota: 3,
-        is_premium: false
-      });
-
-    // Delete dummy if inserted
-    if (!insertError) {
-      await supabaseAdmin.from('profiles').delete().eq('id', testId);
-    }
-
-    return res.json({
-      success: true,
-      selectError: selectError ? selectError.message : null,
-      columns,
-      sampleRow,
-      insertTestError: insertError ? insertError.message : 'No error (Insert succeeded!)'
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
 export default router;

@@ -14,6 +14,10 @@ create table public.profiles (
   phone text,
   avatar_url text,
   role text default 'user' check (role in ('user', 'admin')),
+  is_premium boolean default false,
+  premium_until timestamptz,
+  custom_quota int default 3,
+  trips_used int default 0,
   created_at timestamptz default now()
 );
 alter table public.profiles enable row level security;
