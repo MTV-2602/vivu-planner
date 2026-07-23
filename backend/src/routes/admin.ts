@@ -1,6 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/authMiddleware';
 import { supabaseAdmin, isDbMocked } from '../services/supabaseAdmin';
+import { autoCancelExpiredOrders } from './payment';
 
 const router = Router();
 const ADMIN_EMAILS = ['team89a6@gmail.com', 'vinhvip4508@gmail.com', 'mockuser@vivu.vn'];
@@ -566,6 +567,7 @@ router.put('/users/:id/package', async (req: AuthenticatedRequest, res: Response
 // GET /api/admin/revenue - Financial Revenue & Order Statistics
 router.get('/revenue', async (req: AuthenticatedRequest, res: Response) => {
   try {
+    await autoCancelExpiredOrders();
     const { data: orders } = await supabaseAdmin
       .from('payment_orders')
       .select('*')
