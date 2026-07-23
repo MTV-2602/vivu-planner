@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/authMiddleware';
 import { getSupabaseUserClient, supabaseAdmin } from '../services/supabaseAdmin';
-import { getCityCoordinates, searchPlaces, PlaceCandidate, fetchCandidatePlacesForCity, resolveItemCoordinate } from '../services/placesService';
+import { getCityCoordinates, searchPlaces, PlaceCandidate, fetchCandidatePlacesForCity } from '../services/placesService';
 import { getWeatherForecast } from '../services/weatherService';
 import { generateItinerary, adaptItinerary, generateAlternatives, chatWithItinerary } from '../services/geminiService';
 import { getRelevantPartners, convertPartnersToPlaceCandidates, logPartnerEvent } from '../services/partnerService';
@@ -657,18 +657,6 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
             if (!item.lng) itemLng = matched.lng;
             if (!itemAddress) itemAddress = matched.address;
             itemBookingUrl = matched.booking_url || '';
-          }
-        }
-
-        // Fuzzy coordinate lookup fallback if still using city center default coordinates
-        if (itemLat === lat && itemLng === lng) {
-          const resolvedGeo = resolveItemCoordinate(item.title, destination_city);
-          if (resolvedGeo) {
-            itemLat = resolvedGeo.lat;
-            itemLng = resolvedGeo.lng;
-            if (!itemAddress) {
-              itemAddress = resolvedGeo.address || '';
-            }
           }
         }
 
