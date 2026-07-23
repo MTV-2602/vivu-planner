@@ -287,6 +287,8 @@ QUY TẮC CỐT LÕI:
    - "warning_notes": Các lưu ý an toàn quan trọng (ví dụ: cảnh báo thời tiết xấu, đường đèo hiểm trở, hoặc lưu ý bảo quản hành lý, sức khỏe).
    - "missing_info_questions": Nếu dữ liệu đầu vào của khách quá mơ hồ hoặc thiếu, hãy đưa ra các câu hỏi làm rõ cụ thể để người dùng cung cấp thêm thông tin nhằm điều chỉnh lịch trình chuẩn xác hơn. Nếu thông tin đã rất đầy đủ, để danh sách này trống.
 
+GIỚI HẠN ĐỘ DÀI (BẮT BUỘC): Viết súc tích. Mỗi "description" tối đa 1-2 câu ngắn. Mỗi ngày tối đa 6-7 hoạt động. "expert_advice" tối đa 4-5 câu. "warning_notes" và "missing_info_questions" mỗi mục 1 câu, tối đa 3 mục. TUYỆT ĐỐI KHÔNG lặp lại nội dung, không lặp vô hạn một hoạt động/câu chữ.
+
 Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp. Không viết thêm markdown, không thêm giải thích ngoài JSON.`;
 
   const userPrompt = JSON.stringify({
@@ -318,7 +320,9 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
         contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
         config: {
           responseMimeType: 'application/json',
-          responseSchema: ITINERARY_JSON_SCHEMA as any
+          responseSchema: ITINERARY_JSON_SCHEMA as any,
+          maxOutputTokens: 20000,
+          thinkingConfig: { thinkingBudget: 0 }
         }
       });
 
@@ -392,6 +396,8 @@ YÊU CẦU ĐIỀU CHỈNH CHẶT CHẼ:
 6. Cung cấp đầy đủ phân tích chuyên môn của bạn ở trường "expert_advice" để khách hiểu rõ lý do của các thay đổi và các cảnh báo an toàn ở trường "warning_notes".
 7. Nếu thông tin báo sự cố của khách quá mơ hồ hoặc không đủ để lập kế hoạch an toàn (ví dụ: chỉ ghi "sự cố sức khỏe" mà không rõ là mệt mỏi hay chấn thương nghiêm trọng, hoặc ghi "mưa" mà không rõ mưa to hay nhỏ), hãy đưa ra các câu hỏi làm rõ cụ thể ở trường "missing_info_questions" để khách cung cấp thêm nhằm đưa ra phương án tối ưu nhất.
 
+GIỚI HẠN ĐỘ DÀI (BẮT BUỘC): Viết súc tích. Mỗi "description" tối đa 1-2 câu ngắn. Mỗi ngày tối đa 6-7 hoạt động. "expert_advice" tối đa 4-5 câu. "warning_notes" và "missing_info_questions" mỗi mục 1 câu, tối đa 3 mục. TUYỆT ĐỐI KHÔNG lặp lại nội dung, không lặp vô hạn một hoạt động/câu chữ.
+
 Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp. Không viết thêm markdown, không thêm giải thích ngoài JSON.`;
 
   const userPrompt = JSON.stringify({
@@ -413,7 +419,9 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
         contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
         config: {
           responseMimeType: 'application/json',
-          responseSchema: ITINERARY_JSON_SCHEMA as any
+          responseSchema: ITINERARY_JSON_SCHEMA as any,
+          maxOutputTokens: 20000,
+          thinkingConfig: { thinkingBudget: 0 }
         }
       });
 
@@ -1022,7 +1030,9 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
         contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
         config: {
           responseMimeType: 'application/json',
-          responseSchema: ALTERNATIVES_JSON_SCHEMA as any
+          responseSchema: ALTERNATIVES_JSON_SCHEMA as any,
+          maxOutputTokens: 20000,
+          thinkingConfig: { thinkingBudget: 0 }
         }
       });
 
@@ -1217,7 +1227,9 @@ QUY TẮC PHẢN HỒI:
         config: {
           systemInstruction: systemPrompt,
           responseMimeType: 'application/json',
-          responseSchema: responseSchema as any
+          responseSchema: responseSchema as any,
+          maxOutputTokens: 20000,
+          thinkingConfig: { thinkingBudget: 0 }
         }
       });
 

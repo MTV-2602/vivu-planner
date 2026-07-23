@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  ActivityIndicator, Alert, Platform,
+  ActivityIndicator, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -181,25 +181,12 @@ export default function Admin() {
           setIsAdmin(true);
           setChecking(false);
         } else {
-          if (Platform.OS === 'web') {
-            window.alert('Từ chối truy cập: Bạn không có quyền truy cập trang quản trị!');
-            router.replace('/chuyen-di');
-          } else {
-            Alert.alert('Từ chối truy cập', 'Bạn không có quyền truy cập trang quản trị!', [
-              { text: 'OK', onPress: () => router.replace('/chuyen-di') },
-            ]);
-          }
+          // ponytail: chặn mềm — vẫn bảo vệ trang admin nhưng không popup gắt, chỉ chuyển về trang chính
+          router.replace('/chuyen-di');
           setChecking(false);
         }
       } catch (err) {
-        if (Platform.OS === 'web') {
-          window.alert('Từ chối truy cập: Bạn không có quyền truy cập trang quản trị!');
-          router.replace('/chuyen-di');
-        } else {
-          Alert.alert('Từ chối truy cập', 'Bạn không có quyền truy cập trang quản trị!', [
-            { text: 'OK', onPress: () => router.replace('/chuyen-di') },
-          ]);
-        }
+        router.replace('/chuyen-di');
         setChecking(false);
       }
     };

@@ -11,7 +11,10 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_ENV": "development"
+        "EXPO_PUBLIC_ENV": "development",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://bfhmitbvzomouqoohhln.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmaG1pdGJ2em9tb3Vxb29oaGxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MTkyMTQsImV4cCI6MjA5NzM5NTIxNH0.nbWOJaKPwvOnyqcaobYsd67Sh_ebnhamsSfLkah99kw",
+        "EXPO_PUBLIC_API_BASE_URL": "https://vivu-planner.vercel.app/api"
       },
       "channel": "development"
     },
