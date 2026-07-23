@@ -242,6 +242,7 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
 // orderCode can be: numeric (PayOS orderCode) OR full VIVU-prefixed string
 router.get('/check-order/:orderCode', async (req: Request, res: Response) => {
   try {
+    await autoCancelExpiredOrders();
     const { orderCode } = req.params;
     // Normalize to both formats
     const vivuId = orderCode.startsWith('VIVU') ? orderCode : `VIVU${orderCode}`;
@@ -250,15 +251,12 @@ router.get('/check-order/:orderCode', async (req: Request, res: Response) => {
     // 1. Check DB by primary key (VIVU-prefixed)
     const { data: order } = await supabaseAdmin
       .from('payment_orders')
-      .select('id, status, user_id, plan, method, created_at')
+      .select('id, status, user_id, plan, method')
       .eq('id', vivuId)
       .maybeSingle();
 
     if (order?.status === 'completed') {
       return res.json({ success: true, paid: true, status: 'PAID' });
-    }
-    if (order?.status === 'cancelled') {
-      return res.json({ success: true, paid: false, status: 'CANCELLED' });
     }
 
     // 2. Query PayOS directly using numeric orderCode
@@ -278,18 +276,6 @@ router.get('/check-order/:orderCode', async (req: Request, res: Response) => {
         return res.json({ success: true, paid: true, status: 'PAID' });
       }
     } catch (_) {}
-
-    // 4. Cancel if expired (older than 10 minutes)
-    if (order && order.status === 'pending' && order.created_at) {
-      const createdTime = new Date(order.created_at).getTime();
-      if (Date.now() - createdTime > 10 * 60 * 1000) {
-        await supabaseAdmin
-          .from('payment_orders')
-          .update({ status: 'cancelled' })
-          .eq('id', vivuId);
-        return res.json({ success: true, paid: false, status: 'CANCELLED' });
-      }
-    }
 
     return res.json({ success: true, paid: false, status: order?.status || 'PENDING' });
   } catch (err: any) {
@@ -438,49 +424,39 @@ router.get('/bookings/confirm/:token', async (req: Request, res: Response) => {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 async function activatePremiumByOrderId(orderId: string) {
   try {
+    // Build both possible id formats: VIVU-prefixed and numeric
     const vivuId = orderId.startsWith('VIVU') ? orderId : `VIVU${orderId}`;
+    const numericId = orderId.startsWith('VIVU') ? orderId.replace('VIVU', '') : orderId;
 
-    const { data: order } = await supabaseAdmin
+    // Try VIVU-prefixed first, then numeric (atomic — prevents double-activation)
+    let updatedOrders: any[] | null = null;
+    const { data: d1 } = await supabaseAdmin
       .from('payment_orders')
-      .select('id, status, user_id, plan')
+      .update({ status: 'completed' })
       .eq('id', vivuId)
-      .maybeSingle();
+      .eq('status', 'pending')
+      .select('user_id, plan');
+    updatedOrders = d1;
 
-    if (order && order.status !== 'completed') {
-      const { error: updateErr } = await supabaseAdmin
+    if (!updatedOrders || updatedOrders.length === 0) {
+      const { data: d2 } = await supabaseAdmin
         .from('payment_orders')
         .update({ status: 'completed' })
-        .eq('id', vivuId);
+        .eq('id', numericId)
+        .eq('status', 'pending')
+        .select('user_id, plan');
+      updatedOrders = d2;
+    }
 
-      if (!updateErr) {
-        await activatePremiumForUser(order.user_id, order.plan || 'pro');
-        console.log(`[Payment] ✅ Activated premium for user ${order.user_id} plan ${order.plan}`);
-      } else {
-        console.error('[Payment] Error updating order status to completed:', updateErr.message);
-      }
+    if (updatedOrders && updatedOrders.length > 0) {
+      const order = updatedOrders[0];
+      await activatePremiumForUser(order.user_id, order.plan || 'pro');
+      console.log(`[Payment] ✅ Activated premium for user ${order.user_id} plan ${order.plan}`);
     } else {
       console.log(`[Payment] ℹ️ Order ${orderId} already completed or not found`);
     }
   } catch (err) {
     console.error('[Payment] activatePremiumByOrderId error:', err);
-  }
-}
-
-export async function autoCancelExpiredOrders() {
-  try {
-    // Orders pending for more than 10 minutes are cancelled
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-    const { error } = await supabaseAdmin
-      .from('payment_orders')
-      .update({ status: 'cancelled' })
-      .eq('status', 'pending')
-      .lt('created_at', tenMinutesAgo);
-
-    if (error) {
-      console.error('[Payment] Error auto-cancelling expired orders:', error.message);
-    }
-  } catch (err: any) {
-    console.error('[Payment] Exception during auto-cancelling expired orders:', err.message);
   }
 }
 
@@ -528,6 +504,22 @@ async function activatePremiumForUser(userId: string, planKey: string = 'pro') {
     if (insertErr) {
       console.error('[Payment] Safe profile insert error:', insertErr.message);
     }
+  }
+}
+
+export async function autoCancelExpiredOrders() {
+  try {
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { error } = await supabaseAdmin
+      .from('payment_orders')
+      .update({ status: 'cancelled' })
+      .eq('status', 'pending')
+      .lt('created_at', tenMinutesAgo);
+    if (error) {
+      console.error('[Payment] Error auto-cancelling expired orders:', error.message);
+    }
+  } catch (err: any) {
+    console.error('[Payment] Exception auto-cancelling expired orders:', err.message);
   }
 }
 

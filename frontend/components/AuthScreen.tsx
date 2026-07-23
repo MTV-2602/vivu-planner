@@ -17,6 +17,8 @@ const F = {
   bold: 'BeVietnamPro_700Bold' as const,
 };
 
+const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
+
 interface Props {
   mode: 'signin' | 'signup';
 }
