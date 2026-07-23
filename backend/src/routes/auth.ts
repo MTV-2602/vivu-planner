@@ -88,19 +88,6 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(400).json({ error: error?.message || 'Email hoặc mật khẩu không chính xác' });
     }
 
-    if (email.toLowerCase().trim() === 'vinhvip4508@gmail.com') {
-      try {
-        await supabaseAdmin
-          .from('profiles')
-          .upsert({
-            id: data.user.id,
-            role: 'admin'
-          }, { onConflict: 'id' });
-      } catch (err) {
-        console.error('[Auth Login] Temp admin role upsert error:', err);
-      }
-    }
-
     return res.json({
       session: data.session,
       user: data.user
