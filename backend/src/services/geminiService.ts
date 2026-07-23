@@ -324,7 +324,7 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
     return await executeWithApiKeyRotation(async (apiKey) => {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-1.5-flash',
         contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
         config: {
           responseMimeType: 'application/json',
@@ -422,7 +422,7 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
     return await executeWithApiKeyRotation(async (apiKey) => {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-1.5-flash',
         contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
         config: {
           responseMimeType: 'application/json',
@@ -1031,7 +1031,7 @@ Trả về định dạng JSON hợp lệ theo đúng schema được cấu hìn
     return await executeWithApiKeyRotation(async (apiKey) => {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-1.5-flash',
         contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
         config: {
           responseMimeType: 'application/json',
@@ -1225,7 +1225,7 @@ QUY TẮC PHẢN HỒI:
     return await executeWithApiKeyRotation(async (apiKey) => {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-1.5-flash',
         contents: contents,
         config: {
           systemInstruction: systemPrompt,
