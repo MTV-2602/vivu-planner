@@ -6,12 +6,11 @@ import {
   ArrowRight, CalendarDays, Wallet, Star, ChevronUp,
 } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../lib/supabaseClient';
-import { apiClient } from '../lib/apiClient';
+import { api } from '../lib/api';
+import { useAuth } from '../hooks/useAuth';
 import Reveal from '../components/Reveal';
-import { BRAND_COLORS, VIETNAMESE_CITIES } from '../constants';
+import { BRAND_COLORS, VIETNAMESE_CITIES, APP_ROUTES } from '../constants';
 
-const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
 const isWeb = Platform.OS === 'web';
 
 const F = {
@@ -51,6 +50,7 @@ const TESTIMONIALS = [
 
 const PRICING_PACKAGES = [
   {
+    id: 'basis',
     title: 'Gói Basis',
     price: '0 VNĐ',
     priceSub: 'Mặc định',
@@ -70,6 +70,7 @@ const PRICING_PACKAGES = [
     ]
   },
   {
+    id: 'starter',
     title: 'Gói Starter',
     price: '29.000 VNĐ',
     priceSub: '/ tháng',
@@ -90,6 +91,7 @@ const PRICING_PACKAGES = [
     ]
   },
   {
+    id: 'premium',
     title: 'Gói Premium',
     price: '49.000 VNĐ',
     priceSub: '/ tháng',
@@ -138,56 +140,33 @@ export default function Landing() {
   const [featuresSectionY, setFeaturesSectionY] = useState(0);
   const [howItWorksSectionY, setHowItWorksSectionY] = useState(0);
   const [pricingSectionY, setPricingSectionY] = useState(0);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { session, isAdmin, signOut } = useAuth();
+  const isLoggedIn = !!session;
 
   const { data: plansData } = useQuery({
     queryKey: ['publicPlansLanding'],
     queryFn: async () => {
-      const res = await apiClient.get('/payment/plans');
+      const res = await api.get('/payment/plans');
       return res.data;
     },
   });
 
-  const getPlanPrice = (planTitle: string, defaultPrice: string) => {
+  const getPlanPrice = (planId: string, defaultPrice: string) => {
     if (!plansData?.plans) return defaultPrice;
-    if (planTitle === 'Gói Starter' && plansData.plans.starter?.amount != null) {
-      return `${plansData.plans.starter.amount.toLocaleString('vi-VN')} VNĐ`;
-    }
-    if (planTitle === 'Gói Premium' && plansData.plans.premium?.amount != null) {
-      return `${plansData.plans.premium.amount.toLocaleString('vi-VN')} VNĐ`;
-    }
-    if (planTitle === 'Gói VIP' && plansData.plans.vip?.amount != null) {
-      return `${plansData.plans.vip.amount.toLocaleString('vi-VN')} VNĐ`;
+    const plan = plansData.plans[planId];
+    if (plan?.amount != null) {
+      return `${plan.amount.toLocaleString('vi-VN')} VNĐ`;
     }
     return defaultPrice;
   };
   const [scrolled, setScrolled] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
 
-  useEffect(() => {
-    if (canUseLocalStorage && localStorage.getItem('vivu_admin_token')) {
-      setIsLoggedIn(true);
-      setIsAdmin(true);
-      return;
-    }
-    supabase.auth.getSession().then(({ data: { session } }: any) => {
-      if (session) setIsLoggedIn(true);
-    });
-  }, []);
-
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    if (canUseLocalStorage) {
-      localStorage.removeItem('vivu_admin_token');
-      localStorage.removeItem('vivu_mock_user');
-      localStorage.removeItem('vivu_mock_token');
-    }
-    setIsLoggedIn(false);
-    setIsAdmin(false);
+    await signOut();
   };
 
-  const dashPath = isAdmin ? '/admin' : '/chuyen-di';
+  const dashPath = isAdmin ? APP_ROUTES.ADMIN : APP_ROUTES.TRIPS;
 
   useEffect(() => {
     const id = scrollY.addListener(({ value }) => {
@@ -197,7 +176,7 @@ export default function Landing() {
     return () => scrollY.removeListener(id);
   }, [scrollY]);
 
-  const renderStep = (step: typeof STEPS[0], delay: number) => (
+  const renderStep = (step: typeof STEPS[0], _delay?: number) => (
     <View style={{
       flexDirection: 'row', gap: 16, alignItems: 'flex-start',
       padding: 22, borderRadius: 16,
@@ -289,14 +268,14 @@ export default function Landing() {
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {!isMobile && (
               <Pressable
-                onPress={() => router.push('/(auth)/dang-nhap')}
+                onPress={() => router.push(APP_ROUTES.SIGN_IN as any)}
                 style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 8, borderWidth: 1.5, borderColor: BRAND_COLORS.primary }}
               >
                 <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: BRAND_COLORS.primary }}>Đăng Nhập</Text>
               </Pressable>
             )}
             <Pressable
-              onPress={() => router.push(isMobile ? '/(auth)/dang-nhap' : '/(auth)/dang-ky')}
+              onPress={() => router.push((isMobile ? APP_ROUTES.SIGN_IN : APP_ROUTES.SIGN_UP) as any)}
               style={{ paddingHorizontal: isMobile ? 14 : 16, paddingVertical: 9, borderRadius: 8, backgroundColor: BRAND_COLORS.primary }}
             >
               <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: '#fff' }}>
@@ -389,7 +368,7 @@ export default function Landing() {
                   <Reveal delay={240}>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
                       <Pressable
-                        onPress={() => router.push(isLoggedIn ? (dashPath as any) : '/(auth)/dang-ky')}
+                        onPress={() => router.push(isLoggedIn ? (dashPath as any) : (APP_ROUTES.SIGN_UP as any))}
                         style={{
                           flex: isMobile ? 1 : undefined, minWidth: isMobile ? 140 : undefined,
                           paddingVertical: 16, paddingHorizontal: 28,
@@ -724,7 +703,7 @@ export default function Landing() {
 
                   <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: 'rgba(27,36,32,0.08)' }}>
                     <Text style={{ fontFamily: F.loraBold, fontSize: 26, color: BRAND_COLORS.primary }}>
-                      {getPlanPrice(pkg.title, pkg.price)}
+                      {getPlanPrice(pkg.id, pkg.price)}
                     </Text>
                     <Text style={{ fontFamily: F.regular, fontSize: 12, color: BRAND_COLORS.textMuted }}>
                       {pkg.priceSub}
@@ -842,7 +821,7 @@ export default function Landing() {
 
           <Reveal delay={280}>
             <Pressable
-              onPress={() => router.push(isLoggedIn ? (dashPath as any) : '/(auth)/dang-ky')}
+              onPress={() => router.push(isLoggedIn ? (dashPath as any) : (APP_ROUTES.SIGN_UP as any))}
               style={{
                 alignItems: 'center', paddingVertical: 18, borderRadius: 14,
                 backgroundColor: BRAND_COLORS.accent,

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Text, TextInput, Pressable, Modal, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { X, User, Mail, Phone, Users, Check, ShoppingBag } from 'lucide-react-native';
-import { apiClient } from '../lib/apiClient';
+import { api } from '../lib/api';
 import { BRAND_COLORS } from '../constants';
 
 export interface BookableItem {
@@ -45,7 +45,6 @@ export default function BookingModal({
   const [guestPhone, setGuestPhone] = useState('');
   const [guestCount, setGuestCount] = useState(String(travelerCount));
   const [bookingResult, setBookingResult] = useState<any>(null);
-  const [emailConfirmed, setEmailConfirmed] = useState(false);
 
   const totalCost = selectedItems.reduce((sum, item) => sum + (item.estimated_cost || 0), 0);
   const bookableItems = selectedItems.filter(i => ['accommodation', 'dining', 'attraction', 'rental'].includes(i.item_type));
@@ -57,7 +56,7 @@ export default function BookingModal({
     }
     setStep('sending');
     try {
-      const { data } = await apiClient.post('/payment/bookings', {
+      const { data } = await api.post('/payment/bookings', {
         tripId, tripTitle, destinationCity, startDate, endDate,
         guestName: guestName.trim(),
         guestEmail: guestEmail.trim(),
@@ -81,11 +80,9 @@ export default function BookingModal({
 
   const handleConfirmBooking = async () => {
     // Simulate clicking the confirm link (demo mode)
-    setEmailConfirmed(true);
     onClose();
     setTimeout(() => {
       setStep('form');
-      setEmailConfirmed(false);
       setBookingResult(null);
     }, 500);
   };
@@ -93,7 +90,6 @@ export default function BookingModal({
   const handleClose = () => {
     setStep('form');
     setBookingResult(null);
-    setEmailConfirmed(false);
     onClose();
   };
 

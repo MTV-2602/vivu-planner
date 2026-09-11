@@ -1,22 +1,21 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  Animated, Platform, KeyboardAvoidingView, ActivityIndicator,
+  Animated, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   Compass, Sparkles, ArrowLeft, ArrowRight,
   MapPin, DollarSign, Heart, AlertTriangle,
 } from 'lucide-react-native';
-import { apiClient } from '../../../lib/apiClient';
+import { api } from '../../../lib/api';
 import { clearCache } from '../../../lib/cache';
 import { requestNotificationPermission, scheduleTripReminder } from '../../../lib/notifications';
 import Reveal from '../../../components/Reveal';
 import {
   VIETNAMESE_CITIES, TRAVELER_TYPES, PREFERENCE_OPTIONS, BRAND_COLORS,
+  BUDGET_ESTIMATION_CONFIG, APP_ROUTES, TravelerType,
 } from '../../../constants';
-
-const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
 
 const LOADING_STAGES = [
   'Đang tra cứu dự báo thời tiết tại điểm đến...',
@@ -86,8 +85,7 @@ function calculateMinimumBudget(startDateStr: string, endDateStr: string, travel
     daysCount = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
   }
   const nightsCount = Math.max(0, daysCount - 1);
-  const minBudget = travelerCount * ((nightsCount * 100000) + (daysCount * 120000));
-  return { minBudget, daysCount, nightsCount };
+  return BUDGET_ESTIMATION_CONFIG.calculateDetailedBudget(daysCount, nightsCount, travelerCount);
 }
 
 // Web-only: render <input type="date">; Native: plain TextInput
@@ -250,11 +248,6 @@ export default function TripWizard() {
   const [specialRequirements, setSpecialRequirements] = useState('');
   const [lodgingPreference, setLodgingPreference] = useState<'single' | 'multiple'>('single');
 
-  useEffect(() => {
-    if (canUseLocalStorage && localStorage.getItem('vivu_admin_token')) {
-      router.replace('/admin' as any);
-    }
-  }, []);
 
   // Real-time validation for dates
   useEffect(() => {
@@ -313,8 +306,8 @@ export default function TripWizard() {
 
   const handleTravelerTypeChange = (value: string) => {
     setTravelerType(value);
-    if (value === 'solo') setTravelerCount(1);
-    else if (value === 'couple') setTravelerCount(2);
+    if (value === TravelerType.SOLO) setTravelerCount(1);
+    else if (value === TravelerType.COUPLE) setTravelerCount(2);
     else if (travelerCount <= 2) setTravelerCount(4);
   };
 
@@ -407,7 +400,7 @@ export default function TripWizard() {
     const formattedEndDate = parsedEnd ? formatToISODate(parsedEnd) : endDate;
 
     try {
-      const res = await apiClient.post('/trips', {
+      const res = await api.post('/trips', {
         title: title || `Du hí ${destinationCity}`,
         destination_city: destinationCity,
         start_date: formattedStartDate,
@@ -430,7 +423,7 @@ export default function TripWizard() {
           startDate,
         );
       }
-      router.replace(`/chuyen-di/${res.data.id}` as any);
+      router.replace(APP_ROUTES.TRIP_DETAIL(res.data.id) as any);
     } catch (err: any) {
       clearInterval(stageInterval);
       setLoading(false);
@@ -457,7 +450,7 @@ export default function TripWizard() {
           {/* Top bar: back + step dots */}
           <View className="flex-row justify-between items-center">
             <Pressable
-              onPress={() => router.push('/chuyen-di')}
+              onPress={() => router.push(APP_ROUTES.TRIPS as any)}
               className="flex-row items-center gap-1"
             >
               <ArrowLeft size={14} color={BRAND_COLORS.textSoft} />
@@ -573,9 +566,9 @@ export default function TripWizard() {
                         </Pressable>
                       ))}
                     </View>
-                    {(travelerType === 'solo' || travelerType === 'couple') && (
+                    {(travelerType === TravelerType.SOLO || travelerType === TravelerType.COUPLE) && (
                       <Text className="text-xs font-semibold text-brand-primary">
-                        {travelerType === 'solo'
+                        {travelerType === TravelerType.SOLO
                           ? 'ℹ️ Đã tự động thiết lập 1 người (Solo).'
                           : 'ℹ️ Đã tự động thiết lập 2 người (Couple).'}
                       </Text>
@@ -795,3 +788,4 @@ export default function TripWizard() {
     </KeyboardAvoidingView>
   );
 }
+

@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, ActivityIndicator, Platform, Linking } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { X, Crown, Sparkles } from 'lucide-react-native';
-import { apiClient } from '../lib/apiClient';
+import { api } from '../lib/api';
 import { BRAND_COLORS } from '../constants';
 
 interface PremiumModalProps {
@@ -27,7 +27,7 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
   const { data: statusData } = useQuery({
     queryKey: ['paymentStatusModal'],
     queryFn: async () => {
-      const res = await apiClient.get('/payment/status');
+      const res = await api.get('/payment/status');
       return res.data;
     },
     enabled: visible,
@@ -36,7 +36,7 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
   const { data: plansData } = useQuery({
     queryKey: ['publicPlansModal'],
     queryFn: async () => {
-      const res = await apiClient.get('/payment/plans');
+      const res = await api.get('/payment/plans');
       return res.data;
     },
     enabled: visible,
@@ -71,7 +71,7 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     const interval = setInterval(async () => {
       try {
         if (targetCode) {
-          const checkRes = await apiClient.get(`/payment/check-order/${targetCode}`);
+          const checkRes = await api.get(`/payment/check-order/${targetCode}`);
           if (checkRes.data?.paid) {
             clearInterval(interval);
             setActivated(true);
@@ -79,7 +79,7 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
             return;
           }
         }
-        const { data } = await apiClient.get('/payment/status');
+        const { data } = await api.get('/payment/status');
         if (data.isPremium && !statusData?.isPremium) {
           clearInterval(interval);
           setActivated(true);
@@ -100,7 +100,7 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     setOrderData(null);
     setErrorMessage('');
     try {
-      const { data } = await apiClient.post('/payment/create-order', {
+      const { data } = await api.post('/payment/create-order', {
         method: paymentMethod,
         plan: selectedPlan,
       });

@@ -1,190 +1,154 @@
-# ViVu Planner
+# ViVu Planner 🇻🇳
 
-Ứng dụng lập kế hoạch du lịch Việt Nam tích hợp AI, giúp tạo lịch trình cá nhân hóa từ thời tiết thực, địa điểm thật và các tình huống phát sinh trong chuyến đi.
+Nền tảng lập kế hoạch du lịch thông minh tại Việt Nam được hỗ trợ bởi AI, tự động xây dựng lịch trình cá nhân hoá dựa trên ngân sách thực tế, dữ liệu thời tiết và khả năng tự động thích ứng sự cố trong suốt chuyến đi.
 
-Hệ thống được thiết kế tối ưu chạy trên nền tảng **Web** (React Native Web).
-
----
-
-## Tính Năng Chính
-
-- **Lịch trình AI**: Gemini 2.5 Flash tạo lịch trình chi tiết theo ngày, tối ưu theo ngân sách, loại khách và sở thích.
-- **Tìm kiếm địa điểm**: Tích hợp OpenStreetMap Nominatim API miễn phí, không cần cấu hình API key trả phí.
-- **Ràng buộc ngân sách tối thiểu**: Dự đoán chi phí sàn tối thiểu (phòng nghỉ dorm & ăn uống cơ bản) dựa trên số khách, số ngày/đêm và tự động cảnh báo, chặn các yêu cầu ngân sách phi thực tế.
-- **Đa dạng ẩm thực & Tránh lặp món**: Thuật toán bể chứa cạn kiệt (Depletion Pool) và nới lỏng ngân sách động giúp phân bổ ẩm thực đa dạng, tránh lặp món (ví dụ: bánh khọt Vũng Tàu).
-- **Thích ứng sự cố**: AI preview và áp dụng lịch trình mới khi có mưa bão, trễ chuyến, hụt ngân sách hoặc vấn đề sức khỏe.
-- **Hỗ trợ 11 điểm đến**: Hà Nội, Đà Nẵng, TP. Hồ Chí Minh, Hội An, Huế, Nha Trang, Đà Lạt, Phú Quốc, Sa Pa, Ninh Bình, Vũng Tàu.
-- **Xuất cẩm nang PDF**: Tải trực tiếp cẩm nang lịch trình, chi tiêu và thông tin thời tiết PDF sắc nét dạng vector, tối ưu dàn trang in ấn.
-- **Offline cache**: lưu danh sách/chuyến đi đã tải với TTL 30 phút.
+Hệ thống hoạt động dưới dạng **Vercel Fullstack Monorepo**, tối ưu hoá hoàn toàn cho nền tảng **Web** (React Native Web / Expo).
 
 ---
 
-## Tech Stack
+## ✨ Tính Năng Nổi Bật
 
-| Layer | Công nghệ |
-| --- | --- |
-| Frontend | Expo SDK 56 (React Native Web), React 19 |
-| Routing | Expo Router |
-| Styling | NativeWind v4, Custom CSS variables |
-| State/Data | TanStack Query, AsyncStorage cache |
-| Backend | Node.js, Express, Vercel Serverless |
-| Database/Auth | Supabase PostgreSQL, RLS, Supabase Auth |
-| AI | Google Gemini 2.5 Flash |
-| Maps/Places | OpenStreetMap Nominatim API (Free) |
-| Deploy | Vercel Web |
+- **Lịch trình AI tối ưu (Gemini):** Tự động tạo kế hoạch chi tiết theo từng ngày, ràng buộc ngân sách sàn thực tế (phòng nghỉ, ăn uống, di chuyển) và thuật toán chống lặp món ăn.
+- **Thích ứng sự cố linh hoạt (Disruption Adapter):** Đề xuất và thay thế lịch trình thông minh khi gặp mưa bão, trễ chuyến, sức khỏe hoặc biến động ngân sách.
+- **Trợ lý AI đồng hành (Chatbot 24/7):** Tư vấn điểm đến, điều chỉnh lịch trình và thêm hoạt động trực tiếp qua hội thoại.
+- **Bản đồ & Địa điểm tương tác:** Khảo sát hành trình trực quan, tìm kiếm địa điểm qua OpenStreetMap (Nominatim) & Google Places.
+- **Thanh toán & Nâng cấp gói:** Tích hợp PayOS (VietQR) và MoMo để nâng cấp gói thành viên mở khóa tính năng cao cấp (Bản đồ chi tiết, Xuất cẩm nang PDF).
+- **Trang Quản trị Hệ thống (Admin Portal):** Quản lý người dùng, phân quyền qua Supabase JWT role, xoay vòng tự động API Key (Gemini Key Rotation), thống kê doanh thu và cấu hình đối tác.
 
 ---
 
-## Cấu Trúc Dự Án
+## 🛠 Tech Stack
+
+| Thành phần | Công nghệ sử dụng |
+| :--- | :--- |
+| **Frontend** | React Native Web (Expo SDK 56), React 19, Expo Router |
+| **Styling & State** | NativeWind (Tailwind CSS v4), TanStack Query, AsyncStorage |
+| **Backend** | Node.js, Express (Kiến trúc MVC v2), TypeScript Strict |
+| **Database & Auth**| Supabase PostgreSQL, Row Level Security (RLS), Supabase Auth |
+| **AI Engine** | Google Gemini (2.5 Flash / Flash-Lite) với cơ chế xoay vòng key từ Database |
+| **Thanh toán** | PayOS, MoMo |
+| **Triển khai** | Vercel Serverless Fullstack Monorepo |
+
+---
+
+## 📂 Cấu Trúc Dự Án
 
 ```text
 vivu-planner/
-├── frontend/                    # Web App (React Native Web)
-│   ├── app/
-│   │   ├── _layout.tsx          # Root layout, fonts, QueryClient
-│   │   ├── index.tsx            # Redirect theo trạng thái đăng nhập
-│   │   ├── landing.tsx          # Trang giới thiệu
-│   │   ├── (auth)/
-│   │   │   ├── dang-nhap.tsx    # Đăng nhập
-│   │   │   └── dang-ky.tsx      # Đăng ký
-│   │   └── (app)/
-│   │       ├── admin.tsx        # Trang quản trị web-only
-│   │       └── chuyen-di/
-│   │           ├── index.tsx    # Dashboard danh sách chuyến đi
-│   │           ├── moi.tsx      # Wizard tạo chuyến đi
-│   │           └── [id].tsx     # Chi tiết lịch trình
-│   ├── components/              # AuthScreen, Reveal, SystemClock, BackToTop
-│   ├── constants/               # Brand colors, cities, traveler/preference options
-│   ├── hooks/                   # Location helpers
-│   ├── lib/                     # API client, Supabase client, cache, notifications
-│   ├── app.json                 # Expo config
-│   └── vercel.json              # Vercel config khi deploy riêng frontend
-├── backend/                     # Express API
+├── api/                    # Vercel Serverless Function entry point
+├── frontend/               # Ứng dụng Web Expo (React Native Web)
+│   ├── app/                # File-based Routing (Expo Router)
+│   │   ├── (auth)/         # Màn hình Đăng nhập / Đăng ký
+│   │   ├── (app)/chuyen-di/# Dashboard, Wizard tạo mới & Chi tiết lịch trình
+│   │   ├── admin/          # 7 màn hình quản trị module hoá
+│   │   ├── premium/        # Nâng cấp tài khoản & xác nhận thanh toán
+│   │   └── landing.tsx     # Landing page giới thiệu dự án
+│   ├── components/         # UI Components tái sử dụng & AdminNav
+│   ├── hooks/              # Custom hooks (useAuth, useTrips, useLocation)
+│   ├── lib/                # API Client (Axios), Supabase Client chuẩn hoá
+│   └── constants/          # Design Tokens, Business Rules, Enums
+├── backend/                # API Server Express MVC
 │   └── src/
-│       ├── routes/              # trips, places, weather, auth, admin
-│       └── services/            # Gemini, Places, Weather, Supabase, key manager
+│       ├── config/         # Cấu hình biến môi trường & Supabase clients
+│       ├── constants/      # Enums, Business configs tập trung
+│       ├── middleware/     # Auth JWT, Admin Guard, Error Handler chuẩn
+│       ├── modules/        # Modular MVC (admin, ai, auth, payment, places, trips, weather)
+│       └── utils/          # Key Manager (xoay vòng Gemini keys từ DB)
 ├── supabase/
-│   └── schema.sql               # Database schema + RLS policies
-└── vercel.json                  # Vercel config khi deploy cả frontend + backend từ root
+│   └── schema.sql          # Database Schema chuan (RLS, Custom Claims Hook, Bang & Indexes)
+└── vercel.json             # Cấu hình điều hướng Fullstack Monorepo trên Vercel
 ```
 
 ---
 
-## Cài Đặt Local
+## 🚀 Khởi Chạy Local
 
-### Yêu Cầu
+### Yêu Cầu Tiên Quyết
+- **Node.js**: >= 18.0.0
+- **npm**: >= 9.0.0
 
-- Node.js 18+
-- npm 9+
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run web
-```
-
-### Backend
+### 1. Cài đặt Dependencies
 
 ```bash
-cd backend
+# Cài đặt toàn bộ (Root, Backend, Frontend)
 npm install
-npm run dev
+cd backend && npm install
+cd ../frontend && npm install
+cd ..
 ```
 
-Backend local mặc định chạy ở `http://localhost:4000`.
+### 2. Thiết lập Biến Môi Trường
 
----
+Sao chép file mẫu và điền thông tin tương ứng:
 
-## Environment Variables
+```bash
+# Frontend (.env)
+cp frontend/.env.example frontend/.env
 
-Tạo file `frontend/.env`:
+# Backend (.env)
+cp backend/.env.example backend/.env
+```
 
+**Biến môi trường Frontend (`frontend/.env`):**
 ```env
 EXPO_PUBLIC_API_BASE_URL=http://localhost:4000/api
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-Tạo file `backend/.env`:
-
+**Biến môi trường Backend (`backend/.env`):**
 ```env
 PORT=4000
+FRONTEND_ORIGIN=http://localhost:8081,http://localhost:3000
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-GEMINI_API_KEY=your-gemini-api-key
-FRONTEND_ORIGIN=http://localhost:8081,http://localhost:19006
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=change-this-password
+OPENWEATHER_API_KEY=your-openweather-key
+
+# Cổng thanh toán (Tuỳ chọn cho Local Dev)
+PAYOS_CLIENT_ID=
+PAYOS_API_KEY=
+PAYOS_CHECKSUM_KEY=
+MOMO_PARTNER_CODE=
+MOMO_ACCESS_KEY=
+MOMO_SECRET_KEY=
 ```
 
----
+> **Lưu ý về Gemini API Key:** Hệ thống **không** đọc key Gemini từ `.env` mà tự động lấy và xoay vòng từ bảng `api_keys` trong Supabase. Quản trị viên thêm key trực tiếp tại giao diện **Admin > Gemini Keys**.
 
-## Scripts Kiểm Tra
+### 3. Chạy Development Server
 
-```bash
-cd frontend
-npx tsc --noEmit
-npm run build
-```
+Mở 2 terminal song song:
 
 ```bash
+# Terminal 1: Backend (Chạy tại http://localhost:4000)
 cd backend
-npm run build
+npm run dev
+
+# Terminal 2: Frontend (Chạy tại http://localhost:8081)
+cd frontend
+npm run web
 ```
 
 ---
 
-## Deploy
-
-### Deploy Frontend Riêng Lên Vercel
-
-Nếu deploy từ thư mục `frontend/`, dùng [frontend/vercel.json](frontend/vercel.json):
+## 🧪 Kiểm Tra & Build
 
 ```bash
-cd frontend
-npm run build
-npx vercel --prod
+# Kiểm tra Type-check & Code Cleanliness (0 lỗi)
+cd backend && npx tsc --noEmit --noUnusedLocals --noUnusedParameters
+cd ../frontend && npx tsc --noEmit --noUnusedLocals --noUnusedParameters
+
+# Build Web Bundle
+cd ../frontend && npm run build:web
 ```
 
-### Deploy Fullstack Từ Root
-
-Nếu deploy từ root repo, Vercel sẽ đọc [vercel.json](vercel.json) để route `/api/*` sang backend và phần còn lại sang frontend. Cần đảm bảo Vercel project có đủ env cho cả frontend và backend.
-
 ---
 
-## API Endpoints Chính
+## 🚢 Triển Khai Lên Vercel
 
-| Method | Endpoint | Chức năng |
-| --- | --- | --- |
-| `POST` | `/api/auth/signup` | Đăng ký tài khoản qua backend |
-| `GET` | `/api/trips` | Lấy danh sách chuyến đi |
-| `POST` | `/api/trips` | Tạo chuyến đi và sinh lịch trình AI |
-| `GET` | `/api/trips/:id` | Xem chi tiết chuyến đi |
-| `PUT` | `/api/trips/:id` | Cập nhật metadata chuyến đi |
-| `DELETE` | `/api/trips/:id` | Xóa chuyến đi |
-| `POST` | `/api/trips/:id/disruptions/preview` | AI preview lịch trình thích ứng sự cố |
-| `POST` | `/api/trips/:id/disruptions/apply` | Lưu lịch trình đã chọn |
-| `PUT` | `/api/trips/items/:itemId` | Sửa item thủ công |
-| `DELETE` | `/api/trips/items/:itemId` | Xóa item |
-| `POST` | `/api/trips/items/:itemId/ai-replace` | AI gợi ý phương án thay thế |
-| `GET` | `/api/weather` | Lấy dự báo thời tiết |
-| `GET` | `/api/places/search` | Tìm địa điểm |
-| `POST` | `/api/admin/login` | Đăng nhập admin |
-
----
-
-## Database Schema
-
-Schema nằm tại [supabase/schema.sql](supabase/schema.sql), gồm:
-
-- `profiles`: thông tin người dùng.
-- `trips`: chuyến đi.
-- `itinerary_days`: các ngày trong chuyến.
-- `itinerary_items`: hoạt động trong từng ngày.
-- `disruption_events`: sự cố phát sinh.
-- `itinerary_revisions`: lịch sử thay đổi lịch trình.
-- `places_cache`: cache địa điểm OpenStreetMap Nominatim.
-- `gemini_api_keys`: pool API key Gemini cho backend.
+Dự án được đóng gói dạng **Vercel Fullstack Monorepo**:
+1. Đẩy mã nguồn lên GitHub.
+2. Import repository vào **Vercel Dashboard**.
+3. Cấu hình các biến môi trường trong mục **Settings > Environment Variables** (sử dụng các biến từ file `.env.example` ở root).
+4. Vercel tự động build frontend tĩnh vào thư mục `dist/` và triển khai backend qua serverless function tại `/api/*`.

@@ -11,22 +11,20 @@ import {
   HelpCircle, ChevronRight, Activity, ThermometerSun, Trash2, PenLine,
   Shield, Share2, Crown,
 } from 'lucide-react-native';
-import { apiClient } from '../../../lib/apiClient';
+import { api } from '../../../lib/api';
 import { getCache, setCache } from '../../../lib/cache';
+import { useAuth } from '../../../hooks/useAuth';
 import { ChatbotContext } from '../../../context/ChatbotContext';
-import { cancelTripReminder } from '../../../lib/notifications';
 import { useDistanceToCity } from '../../../hooks/useLocation';
 import Reveal from '../../../components/Reveal';
 import SystemClock from '../../../components/SystemClock';
 import BackToTop from '../../../components/BackToTop';
-import { BRAND_COLORS } from '../../../constants';
+import { BRAND_COLORS, ItineraryItemType, APP_ROUTES } from '../../../constants';
 import InteractiveMap, { MapItem } from '../../../components/InteractiveMap';
 import ShareModal from '../../../components/ShareModal';
 import BookingModal, { BookableItem } from '../../../components/BookingModal';
 import PremiumModal from '../../../components/PremiumModal';
 import ConfirmModal from '../../../components/ConfirmModal';
-
-const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ItineraryItem {
@@ -58,7 +56,7 @@ function formatDate(s: string) {
 function hasOfficialCost(c?: number | null) { return c !== undefined && c !== null && Number.isFinite(Number(c)); }
 function formatCost(c?: number | null, itemType?: string) {
   if (!hasOfficialCost(c)) {
-    if (itemType === 'accommodation' || itemType === 'rental') return 'Cần xác nhận giá';
+    if (itemType === ItineraryItemType.ACCOMMODATION || itemType === ItineraryItemType.RENTAL) return 'Cần xác nhận giá';
     return 'Chưa cập nhật';
   }
   let costVal = Number(c);
@@ -70,16 +68,20 @@ function formatCost(c?: number | null, itemType?: string) {
 function getItemTypeIcon(type: string) {
   const props = { size: 14, color: BRAND_COLORS.primary };
   switch (type) {
-    case 'accommodation': return <Home {...props} />;
-    case 'transport': case 'rental': return <Bike {...props} />;
-    case 'dining': return <Utensils {...props} />;
-    case 'experience': return <Sparkles {...props} />;
+    case ItineraryItemType.ACCOMMODATION: return <Home {...props} />;
+    case ItineraryItemType.TRANSPORT: case ItineraryItemType.RENTAL: return <Bike {...props} />;
+    case ItineraryItemType.DINING: return <Utensils {...props} />;
+    case ItineraryItemType.EXPERIENCE: return <Sparkles {...props} />;
     default: return <Map {...props} />;
   }
 }
 const ITEM_TYPE_LABELS: Record<string, string> = {
-  accommodation: 'Chỗ nghỉ', transport: 'Di chuyển', dining: 'Ăn uống',
-  attraction: 'Tham quan', rental: 'Thuê xe', experience: 'Trải nghiệm',
+  [ItineraryItemType.ACCOMMODATION]: 'Chỗ nghỉ',
+  [ItineraryItemType.TRANSPORT]: 'Di chuyển',
+  [ItineraryItemType.DINING]: 'Ăn uống',
+  [ItineraryItemType.ATTRACTION]: 'Tham quan',
+  [ItineraryItemType.RENTAL]: 'Thuê xe',
+  [ItineraryItemType.EXPERIENCE]: 'Trải nghiệm',
 };
 
 // ─── SelectPicker ─────────────────────────────────────────────────────────────
@@ -139,7 +141,7 @@ function ModalShell({ visible, onClose, children }: { visible: boolean; onClose:
 export default function TripDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const isAdmin = canUseLocalStorage && !!localStorage.getItem('vivu_admin_token');
+  const { isAdmin } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [activeTabId, setActiveTabId] = useState('');
@@ -191,7 +193,6 @@ export default function TripDetail() {
     onConfirm: () => void;
     isDestructive?: boolean;
   } | null>(null);
-  const [bookedItemIds, setBookedItemIds] = useState<Set<string>>(new Set());
   const [selectedBookingItems, setSelectedBookingItems] = useState<BookableItem[]>([]);
 
   useEffect(() => {
@@ -203,7 +204,7 @@ export default function TripDetail() {
   const { data: trip, isLoading, isError, refetch } = useQuery<TripDetailData>({
     queryKey: ['trip', id],
     queryFn: async () => {
-      const r = await apiClient.get(`/trips/${id}`);
+      const r = await api.get(`/trips/${id}`);
       await setCache(`trip_${id}`, r.data);
       return r.data;
     },
@@ -213,7 +214,7 @@ export default function TripDetail() {
   const { data: statusData, refetch: refetchStatus } = useQuery({
     queryKey: ['paymentStatusTripDetail'],
     queryFn: async () => {
-      const res = await apiClient.get('/payment/status');
+      const res = await api.get('/payment/status');
       return res.data;
     }
   });
@@ -248,16 +249,6 @@ export default function TripDetail() {
       const normalizeString = (s: string) => {
         if (!s) return '';
         return s.trim().toLowerCase().replace(/\s+/g, ' ');
-      };
-
-      const normalizeTime = (t: string) => {
-        if (!t) return '';
-        return t.substring(0, 5);
-      };
-
-      const normalizeCost = (c: any) => {
-        if (c === null || c === undefined) return 0;
-        return Number(c) || 0;
       };
 
       adaptedItinerary.days.forEach((day: any) => {
@@ -302,7 +293,7 @@ export default function TripDetail() {
 
   const previewMutation = useMutation({
     mutationFn: async (payload: any) => {
-      const r = await apiClient.post(`/trips/${id}/disruptions/preview`, payload);
+      const r = await api.post(`/trips/${id}/disruptions/preview`, payload);
       return r.data;
     },
     onSuccess: (data) => {
@@ -328,7 +319,7 @@ export default function TripDetail() {
 
   const applyMutation = useMutation({
     mutationFn: async (payload: any) => {
-      const r = await apiClient.post(`/trips/${id}/disruptions/apply`, payload);
+      const r = await api.post(`/trips/${id}/disruptions/apply`, payload);
       return r.data;
     },
     onSuccess: () => {
@@ -344,7 +335,7 @@ export default function TripDetail() {
 
   const editMutation = useMutation({
     mutationFn: async (payload: any) => {
-      const r = await apiClient.put(`/trips/items/${editingItem.id}`, payload);
+      const r = await api.put(`/trips/items/${editingItem.id}`, payload);
       return r.data;
     },
     onSuccess: () => { setEditOpen(false); refetch(); },
@@ -353,7 +344,7 @@ export default function TripDetail() {
 
   const aiReplaceMutation = useMutation({
     mutationFn: async ({ itemId, payload }: { itemId: string; payload: any }) => {
-      const r = await apiClient.put(`/trips/items/${itemId}`, payload);
+      const r = await api.put(`/trips/items/${itemId}`, payload);
       return r.data;
     },
     onSuccess: () => { setAiReplaceOpen(false); setAiReplaceItem(null); setAiAlternatives([]); refetch(); },
@@ -361,15 +352,15 @@ export default function TripDetail() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (itemId: string) => { await apiClient.delete(`/trips/items/${itemId}`); },
+    mutationFn: async (itemId: string) => { await api.delete(`/trips/items/${itemId}`); },
     onSuccess: () => refetch(),
     onError: (err: any) => Alert.alert('Lỗi xóa hoạt động', err.response?.data?.error || err.message),
   });
 
   const deleteTripMutation = useMutation({
-    mutationFn: async () => { await apiClient.delete(`/trips/${id}`); },
+    mutationFn: async () => { await api.delete(`/trips/${id}`); },
     onSuccess: () => {
-      router.replace(isAdmin ? '/admin' as any : '/chuyen-di');
+      router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
     },
     onError: (err: any) => Alert.alert('Lỗi xóa chuyến đi', err.response?.data?.error || err.message),
   });
@@ -439,7 +430,7 @@ export default function TripDetail() {
         <AlertTriangle size={64} color={BRAND_COLORS.danger} />
         <Text className="text-2xl font-bold text-brand-text">Không tìm thấy chuyến đi</Text>
         <Text className="text-sm text-brand-textSoft text-center">Lịch trình không tồn tại hoặc bạn không có quyền truy cập.</Text>
-        <Pressable onPress={() => router.push(isAdmin ? '/admin' as any : '/chuyen-di')} className="flex-row items-center gap-2 px-5 py-2.5 rounded-lg bg-brand-primary">
+        <Pressable onPress={() => router.push(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any))} className="flex-row items-center gap-2 px-5 py-2.5 rounded-lg bg-brand-primary">
           <ArrowLeft size={16} color="white" />
           <Text className="text-white font-bold">Quay lại {isAdmin ? 'Quản trị' : 'danh sách'}</Text>
         </Pressable>
@@ -667,7 +658,7 @@ export default function TripDetail() {
         {/* Navbar */}
         <View className="bg-brand-bg border-b border-brand-line px-6 py-4">
           <View className="flex-row justify-between items-center">
-            <Pressable onPress={() => router.push(isAdmin ? '/admin' as any : '/chuyen-di')} className="flex-row items-center gap-1.5">
+            <Pressable onPress={() => router.push(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any))} className="flex-row items-center gap-1.5">
               <ArrowLeft size={16} color={BRAND_COLORS.textSoft} />
               <Text className="text-xs font-bold text-brand-textSoft">{isAdmin ? 'Quản trị' : 'Bảng điều khiển'}</Text>
             </Pressable>
@@ -969,7 +960,7 @@ export default function TripDetail() {
                 <Text className="text-center py-12 text-brand-textSoft text-sm">Chưa có hoạt động nào.</Text>
               ) : (
                 <View style={{ borderLeftWidth: 1, borderLeftColor: 'rgba(27,36,32,0.12)', marginLeft: 12, paddingLeft: 24, gap: 24 }}>
-                  {activeItems.map((item, idx) => {
+                  {activeItems.map((item) => {
                     const isReplaced = item.status === 'replaced';
                     const isSkipped = item.status === 'skipped';
                     return (
@@ -1023,7 +1014,7 @@ export default function TripDetail() {
                                       );
                                       if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
                                         const partnerId = item.google_place_id.replace('partner_', '');
-                                        apiClient.post(`/admin/partners/${partnerId}/click`, { tripId: id }).catch(err =>
+                                        api.post(`/admin/partners/${partnerId}/click`, { tripId: id }).catch(err =>
                                           console.error("Failed to log partner click", err)
                                         );
                                       }
@@ -1229,7 +1220,7 @@ export default function TripDetail() {
                   if (Number(day.day_number) < affDay) return null;
 
                   // Filter out items that are not in displayedItems
-                  const itemsToShow = day.items.filter((item: any, i: number) => {
+                  const itemsToShow = day.items.filter((_: any, i: number) => {
                     const tempId = `temp-${day.day_number}-${i}`;
                     return displayedItems.some(d => d.temp_id === tempId);
                   });
@@ -1386,7 +1377,7 @@ export default function TripDetail() {
                   onPress={async () => {
                     setFetchingAlts(true);
                     try {
-                      const r = await apiClient.post(`/trips/items/${aiReplaceItem.id}/ai-replace`, { user_requirement: aiRequirement });
+                      const r = await api.post(`/trips/items/${aiReplaceItem.id}/ai-replace`, { user_requirement: aiRequirement });
                       setAiAlternatives(r.data.alternatives || []);
                     } catch (err: any) {
                       Alert.alert('Lỗi', err.response?.data?.error || err.message);

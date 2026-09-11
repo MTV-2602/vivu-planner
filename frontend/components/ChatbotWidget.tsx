@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   ActivityIndicator, Platform, Dimensions
@@ -6,7 +6,7 @@ import {
 import { MessageSquare, Send, Sparkles, X, Bot, User } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useChatbot } from '../context/ChatbotContext';
-import { apiClient } from '../lib/apiClient';
+import { api } from '../lib/api';
 import { BRAND_COLORS } from '../constants';
 
 interface ChatMessage {
@@ -54,7 +54,7 @@ export function ChatbotWidget() {
   const loadChatHistory = async () => {
     try {
       const endpoint = tripId ? `/trips/${tripId}/chat?t=${Date.now()}` : `/trips/chat?t=${Date.now()}`;
-      const response = await apiClient.get(endpoint);
+      const response = await api.get(endpoint);
       if (response.data?.success && response.data?.messages) {
         const loadedMessages = response.data.messages.map((m: any) => ({
           role: m.role,
@@ -129,7 +129,7 @@ export function ChatbotWidget() {
         }));
 
       const endpoint = tripId ? `/trips/${tripId}/chat` : '/trips/chat';
-      const response = await apiClient.post(endpoint, {
+      const response = await api.post(endpoint, {
         message: userMessage,
         history
       });
@@ -200,7 +200,7 @@ export function ChatbotWidget() {
     }, 150);
 
     try {
-      const response = await apiClient.post('/trips', {
+      const response = await api.post('/trips', {
         title: params.title || `Du hí ${params.destination_city}`,
         destination_city: params.destination_city,
         start_date: params.start_date,

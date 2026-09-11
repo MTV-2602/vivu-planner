@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { AlertTriangle } from 'lucide-react-native';
 import { BRAND_COLORS } from '../constants';

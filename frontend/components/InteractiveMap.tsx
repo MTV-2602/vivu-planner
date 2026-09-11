@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, Linking } from 'react-native';
 import { Map, MapPin } from 'lucide-react-native';
 import { BRAND_COLORS } from '../constants';

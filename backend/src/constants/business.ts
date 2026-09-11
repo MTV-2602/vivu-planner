@@ -1,0 +1,75 @@
+/**
+ * Quy chuẩn nghiệp vụ (Business Rules & Constants) cho Backend ViVu Planner v2.0
+ */
+
+export const BUDGET_ESTIMATION_CONFIG = {
+  ROOM_COST_PER_NIGHT_PER_ROOM: 200_000,
+  DAILY_EXPENSE_PER_GUEST: 120_000,
+
+  /**
+   * Tính toán ngân sách tối thiểu cho chuyến đi dựa trên số ngày, số đêm và số lượng khách.
+   * Quy ước: 1 phòng đôi cho 2 khách (200k/đêm/phòng), chi phí ăn uống & di chuyển cơ bản 120k/khách/ngày.
+   */
+  calculateMinimumBudget: (daysCount: number, nightsCount: number, travelerCount: number): number => {
+    const travelers = Math.max(1, travelerCount || 1);
+    const days = Math.max(1, daysCount || 1);
+    const nights = Math.max(0, nightsCount || 0);
+
+    const roomCount = Math.ceil(travelers / 2);
+    const estimatedRoomCost = roomCount * nights * BUDGET_ESTIMATION_CONFIG.ROOM_COST_PER_NIGHT_PER_ROOM;
+    const estimatedDailyCost = travelers * days * BUDGET_ESTIMATION_CONFIG.DAILY_EXPENSE_PER_GUEST;
+
+    return estimatedRoomCost + estimatedDailyCost;
+  },
+};
+
+export const QUOTA_CONFIG = {
+  DEFAULT_FREE_TRIPS: 3,
+  UNLIMITED_ADMIN_TRIPS: 9999,
+};
+
+export const ORDER_CONFIG = {
+  EXPIRATION_MS: 10 * 60 * 1000, // 10 phút tự hủy đơn pending
+};
+
+export const KEY_COOLDOWN_CONFIG = {
+  RATE_LIMITED_MS: 3 * 60 * 1000, // 3 phút tự động phục hồi rate_limited key
+  INVALID_MS: 15 * 60 * 1000,     // 15 phút tự động thử lại invalid key
+};
+
+export const AI_CANDIDATE_LIMITS = {
+  ACCOMMODATION: 4,
+  DINING: 8,
+  ATTRACTION: 8,
+  RENTAL: 3,
+};
+
+export const PARTNER_MATCH_WEIGHTS = {
+  EXACT_PRICE_MATCH: 0.3,
+  CLOSE_PRICE_MATCH: 0.15,
+  CUISINE_MATCH: 0.3,
+  AMENITY_MATCH: 0.2,
+  DIETARY_MATCH: 0.2,
+  INTEREST_MATCH: 0.2,
+};
+
+export const BUDGET_PRICE_TIERS = {
+  BUDGET_MAX: 500_000,     // Phân khúc 1 ($)
+  MID_MAX: 1_500_000,      // Phân khúc 2 ($$)
+  UPSCALE_MAX: 4_000_000,  // Phân khúc 3 ($$$)
+};
+
+export const USER_BAN_CONFIG = {
+  DEFAULT_BAN_DURATION: '87600h', // 10 năm
+  UNBAN_DURATION: 'none',
+};
+
+export const DEFAULT_PLANS_CONFIG = {
+  plus:    { amount: 29_000, label: 'Gói Starter', duration_days: 30 },
+  starter: { amount: 29_000, label: 'Gói Starter', duration_days: 30 },
+  monthly: { amount: 49_000, label: 'Gói Premium', duration_days: 30 },
+  pro:     { amount: 49_000, label: 'Gói Premium', duration_days: 30 },
+  premium: { amount: 49_000, label: 'Gói Premium', duration_days: 30 },
+  yearly:  { amount: 99_000, label: 'Gói VIP', duration_days: 365 },
+  vip:     { amount: 99_000, label: 'Gói VIP', duration_days: 365 },
+};

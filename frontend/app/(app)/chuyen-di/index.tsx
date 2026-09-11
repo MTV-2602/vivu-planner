@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react';
 import {
-  View, Text, ScrollView, Pressable, ActivityIndicator, Alert, Platform,
+  View, Text, ScrollView, Pressable, Alert, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Compass, Plus, LogOut, Calendar, MapPin, Wallet, DollarSign,
-  RefreshCw, User, GitFork, Shield, WifiOff, Crown, Trash2, Sparkles, X,
+  RefreshCw, User, Shield, WifiOff, Crown, Trash2, Sparkles, X,
 } from 'lucide-react-native';
-import { supabase } from '../../../lib/supabaseClient';
-import { apiClient } from '../../../lib/apiClient';
+import { useAuth } from '../../../hooks/useAuth';
+import { api } from '../../../lib/api';
 import { getCache, setCache, clearCache } from '../../../lib/cache';
 import Reveal from '../../../components/Reveal';
 import SystemClock from '../../../components/SystemClock';
-import { BRAND_COLORS } from '../../../constants';
+import { BRAND_COLORS, APP_ROUTES } from '../../../constants';
 import PremiumModal from '../../../components/PremiumModal';
 import ConfirmModal from '../../../components/ConfirmModal';
 
@@ -29,8 +29,6 @@ interface Trip {
   traveler_type: string;
   status: string;
 }
-
-const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
 
 function formatDate(dateStr: string) {
   if (!dateStr) return '';
@@ -80,9 +78,9 @@ function getTripStatusInfo(startDateStr: string, endDateStr: string, dbStatus: s
 
 export default function Dashboard() {
   const router = useRouter();
-  const [userEmail, setUserEmail] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const { user, isAdmin, signOut } = useAuth();
+  const userEmail = user?.email || '';
+
   const [cachedTrips, setCachedTrips] = useState<Trip[] | null>(null);
   const [fromCache, setFromCache] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
@@ -103,27 +101,12 @@ export default function Dashboard() {
   const [paymentSuccessMsg, setPaymentSuccessMsg] = useState('');
 
   useEffect(() => {
-    if (canUseLocalStorage && localStorage.getItem('vivu_admin_token')) {
-      router.replace('/admin' as any);
-      return;
-    }
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        router.replace('/dang-nhap');
-      } else {
-        setUserEmail(user.email || '');
-        if (canUseLocalStorage) {
-          setIsAdmin(!!localStorage.getItem('vivu_admin_token'));
-        }
-      }
-    });
-
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const search = window.location.search;
       if (search && (search.includes('payment=success') || search.includes('resultCode=0') || search.includes('code=00'))) {
         // Clean the URL immediately so user doesn't see ugly query params
         window.history.replaceState({}, document.title, window.location.pathname);
-        apiClient.get(`/payment/verify-return${search}`).then(res => {
+        api.get(`/payment/verify-return${search}`).then(() => {
             setPaymentSuccessMsg('🎉 Thanh toán thành công! Gói dịch vụ đã được kích hoạt thành công, mở khóa toàn bộ tính năng Bản đồ & Tải PDF cho tài khoản của bạn.');
             refetchStatus();
         }).catch(() => {});
@@ -134,7 +117,7 @@ export default function Dashboard() {
   const { data: trips, isLoading, isError, refetch } = useQuery<Trip[]>({
     queryKey: ['trips'],
     queryFn: async () => {
-      const res = await apiClient.get('/trips');
+      const res = await api.get('/trips');
       await setCache('trips', res.data);
       setFromCache(false);
       return res.data;
@@ -145,7 +128,7 @@ export default function Dashboard() {
   const { data: paymentStatus, refetch: refetchStatus } = useQuery({
     queryKey: ['payment-status'],
     queryFn: async () => {
-      const r = await apiClient.get('/payment/status');
+      const r = await api.get('/payment/status');
       return r.data;
     },
   });
@@ -166,7 +149,7 @@ export default function Dashboard() {
 
   const deleteMutation = useMutation({
     mutationFn: async (tripId: string) => {
-      await apiClient.delete(`/trips/${tripId}`);
+      await api.delete(`/trips/${tripId}`);
     },
     onSuccess: () => {
       refetch();
@@ -189,27 +172,9 @@ export default function Dashboard() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    if (canUseLocalStorage) {
-      localStorage.removeItem('vivu_admin_token');
-      localStorage.removeItem('vivu_mock_user');
-      localStorage.removeItem('vivu_mock_token');
-    }
+    await signOut();
     await clearCache();
-    router.replace('/dang-nhap');
-  };
-
-  const handleSync = async () => {
-    setSyncing(true);
-    try {
-      const res = await apiClient.post('/dev/sync-repositories');
-      Alert.alert('Thành công', res.data.message);
-    } catch (err: any) {
-      const msg = err.response?.data?.details || err.response?.data?.error || err.message;
-      Alert.alert('Lỗi đồng bộ', msg);
-    } finally {
-      setSyncing(false);
-    }
+    router.replace(APP_ROUTES.SIGN_IN as any);
   };
 
   return (
@@ -218,7 +183,7 @@ export default function Dashboard() {
       {/* Navbar */}
       <View className="bg-brand-bg border-b border-brand-line px-6 py-4">
         <View className="flex-row justify-between items-center">
-          <Pressable onPress={() => router.push('/landing')} className="flex-row items-center gap-2">
+          <Pressable onPress={() => router.push(APP_ROUTES.LANDING as any)} className="flex-row items-center gap-2">
             <Compass size={28} color={BRAND_COLORS.primary} />
             <Text className="font-display font-bold text-xl text-brand-primary">ViVu Planner</Text>
           </Pressable>
@@ -266,7 +231,7 @@ export default function Dashboard() {
             })()}
             {isAdmin && (
               <Pressable
-                onPress={() => router.push('/admin' as any)}
+                onPress={() => router.push(APP_ROUTES.ADMIN as any)}
                 className="flex-row items-center gap-1 px-3 py-2 rounded-lg bg-brand-accent/10"
               >
                 <Shield size={14} color={BRAND_COLORS.accent} />
@@ -316,24 +281,8 @@ export default function Dashboard() {
           </View>
 
           <View className="flex-row gap-3 flex-wrap">
-            {__DEV__ && (
-              <Pressable
-                onPress={handleSync}
-                disabled={syncing}
-                className="flex-row items-center gap-2 px-5 py-3 rounded-xl bg-brand-primary"
-                style={syncing ? { opacity: 0.5 } : undefined}
-              >
-                {syncing
-                  ? <ActivityIndicator size="small" color="white" />
-                  : <GitFork size={16} color="white" />
-                }
-                <Text className="text-white font-bold text-sm">
-                  {syncing ? 'Đang đồng bộ...' : 'Đồng bộ Git'}
-                </Text>
-              </Pressable>
-            )}
             <Pressable
-              onPress={() => router.push('/chuyen-di/moi' as any)}
+              onPress={() => router.push(APP_ROUTES.NEW_TRIP as any)}
               className="flex-row items-center gap-2 px-5 py-3 rounded-xl bg-brand-accent"
             >
               <Plus size={16} color="white" />
@@ -385,7 +334,7 @@ export default function Dashboard() {
                 </Text>
               </View>
               <Pressable
-                onPress={() => router.push('/chuyen-di/moi' as any)}
+                onPress={() => router.push(APP_ROUTES.NEW_TRIP as any)}
                 className="flex-row items-center gap-2 px-5 py-3 rounded-xl bg-brand-primary"
               >
                 <Plus size={16} color="white" />
@@ -398,7 +347,7 @@ export default function Dashboard() {
             {trips?.map((trip, idx) => (
               <Reveal key={trip.id} delay={idx * 60}>
                 <Pressable
-                  onPress={() => router.push(`/chuyen-di/${trip.id}` as any)}
+                  onPress={() => router.push(APP_ROUTES.TRIP_DETAIL(trip.id) as any)}
                   className="bg-brand-bgAlt border border-brand-line/50 rounded-2xl p-6 shadow-sm"
                   style={{ minWidth: 280 }}
                 >
@@ -490,3 +439,4 @@ export default function Dashboard() {
   </View>
   );
 }
+

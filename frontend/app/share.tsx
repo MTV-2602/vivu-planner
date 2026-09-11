@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, Platform, Pressable, Linking } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { apiClient } from '../lib/apiClient';
+import { api } from '../lib/api';
 import InteractiveMap, { MapItem } from '../components/InteractiveMap';
 import { BRAND_COLORS } from '../constants';
 
@@ -48,7 +48,7 @@ export default function PublicShareTripPage() {
 
   useEffect(() => {
     if (!tripId) return;
-    apiClient.get(`/trips/${tripId}/public`)
+    api.get(`/trips/${tripId}/public`)
       .then(({ data }) => setTrip(data))
       .catch(() => setError('Không tìm thấy chuyến đi hoặc chuyến đi này không được chia sẻ công khai.'))
       .finally(() => setLoading(false));

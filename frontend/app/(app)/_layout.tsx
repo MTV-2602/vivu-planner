@@ -1,60 +1,19 @@
-import { Stack, Redirect } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { View, ActivityIndicator, Platform } from 'react-native';
-import { supabase } from '../../lib/supabaseClient';
-import { ChatbotProvider } from '../../context/ChatbotContext';
-import { ChatbotWidget } from '../../components/ChatbotWidget';
+﻿import { useAuth } from '../../hooks/useAuth';
+import { Redirect, Stack } from 'expo-router';
+import { ActivityIndicator, View } from 'react-native';
 
 export default function AppLayout() {
-  const [session, setSession] = useState<any>(undefined);
+  const { session, loading } = useAuth();
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  if (session === undefined) {
+  if (loading) {
     return (
-      <View className="flex-1 bg-brand-bg items-center justify-center">
-        <ActivityIndicator color="#1F6F54" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" />
       </View>
     );
   }
 
-  const hasAdminToken = (() => {
-    if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return false;
-    const token = localStorage.getItem('vivu_admin_token');
-    if (!token) return false;
-    // Validate token expiry
-    const parts = token.split(':');
-    if (parts.length === 3) {
-      const expiresAt = parseInt(parts[1]);
-      if (!isNaN(expiresAt) && Date.now() > expiresAt) {
-        // Token expired — clean up
-        console.warn('[ViVu Layout] Admin token expired, cleaning up...');
-        localStorage.removeItem('vivu_admin_token');
-        localStorage.removeItem('vivu_mock_user');
-        localStorage.removeItem('vivu_mock_token');
-        return false;
-      }
-    }
-    return true;
-  })();
+  if (!session) return <Redirect href="/(auth)/dang-nhap" />;
 
-  const isSharePage = typeof window !== 'undefined' && window.location.pathname.includes('/share');
-  if (!session && !hasAdminToken && !isSharePage) return <Redirect href="/dang-nhap" />;
-
-  return (
-    <ChatbotProvider>
-      <View style={{ flex: 1 }}>
-        <Stack screenOptions={{ headerShown: false }} />
-        <ChatbotWidget />
-      </View>
-    </ChatbotProvider>
-  );
+  return <Stack screenOptions={{ headerShown: false }} />;
 }

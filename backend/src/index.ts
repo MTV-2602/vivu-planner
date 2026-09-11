@@ -1,86 +1,73 @@
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import tripsRouter from './routes/trips';
-import placesRouter from './routes/places';
-import weatherRouter from './routes/weather';
-import devRouter from './routes/dev';
-import adminRouter from './routes/admin';
-import authRouter from './routes/auth';
-import partnersRouter from './routes/partners';
-import paymentRouter from './routes/payment';
-
-process.env.TZ = 'Asia/Ho_Chi_Minh';
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
 dotenv.config();
 
-const app = express();
-const port = process.env.PORT || 4000;
+import { ENV } from "./config/env";
+import { SERVER_CONFIG } from "./constants";
+import { authMiddleware } from "./middleware/auth";
+import { errorHandler } from "./middleware/errorHandler";
 
-// Configure CORS — allow Vercel frontend and localhost dev
-const frontendOrigin = process.env.FRONTEND_ORIGIN || '*';
+import authRoutes    from "./modules/auth/auth.router";
+import tripsRoutes   from "./modules/trips/trips.router";
+import adminRoutes   from "./modules/admin/admin.router";
+import paymentRoutes from "./modules/payment/payment.router";
+import partnersRoutes from "./modules/partners/partners.router";
+import weatherRoutes from "./modules/weather/weather.router";
+import placesRoutes  from "./modules/places/places.router";
+
+process.env.TZ = "Asia/Ho_Chi_Minh";
+
+const app = express();
+
+// CORS - cho phep frontend Vercel va localhost
+const frontendOrigin = ENV.FRONTEND_URL || process.env.FRONTEND_ORIGIN || "*";
+const allowedOrigins = frontendOrigin === "*"
+  ? true
+  : frontendOrigin.split(",").map((o: string) => o.trim());
+
 app.use(cors({
-  origin: (origin, callback) => {
-    if (frontendOrigin === '*') {
-      callback(null, origin || '*');
-    } else {
-      const allowedOrigins = frontendOrigin.split(',').map(o => o.trim());
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, origin);
-      } else {
-        callback(null, allowedOrigins[0]);
-      }
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: allowedOrigins,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: SERVER_CONFIG.BODY_MAX_SIZE }));
 
-// ─── Health check (used by UptimeRobot to keep Render alive) ─────────────────
-app.get('/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: Math.floor(process.uptime()),
-    mode: process.env.SUPABASE_URL ? 'production' : 'unconfigured',
+// Health check
+app.get(["/health", "/api/health"], (_req, res) => res.json({
+  status: "ok", version: "2.0.0", uptime: Math.floor(process.uptime())
+}));
+app.get(["/", "/api"], (_req, res) => res.json({
+  name: "ViVu Planner API", version: "2.0.0"
+}));
+
+// Auth middleware (global - set req.user neu co token, khong block)
+app.use(authMiddleware);
+
+// Routes
+app.use("/api/auth",     authRoutes);
+app.use("/api/trips",    tripsRoutes);
+app.use("/api/payment",  paymentRoutes);
+app.use("/api/weather",  weatherRoutes);
+app.use(["/api/partners", "/api/admin/partners"], partnersRoutes);
+app.use("/api/places",   placesRoutes);
+app.use("/api/admin",    adminRoutes);
+
+// 404
+app.use((req, res) => res.status(404).json({ error: `Not found: ${req.method} ${req.path}` }));
+
+// Global error handler (LUON o cuoi cung)
+app.use(errorHandler);
+
+if (!process.env.VERCEL) {
+  const PORT = Number(ENV.PORT) || SERVER_CONFIG.DEFAULT_PORT;
+  const server = app.listen(PORT, () => {
+    console.log(`[ViVu API v2.0] Port ${PORT}`);
+    console.log(`[ViVu API v2.0] CORS: ${frontendOrigin}`);
   });
-});
-
-// Root endpoint for deployment status check
-app.get('/', (_req, res) => {
-  res.json({
-    name: 'ViVu Planner Backend API',
-    status: 'healthy',
-    version: '1.0.0',
-    mode: process.env.SUPABASE_URL ? 'production' : 'unconfigured',
-  });
-});
-
-// Register routes
-app.use('/api/trips', tripsRouter);
-app.use('/api/places', placesRouter);
-app.use('/api/weather', weatherRouter);
-app.use('/api/dev', devRouter);
-app.use('/api/admin', adminRouter);
-app.use('/api/admin/partners', partnersRouter);
-app.use('/api/auth', authRouter);
-app.use('/api/payment', paymentRouter);
-
-// Catch-all 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Endpoint not found' });
-});
-
-// Always listen — Render runs as a persistent Node.js process (not serverless)
-const server = app.listen(port, () => {
-  console.log(`[ViVu Backend] Running at http://localhost:${port}`);
-  console.log(`[ViVu Backend] Mode: ${process.env.GEMINI_API_KEY ? 'Real APIs' : 'Mock Fallback'}`);
-  console.log(`[ViVu Backend] CORS: ${frontendOrigin}`);
-});
-
-// Set server-level timeout to 180 seconds (Gemini AI generation can take 60-90s)
-server.setTimeout(180000);
+  server.setTimeout(SERVER_CONFIG.AI_REQUEST_TIMEOUT_MS);
+}
 
 export default app;

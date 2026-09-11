@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
-import { View, Text, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { apiClient } from '../../lib/apiClient';
+import { api } from '../../lib/api';
 
 export default function PremiumSuccessRedirect() {
   const router = useRouter();
@@ -11,7 +11,7 @@ export default function PremiumSuccessRedirect() {
       try {
         const search = typeof window !== 'undefined' ? window.location.search : '';
         if (search) {
-          await apiClient.get(`/payment/verify-return${search}`);
+          await api.get(`/payment/verify-return${search}`);
         }
       } catch (e) {
         console.error('Redirect verify error:', e);

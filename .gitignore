@@ -3,6 +3,7 @@ node_modules/
 
 # Dist / Build outputs
 dist/
+backend/dist/
 build/
 out/
 

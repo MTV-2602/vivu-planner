@@ -5,9 +5,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Compass, Sparkles, AlertCircle, ArrowRight, Check } from 'lucide-react-native';
-import { supabase, isMockAuth } from '../lib/supabaseClient';
-import { apiClient } from '../lib/apiClient';
-import { BRAND_COLORS } from '../constants';
+import { supabase } from '../lib/supabase';
+import { BRAND_COLORS, APP_ROUTES, UI_BREAKPOINTS, UserRole } from '../constants';
 
 const F = {
   loraRegular: 'Lora_400Regular' as const,
@@ -17,8 +16,6 @@ const F = {
   bold: 'BeVietnamPro_700Bold' as const,
 };
 
-const canUseLocalStorage = Platform.OS === 'web' && typeof localStorage !== 'undefined';
-
 interface Props {
   mode: 'signin' | 'signup';
 }
@@ -26,7 +23,7 @@ interface Props {
 export default function AuthScreen({ mode }: Props) {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const isDesktop = Platform.OS === 'web' && width >= 900;
+  const isDesktop = Platform.OS === 'web' && width >= UI_BREAKPOINTS.DESKTOP;
 
   const [isSignUp, setIsSignUp] = useState(mode === 'signup');
   const [email, setEmail] = useState('');
@@ -40,7 +37,14 @@ export default function AuthScreen({ mode }: Props) {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.replace('/chuyen-di');
+      if (session) {
+        let isAdmin = false;
+        try {
+          const payload = JSON.parse(atob(session.access_token.split('.')[1]));
+          isAdmin = payload.user_role === UserRole.ADMIN;
+        } catch (e) {}
+        router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
+      }
     });
   }, []);
 
@@ -58,49 +62,30 @@ export default function AuthScreen({ mode }: Props) {
     setInfoMsg('');
 
     try {
-      const adminEmails = [
-        'team89a6@gmail.com',
-        'vinhvip4508@gmail.com',
-        process.env.EXPO_PUBLIC_ADMIN_EMAIL
-      ].filter(Boolean).map(e => e!.toLowerCase().trim());
-      const isAdmin = adminEmails.includes(email.toLowerCase().trim());
-
       if (isSignUp) {
-        await apiClient.post('/auth/signup', { email, password, fullName });
-        const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password });
-        if (loginErr) throw new Error('Đăng ký thành công nhưng đăng nhập thất bại. Vui lòng đăng nhập lại.');
-        router.replace(isAdmin ? '/admin' : '/chuyen-di');
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: fullName } }
+        });
+        if (error) throw error;
+        setInfoMsg('Đăng ký thành công! Vui lòng kiểm tra email để xác nhận.');
       } else {
-        if (isAdmin && Platform.OS === 'web') {
-          try {
-            const res = await apiClient.post('/admin/login', { email, password });
-            if (res.data?.token) {
-              localStorage.setItem('vivu_admin_token', res.data.token);
-              localStorage.setItem('vivu_mock_user', JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: res.data.email }));
-              router.replace('/admin');
-              return;
-            }
-          } catch (_) {
-            // If admin endpoint fails, continue to standard Supabase login below
-          }
-        }
-
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw new Error('Email hoặc mật khẩu không chính xác!');
         
-        const loggedInEmail = (data.user?.email || email).toLowerCase().trim();
-        const isUserAdmin = adminEmails.includes(loggedInEmail);
-        
-        if (isUserAdmin && canUseLocalStorage) {
-          if (data.session?.access_token) {
-            localStorage.setItem('vivu_admin_token', data.session.access_token);
-          } else {
-            localStorage.setItem('vivu_admin_token', 'bypass_token');
+        // Kiểm tra quyền admin thông qua claim trong JWT
+        let isAdmin = false;
+        if (data.session?.access_token) {
+          try {
+            const payload = JSON.parse(atob(data.session.access_token.split('.')[1]));
+            isAdmin = payload.user_role === UserRole.ADMIN;
+          } catch (e) {
+            console.error('Lỗi khi đọc token payload:', e);
           }
-          localStorage.setItem('vivu_mock_user', JSON.stringify({ id: data.user?.id, email: loggedInEmail }));
         }
-
-        router.replace(isUserAdmin ? '/admin' : '/chuyen-di');
+        
+        router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Có lỗi xảy ra trong quá trình xử lý');
@@ -113,7 +98,7 @@ export default function AuthScreen({ mode }: Props) {
     setIsSignUp(!isSignUp);
     setErrorMsg('');
     setInfoMsg('');
-    router.replace(isSignUp ? '/dang-nhap' : '/dang-ky');
+    router.replace((isSignUp ? APP_ROUTES.SIGN_IN : APP_ROUTES.SIGN_UP) as any);
   };
 
   const fieldStyle = (name: string) => ({
@@ -124,26 +109,26 @@ export default function AuthScreen({ mode }: Props) {
     borderColor: focused === name ? BRAND_COLORS.primary : 'rgba(27,36,32,0.14)',
     fontFamily: F.regular,
     fontSize: 14,
-    color: '#1B2420' as const,
+    color: BRAND_COLORS.text,
     backgroundColor: focused === name ? '#fff' : '#FDFAF4',
   });
 
   return (
-    <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column', backgroundColor: '#14201B' }}>
+    <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column', backgroundColor: BRAND_COLORS.bgDark }}>
 
       {/* ── LEFT PANEL ─────────────────────────────────────────────────── */}
       {isDesktop && (
-        <View style={{ flex: 1, backgroundColor: '#14201B', padding: 52, justifyContent: 'flex-start', gap: 48 }}>
+        <View style={{ flex: 1, backgroundColor: BRAND_COLORS.bgDark, padding: 52, justifyContent: 'flex-start', gap: 48 }}>
 
           {/* Logo */}
           <Pressable
-            onPress={() => router.push('/landing')}
+            onPress={() => router.push(APP_ROUTES.LANDING as any)}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
           >
             <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' }}>
-              <Compass size={18} color="#F3ECDC" />
+              <Compass size={18} color={BRAND_COLORS.textDark} />
             </View>
-            <Text style={{ fontFamily: F.loraBold, fontSize: 18, color: '#F3ECDC' }}>ViVu Planner</Text>
+            <Text style={{ fontFamily: F.loraBold, fontSize: 18, color: BRAND_COLORS.textDark }}>ViVu Planner</Text>
           </Pressable>
 
           {/* Tagline + benefits */}
@@ -215,7 +200,7 @@ export default function AuthScreen({ mode }: Props) {
           {/* Mobile-only logo */}
           {!isDesktop && (
             <Pressable
-              onPress={() => router.push('/landing')}
+              onPress={() => router.push(APP_ROUTES.LANDING as any)}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 36 }}
             >
               <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: BRAND_COLORS.primary, alignItems: 'center', justifyContent: 'center' }}>
@@ -385,7 +370,7 @@ export default function AuthScreen({ mode }: Props) {
           {/* Back to landing — mobile */}
           {!isDesktop && (
             <View style={{ marginTop: 12, alignItems: 'center' }}>
-              <Pressable onPress={() => router.push('/landing')}>
+              <Pressable onPress={() => router.push(APP_ROUTES.LANDING as any)}>
                 <Text style={{ fontFamily: F.regular, fontSize: 12, color: BRAND_COLORS.textMuted }}>
                   ← Quay về trang chủ
                 </Text>
