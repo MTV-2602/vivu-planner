@@ -1,4 +1,4 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
@@ -50,3 +50,5 @@ export function getRoleFromToken(accessToken: string): string {
     return 'user';
   }
 }
+
+export const decodeJwtRole = getRoleFromToken;

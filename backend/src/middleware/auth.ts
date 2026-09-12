@@ -19,6 +19,21 @@ export type AuthenticatedRequest = Request;
  * user_role duoc set boi Supabase Auth Hook custom_access_token_hook
  * KHONG con HMAC token, KHONG hardcode email admin
  */
+/**
+ * Giải mã claim user_role từ JWT access token ở phía backend
+ */
+export function decodeJwtRole(token: string, fallbackUser?: any): string {
+  try {
+    const parts = token.split(".");
+    if (parts.length >= 2) {
+      const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      const payload = JSON.parse(Buffer.from(base64, "base64").toString("utf8"));
+      if (payload.user_role) return payload.user_role;
+    }
+  } catch {}
+  return (fallbackUser?.app_metadata as any)?.role || (fallbackUser?.user_metadata as any)?.role || UserRole.USER;
+}
+
 export const authMiddleware = async (
   req: Request, res: Response, next: NextFunction
 ): Promise<void> => {
@@ -38,15 +53,7 @@ export const authMiddleware = async (
     }
 
     // Giai ma JWT payload de lay custom claim user_role
-    // Duoc gán bởi Supabase Auth Hook (custom_access_token_hook)
-    let userRole = UserRole.USER;
-    try {
-      const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-      const payload = JSON.parse(Buffer.from(base64, "base64").toString("utf8"));
-      userRole = payload.user_role || (user.app_metadata as any)?.role || (user.user_metadata as any)?.role || UserRole.USER;
-    } catch {
-      userRole = (user.app_metadata as any)?.role || (user.user_metadata as any)?.role || UserRole.USER;
-    }
+    const userRole = decodeJwtRole(token, user);
 
     req.user    = { id: user.id, email: user.email || "", role: userRole };
     req.isAdmin = userRole === UserRole.ADMIN;

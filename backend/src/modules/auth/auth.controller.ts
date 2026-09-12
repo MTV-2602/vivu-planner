@@ -1,6 +1,11 @@
 import { Request, Response } from 'express';
 import { supabaseAuth, supabaseAdmin, isDbMocked } from '../../config/supabase';
 
+/**
+ * Tiện ích nội bộ / Admin utility: Tạo nhanh tài khoản người dùng đã xác thực (auto-confirmed).
+ * Lưu ý: Luồng đăng ký công khai chính của người dùng diễn ra ở client-side (AuthScreen.tsx)
+ * với cơ chế gửi link xác thực email tiêu chuẩn của Supabase.
+ */
 export const signup = async (req: Request, res: Response) => {
   const { email, password, fullName } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email và mật khẩu là bắt buộc' });
@@ -8,11 +13,6 @@ export const signup = async (req: Request, res: Response) => {
   if (isDbMocked) {
     return res.json({ success: true, message: 'Đăng ký thành công', user: { id: '00000', email } });
   }
-  
-  const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
-  const emailExists = (users || []).some((u: any) => u.email?.toLowerCase() === email.toLowerCase());
-  
-  if (emailExists) return res.status(400).json({ error: 'Email này đã được sử dụng!' });
 
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email: email.trim(),
@@ -21,7 +21,12 @@ export const signup = async (req: Request, res: Response) => {
     user_metadata: fullName ? { full_name: fullName.trim() } : {}
   });
 
-  if (error) return res.status(400).json({ error: error.message });
+  if (error) {
+    if (error.message.includes('already') || error.message.includes('exists')) {
+      return res.status(400).json({ error: 'Email này đã được sử dụng!' });
+    }
+    return res.status(400).json({ error: error.message });
+  }
   return res.json({ success: true, message: 'Đăng ký thành công!', user: data.user });
 };
 

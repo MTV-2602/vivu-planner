@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { supabaseAdmin } from '../../config/supabase';
-import { GEO_CONFIG, EXTERNAL_APIS, TIMEOUTS } from '../../constants';
+import { GEO_CONFIG, EXTERNAL_APIS, TIMEOUTS, OSM_FALLBACK_RATING_MIN, OSM_FALLBACK_RATING_RANGE } from '../../constants';
 
 export interface PlaceCandidate {
   google_place_id: string;
@@ -143,7 +143,8 @@ async function searchPlacesOSM(
         category,
         lat: parseFloat(item.lat),
         lng: parseFloat(item.lon),
-        rating: parseFloat((4.0 + Math.random() * 0.9).toFixed(1)),
+        // OpenStreetMap không cung cấp số sao đánh giá như Google Places, gán rating mặc định an toàn trong dải [4.0 - 4.9]
+        rating: parseFloat((OSM_FALLBACK_RATING_MIN + Math.random() * OSM_FALLBACK_RATING_RANGE).toFixed(1)),
         price_level: 2,
         address: displayName
       };

@@ -31,8 +31,10 @@ router.get('/stats', async (_req: any, res: Response) => {
   }
 
   try {
-    // 1. Get total users
-    const { data: { users }, error: usersError } = await supabaseAdmin.auth.admin.listUsers();
+    // 1. Get total users count directly from profiles (unlimited)
+    const { count: usersCount, error: usersError } = await supabaseAdmin
+      .from('profiles')
+      .select('*', { count: 'exact', head: true });
     if (usersError) throw usersError;
 
     // 2. Get total trips count
@@ -60,7 +62,7 @@ router.get('/stats', async (_req: any, res: Response) => {
     if (partnersError) throw partnersError;
 
     return res.json({
-      totalUsers: users?.length || 0,
+      totalUsers: usersCount || 0,
       totalTrips: tripsCount || 0,
       totalDisruptions: disruptionsCount || 0,
       totalApiKeys: keysCount || 0,
@@ -71,32 +73,49 @@ router.get('/stats', async (_req: any, res: Response) => {
   }
 });
 
-// GET /api/admin/users - List all users
-router.get('/users', async (_req: any, res: Response) => {
+// GET /api/admin/users - List all users (query trực tiếp từ bảng profiles, hỗ trợ phân trang)
+router.get('/users', async (req: any, res: Response) => {
   if (isDbMocked) {
     return res.json([]);
   }
 
   try {
-    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const offset = (page - 1) * limit;
+    const search = (req.query.search as string || '').trim();
+
+    let query = supabaseAdmin
+      .from('profiles')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    if (search) {
+      query = query.ilike('full_name', `%${search}%`);
+    }
+
+    const { data: profiles, count, error } = await query.range(offset, offset + limit - 1);
     if (error) throw error;
 
-    // Fetch profiles to map roles
-    const { data: profiles } = await supabaseAdmin
-      .from('profiles')
-      .select('id, role');
+    // Lấy thông tin email từ auth.users để hiển thị đầy đủ trên giao diện
+    const { data: listData } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    const userMap = new Map<string, any>((listData?.users || []).map((u: any): [string, any] => [u.id, u]));
 
-    const roleMap = new Map((profiles || []).map((p: any) => [p.id, p.role]));
-
-    const formattedUsers = users.map((u: any) => ({
-      id: u.id,
-      email: u.email,
-      full_name: u.user_metadata?.full_name || '',
-      role: roleMap.get(u.id) || UserRole.USER,
-      created_at: u.created_at,
-      last_sign_in_at: u.last_sign_in_at,
-      banned_until: u.banned_until || null
-    }));
+    const formattedUsers = (profiles || []).map((p: any) => {
+      const authUser: any = userMap.get(p.id);
+      return {
+        id: p.id,
+        email: authUser?.email || '',
+        full_name: p.full_name || authUser?.user_metadata?.full_name || 'Người dùng',
+        role: p.role || UserRole.USER,
+        is_premium: !!p.is_premium,
+        quota_total: p.quota_total || 3,
+        quota_used: p.quota_used || 0,
+        created_at: p.created_at || authUser?.created_at,
+        last_sign_in_at: authUser?.last_sign_in_at || null,
+        banned_until: authUser?.banned_until || null
+      };
+    });
 
     return res.json(formattedUsers);
   } catch (err: any) {
@@ -553,8 +572,14 @@ router.put('/users/:id/package', async (req: any, res: Response) => {
   const { is_premium, custom_quota, plan = 'premium', duration_days = 30 } = req.body;
 
   try {
+    const allPlans = await loadPlansFromDb();
+    const planInfo = allPlans[plan] || (is_premium ? allPlans['premium'] : null);
+    const planAmount = planInfo?.amount ?? (plan === 'starter' ? DEFAULT_PLANS_CONFIG.starter.amount : DEFAULT_PLANS_CONFIG.premium.amount);
+    const planQuota = planInfo?.quota_total_grant ?? (is_premium ? QUOTA_CONFIG.UNLIMITED_ADMIN_TRIPS : QUOTA_CONFIG.DEFAULT_FREE_TRIPS);
+    const planDuration = planInfo?.duration_days ?? duration_days;
+
     const premium_until = is_premium
-      ? new Date(Date.now() + duration_days * 24 * 60 * 60 * 1000).toISOString()
+      ? new Date(Date.now() + planDuration * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
     if (is_premium) {
@@ -565,14 +590,14 @@ router.put('/users/:id/package', async (req: any, res: Response) => {
         user_id: userId,
         method: PaymentMethod.ADMIN,
         plan,
-        amount: plan === 'starter' ? DEFAULT_PLANS_CONFIG.starter.amount : DEFAULT_PLANS_CONFIG.premium.amount,
+        amount: planAmount,
         status: PaymentStatus.COMPLETED,
         order_code: String(Date.now()),
         created_at: new Date().toISOString(),
       });
     }
 
-    const targetQuota = custom_quota != null ? Number(custom_quota) : (is_premium ? QUOTA_CONFIG.UNLIMITED_ADMIN_TRIPS : QUOTA_CONFIG.DEFAULT_FREE_TRIPS);
+    const targetQuota = custom_quota != null ? Number(custom_quota) : planQuota;
 
     let result = await supabaseAdmin
       .from('profiles')
@@ -606,43 +631,74 @@ router.put('/users/:id/package', async (req: any, res: Response) => {
   }
 });
 
-// POST /api/admin/plans - Update pricing plans
+// POST /api/admin/plans - Update pricing plans dynamically
 router.post('/plans', async (req: any, res: Response) => {
-  const { starter, premium } = req.body;
+  const { starter, premium, plans, plan } = req.body;
   try {
-    if (starter) {
+    // 1. Cập nhật mảng danh sách các gói tùy ý
+    if (Array.isArray(plans) && plans.length > 0) {
+      for (const p of plans) {
+        if (!p.id) continue;
+        await supabaseAdmin.from('pricing_plans').upsert({
+          id: p.id,
+          amount: Number(p.amount ?? p.price ?? 0),
+          price: Number(p.amount ?? p.price ?? 0),
+          label: p.label || p.name || p.id,
+          name: p.label || p.name || p.id,
+          duration_days: Number(p.duration_days || 30),
+          quota_total_grant: Number(p.quota_total_grant ?? 9999),
+          is_unlimited: !!p.is_unlimited,
+          features: Array.isArray(p.features) ? p.features : [],
+          is_active: p.is_active !== undefined ? !!p.is_active : true,
+        });
+      }
+    }
+    // 2. Cập nhật một gói đơn lẻ
+    else if (plan && plan.id) {
       await supabaseAdmin.from('pricing_plans').upsert({
-        id: 'starter',
-        amount: Number(starter.amount),
-        label: starter.label || 'Gói Starter',
-        duration_days: Number(starter.duration_days || 30),
-      });
-      await supabaseAdmin.from('pricing_plans').upsert({
-        id: 'plus',
-        amount: Number(starter.amount),
-        label: starter.label || 'Gói Starter',
-        duration_days: Number(starter.duration_days || 30),
+        id: plan.id,
+        amount: Number(plan.amount ?? plan.price ?? 0),
+        price: Number(plan.amount ?? plan.price ?? 0),
+        label: plan.label || plan.name || plan.id,
+        name: plan.label || plan.name || plan.id,
+        duration_days: Number(plan.duration_days || 30),
+        quota_total_grant: Number(plan.quota_total_grant ?? 9999),
+        is_unlimited: !!plan.is_unlimited,
+        features: Array.isArray(plan.features) ? plan.features : [],
+        is_active: plan.is_active !== undefined ? !!plan.is_active : true,
       });
     }
-    if (premium) {
-      await supabaseAdmin.from('pricing_plans').upsert({
-        id: 'premium',
-        amount: Number(premium.amount),
-        label: premium.label || 'Gói Premium',
-        duration_days: Number(premium.duration_days || 30),
-      });
-      await supabaseAdmin.from('pricing_plans').upsert({
-        id: 'pro',
-        amount: Number(premium.amount),
-        label: premium.label || 'Gói Premium',
-        duration_days: Number(premium.duration_days || 30),
-      });
-      await supabaseAdmin.from('pricing_plans').upsert({
-        id: 'monthly',
-        amount: Number(premium.amount),
-        label: premium.label || 'Gói Premium',
-        duration_days: Number(premium.duration_days || 30),
-      });
+    // 3. Tương thích định dạng starter / premium cũ
+    else {
+      if (starter) {
+        const starterData = {
+          amount: Number(starter.amount ?? starter.price ?? 29000),
+          price: Number(starter.amount ?? starter.price ?? 29000),
+          label: starter.label || starter.name || 'Gói Starter',
+          name: starter.label || starter.name || 'Gói Starter',
+          duration_days: Number(starter.duration_days || 30),
+          quota_total_grant: Number(starter.quota_total_grant ?? 10),
+          is_unlimited: false,
+          is_active: true
+        };
+        await supabaseAdmin.from('pricing_plans').upsert({ id: 'starter', ...starterData });
+        await supabaseAdmin.from('pricing_plans').upsert({ id: 'plus', ...starterData });
+      }
+      if (premium) {
+        const premiumData = {
+          amount: Number(premium.amount ?? premium.price ?? 49000),
+          price: Number(premium.amount ?? premium.price ?? 49000),
+          label: premium.label || premium.name || 'Gói Premium',
+          name: premium.label || premium.name || 'Gói Premium',
+          duration_days: Number(premium.duration_days || 30),
+          quota_total_grant: Number(premium.quota_total_grant ?? 9999),
+          is_unlimited: true,
+          is_active: true
+        };
+        await supabaseAdmin.from('pricing_plans').upsert({ id: 'premium', ...premiumData });
+        await supabaseAdmin.from('pricing_plans').upsert({ id: 'pro', ...premiumData });
+        await supabaseAdmin.from('pricing_plans').upsert({ id: 'monthly', ...premiumData });
+      }
     }
 
     // Clear and reload cache

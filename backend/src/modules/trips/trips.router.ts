@@ -13,7 +13,10 @@ import {
   ChatMessageRole,
   BUDGET_ESTIMATION_CONFIG,
   QUOTA_CONFIG,
-  AI_CANDIDATE_LIMITS
+  AI_CANDIDATE_LIMITS,
+  BUDGET_AUTO_SCALE_THRESHOLD,
+  BUDGET_AUTO_SCALE_FACTOR,
+  isUserPremium
 } from '../../constants';
 
 const router = Router();
@@ -47,9 +50,9 @@ function parseOptionalCost(value: unknown): number | null {
   let parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
 
-  // Auto-multiply values under 10000 by 1000 (VND conversion)
-  if (parsed > 0 && parsed < 10000) {
-    parsed = parsed * 1000;
+  // Tự động quy đổi đơn vị: Nếu AI hoặc người dùng nhập tắt (VD: 50 thay vì 50,000đ), nhân hệ số 1,000
+  if (parsed > 0 && parsed < BUDGET_AUTO_SCALE_THRESHOLD) {
+    parsed = parsed * BUDGET_AUTO_SCALE_FACTOR;
   }
 
   return Math.max(0, Math.round(parsed));
@@ -301,7 +304,7 @@ router.post('/', requireAuth, async (req: any, res: Response) => {
     .eq('user_id', userId);
 
   const isAdmin = req.isAdmin === true || profile?.role === UserRole.ADMIN;
-  const isPremium = !!(profile?.is_premium || (profile?.premium_until && new Date(profile.premium_until) > new Date()));
+  const isPremium = isUserPremium(profile);
   const quotaTotal = profile?.quota_total ?? (profile?.custom_quota ?? QUOTA_CONFIG.DEFAULT_FREE_TRIPS);
   const quotaUsed = Math.max(profile?.quota_used ?? 0, profile?.trips_used ?? 0, dbTripsCount || 0);
   const currentUsed = quotaUsed;
@@ -499,8 +502,14 @@ router.post('/', requireAuth, async (req: any, res: Response) => {
           }
         }
 
+        let itemPartnerId: string | null = null;
+        if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
+          itemPartnerId = item.google_place_id.replace('partner_', '');
+        }
+
         itemsToInsert.push({
           day_id: dbDay.id, // Sử dụng UUID đã sinh ở trên để liên kết
+          partner_id: itemPartnerId, // Lưu khóa ngoại partner_id chuẩn vào database
           item_type: item.item_type,
           title: item.title,
           description: item.description || itemAddress || '',

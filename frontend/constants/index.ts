@@ -145,3 +145,13 @@ export const QUERY_CACHE_TIMES = {
   TRIPS_LIST_MS: 30_000,
   TRIP_DETAIL_MS: 10_000,
 };
+
+/**
+ * Kiểm tra người dùng có đang sở hữu gói Premium còn hiệu lực hay không.
+ * Nếu có premium_until thì thời hạn phải lớn hơn thời điểm hiện tại.
+ */
+export function isUserPremium(profile?: { is_premium?: boolean; premium_until?: string | null } | null): boolean {
+  if (!profile || !profile.is_premium) return false;
+  if (!profile.premium_until) return true;
+  return new Date(profile.premium_until) > new Date();
+}

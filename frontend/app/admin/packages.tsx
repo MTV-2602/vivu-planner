@@ -55,7 +55,7 @@ export default function AdminPackages() {
   });
 
   const updatePackageMutation = useMutation({
-    mutationFn: async ({ userId, is_premium, plan, custom_quota }: { userId: string; is_premium: boolean; plan?: string; custom_quota: number }) => {
+    mutationFn: async ({ userId, is_premium, plan, custom_quota }: { userId: string; is_premium: boolean; plan?: string; custom_quota?: number }) => {
       await api.put(`/admin/users/${userId}/package`, { is_premium, plan, custom_quota });
     },
     onSuccess: () => {
@@ -206,13 +206,13 @@ export default function AdminPackages() {
                 {!u.is_premium ? (
                   <>
                     <Pressable
-                      onPress={() => updatePackageMutation.mutate({ userId: u.id, is_premium: true, plan: 'starter', custom_quota: 9999 })}
+                      onPress={() => updatePackageMutation.mutate({ userId: u.id, is_premium: true, plan: 'starter' })}
                       style={{ backgroundColor: '#E2703A', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
                     >
                       <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>+ Gói Starter</Text>
                     </Pressable>
                     <Pressable
-                      onPress={() => updatePackageMutation.mutate({ userId: u.id, is_premium: true, plan: 'premium', custom_quota: 9999 })}
+                      onPress={() => updatePackageMutation.mutate({ userId: u.id, is_premium: true, plan: 'premium' })}
                       style={{ backgroundColor: '#D4A017', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
                     >
                       <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>+ Gói Premium</Text>
@@ -220,7 +220,7 @@ export default function AdminPackages() {
                   </>
                 ) : (
                   <Pressable
-                    onPress={() => updatePackageMutation.mutate({ userId: u.id, is_premium: false, custom_quota: 3 })}
+                    onPress={() => updatePackageMutation.mutate({ userId: u.id, is_premium: false })}
                     style={{ backgroundColor: '#fee2e2', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
                   >
                     <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '700' }}>Hạ xuống Free</Text>

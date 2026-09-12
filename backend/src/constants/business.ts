@@ -64,12 +64,34 @@ export const USER_BAN_CONFIG = {
   UNBAN_DURATION: 'none',
 };
 
+// Ngưỡng tự động quy đổi đơn vị nghìn đồng: nếu người dùng hoặc AI nhập giá trị < 10,000 (VD: viết tắt 50 thay vì 50,000)
+export const BUDGET_AUTO_SCALE_THRESHOLD = 10_000;
+export const BUDGET_AUTO_SCALE_FACTOR = 1_000;
+
+// Tham số rating giả lập cho OpenStreetMap (vì OpenStreetMap không lưu số sao đánh giá như Google Places)
+export const OSM_FALLBACK_RATING_MIN = 4.0;
+export const OSM_FALLBACK_RATING_RANGE = 0.9;
+
 export const DEFAULT_PLANS_CONFIG = {
-  plus:    { amount: 29_000, label: 'Gói Starter', duration_days: 30 },
-  starter: { amount: 29_000, label: 'Gói Starter', duration_days: 30 },
-  monthly: { amount: 49_000, label: 'Gói Premium', duration_days: 30 },
-  pro:     { amount: 49_000, label: 'Gói Premium', duration_days: 30 },
-  premium: { amount: 49_000, label: 'Gói Premium', duration_days: 30 },
-  yearly:  { amount: 99_000, label: 'Gói VIP', duration_days: 365 },
-  vip:     { amount: 99_000, label: 'Gói VIP', duration_days: 365 },
+  plus:    { amount: 29_000, label: 'Gói Starter', duration_days: 30, quota_total_grant: 10 },
+  starter: { amount: 29_000, label: 'Gói Starter', duration_days: 30, quota_total_grant: 10 },
+  monthly: { amount: 49_000, label: 'Gói Premium', duration_days: 30, quota_total_grant: 9999 },
+  pro:     { amount: 49_000, label: 'Gói Premium', duration_days: 30, quota_total_grant: 9999 },
+  premium: { amount: 49_000, label: 'Gói Premium', duration_days: 30, quota_total_grant: 9999 },
+  quarterly:{ amount: 119_000, label: 'Gói 3 Tháng Tiết Kiệm', duration_days: 90, quota_total_grant: 9999 },
+  yearly:  { amount: 99_000, label: 'Gói VIP', duration_days: 365, quota_total_grant: 9999 },
+  vip:     { amount: 99_000, label: 'Gói VIP', duration_days: 365, quota_total_grant: 9999 },
 };
+
+/**
+ * Kiểm tra trạng thái gói Premium duy nhất cho toàn hệ thống
+ */
+export function isUserPremium(profile?: { is_premium?: boolean | null; premium_until?: string | Date | null } | null): boolean {
+  if (!profile) return false;
+  if (profile.is_premium) return true;
+  if (profile.premium_until) {
+    return new Date(profile.premium_until) > new Date();
+  }
+  return false;
+}
+

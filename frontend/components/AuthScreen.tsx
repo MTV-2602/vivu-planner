@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Compass, Sparkles, AlertCircle, ArrowRight, Check } from 'lucide-react-native';
-import { supabase } from '../lib/supabase';
+import { supabase, decodeJwtRole } from '../lib/supabase';
 import { BRAND_COLORS, APP_ROUTES, UI_BREAKPOINTS, UserRole } from '../constants';
 
 const F = {
@@ -38,11 +38,7 @@ export default function AuthScreen({ mode }: Props) {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        let isAdmin = false;
-        try {
-          const payload = JSON.parse(atob(session.access_token.split('.')[1]));
-          isAdmin = payload.user_role === UserRole.ADMIN;
-        } catch (e) {}
+        const isAdmin = decodeJwtRole(session.access_token) === UserRole.ADMIN;
         router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
       }
     });
@@ -75,15 +71,9 @@ export default function AuthScreen({ mode }: Props) {
         if (error) throw new Error('Email hoặc mật khẩu không chính xác!');
         
         // Kiểm tra quyền admin thông qua claim trong JWT
-        let isAdmin = false;
-        if (data.session?.access_token) {
-          try {
-            const payload = JSON.parse(atob(data.session.access_token.split('.')[1]));
-            isAdmin = payload.user_role === UserRole.ADMIN;
-          } catch (e) {
-            console.error('Lỗi khi đọc token payload:', e);
-          }
-        }
+        const isAdmin = data.session?.access_token
+          ? decodeJwtRole(data.session.access_token) === UserRole.ADMIN
+          : false;
         
         router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
       }

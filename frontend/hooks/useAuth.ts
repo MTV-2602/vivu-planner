@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, getRoleFromToken } from '../lib/supabase';
-import { UserRole } from '../constants';
+import { UserRole, isUserPremium } from '../constants';
 
 export interface UserProfile {
   id:            string;
@@ -20,6 +20,7 @@ export interface AuthState {
   user:      User | null;
   profile:   UserProfile | null;
   isAdmin:   boolean;
+  isPremium: boolean;
   loading:   boolean;
   signOut:   () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -76,6 +77,8 @@ export function useAuth(): AuthState {
     return getRoleFromToken(session.access_token) === UserRole.ADMIN;
   })();
 
+  const isPremium = isUserPremium(profile);
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
@@ -91,6 +94,7 @@ export function useAuth(): AuthState {
     user:    session?.user ?? null,
     profile,
     isAdmin,
+    isPremium,
     loading,
     signOut,
     refreshProfile,

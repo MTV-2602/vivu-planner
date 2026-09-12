@@ -10,6 +10,8 @@ import {
   UserRole,
   ORDER_CONFIG,
   DEFAULT_PLANS_CONFIG,
+  QUOTA_CONFIG,
+  isUserPremium,
 } from '../../constants';
 
 const router = Router();
@@ -20,7 +22,7 @@ const SITE_URL = process.env.SITE_URL || 'https://vivu-planner.vercel.app';
 
 
 // ─── Premium Plans ───────────────────────────────────────────────────────────
-export const PREMIUM_PLANS = {
+export const PREMIUM_PLANS: Record<string, { amount: number; label: string; duration_days: number; quota_total_grant: number; is_unlimited?: boolean }> = {
   ...DEFAULT_PLANS_CONFIG
 };
 
@@ -28,35 +30,19 @@ export async function loadPlansFromDb() {
   try {
     const { data, error } = await supabaseAdmin
       .from('pricing_plans')
-      .select('*');
+      .select('*')
+      .eq('is_active', true);
+
     if (!error && data && data.length > 0) {
       data.forEach((p: any) => {
         const id = p.id;
-        if (id === 'plus' || id === 'starter') {
-          PREMIUM_PLANS.plus.amount = p.amount;
-          PREMIUM_PLANS.starter.amount = p.amount;
-          PREMIUM_PLANS.plus.label = p.label;
-          PREMIUM_PLANS.starter.label = p.label;
-          PREMIUM_PLANS.plus.duration_days = p.duration_days;
-          PREMIUM_PLANS.starter.duration_days = p.duration_days;
-        } else if (id === 'pro' || id === 'premium' || id === 'monthly') {
-          PREMIUM_PLANS.monthly.amount = p.amount;
-          PREMIUM_PLANS.pro.amount = p.amount;
-          PREMIUM_PLANS.premium.amount = p.amount;
-          PREMIUM_PLANS.monthly.label = p.label;
-          PREMIUM_PLANS.pro.label = p.label;
-          PREMIUM_PLANS.premium.label = p.label;
-          PREMIUM_PLANS.monthly.duration_days = p.duration_days;
-          PREMIUM_PLANS.pro.duration_days = p.duration_days;
-          PREMIUM_PLANS.premium.duration_days = p.duration_days;
-        } else if (id === 'vip' || id === 'yearly') {
-          PREMIUM_PLANS.yearly.amount = p.amount;
-          PREMIUM_PLANS.vip.amount = p.amount;
-          PREMIUM_PLANS.yearly.label = p.label;
-          PREMIUM_PLANS.vip.label = p.label;
-          PREMIUM_PLANS.yearly.duration_days = p.duration_days;
-          PREMIUM_PLANS.vip.duration_days = p.duration_days;
-        }
+        PREMIUM_PLANS[id] = {
+          amount: Number(p.price ?? p.amount ?? 0),
+          label: p.name ?? p.label ?? id,
+          duration_days: Number(p.duration_days || 30),
+          quota_total_grant: Number(p.quota_total_grant ?? 9999),
+          is_unlimited: !!p.is_unlimited
+        };
       });
     }
   } catch (err: any) {
@@ -348,8 +334,7 @@ router.get('/status', requireAuth, async (req: any, res: Response) => {
 
     // Auto-healing: If user has a completed order, but profile is not premium yet (e.g. columns were missing before), activate now!
     if (latestOrder && profile && !dbWarning) {
-      const isCurrentlyPremium = !!(profile.is_premium ||
-        (profile.premium_until && new Date(profile.premium_until) > new Date()));
+      const isCurrentlyPremium = isUserPremium(profile);
       
       if (!isCurrentlyPremium) {
         console.log(`[Payment Status] 🔮 Auto-healing: User ${userId} has a completed order (${latestOrder.plan}) but profile is not premium. Activating now...`);
@@ -380,12 +365,13 @@ router.get('/status', requireAuth, async (req: any, res: Response) => {
       });
     }
 
-    const isPremium = !!(profile?.is_premium ||
-      (profile?.premium_until && new Date(profile.premium_until) > new Date()));
+    const isPremium = isUserPremium(profile);
 
-    const tripsQuota = isPremium ? 9999 : (profile?.quota_total ?? (profile?.custom_quota ?? 3));
+    const tripsQuota = isPremium 
+      ? (profile?.quota_total ?? 9999) 
+      : (profile?.quota_total ?? (profile?.custom_quota ?? QUOTA_CONFIG.DEFAULT_FREE_TRIPS));
     const tripsUsed = Math.max(profile?.quota_used ?? 0, profile?.trips_used ?? 0, dbTripsCount || 0);
-    const remainingTrips = isPremium ? 9999 : Math.max(0, tripsQuota - tripsUsed);
+    const remainingTrips = isPremium && tripsQuota >= 9999 ? 9999 : Math.max(0, tripsQuota - tripsUsed);
 
     let planName = 'Gói Miễn Phí';
     let planId = 'free';
@@ -644,9 +630,16 @@ async function activatePremiumByOrderId(orderId: string) {
 }
 
 async function activatePremiumForUser(userId: string, planKey: string = 'pro') {
-  const plan = PREMIUM_PLANS[planKey as keyof typeof PREMIUM_PLANS] || PREMIUM_PLANS.pro;
-  const newQuota = 9999;
-  const durationDays = plan.duration_days || 30;
+  // Lấy cấu hình gói cước trực tiếp từ Database (Single Source of Truth)
+  const { data: dbPlan } = await supabaseAdmin
+    .from('pricing_plans')
+    .select('*')
+    .eq('id', planKey)
+    .maybeSingle();
+
+  const plan = dbPlan || PREMIUM_PLANS[planKey as keyof typeof PREMIUM_PLANS] || PREMIUM_PLANS.pro;
+  const newQuota = Number(plan?.quota_total_grant ?? 9999);
+  const durationDays = Number(plan?.duration_days || 30);
   const premiumUntil = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
   // Try Schema v2 update first (quota_total)
