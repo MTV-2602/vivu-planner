@@ -20,11 +20,11 @@ process.env.TZ = "Asia/Ho_Chi_Minh";
 
 const app = express();
 
-// CORS - cho phep frontend Vercel va localhost
-const frontendOrigin = ENV.FRONTEND_URL || process.env.FRONTEND_ORIGIN || "*";
-const allowedOrigins = frontendOrigin === "*"
-  ? true
-  : frontendOrigin.split(",").map((o: string) => o.trim());
+// CORS - cho phep frontend Vercel va cac port localhost khi test dev
+const rawOrigin = process.env.FRONTEND_ORIGIN || process.env.FRONTEND_URL || ENV.FRONTEND_URL;
+const allowedOrigins = process.env.NODE_ENV === "production" && rawOrigin && rawOrigin !== "*"
+  ? rawOrigin.split(",").map((o: string) => o.trim())
+  : true;
 
 app.use(cors({
   origin: allowedOrigins,
@@ -65,7 +65,7 @@ if (!process.env.VERCEL) {
   const PORT = Number(ENV.PORT) || SERVER_CONFIG.DEFAULT_PORT;
   const server = app.listen(PORT, () => {
     console.log(`[ViVu API v2.0] Port ${PORT}`);
-    console.log(`[ViVu API v2.0] CORS: ${frontendOrigin}`);
+    console.log(`[ViVu API v2.0] CORS: ${rawOrigin || '*'}`);
   });
   server.setTimeout(SERVER_CONFIG.AI_REQUEST_TIMEOUT_MS);
 }
