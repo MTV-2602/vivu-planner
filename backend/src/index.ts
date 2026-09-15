@@ -55,8 +55,8 @@ app.use(["/api/partners", "/api/admin/partners"], partnersRoutes);
 app.use("/api/places",   placesRoutes);
 app.use("/api/admin",    adminRoutes);
 
-// 404
-app.use((req, res) => res.status(404).json({ error: `Not found: ${req.method} ${req.path}` }));
+// 404 cho API routes
+app.use("/api", (req, res) => res.status(404).json({ error: `Not found: ${req.method} ${req.path}` }));
 
 // Global error handler (LUON o cuoi cung)
 app.use(errorHandler);

@@ -32,7 +32,17 @@ export default function AdminRevenue() {
     enabled: !!isAdmin,
   });
 
-  if (!isAdmin) return null;
+  if (!isAdmin) {
+    return (
+      <View className="flex-1 bg-brand-bg">
+        <AdminNav />
+        <View className="flex-1 items-center justify-center py-20 gap-3">
+          <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
+          <Text className="text-xs font-semibold text-brand-textSoft">Đang tải và xác thực quyền quản trị...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-brand-bg">

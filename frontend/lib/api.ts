@@ -1,4 +1,4 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 import { supabase } from './supabase';
 
 /**
@@ -24,7 +24,7 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Response interceptor: xử lý lỗi 401 an toàn
+// Response interceptor: xử lý lỗi 401 an toàn bằng cách thử làm mới token
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -32,9 +32,16 @@ api.interceptors.response.use(
     const url    = error?.config?.url || '';
     const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register');
 
-    // Chỉ sign out khi 401 và KHÔNG phải endpoint login/register
-    if (status === 401 && !isAuthEndpoint) {
-      await supabase.auth.signOut();
+    // Nếu 401 và không phải login/register, thử refresh token
+    if (status === 401 && !isAuthEndpoint && !error.config?._retry) {
+      error.config._retry = true;
+      try {
+        const { data: { session } } = await supabase.auth.refreshSession();
+        if (session?.access_token) {
+          error.config.headers['Authorization'] = `Bearer ${session.access_token}`;
+          return api(error.config);
+        }
+      } catch (_) {}
     }
 
     return Promise.reject(error);

@@ -1,4 +1,4 @@
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Users, Map, AlertTriangle, Key, Compass, Shield } from 'lucide-react-native';
 import { BRAND_COLORS } from '../../constants';
@@ -18,7 +18,17 @@ export default function AdminDashboard() {
     enabled: !!isAdmin,
   });
 
-  if (!isAdmin) return null;
+  if (!isAdmin) {
+    return (
+      <View className="flex-1 bg-brand-bg">
+        <AdminNav />
+        <View className="flex-1 items-center justify-center py-20 gap-3">
+          <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
+          <Text className="text-xs font-semibold text-brand-textSoft">Đang tải và xác thực quyền quản trị...</Text>
+        </View>
+      </View>
+    );
+  }
 
   const STAT_CARDS = [
     { icon: <Users size={22} color={BRAND_COLORS.primary} />, bg: `${BRAND_COLORS.primary}1A`, label: 'Người dùng', value: stats?.totalUsers },
