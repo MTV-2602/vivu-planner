@@ -20,9 +20,7 @@ router.post('/:id/click', async (req: any, res: Response) => {
   }
 });
 
-router.use(requireAdmin);
-
-// GET /api/admin/partners - List all partners (with filters)
+// GET /api/partners & /api/admin/partners - List partners (filtered by active_status for non-admins)
 router.get('/', async (req: any, res: Response) => {
   if (isDbMocked) {
     return res.json([
@@ -55,7 +53,11 @@ router.get('/', async (req: any, res: Response) => {
     if (category) {
       query = query.eq('category', category as string);
     }
-    if (active_status !== undefined) {
+
+    const isAdmin = req.user?.role === 'admin';
+    if (!isAdmin) {
+      query = query.eq('active_status', true);
+    } else if (active_status !== undefined) {
       query = query.eq('active_status', active_status === 'true');
     }
 
@@ -66,6 +68,45 @@ router.get('/', async (req: any, res: Response) => {
     return res.status(500).json({ error: 'Failed to retrieve partners', details: err.message });
   }
 });
+
+// GET /api/partners/:id - Retrieve details of a single partner
+router.get('/:id', async (req: any, res: Response) => {
+  const { id } = req.params;
+  if (isDbMocked) {
+    return res.json({
+      id,
+      name: 'Khách sạn Continental Sài Gòn',
+      category: 'hotel',
+      address: '132-134 Đồng Khởi, Bến Nghé, Quận 1, Hồ Chí Minh',
+      lat: 10.776,
+      lng: 106.701,
+      city: 'Hồ Chí Minh',
+      district: 'Quận 1',
+      price_level: 3,
+      admin_rating: 5,
+      active_status: true
+    });
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('partners')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) throw error || new Error('Partner not found');
+    if (req.user?.role !== 'admin' && !data.active_status) {
+      return res.status(404).json({ error: 'Partner not found or inactive' });
+    }
+    return res.json(data);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to retrieve partner', details: err.message });
+  }
+});
+
+// Below endpoints require admin privileges
+router.use(requireAdmin);
 
 // GET /api/admin/partners/analytics/summary - Get aggregate performance metrics
 router.get('/analytics/summary', async (_req: any, res: Response) => {
@@ -108,39 +149,6 @@ router.get('/analytics/summary', async (_req: any, res: Response) => {
   }
 });
 
-// GET /api/admin/partners/:id - Retrieve details of a single partner
-router.get('/:id', async (req: any, res: Response) => {
-  const { id } = req.params;
-  if (isDbMocked) {
-    return res.json({
-      id,
-      name: 'Khách sạn Continental Sài Gòn',
-      category: 'hotel',
-      address: '132-134 Đồng Khởi, Bến Nghé, Quận 1, Hồ Chí Minh',
-      lat: 10.776,
-      lng: 106.701,
-      city: 'Hồ Chí Minh',
-      district: 'Quận 1',
-      price_level: 3,
-      admin_rating: 5,
-      active_status: true
-    });
-  }
-
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('partners')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error) throw error;
-    return res.json(data);
-  } catch (err: any) {
-    return res.status(500).json({ error: 'Failed to retrieve partner', details: err.message });
-  }
-});
-
 // POST /api/admin/partners - Create a new partner
 router.post('/', async (req: any, res: Response) => {
   if (isDbMocked) {
@@ -148,9 +156,23 @@ router.post('/', async (req: any, res: Response) => {
   }
 
   try {
-    const partnerData = req.body;
+    const partnerData = { ...req.body };
     if (!partnerData.name || !partnerData.category || !partnerData.address || partnerData.lat === undefined || partnerData.lng === undefined || !partnerData.city) {
       return res.status(400).json({ error: 'Missing required partner fields: name, category, address, lat, lng, city' });
+    }
+
+    if (partnerData.partner_priority !== undefined && partnerData.priority === undefined) {
+      partnerData.priority = partnerData.partner_priority;
+    } else if (partnerData.priority !== undefined && partnerData.partner_priority === undefined) {
+      partnerData.partner_priority = partnerData.priority;
+    }
+
+    if (!partnerData.tags || partnerData.tags.length === 0) {
+      partnerData.tags = [
+        ...(partnerData.cuisine_tags || []),
+        ...(partnerData.amenity_tags || []),
+        ...(partnerData.dietary_safe || [])
+      ];
     }
 
     const { data, error } = await supabaseAdmin
@@ -181,6 +203,20 @@ router.put('/:id', async (req: any, res: Response) => {
     delete partnerData.impression_count;
     delete partnerData.click_count;
     delete partnerData.booking_count;
+
+    if (partnerData.partner_priority !== undefined && partnerData.priority === undefined) {
+      partnerData.priority = partnerData.partner_priority;
+    } else if (partnerData.priority !== undefined && partnerData.partner_priority === undefined) {
+      partnerData.partner_priority = partnerData.priority;
+    }
+
+    if (!partnerData.tags || partnerData.tags.length === 0) {
+      partnerData.tags = [
+        ...(partnerData.cuisine_tags || []),
+        ...(partnerData.amenity_tags || []),
+        ...(partnerData.dietary_safe || [])
+      ];
+    }
 
     const { data, error } = await supabaseAdmin
       .from('partners')

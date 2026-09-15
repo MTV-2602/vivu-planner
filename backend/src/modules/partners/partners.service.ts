@@ -11,11 +11,13 @@ export interface Partner {
   lng: number;
   city: string;
   price_level: number;
-  cuisine_tags: string[];
-  amenity_tags: string[];
-  dietary_safe: string[];
+  tags?: string[];
+  cuisine_tags?: string[];
+  amenity_tags?: string[];
+  dietary_safe?: string[];
   admin_rating: number;
-  partner_priority: number;
+  priority?: number;
+  partner_priority?: number;
   active_status: boolean;
   booking_url?: string;
   website_url?: string;
@@ -127,19 +129,19 @@ export async function getRelevantPartners(
 
         // 1. Array/Tag-based check (legacy or special tags)
         if (Array.isArray(tripPreferences.food) && (partner.category === 'restaurant' || partner.category === 'cafe')) {
-          const matchedCuisine = partner.cuisine_tags.some((tag: string) => 
+          const matchedCuisine = (partner.cuisine_tags || partner.tags || []).some((tag: string) => 
             tripPreferences.food.includes(tag)
           );
           if (matchedCuisine) preferenceScore += PARTNER_MATCH_WEIGHTS.CUISINE_MATCH;
         }
         if (Array.isArray(tripPreferences.accommodation) && ['hotel', 'homestay', 'resort'].includes(partner.category)) {
-          const matchedAmenity = partner.amenity_tags.some((tag: string) => 
+          const matchedAmenity = (partner.amenity_tags || partner.tags || []).some((tag: string) => 
             tripPreferences.accommodation.includes(tag)
           );
           if (matchedAmenity) preferenceScore += PARTNER_MATCH_WEIGHTS.AMENITY_MATCH;
         }
         if (Array.isArray(tripPreferences.dietary)) {
-          const matchedDietary = partner.dietary_safe.some((tag: string) => 
+          const matchedDietary = (partner.dietary_safe || []).some((tag: string) => 
             tripPreferences.dietary.includes(tag)
           );
           if (matchedDietary) preferenceScore += PARTNER_MATCH_WEIGHTS.DIETARY_MATCH;
@@ -198,7 +200,7 @@ export async function getRelevantPartners(
         const adminRatingScore = (partner.admin_rating || 3) / 5;
 
         // E. Partner Priority Score (5% weight)
-        const priorityScore = (partner.partner_priority || 0) / 10;
+        const priorityScore = (partner.partner_priority || partner.priority || 0) / 10;
 
         // Final score calculation
         const score = 

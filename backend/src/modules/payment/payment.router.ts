@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { requireAuth } from '../../middleware/requireAuth';
+import { requireAdmin } from '../../middleware/requireAdmin';
 import { supabaseAdmin } from '../../config/supabase';
 import { createPayOSOrder, verifyPayOSWebhook, getPayOSOrderInfo, createMoMoOrder, verifyMoMoIPN, queryMoMoOrderInfo } from './payment.service';
 import { generateBookingConfirmationHTML } from '../email/email.service';
@@ -26,7 +27,7 @@ export const PREMIUM_PLANS: Record<string, { amount: number; label: string; dura
   ...DEFAULT_PLANS_CONFIG
 };
 
-export async function loadPlansFromDb() {
+export async function loadPlansFromDb(): Promise<Record<string, { amount: number; label: string; duration_days: number; quota_total_grant: number; is_unlimited?: boolean }>> {
   try {
     const { data, error } = await supabaseAdmin
       .from('pricing_plans')
@@ -48,6 +49,7 @@ export async function loadPlansFromDb() {
   } catch (err: any) {
     console.error('[Payment] Error loading plans from DB:', err.message);
   }
+  return PREMIUM_PLANS;
 }
 
 // ─── POST /api/payment/create-order ─────────────────────────────────────────
@@ -206,7 +208,7 @@ router.post('/momo-ipn', async (req: Request, res: Response) => {
 
 
 // ─── GET /api/payment/diagnose ────────────────────────────────────────────────
-router.get('/diagnose', async (req: Request, res: Response) => {
+router.get('/diagnose', requireAuth, requireAdmin, async (req: Request, res: Response) => {
   try {
     await loadPlansFromDb();
     const email = req.query.email as string;
@@ -240,33 +242,17 @@ router.get('/diagnose', async (req: Request, res: Response) => {
       .select('*')
       .eq('user_id', userId);
 
-    // 4. Thử kích hoạt premium tự động tại đây nếu đã thanh toán
-    let activationError: string | null = null;
-    let activationSuccess = false;
-
+    // 4. Diagnose only — không tự động kích hoạt premium, tránh side effect không mong muốn
     const latestOrder = orders?.find(o => o.status === 'completed' || o.status === 'success');
-    if (latestOrder) {
-      try {
-        await activatePremiumForUser(userId, latestOrder.plan || 'pro');
-        activationSuccess = true;
-      } catch (err: any) {
-        activationError = err.message || String(err);
-      }
-    }
-
-    // Lấy lại profile sau kích hoạt
-    const { data: reloadedProfile } = await supabaseAdmin
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
+    const activationSuccess = false;
+    const activationError: string | null = null;
 
     return res.json({
       success: true,
       email,
       userId,
       userCreatedAt: userObj.created_at,
-      profile: reloadedProfile || profile,
+      profile,
       profileErr: profileErr?.message || null,
       orders,
       ordersErr: ordersErr?.message || null,
@@ -409,7 +395,7 @@ router.get('/status', requireAuth, async (req: any, res: Response) => {
 
 // ─── GET /api/payment/check-order/:orderCode ────────────────────────────────
 // orderCode can be: numeric (PayOS orderCode) OR full VIVU-prefixed string
-router.get('/check-order/:orderCode', async (req: Request, res: Response) => {
+router.get('/check-order/:orderCode', requireAuth, async (req: any, res: Response) => {
   try {
     await autoCancelExpiredOrders();
     const { orderCode } = req.params;
@@ -423,6 +409,10 @@ router.get('/check-order/:orderCode', async (req: Request, res: Response) => {
       .select('id, status, user_id, plan, method')
       .eq('id', vivuId)
       .maybeSingle();
+
+    if (order && order.user_id !== req.user?.id && req.user?.role !== UserRole.ADMIN) {
+      return res.status(403).json({ success: false, paid: false, error: 'Không có quyền kiểm tra đơn hàng này' });
+    }
 
     if (order?.status === PaymentStatus.COMPLETED) {
       return res.json({ success: true, paid: true, status: 'PAID' });
@@ -457,50 +447,89 @@ router.get('/check-order/:orderCode', async (req: Request, res: Response) => {
 // For MoMo: resultCode=0 means success. For PayOS: code=00 or status=PAID.
 router.get('/verify-return', async (req: Request, res: Response) => {
   try {
-    const { orderId, resultCode, code, status } = req.query;
+    const { orderId, resultCode, status } = req.query;
 
-    // Must have an orderId to do anything
     if (!orderId) {
       return res.json({ success: false, message: 'Thiếu orderId.' });
     }
 
-    // Check if payment was cancelled
-    const isCancelled = String(resultCode) === '1006' || String(resultCode) === '49' || String(status) === 'CANCELLED';
-    if (isCancelled) {
-      return res.json({ success: false, message: 'Giao dịch đã bị hủy.' });
-    }
+    const vivuId = String(orderId);
+    const numericCode = vivuId.replace(/\D/g, '');
 
-    // Success codes: MoMo resultCode=0, PayOS code=00 or status=PAID
-    // Also activate if no resultCode (returnUrl visited after payment without code)
-    const isSuccess =
-      String(resultCode) === '0' ||
-      String(code) === '00' ||
-      String(status) === 'PAID' ||
-      (!resultCode && !code && !status);
-
-    if (!isSuccess) {
-      return res.json({ success: false, message: 'Thanh toán chưa hoàn tất.' });
-    }
-
-    // Check if order already completed (idempotent — safe to call multiple times)
+    // Check existing order record in DB
     const { data: order } = await supabaseAdmin
       .from('payment_orders')
-      .select('id, status, user_id, plan')
-      .eq('id', String(orderId))
-      .single();
+      .select('id, status, user_id, plan, method, order_code')
+      .eq('id', vivuId)
+      .maybeSingle();
 
     if (!order) {
       return res.json({ success: false, message: 'Không tìm thấy đơn hàng.' });
     }
 
+    // If order is already completed (e.g. IPN arrived first), return success idempotently
     if (order.status === PaymentStatus.COMPLETED) {
-      // Already activated (e.g. IPN arrived first) — just return success
       return res.json({ success: true, message: 'Đã kích hoạt trước đó. Lượt AI đã sẵn sàng!' });
     }
 
-    // Activate now
-    await activatePremiumByOrderId(String(orderId));
-    return res.json({ success: true, message: 'Đã kích hoạt cước thành công! Lượt AI đã được cộng vào tài khoản.' });
+    // Check cancellation
+    const isCancelled =
+      String(resultCode) === '1006' ||
+      String(resultCode) === '49' ||
+      String(status) === 'CANCELLED' ||
+      order.status === PaymentStatus.CANCELLED;
+
+    if (isCancelled) {
+      return res.json({ success: false, message: 'Giao dịch đã bị hủy.' });
+    }
+
+    // Verify transaction status securely with payment gateways
+    let isVerifiedPaid = false;
+
+    // 1. PayOS verification
+    if (order.method === PaymentMethod.PAYOS || !order.method) {
+      try {
+        const queryCode = order.order_code || numericCode;
+        if (queryCode) {
+          const payosInfo = await getPayOSOrderInfo(queryCode);
+          if (payosInfo && (payosInfo.status === 'PAID' || payosInfo.code === '00')) {
+            isVerifiedPaid = true;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 2. MoMo verification
+    if (!isVerifiedPaid && (order.method === PaymentMethod.MOMO || !order.method)) {
+      try {
+        const momoInfo = await queryMoMoOrderInfo(vivuId, vivuId);
+        if (momoInfo && momoInfo.resultCode === 0) {
+          isVerifiedPaid = true;
+        }
+      } catch (_) {}
+    }
+
+    if (!isVerifiedPaid) {
+      // Check if order was marked completed concurrently by IPN webhook
+      const { data: refreshedOrder } = await supabaseAdmin
+        .from('payment_orders')
+        .select('status')
+        .eq('id', vivuId)
+        .maybeSingle();
+
+      if (refreshedOrder?.status === PaymentStatus.COMPLETED) {
+        return res.json({ success: true, message: 'Đã kích hoạt trước đó. Lượt AI đã sẵn sàng!' });
+      }
+
+      return res.json({
+        success: false,
+        message: 'Thanh toán chưa hoàn tất hoặc chưa được cổng thanh toán xác nhận.'
+      });
+    }
+
+    // Activate now with verified status
+    await activatePremiumByOrderId(vivuId);
+    return res.json({ success: true, message: 'Đã kích hoạt gói thành công! Lượt AI đã được cộng vào tài khoản.' });
   } catch (err: any) {
     console.error('[Payment] verify-return error:', err);
     return res.status(500).json({ error: err.message });

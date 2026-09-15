@@ -91,31 +91,41 @@ router.get('/users', async (req: any, res: Response) => {
       .order('created_at', { ascending: false });
 
     if (search) {
-      query = query.ilike('full_name', `%${search}%`);
+      query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
     }
 
     const { data: profiles, count, error } = await query.range(offset, offset + limit - 1);
     if (error) throw error;
 
-    // Lấy thông tin email từ auth.users để hiển thị đầy đủ trên giao diện
-    const { data: listData } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    const userMap = new Map<string, any>((listData?.users || []).map((u: any): [string, any] => [u.id, u]));
+    const userProfiles = profiles || [];
+    const missingEmailProfiles = userProfiles.filter((p: any) => !p.email);
 
-    const formattedUsers = (profiles || []).map((p: any) => {
-      const authUser: any = userMap.get(p.id);
-      return {
-        id: p.id,
-        email: authUser?.email || '',
-        full_name: p.full_name || authUser?.user_metadata?.full_name || 'Người dùng',
-        role: p.role || UserRole.USER,
-        is_premium: !!p.is_premium,
-        quota_total: p.quota_total || 3,
-        quota_used: p.quota_used || 0,
-        created_at: p.created_at || authUser?.created_at,
-        last_sign_in_at: authUser?.last_sign_in_at || null,
-        banned_until: authUser?.banned_until || null
-      };
-    });
+    if (missingEmailProfiles.length > 0) {
+      await Promise.all(
+        missingEmailProfiles.slice(0, 50).map(async (p: any) => {
+          try {
+            const { data: authData } = await supabaseAdmin.auth.admin.getUserById(p.id);
+            if (authData?.user?.email) {
+              p.email = authData.user.email;
+              supabaseAdmin.from('profiles').update({ email: authData.user.email }).eq('id', p.id).then();
+            }
+          } catch (_) {}
+        })
+      );
+    }
+
+    const formattedUsers = userProfiles.map((p: any) => ({
+      id: p.id,
+      email: p.email || '',
+      full_name: p.full_name || 'Người dùng',
+      role: p.role || UserRole.USER,
+      is_premium: !!p.is_premium,
+      quota_total: p.quota_total || 3,
+      quota_used: p.quota_used || 0,
+      created_at: p.created_at,
+      last_sign_in_at: p.last_sign_in_at || null,
+      banned_until: p.banned_until || null
+    }));
 
     return res.json(formattedUsers);
   } catch (err: any) {
@@ -570,10 +580,9 @@ router.get('/user-packages', async (_req: any, res: Response) => {
 router.put('/users/:id/package', async (req: any, res: Response) => {
   const userId = req.params.id;
   const { is_premium, custom_quota, plan = 'premium', duration_days = 30 } = req.body;
-
   try {
-    const allPlans = await loadPlansFromDb();
-    const planInfo = allPlans[plan] || (is_premium ? allPlans['premium'] : null);
+    const allPlans = (await loadPlansFromDb()) || (DEFAULT_PLANS_CONFIG as any);
+    const planInfo = allPlans?.[plan] || (is_premium ? allPlans?.['premium'] : null);
     const planAmount = planInfo?.amount ?? (plan === 'starter' ? DEFAULT_PLANS_CONFIG.starter.amount : DEFAULT_PLANS_CONFIG.premium.amount);
     const planQuota = planInfo?.quota_total_grant ?? (is_premium ? QUOTA_CONFIG.UNLIMITED_ADMIN_TRIPS : QUOTA_CONFIG.DEFAULT_FREE_TRIPS);
     const planDuration = planInfo?.duration_days ?? duration_days;

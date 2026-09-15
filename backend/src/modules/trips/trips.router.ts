@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { requireAuth } from '../../middleware/requireAuth';
+import { createRateLimiter } from '../../middleware/rateLimiter';
 import { getSupabaseUserClient, supabaseAdmin } from '../../config/supabase';
 import { getCityCoordinates, searchPlaces, PlaceCandidate, fetchCandidatePlacesForCity } from '../places/places.service';
 import { getWeatherForecast } from '../weather/weather.service';
@@ -20,6 +21,28 @@ import {
 } from '../../constants';
 
 const router = Router();
+
+// State machine transition graph for trip lifecycle
+export const VALID_TRIP_TRANSITIONS: Record<string, string[]> = {
+  [TripStatus.DRAFT]: [TripStatus.ACTIVE, TripStatus.ARCHIVED],
+  [TripStatus.ACTIVE]: [TripStatus.COMPLETED, TripStatus.ARCHIVED],
+  [TripStatus.COMPLETED]: [TripStatus.ARCHIVED, TripStatus.ACTIVE],
+  [TripStatus.ARCHIVED]: [TripStatus.ACTIVE]
+};
+
+// Rate limiter for AI trip generation (10 requests per minute per user/IP)
+const aiGenerationLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 10,
+  message: 'Bạn đã gửi quá nhiều yêu cầu tạo lịch trình. Vui lòng chờ 1 phút trước khi tiếp tục.'
+});
+
+// Rate limiter for AI chat and adaptations (30 requests per minute per user/IP)
+const aiChatLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 30,
+  message: 'Bạn đã gửi tin nhắn quá nhanh. Vui lòng chờ 1 phút trước khi tiếp tục.'
+});
 
 function deduplicatePlaces(places: PlaceCandidate[]): PlaceCandidate[] {
   const seen = new Set<string>();
@@ -103,12 +126,13 @@ router.get('/:id/public', async (req, res: Response) => {
   try {
     const { data: trip, error: tripError } = await supabaseAdmin
       .from('trips')
-      .select('id,title,destination_city,start_date,end_date,budget_total,traveler_count,traveler_type,status')
+      .select('id,title,destination_city,start_date,end_date,budget_total,traveler_count,traveler_type,status,is_public')
       .eq('id', tripId)
+      .eq('is_public', true)
       .single();
 
     if (tripError || !trip) {
-      return res.status(404).json({ error: 'Trip not found or not shared publicly' });
+      return res.status(404).json({ error: 'Chuyến đi không tồn tại hoặc đang ở chế độ riêng tư' });
     }
 
     const { data: days } = await supabaseAdmin
@@ -273,7 +297,7 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
 });
 
 // POST /api/trips - Create a new trip and generate AI itinerary
-router.post('/', requireAuth, async (req: any, res: Response) => {
+router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Response) => {
   const client = getSupabaseUserClient(req.token!);
   
   const {
@@ -338,6 +362,12 @@ router.post('/', requireAuth, async (req: any, res: Response) => {
   const correctedStartDate = autoCorrectDate(start_date);
   const correctedEndDate = autoCorrectDate(end_date);
 
+  if (new Date(correctedStartDate) >= new Date(correctedEndDate)) {
+    return res.status(400).json({
+      error: `Ngày bắt đầu (${correctedStartDate}) phải trước ngày kết thúc (${correctedEndDate}). Vui lòng kiểm tra lại ngày du lịch.`
+    });
+  }
+
   // Predict realistic minimum cost for trip validation
   const start = new Date(correctedStartDate);
   const end = new Date(correctedEndDate);
@@ -358,6 +388,8 @@ router.post('/', requireAuth, async (req: any, res: Response) => {
       error: `Ngân sách tối thiểu dự kiến cho chuyến đi ${daysCount} ngày (${nightsCount} đêm) của ${travelers} khách tại ${destination_city} là ${minRequiredBudget.toLocaleString('vi-VN')}đ. Vui lòng tăng ngân sách hợp lệ để tiếp tục.`
     });
   }
+
+  let createdTripId: string | null = null;
 
   try {
     // 1. Resolve coordinates
@@ -432,26 +464,7 @@ router.post('/', requireAuth, async (req: any, res: Response) => {
     if (tripError || !trip) {
       throw tripError || new Error('Failed to create trip record');
     }
-
-    // Permanently increment quota_used on profiles safely
-    if (profile) {
-      const { error: updateV2Err } = await supabaseAdmin
-        .from('profiles')
-        .update({
-          quota_used: currentUsed + 1,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId);
-
-      if (updateV2Err) {
-        await supabaseAdmin
-          .from('profiles')
-          .update({
-            trips_used: currentUsed + 1
-          })
-          .eq('id', userId);
-      }
-    }
+    createdTripId = trip.id;
 
     // Liên kết toàn bộ tin nhắn chat chung cũ (với trip_id IS NULL) sang chuyến đi mới này
     const { error: chatLinkErr } = await supabaseAdmin
@@ -536,6 +549,26 @@ router.post('/', requireAuth, async (req: any, res: Response) => {
       : { error: null };
     if (itemsResult.error) throw itemsResult.error;
 
+    // Permanently increment quota_used on profiles safely only after all DB writes succeed
+    if (profile) {
+      const { error: updateV2Err } = await supabaseAdmin
+        .from('profiles')
+        .update({
+          quota_used: currentUsed + 1,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+
+      if (updateV2Err) {
+        await supabaseAdmin
+          .from('profiles')
+          .update({
+            trips_used: currentUsed + 1
+          })
+          .eq('id', userId);
+      }
+    }
+
     // Log partner booking events
     for (const item of itemsToInsert) {
       if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
@@ -569,6 +602,18 @@ router.post('/', requireAuth, async (req: any, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error generating trip:', error);
+
+    // Rollback trip record, itinerary_days, and quota if error happened mid-generation
+    if (createdTripId) {
+      try {
+        await supabaseAdmin.from('itinerary_days').delete().eq('trip_id', createdTripId);
+        await supabaseAdmin.from('trips').delete().eq('id', createdTripId);
+        console.log(`[Rollback] Cleaned up orphan trip and days for ${createdTripId}`);
+      } catch (rbErr: any) {
+        console.error('[Rollback] Failed to delete orphan trip/days:', rbErr.message);
+      }
+    }
+
     return res.status(500).json({ error: 'Failed to create trip and generate itinerary', details: error.message });
   }
 });
@@ -579,9 +624,64 @@ router.put('/:id', requireAuth, async (req: any, res: Response) => {
   const tripId = req.params.id;
 
   try {
+    const {
+      title,
+      description,
+      destination_city,
+      start_date,
+      end_date,
+      budget_total,
+      traveler_count,
+      traveler_type,
+      is_public,
+      status,
+      cover_image_url,
+      notes
+    } = req.body;
+
+    const updatePayload: Record<string, any> = {};
+    if (title !== undefined) updatePayload.title = String(title).trim();
+    if (description !== undefined) updatePayload.description = description;
+    if (destination_city !== undefined) updatePayload.destination_city = destination_city;
+    if (start_date !== undefined) updatePayload.start_date = start_date;
+    if (end_date !== undefined) updatePayload.end_date = end_date;
+    if (budget_total !== undefined) updatePayload.budget_total = parseFloat(budget_total);
+    if (traveler_count !== undefined) updatePayload.traveler_count = parseInt(traveler_count);
+    if (traveler_type !== undefined) updatePayload.traveler_type = traveler_type;
+    if (is_public !== undefined) updatePayload.is_public = !!is_public;
+    if (cover_image_url !== undefined) updatePayload.cover_image_url = cover_image_url;
+    if (notes !== undefined) updatePayload.notes = notes;
+
+    if (status !== undefined) {
+      const allowedStatuses = [TripStatus.DRAFT, TripStatus.ACTIVE, TripStatus.COMPLETED, TripStatus.ARCHIVED];
+      if (!allowedStatuses.includes(status)) {
+        return res.status(400).json({ error: `Trạng thái không hợp lệ: ${status}` });
+      }
+
+      // State machine validation: fetch current trip status
+      const { data: currentTrip } = await client
+        .from('trips')
+        .select('status')
+        .eq('id', tripId)
+        .maybeSingle();
+
+      if (currentTrip && currentTrip.status !== status) {
+        const allowedNext = VALID_TRIP_TRANSITIONS[currentTrip.status] || [];
+        if (!allowedNext.includes(status)) {
+          return res.status(400).json({
+            error: `Không thể chuyển trạng thái từ '${currentTrip.status}' sang '${status}'. Các trạng thái tiếp theo hợp lệ: ${allowedNext.join(', ')}`
+          });
+        }
+      }
+
+      updatePayload.status = status;
+    }
+
+    updatePayload.updated_at = new Date().toISOString();
+
     const { data: trip, error } = await client
       .from('trips')
-      .update(req.body)
+      .update(updatePayload)
       .eq('id', tripId)
       .select()
       .single();
@@ -666,7 +766,7 @@ router.get('/:id/chat', requireAuth, async (req: any, res: Response) => {
 });
 
 // POST /api/trips/chat - Trò chuyện chung không có ngữ cảnh chuyến đi
-router.post('/chat', requireAuth, async (req: any, res: Response) => {
+router.post('/chat', requireAuth, aiChatLimiter, async (req: any, res: Response) => {
   const { message, history } = req.body;
 
   if (!message) {
@@ -696,7 +796,7 @@ router.post('/chat', requireAuth, async (req: any, res: Response) => {
 });
 
 // POST /api/trips/:id/chat - Trò chuyện trong chuyến đi có ngữ cảnh
-router.post('/:id/chat', requireAuth, async (req: any, res: Response) => {
+router.post('/:id/chat', requireAuth, aiChatLimiter, async (req: any, res: Response) => {
   const client = getSupabaseUserClient(req.token!);
   const tripId = req.params.id;
   const { message, history } = req.body;
@@ -776,7 +876,7 @@ router.post('/:id/chat', requireAuth, async (req: any, res: Response) => {
 });
 
 // 1. POST /api/trips/:id/disruptions/preview - Gợi ý lịch trình thích ứng (Chưa lưu DB)
-router.post('/:id/disruptions/preview', requireAuth, async (req: any, res: Response) => {
+router.post('/:id/disruptions/preview', requireAuth, aiChatLimiter, async (req: any, res: Response) => {
   const client = getSupabaseUserClient(req.token!);
   const tripId = req.params.id;
   const { disruption_type, description } = req.body;

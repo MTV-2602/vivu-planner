@@ -173,6 +173,7 @@ $$;
 -- Bang luu tru ho so ca nhan, quyen han va han muc tao chuyen di
 CREATE TABLE IF NOT EXISTS public.profiles (
   id            uuid        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email         text,
   full_name     text        NOT NULL DEFAULT '',
   avatar_url    text,
   phone         text,
@@ -226,9 +227,13 @@ CREATE TABLE IF NOT EXISTS public.partners (
   image_urls       text[]  NOT NULL DEFAULT '{}',
   price_level      int     NOT NULL DEFAULT 2 CHECK (price_level BETWEEN 1 AND 4),
   tags             text[]  NOT NULL DEFAULT '{}',
+  cuisine_tags     text[]  NOT NULL DEFAULT '{}',
+  amenity_tags     text[]  NOT NULL DEFAULT '{}',
+  dietary_safe     text[]  NOT NULL DEFAULT '{}',
   admin_rating     int     NOT NULL DEFAULT 3 CHECK (admin_rating BETWEEN 1 AND 5),
   admin_notes      text,
   priority         int     NOT NULL DEFAULT 0 CHECK (priority BETWEEN 0 AND 10),
+  partner_priority int     NOT NULL DEFAULT 0 CHECK (partner_priority BETWEEN 0 AND 10),
   active_status    boolean NOT NULL DEFAULT true,
   is_active        boolean GENERATED ALWAYS AS (active_status) STORED, -- Tuong thich ca 2 cach goi
   impression_count int     NOT NULL DEFAULT 0 CHECK (impression_count >= 0),
@@ -738,13 +743,16 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, avatar_url)
+  INSERT INTO public.profiles (id, full_name, avatar_url, email)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
-    NEW.raw_user_meta_data->>'avatar_url'
+    NEW.raw_user_meta_data->>'avatar_url',
+    NEW.email
   )
-  ON CONFLICT (id) DO NOTHING;
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    full_name = CASE WHEN profiles.full_name = '' THEN EXCLUDED.full_name ELSE profiles.full_name END;
   RETURN NEW;
 END;
 $$;
@@ -862,6 +870,7 @@ COMMENT ON FUNCTION public.cleanup_expired_places_cache IS 'Ham tu dong don dep 
 -- ---------------------------------------------------------------------------
 -- Profiles
 CREATE INDEX IF NOT EXISTS idx_profiles_role            ON public.profiles(role);
+CREATE INDEX IF NOT EXISTS idx_profiles_email           ON public.profiles(email);
 CREATE INDEX IF NOT EXISTS idx_profiles_quota           ON public.profiles(quota_used, quota_total);
 
 -- Trips

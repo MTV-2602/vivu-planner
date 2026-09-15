@@ -69,7 +69,13 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ## 5. Vinh Pro
 - Always write "Vinh Pro" at the end of the response when completing or applying these guidelines (skills) to prove you have read and followed them.
 
-## 6. Git Commit & Local Workflow Guidelines
-- **Gom commit ở Local sau mỗi Task:** Khi làm xong 1 task gì đó, tự động gom lại toàn bộ thay đổi thành 1 commit duy nhất tại local (`git add -A && git commit -m "..."`) với thông điệp tiếng Việt mô tả đầy đủ, rõ ràng; không chia nhỏ vụn vặt.
-- **TUYỆT ĐỐI KHÔNG tự động push lên remote:** Giữ các commit ở local, không tự ý chạy `git push` và không tự động đồng bộ đẩy đi đâu cả.
-- **Chỉ Push khi có lệnh từ Người dùng:** Chỉ khi nào người dùng yêu cầu rõ ràng (ví dụ: "đẩy lên git", "push code", "tải lên"), agent mới thực hiện `git push`.
+## 6. Quy tắc Git Commit & Local Workflow (Bắt buộc tuân thủ)
+- **TUYỆT ĐỐI KHÔNG tự động `git push` lên GitHub / Remote:**
+  + Agent KHÔNG ĐƯỢC PHÉP tự ý chạy lệnh `git push` trong bất kỳ trường hợp nào.
+  + Toàn bộ việc đẩy mã nguồn lên remote repository do NGƯỜI DÙNG TỰ THỰC HIỆN khi người dùng muốn.
+- **Chỉ Commit ở Local và Gom lại thành 1 Commit duy nhất:**
+  + Khi hoàn thành một task, đợt sửa lỗi hoặc tính năng, gom toàn bộ các thay đổi vào 1 COMMIT DUY NHẤT tại local (`git add -A && git commit -m "..."`).
+  + Tránh tạo nhiều commit lắt nhắt, vụn vặt làm bẩn lịch sử git.
+- **Commit Message BẮT BUỘC dùng Tiếng Việt CÓ DẤU:**
+  + Tiêu đề và nội dung commit phải viết bằng **Tiếng Việt có dấu**, diễn đạt chuẩn xác, rõ ràng, phản ánh đúng bản chất các thay đổi (ví dụ: `fix(hệ-thống): khắc phục triệt để lỗi phân quyền và tối ưu luồng tạo chuyến đi`).
+

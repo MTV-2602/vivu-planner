@@ -151,7 +151,9 @@ export const QUERY_CACHE_TIMES = {
  * Nếu có premium_until thì thời hạn phải lớn hơn thời điểm hiện tại.
  */
 export function isUserPremium(profile?: { is_premium?: boolean; premium_until?: string | null } | null): boolean {
-  if (!profile || !profile.is_premium) return false;
-  if (!profile.premium_until) return true;
-  return new Date(profile.premium_until) > new Date();
+  if (!profile) return false;
+  if (profile.is_premium) return true;
+  if (profile.premium_until) return new Date(profile.premium_until) > new Date();
+  return false;
 }
+
