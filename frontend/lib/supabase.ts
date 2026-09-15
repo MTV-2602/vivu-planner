@@ -68,7 +68,7 @@ export function getRoleFromToken(accessToken: string): string {
   try {
     const base64 = accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     const payload = JSON.parse(safeBase64Decode(base64));
-    return payload.user_role || 'user';
+    return payload.user_role || payload.app_metadata?.user_role || payload.user_metadata?.user_role || 'user';
   } catch {
     return 'user';
   }

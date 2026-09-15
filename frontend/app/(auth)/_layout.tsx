@@ -1,22 +1,21 @@
 import { Stack, Redirect } from 'expo-router';
-import { useEffect, useState } from 'react';
-import {  supabase  } from '../../lib/supabase';
+import { ActivityIndicator, View } from 'react-native';
+import { useAuth } from '../../hooks/useAuth';
 
 export default function AuthLayout() {
-  const [session, setSession] = useState<any>(undefined);
+  const { session, isAdmin, loading } = useAuth();
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
-  if (session === undefined) return null;
-  if (session) return <Redirect href="/chuyen-di" />;
+  if (session) {
+    return <Redirect href={isAdmin ? '/admin' : '/(app)/chuyen-di'} />;
+  }
 
   return <Stack screenOptions={{ headerShown: false }} />;
 }

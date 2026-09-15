@@ -71,8 +71,9 @@ export function useAuth(): AuthState {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
-  // isAdmin: doc tu JWT claim user_role (tin cay hon profile.role vi den tu Auth Hook)
+  // isAdmin: doc tu profile.role hoac JWT claim user_role
   const isAdmin = (() => {
+    if (profile?.role === UserRole.ADMIN) return true;
     if (!session?.access_token) return false;
     return getRoleFromToken(session.access_token) === UserRole.ADMIN;
   })();

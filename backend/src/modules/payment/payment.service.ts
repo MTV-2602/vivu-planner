@@ -14,7 +14,7 @@ function sanitizePayOSDescription(text: string): string {
 }
 
 function getPayOSChecksumKey(): string {
-  return process.env.PAYOS_CHECKSUM_KEY || '';
+  return (process.env.PAYOS_CHECKSUM_KEY || '').trim();
 }
 
 export function createPayOSSignature(data: string): string {
@@ -31,9 +31,9 @@ export async function createPayOSOrder(params: {
   buyerEmail?: string;
   buyerPhone?: string;
 }): Promise<{ checkoutUrl: string; qrCode: string; orderCode: number; accountNumber?: string; accountName?: string; bin?: string }> {
-  const clientId = process.env.PAYOS_CLIENT_ID || '';
-  const apiKey = process.env.PAYOS_API_KEY || '';
-  const checksumKey = process.env.PAYOS_CHECKSUM_KEY || '';
+  const clientId = (process.env.PAYOS_CLIENT_ID || '').trim();
+  const apiKey = (process.env.PAYOS_API_KEY || '').trim();
+  const checksumKey = (process.env.PAYOS_CHECKSUM_KEY || '').trim();
 
   if (!clientId || !apiKey || !checksumKey) {
     throw new Error('PAYOS_CLIENT_ID, PAYOS_API_KEY, or PAYOS_CHECKSUM_KEY environment variables are missing');
@@ -135,7 +135,7 @@ export async function getPayOSOrderInfo(orderCode: number | string): Promise<any
 }
 
 // ─── MoMo (Production Gateway Only) ─────────────────────────────────────────
-const MOMO_API_URL = 'https://payment.momo.vn/v2/gateway/api/create';
+const MOMO_API_URL = (process.env.MOMO_API_URL || 'https://payment.momo.vn/v2/gateway/api/create').trim();
 
 function sanitizeMoMoOrderInfo(text: string): string {
   return text
@@ -155,9 +155,9 @@ export async function createMoMoOrder(params: {
   ipnUrl: string;
   requestId: string;
 }): Promise<{ payUrl: string; deeplink: string; qrCodeUrl: string; orderId: string }> {
-  const partnerCode = process.env.MOMO_PARTNER_CODE || '';
-  const accessKey = process.env.MOMO_ACCESS_KEY || '';
-  const secretKey = process.env.MOMO_SECRET_KEY || '';
+  const partnerCode = (process.env.MOMO_PARTNER_CODE || '').trim();
+  const accessKey = (process.env.MOMO_ACCESS_KEY || '').trim();
+  const secretKey = (process.env.MOMO_SECRET_KEY || '').trim();
 
   if (!partnerCode || !accessKey || !secretKey) {
     throw new Error('MOMO_PARTNER_CODE, MOMO_ACCESS_KEY, or MOMO_SECRET_KEY environment variables are missing');
@@ -222,8 +222,8 @@ export async function createMoMoOrder(params: {
 
 export function verifyMoMoIPN(body: any): boolean {
   try {
-    const secretKey = process.env.MOMO_SECRET_KEY || '';
-    const accessKey = process.env.MOMO_ACCESS_KEY || '';
+    const secretKey = (process.env.MOMO_SECRET_KEY || '').trim();
+    const accessKey = (process.env.MOMO_ACCESS_KEY || '').trim();
     const {
       partnerCode, orderId, requestId, amount, orderInfo,
       orderType, transId, resultCode, message, payType, responseTime, extraData, signature,
@@ -255,9 +255,9 @@ export function verifyMoMoIPN(body: any): boolean {
 }
 
 export async function queryMoMoOrderInfo(orderId: string, requestId: string): Promise<any> {
-  const partnerCode = process.env.MOMO_PARTNER_CODE || '';
-  const accessKey = process.env.MOMO_ACCESS_KEY || '';
-  const secretKey = process.env.MOMO_SECRET_KEY || '';
+  const partnerCode = (process.env.MOMO_PARTNER_CODE || '').trim();
+  const accessKey = (process.env.MOMO_ACCESS_KEY || '').trim();
+  const secretKey = (process.env.MOMO_SECRET_KEY || '').trim();
 
   if (!partnerCode || !accessKey || !secretKey) return null;
 

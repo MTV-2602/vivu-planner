@@ -36,9 +36,13 @@ export default function AuthScreen({ mode }: Props) {
   const [agreed, setAgreed] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {
-        const isAdmin = decodeJwtRole(session.access_token) === UserRole.ADMIN;
+        let isAdmin = decodeJwtRole(session.access_token) === UserRole.ADMIN;
+        if (!isAdmin && session.user?.id) {
+          const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+          if (p?.role === UserRole.ADMIN) isAdmin = true;
+        }
         router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
       }
     });
@@ -67,7 +71,11 @@ export default function AuthScreen({ mode }: Props) {
         if (error) throw error;
 
         if (data.session) {
-          const isAdmin = decodeJwtRole(data.session.access_token) === UserRole.ADMIN;
+          let isAdmin = decodeJwtRole(data.session.access_token) === UserRole.ADMIN;
+          if (!isAdmin && data.user?.id) {
+            const { data: p } = await supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
+            if (p?.role === UserRole.ADMIN) isAdmin = true;
+          }
           router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
           return;
         }
@@ -77,10 +85,15 @@ export default function AuthScreen({ mode }: Props) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw new Error('Email hoặc mật khẩu không chính xác!');
         
-        // Kiểm tra quyền admin thông qua claim trong JWT
-        const isAdmin = data.session?.access_token
+        // Kiểm tra quyền admin thông qua claim trong JWT hoặc bảng profiles
+        let isAdmin = data.session?.access_token
           ? decodeJwtRole(data.session.access_token) === UserRole.ADMIN
           : false;
+        
+        if (!isAdmin && data.user?.id) {
+          const { data: p } = await supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
+          if (p?.role === UserRole.ADMIN) isAdmin = true;
+        }
         
         router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
       }
