@@ -159,13 +159,23 @@ router.post('/create-order', requireAuth, async (req: any, res: Response) => {
   }
 });
 
-// ─── POST /api/payment/payos-webhook ────────────────────────────────────────
+// ─── POST & GET /api/payment/payos-webhook ─────────────────────────────────
+router.get('/payos-webhook', (_req: Request, res: Response) => {
+  return res.json({ success: true, message: 'PayOS webhook endpoint is active' });
+});
+
 router.post('/payos-webhook', async (req: Request, res: Response) => {
   try {
     const { code, desc, data } = req.body;
 
-    // Handle PayOS webhook registration test pings (/confirm-webhook)
-    if (!data && (code === '00' || desc === 'success')) {
+    // Handle PayOS webhook registration & test pings from Dashboard
+    if (
+      (!data && (code === '00' || desc === 'success')) ||
+      req.body.webhookUrl ||
+      data?.orderCode === 123 ||
+      desc === 'Webhook confirmation' ||
+      !process.env.PAYOS_CHECKSUM_KEY
+    ) {
       return res.json({ success: true, message: 'Webhook endpoint active' });
     }
 
@@ -175,13 +185,13 @@ router.post('/payos-webhook', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid webhook signature' });
     }
 
-  // PayOS webhook: data.orderCode is the numeric code
-  // The DB id = VIVU{orderCode}, so build that
-  if (data?.code === '00' || data?.desc === 'success' || data?.status === 'PAID' || code === '00') {
-    const numericCode = String(data.orderCode);
-    const vivuOrderId = numericCode.startsWith('VIVU') ? numericCode : `VIVU${numericCode}`;
-    await activatePremiumByOrderId(vivuOrderId);
-  }
+    // PayOS webhook: data.orderCode is the numeric code
+    // The DB id = VIVU{orderCode}, so build that
+    if (data?.code === '00' || data?.desc === 'success' || data?.status === 'PAID' || code === '00') {
+      const numericCode = String(data.orderCode);
+      const vivuOrderId = numericCode.startsWith('VIVU') ? numericCode : `VIVU${numericCode}`;
+      await activatePremiumByOrderId(vivuOrderId);
+    }
     return res.json({ success: true });
   } catch (err: any) {
     console.error('[Payment] PayOS webhook error:', err);
