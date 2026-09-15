@@ -1,7 +1,14 @@
-﻿import { useState, useEffect } from 'react';
-import { View, Text, Pressable, Modal, ScrollView, ActivityIndicator, Platform, Linking } from 'react-native';
+import { useState, useEffect } from 'react';
+import {
+  View, Text, Pressable, Modal, ScrollView,
+  ActivityIndicator, Platform, Linking,
+} from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { X, Crown, Sparkles } from 'lucide-react-native';
+import {
+  X, Crown, Sparkles, Check, Clock, AlertTriangle,
+  History, ArrowRight, ExternalLink, RefreshCw,
+  ShieldCheck, CreditCard, ChevronRight,
+} from 'lucide-react-native';
 import { api } from '../lib/api';
 import { BRAND_COLORS } from '../constants';
 
@@ -12,19 +19,61 @@ interface PremiumModalProps {
 }
 
 const PLANS = [
-  { id: 'plus', label: 'Gói Starter', icon: '⚡', price: '29.000đ', quota: 'AI Vô hạn', popular: false, badge: 'ĐỀ XUẤT' },
-  { id: 'pro', label: 'Gói Premium', icon: '👑', price: '49.000đ', quota: 'AI Vô hạn', popular: true, badge: 'ƯU VIỆT' },
+  {
+    id: 'plus',
+    label: 'Gói Starter',
+    icon: '⚡',
+    price: '29.000đ',
+    quota: '10 lượt tạo / tháng',
+    popular: false,
+    badge: 'TIẾT KIỆM',
+    features: [
+      '10 chuyến đi chi tiết bằng AI',
+      'Bản đồ tương tác OpenStreetMap',
+      'Dự báo thời tiết thông minh',
+      'Đề xuất chi phí dự kiến',
+    ],
+  },
+  {
+    id: 'pro',
+    label: 'Gói Premium',
+    icon: '👑',
+    price: '49.000đ',
+    quota: 'AI Vô hạn',
+    popular: true,
+    badge: 'ƯU VIỆT NHẤT',
+    features: [
+      'Tạo lịch trình AI KHÔNG GIỚI HẠN',
+      'Bản đồ tương tác đầy đủ tính năng',
+      'Xuất file PDF lịch trình du lịch',
+      'Tự động xử lý sự cố & thời tiết xấu',
+      'Trợ lý Chatbot AI đồng hành 24/7',
+    ],
+  },
 ];
 
+interface OrderHistoryItem {
+  id: string;
+  amount: number;
+  plan: string;
+  method: string;
+  status: string;
+  order_code: string;
+  created_at: string;
+}
+
 export default function PremiumModal({ visible, onClose, onActivated }: PremiumModalProps) {
+  const [activeTab, setActiveTab] = useState<'upgrade' | 'history'>('upgrade');
   const [selectedPlan, setSelectedPlan] = useState('pro');
   const [paymentMethod, setPaymentMethod] = useState<'payos' | 'momo'>('payos');
   const [loading, setLoading] = useState(false);
   const [orderData, setOrderData] = useState<any>(null);
   const [activated, setActivated] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [timeLeft, setTimeLeft] = useState(600); // 10 phút đếm ngược
 
-  const { data: statusData } = useQuery({
+  // Lấy trạng thái gói dịch vụ hiện tại
+  const { data: statusData, refetch: refetchStatus } = useQuery({
     queryKey: ['paymentStatusModal'],
     queryFn: async () => {
       const res = await api.get('/payment/status');
@@ -33,40 +82,48 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     enabled: visible,
   });
 
-  const { data: plansData } = useQuery({
-    queryKey: ['publicPlansModal'],
+  // Lấy lịch sử giao dịch
+  const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery<{ success: boolean; orders: OrderHistoryItem[] }>({
+    queryKey: ['myOrdersModal'],
     queryFn: async () => {
-      const res = await api.get('/payment/plans');
+      const res = await api.get('/payment/my-orders');
       return res.data;
     },
-    enabled: visible,
+    enabled: visible && activeTab === 'history',
   });
-
-  const getPlanPrice = (planId: string, defaultPrice: string) => {
-    if (!plansData?.plans) return defaultPrice;
-    if (planId === 'plus' && plansData.plans.starter?.amount != null) {
-      return `${plansData.plans.starter.amount.toLocaleString('vi-VN')}đ`;
-    }
-    if (planId === 'pro' && plansData.plans.premium?.amount != null) {
-      return `${plansData.plans.premium.amount.toLocaleString('vi-VN')}đ`;
-    }
-    return defaultPrice;
-  };
 
   useEffect(() => {
     if (!visible) {
       setOrderData(null);
       setActivated(false);
       setErrorMessage('');
+      setActiveTab('upgrade');
+    } else {
+      refetchStatus();
     }
   }, [visible]);
 
-  // 100% automatic server-side polling — no manual button
+  // Bộ đếm ngược 10 phút khi có đơn hàng
   useEffect(() => {
     if (!orderData || activated) return;
-    // Always use orderId (VIVU-prefixed) — backend check-order normalizes both formats
+    setTimeLeft(600);
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setErrorMessage('Đơn thanh toán đã hết hạn 10 phút. Vui lòng tạo lại đơn mới.');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [orderData, activated]);
+
+  // Polling tự động kiểm tra thanh toán thành công
+  useEffect(() => {
+    if (!orderData || activated) return;
     const targetCode = orderData.orderId || orderData.orderCode;
-    let lastQuota = statusData?.tripsQuota ?? 0;
 
     const interval = setInterval(async () => {
       try {
@@ -84,16 +141,11 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
           clearInterval(interval);
           setActivated(true);
           onActivated?.();
-        } else if (data.tripsQuota > lastQuota) {
-          clearInterval(interval);
-          lastQuota = data.tripsQuota;
-          setActivated(true);
-          onActivated?.();
         }
       } catch {}
     }, 2000);
     return () => clearInterval(interval);
-  }, [orderData, activated, statusData?.tripsQuota, statusData?.isPremium]);
+  }, [orderData, activated, statusData?.isPremium]);
 
   const handleCreateOrder = async () => {
     setLoading(true);
@@ -118,25 +170,48 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     setErrorMessage('');
   };
 
-  // Success screen
+  const isCurrentPremium = !!statusData?.isPremium;
+  const isCurrentStarter = statusData?.planId === 'starter' || (isCurrentPremium && statusData?.tripsQuota <= 10);
+  const isCurrentPro = isCurrentPremium && !isCurrentStarter;
+
+  // Thành công screen
   if (activated) {
-    const currentPlan = PLANS.find(p => p.id === selectedPlan) || PLANS[1];
     return (
       <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-          <View style={{ backgroundColor: '#fff', borderRadius: 28, padding: 36, alignItems: 'center', width: '100%', maxWidth: 420 }}>
-            <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: '#e8f5f0', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+        <View
+          style={(Platform.OS === 'web' ? {
+            position: 'fixed' as any,
+            top: 0, left: 0, right: 0, bottom: 0,
+            width: '100vw' as any, height: '100vh' as any,
+            zIndex: 9999, justifyContent: 'center', alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
+            padding: 16,
+          } : {
+            flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+            justifyContent: 'center', alignItems: 'center', padding: 16,
+          }) as any}
+        >
+          <View style={{ backgroundColor: '#fff', borderRadius: 28, padding: 36, alignItems: 'center', width: '100%', maxWidth: 460 }}>
+            <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
               <Text style={{ fontSize: 44 }}>🎉</Text>
             </View>
-            <Text style={{ fontSize: 24, fontWeight: '800', color: '#1B3A2D', marginBottom: 8, textAlign: 'center' }}>Thanh toán thành công!</Text>
-            <Text style={{ color: '#047857', textAlign: 'center', marginBottom: 6, lineHeight: 20, fontWeight: '700', fontSize: 16 }}>
-              Kích hoạt thành công {currentPlan.label}! ✨
+            <Text style={{ fontSize: 22, fontWeight: '800', color: '#1B3A2D', marginBottom: 8, textAlign: 'center' }}>
+              Thanh Toán Thành Công!
             </Text>
-            <Text style={{ color: '#666', textAlign: 'center', marginBottom: 24, lineHeight: 20, fontSize: 13 }}>
-              Toàn bộ tính năng Bản đồ tương tác & Tải PDF của gói đã <Text style={{ fontWeight: '700', color: BRAND_COLORS.primary }}>sẵn sàng hoạt động</Text> trên tài khoản của bạn.
+            <Text style={{ color: '#059669', textAlign: 'center', marginBottom: 12, fontWeight: '700', fontSize: 16 }}>
+              Gói dịch vụ đã được kích hoạt thành công! ✨
             </Text>
-            <Pressable onPress={onClose} style={{ backgroundColor: BRAND_COLORS.primary, borderRadius: 50, paddingHorizontal: 36, paddingVertical: 14, width: '100%', alignItems: 'center' }}>
-              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>Bắt đầu tạo chuyến đi ngay ✨</Text>
+            <Text style={{ color: '#64748B', textAlign: 'center', marginBottom: 24, lineHeight: 20, fontSize: 13 }}>
+              Toàn bộ đặc quyền cao cấp đã được mở khóa ngay trên tài khoản của bạn.
+            </Text>
+            <Pressable
+              onPress={() => {
+                onClose();
+                refetchStatus();
+              }}
+              style={{ backgroundColor: BRAND_COLORS.primary, borderRadius: 50, paddingHorizontal: 36, paddingVertical: 14, width: '100%', alignItems: 'center' }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>Bắt đầu trải nghiệm ngay ✨</Text>
             </Pressable>
           </View>
         </View>
@@ -152,19 +227,9 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     const momoDeeplink = orderData.deeplink;
 
     if (directQr) {
-      // Check if it's a real image URL (png/jpg/vietqr) or a QR payload
-      const isImageUrl = directQr.startsWith('data:image/') ||
-        (directQr.startsWith('http') && (
-          directQr.includes('vietqr.io') ||
-          directQr.includes('.png') ||
-          directQr.includes('.jpg')
-        ));
-      if (isImageUrl) {
-        qrImage = directQr;
-      } else {
-        // EMVCo bank payload (000201...) or MoMo/PayOS web links → generate clean scannable QR
-        qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(directQr)}`;
-      }
+      const isImageUrl = directQr.startsWith('data:image/') || (directQr.startsWith('http') && (directQr.includes('vietqr.io') || directQr.includes('.png') || directQr.includes('.jpg')));
+      if (isImageUrl) qrImage = directQr;
+      else qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(directQr)}`;
     } else if (orderData.accountNumber && orderData.amount) {
       const bin = orderData.bin || 'MB';
       qrImage = `https://img.vietqr.io/image/${bin}-${orderData.accountNumber}-compact2.png?amount=${orderData.amount}&addInfo=VIVU${orderData.orderCode || ''}&accountName=${encodeURIComponent(orderData.accountName || 'VIVU PLANNER')}`;
@@ -172,277 +237,397 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
       qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(webUrl)}`;
     }
 
-    // For MoMo: prefer deeplink (opens MoMo app directly) over web URL for QR
     if (orderData.method === 'momo' && momoDeeplink && !directQr) {
       qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(momoDeeplink)}`;
     }
   }
 
-  const externalUrl = orderData?.checkoutUrl || orderData?.payUrl;
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
-        <View style={{ backgroundColor: '#fff', borderRadius: 28, width: '100%', maxWidth: 680, maxHeight: '90%', overflow: 'hidden' }}>
-
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View
+        style={(Platform.OS === 'web' ? {
+          position: 'fixed' as any,
+          top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw' as any, height: '100vh' as any,
+          zIndex: 9999, justifyContent: 'center', alignItems: 'center',
+          backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
+          padding: 16,
+        } : {
+          flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+          justifyContent: 'center', alignItems: 'center', padding: 16,
+        }) as any}
+      >
+        <View
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: 24,
+            width: '100%',
+            maxWidth: 680,
+            maxHeight: '92%',
+            overflow: 'hidden',
+            borderWidth: 1,
+            borderColor: '#E2E8F0',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 16 },
+            shadowOpacity: 0.2,
+            shadowRadius: 28,
+            elevation: 16,
+          }}
+        >
           {/* Header */}
-          <View style={{ backgroundColor: '#064E3B', padding: 24, paddingBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(16,185,129,0.25)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Sparkles size={24} color="#10B981" />
+          <View style={{ backgroundColor: '#1B3A2D', paddingHorizontal: 24, paddingVertical: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(110,231,183,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                <Crown size={22} color="#6EE7B7" />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 20, fontWeight: '800', color: '#fff' }}>👑 Kích Hoạt Tài Khoản ViVu Pro</Text>
-                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2, fontWeight: '500' }}>
-                  Mở khóa trọn bộ đặc quyền cao cấp (Bản đồ tương tác & Tải PDF)
-                </Text>
+              <View>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: '#ffffff' }}>Gói Dịch Vụ ViVu Pro</Text>
+                <Text style={{ fontSize: 12, color: '#A7F3D0' }}>Nâng tầm trải nghiệm du lịch thông minh</Text>
               </View>
             </View>
-            <Pressable onPress={onClose} style={{ padding: 6, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20 }}>
-              <X size={20} color="#fff" />
+            <Pressable
+              onPress={onClose}
+              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <X size={18} color="#ffffff" />
             </Pressable>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24, gap: 20 }}>
-
-            {/* Active Subscription Status */}
-            {(() => {
-              const getRemainingDays = (dateStr: string) => {
-                if (!dateStr) return 0;
-                const diff = new Date(dateStr).getTime() - Date.now();
-                return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-              };
-
-              return (
-                <View style={{ backgroundColor: statusData?.isPremium ? '#FFFDF0' : '#F8FAFC', borderColor: statusData?.isPremium ? '#F59E0B' : '#E2E8F0', borderWidth: 1.5, borderRadius: 16, padding: 16, gap: 10 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    {statusData?.isPremium ? <Crown size={24} color="#D97706" /> : <Sparkles size={24} color="#64748B" />}
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '800', color: statusData?.isPremium ? '#78350F' : '#334155' }}>
-                        Gói dịch vụ hiện tại:
-                      </Text>
-                      <Text style={{ fontSize: 13, color: statusData?.isPremium ? '#B45309' : '#475569', fontWeight: '700', marginTop: 2 }}>
-                        {statusData?.planName || 'Gói Miễn Phí (Basis)'}
-                      </Text>
-                    </View>
-                    <View style={{ backgroundColor: statusData?.isPremium ? '#F59E0B' : '#64748B', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
-                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>
-                        {statusData?.isPremium ? 'ĐANG HOẠT ĐỘNG' : 'MIỄN PHÍ'}
-                      </Text>
-                    </View>
-                  </View>
-                  
-                  <View style={{ borderTopWidth: 1, borderTopColor: statusData?.isPremium ? '#FEF3C7' : '#E2E8F0', paddingTop: 8, marginTop: 4, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 12, color: statusData?.isPremium ? '#B45309' : '#64748B', fontWeight: '500' }}>
-                      Hạn sử dụng:
-                    </Text>
-                    <Text style={{ fontSize: 12, color: statusData?.isPremium ? '#78350F' : '#334155', fontWeight: '800' }}>
-                      {statusData?.isPremium 
-                        ? (statusData.premiumUntil ? `${new Date(statusData.premiumUntil).toLocaleDateString('vi-VN')} (Còn ${getRemainingDays(statusData.premiumUntil)} ngày)` : 'Vô hạn')
-                        : 'Không giới hạn tạo AI (Bản đồ & PDF bị khóa)'
-                      }
-                    </Text>
-                  </View>
-                </View>
-              );
-            })()}
-
-            {/* Package Grid */}
-            <View>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#064E3B', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                1. Chọn gói dịch vụ nâng cấp (Theo tháng)
+          {/* Navigation Tabs */}
+          <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#E2E8F0', backgroundColor: '#F8FAFC' }}>
+            <Pressable
+              onPress={() => { setActiveTab('upgrade'); setOrderData(null); }}
+              style={{
+                flex: 1, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8,
+                borderBottomWidth: 2, borderBottomColor: activeTab === 'upgrade' ? BRAND_COLORS.primary : 'transparent',
+              }}
+            >
+              <Sparkles size={16} color={activeTab === 'upgrade' ? BRAND_COLORS.primary : '#64748B'} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: activeTab === 'upgrade' ? BRAND_COLORS.primary : '#64748B' }}>
+                Nâng Cấp Gói
               </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                {PLANS.map(plan => {
-                  const isSelected = selectedPlan === plan.id;
-                  return (
-                    <Pressable
-                      key={plan.id}
-                      onPress={() => { setSelectedPlan(plan.id); setOrderData(null); setErrorMessage(''); }}
-                      style={{
-                        flex: 1, minWidth: 180, borderRadius: 16, borderWidth: isSelected ? 2.5 : 1.5,
-                        borderColor: isSelected ? '#059669' : '#e2e8f0',
-                        backgroundColor: isSelected ? '#F0FDF4' : '#ffffff',
-                        padding: 16, position: 'relative', cursor: 'pointer' as any,
-                      }}
-                    >
-                      {plan.badge && (
-                        <View style={{ position: 'absolute', top: -10, right: 12, backgroundColor: plan.popular ? '#D4A017' : '#059669', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
-                          <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>{plan.badge}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { setActiveTab('history'); setOrderData(null); }}
+              style={{
+                flex: 1, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8,
+                borderBottomWidth: 2, borderBottomColor: activeTab === 'history' ? BRAND_COLORS.primary : 'transparent',
+              }}
+            >
+              <History size={16} color={activeTab === 'history' ? BRAND_COLORS.primary : '#64748B'} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: activeTab === 'history' ? BRAND_COLORS.primary : '#64748B' }}>
+                Lịch Sử Giao Dịch
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* Body Content */}
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24, gap: 18 }}>
+
+            {/* TAB 1: NÂNG CẤP GÓI */}
+            {activeTab === 'upgrade' && (
+              <>
+                {/* Banner trạng thái hiện tại */}
+                <View
+                  style={{
+                    backgroundColor: isCurrentPremium ? '#FEFCE8' : '#F8FAFC',
+                    borderColor: isCurrentPremium ? '#FDE047' : '#E2E8F0',
+                    borderWidth: 1.5, borderRadius: 16, padding: 14, gap: 8,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      {isCurrentPremium ? <Crown size={20} color="#CA8A04" /> : <Sparkles size={20} color="#64748B" />}
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: isCurrentPremium ? '#854D0E' : '#334155' }}>
+                        Gói hiện tại: {statusData?.planName || (isCurrentPremium ? 'Gói Pro' : 'Gói Miễn Phí')}
+                      </Text>
+                    </View>
+                    <View style={{ backgroundColor: isCurrentPremium ? '#CA8A04' : '#64748B', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 3 }}>
+                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>
+                        {isCurrentPremium ? 'ĐANG HOẠT ĐỘNG' : 'MIỄN PHÍ'}
+                      </Text>
+                    </View>
+                  </View>
+                  {isCurrentPremium && statusData?.premiumUntil && (
+                    <Text style={{ fontSize: 12, color: '#A16207' }}>
+                      📅 Hạn dùng: <strong>{new Date(statusData.premiumUntil).toLocaleDateString('vi-VN')}</strong> (Còn {Math.max(0, Math.ceil((new Date(statusData.premiumUntil).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} ngày) — Nạp tiếp sẽ được <strong>gia hạn cộng dồn thêm 30 ngày</strong>.
+                    </Text>
+                  )}
+                </View>
+
+                {/* Khi Đang Hiển Thị Mã QR Thanh Toán */}
+                {orderData ? (
+                  <View style={{ backgroundColor: '#F8FAFC', borderRadius: 20, padding: 20, borderWidth: 1.5, borderColor: '#CBD5E1', alignItems: 'center', gap: 14 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Clock size={16} color="#DC2626" />
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#DC2626' }}>
+                          Mã QR hết hạn sau: {formatTime(timeLeft)}
+                        </Text>
+                      </View>
+                      <Pressable onPress={handleCancelOrder} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: '#E2E8F0' }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569' }}>Hủy / Đổi gói</Text>
+                      </Pressable>
+                    </View>
+
+                    {/* QR Code Container */}
+                    {qrImage ? (
+                      <View style={{ padding: 12, backgroundColor: '#fff', borderRadius: 16, borderWidth: 2, borderColor: '#10B981', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 }}>
+                        {Platform.OS === 'web' ? (
+                          <img src={qrImage} alt="QR Thanh toán" style={{ width: 220, height: 220, borderRadius: 8 }} />
+                        ) : (
+                          <Text style={{ fontSize: 12, color: '#64748B' }}>Đang nạp mã QR...</Text>
+                        )}
+                        <Text style={{ marginTop: 10, fontSize: 15, fontWeight: '800', color: '#065F46' }}>
+                          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(orderData.amount || 29000)}
+                        </Text>
+                      </View>
+                    ) : (
+                      <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
+                    )}
+
+                    {/* Thông tin chuyển khoản */}
+                    <View style={{ width: '100%', backgroundColor: '#fff', borderRadius: 14, padding: 14, gap: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 12, color: '#64748B' }}>Mã đơn hàng:</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{orderData.orderId || orderData.orderCode}</Text>
+                      </View>
+                      {orderData.accountNumber && (
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ fontSize: 12, color: '#64748B' }}>Số tài khoản:</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{orderData.accountNumber} ({orderData.bin || 'MBBank'})</Text>
                         </View>
                       )}
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={{ fontSize: 16 }}>{plan.icon}</Text>
-                        <Text style={{ fontWeight: '800', color: isSelected ? '#064E3B' : '#1e293b', fontSize: 15 }}>{plan.label}</Text>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 12, color: '#64748B' }}>Phương thức:</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{orderData.method === 'momo' ? 'Ví MoMo' : 'VietQR (Chuyển khoản 24/7)'}</Text>
                       </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, marginVertical: 6 }}>
-                        <Text style={{ fontWeight: '800', color: '#059669', fontSize: 20 }}>{getPlanPrice(plan.id, plan.price)}</Text>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <ActivityIndicator size="small" color="#10B981" />
+                      <Text style={{ fontSize: 12, color: '#047857', fontWeight: '600' }}>
+                        Hệ thống đang tự động lắng nghe giao dịch...
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    {/* Báo lỗi nếu có */}
+                    {errorMessage ? (
+                      <View style={{ backgroundColor: '#FEF2F2', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#FECACA', flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                        <AlertTriangle size={18} color="#DC2626" />
+                        <Text style={{ fontSize: 13, color: '#991B1B', fontWeight: '600', flex: 1 }}>{errorMessage}</Text>
                       </View>
-                      <View style={{ backgroundColor: isSelected ? '#DCFCE7' : '#f1f5f9', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, alignSelf: 'flex-start' }}>
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: isSelected ? '#047857' : '#475569' }}>✨ {plan.quota}</Text>
+                    ) : null}
+
+                    {/* Danh sách các gói */}
+                    <View style={{ gap: 12 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#1B3A2D', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        1. Chọn Gói Dịch Vụ
+                      </Text>
+
+                      <View style={{ flexDirection: 'row', gap: 14 }}>
+                        {PLANS.map(plan => {
+                          const isSelected = selectedPlan === plan.id;
+                          const isStarter = plan.id === 'plus';
+                          // Chặn mua Starter nếu user đang là Pro
+                          const isDowngradeDisabled = isCurrentPro && isStarter;
+
+                          return (
+                            <Pressable
+                              key={plan.id}
+                              onPress={() => {
+                                if (!isDowngradeDisabled) setSelectedPlan(plan.id);
+                              }}
+                              disabled={isDowngradeDisabled}
+                              style={{
+                                flex: 1,
+                                borderRadius: 18,
+                                padding: 16,
+                                borderWidth: 2,
+                                borderColor: isSelected ? BRAND_COLORS.primary : (isDowngradeDisabled ? '#E2E8F0' : '#CBD5E1'),
+                                backgroundColor: isSelected ? '#F0FDF4' : (isDowngradeDisabled ? '#F8FAFC' : '#ffffff'),
+                                opacity: isDowngradeDisabled ? 0.55 : 1,
+                                gap: 8,
+                                shadowColor: isSelected ? '#10B981' : 'transparent',
+                                shadowOpacity: 0.1,
+                                shadowRadius: 10,
+                              }}
+                            >
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Text style={{ fontSize: 24 }}>{plan.icon}</Text>
+                                <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: isSelected ? '#10B981' : '#F1F5F9' }}>
+                                  <Text style={{ fontSize: 10, fontWeight: '800', color: isSelected ? '#fff' : '#64748B' }}>
+                                    {isDowngradeDisabled ? 'ĐANG DÙNG GÓI CAO HƠN' : plan.badge}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A' }}>{plan.label}</Text>
+                              <Text style={{ fontSize: 18, fontWeight: '900', color: BRAND_COLORS.primary }}>{plan.price}</Text>
+                              <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600' }}>{plan.quota}</Text>
+
+                              <View style={{ borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 8, gap: 4 }}>
+                                {plan.features.slice(0, 3).map((f, i) => (
+                                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Check size={12} color="#10B981" />
+                                    <Text style={{ fontSize: 11, color: '#475569' }} numberOfLines={1}>{f}</Text>
+                                  </View>
+                                ))}
+                              </View>
+                            </Pressable>
+                          );
+                        })}
                       </View>
+                    </View>
+
+                    {/* Phương thức thanh toán */}
+                    <View style={{ gap: 10 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#1B3A2D', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        2. Chọn Phương Thức Thanh Toán
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: 12 }}>
+                        {/* PayOS VietQR */}
+                        <Pressable
+                          onPress={() => setPaymentMethod('payos')}
+                          style={{
+                            flex: 1, padding: 14, borderRadius: 16, borderWidth: 1.5,
+                            borderColor: paymentMethod === 'payos' ? BRAND_COLORS.primary : '#CBD5E1',
+                            backgroundColor: paymentMethod === 'payos' ? '#F0FDF4' : '#fff',
+                            flexDirection: 'row', alignItems: 'center', gap: 10,
+                          }}
+                        >
+                          <CreditCard size={22} color={paymentMethod === 'payos' ? BRAND_COLORS.primary : '#64748B'} />
+                          <View>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>VietQR (Ngân hàng)</Text>
+                            <Text style={{ fontSize: 11, color: '#64748B' }}>Quét mã chuyển khoản tức thì</Text>
+                          </View>
+                        </Pressable>
+
+                        {/* MoMo */}
+                        <Pressable
+                          onPress={() => setPaymentMethod('momo')}
+                          style={{
+                            flex: 1, padding: 14, borderRadius: 16, borderWidth: 1.5,
+                            borderColor: paymentMethod === 'momo' ? '#A21CAF' : '#CBD5E1',
+                            backgroundColor: paymentMethod === 'momo' ? '#FDF4FF' : '#fff',
+                            flexDirection: 'row', alignItems: 'center', gap: 10,
+                          }}
+                        >
+                          <Text style={{ fontSize: 20 }}>💜</Text>
+                          <View>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>Ví MoMo</Text>
+                            <Text style={{ fontSize: 11, color: '#64748B' }}>Cổng thanh toán điện tử MoMo</Text>
+                          </View>
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    {/* Nút hành động */}
+                    <Pressable
+                      onPress={handleCreateOrder}
+                      disabled={loading || (isCurrentPro && selectedPlan === 'plus')}
+                      style={{
+                        backgroundColor: (isCurrentPro && selectedPlan === 'plus') ? '#94A3B8' : BRAND_COLORS.primary,
+                        paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+                        flexDirection: 'row', gap: 8, shadowColor: BRAND_COLORS.primary, shadowOpacity: 0.25, shadowRadius: 12,
+                      }}
+                    >
+                      {loading ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <>
+                          <ShieldCheck size={18} color="#fff" />
+                          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>
+                            {isCurrentPro && selectedPlan === 'pro'
+                              ? 'Gia Hạn Gói Premium (49.000đ / +30 ngày)'
+                              : isCurrentStarter && selectedPlan === 'plus'
+                              ? 'Gia Hạn Gói Starter (29.000đ / +30 ngày)'
+                              : selectedPlan === 'plus'
+                              ? 'Thanh Toán Gói Starter (29.000đ)'
+                              : 'Thanh Toán Gói Premium (49.000đ)'}
+                          </Text>
+                        </>
+                      )}
                     </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* Selected Plan Features */}
-            {(() => {
-              const currentPlan = PLANS.find(p => p.id === selectedPlan) || PLANS[1];
-              return (
-                <View style={{ backgroundColor: '#ECFDF5', borderColor: '#059669', borderWidth: 1.5, borderRadius: 16, padding: 18, gap: 10 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#A7F3D0', paddingBottom: 8 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#064E3B' }}>✨ Mở khóa trọn bộ đặc quyền {currentPlan.label} ({currentPlan.price})</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#059669', backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>{currentPlan.quota}</Text>
-                  </View>
-                  <View style={{ gap: 6 }}>
-                    {selectedPlan === 'plus' ? (
-                      <>
-                        <Text style={{ fontSize: 13, color: '#047857', fontWeight: '700', lineHeight: 18 }}>🚀 Tạo lịch trình du lịch bằng AI không giới hạn</Text>
-                        <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>🚫 Get rid of ads (Loại bỏ hoàn toàn quảng cáo)</Text>
-                        <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>🗺️ Hidden gems tại 15 tỉnh/thành phố phổ biến nhất</Text>
-                        <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>📈 Scenic Score cảnh quan & Tối ưu hóa lộ trình qua điểm ẩn</Text>
-                        <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>⏱️ Tối ưu hóa thời gian di chuyển & thời gian tham quan</Text>
-                        <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>📊 Công cụ quản lý ngân sách độc quyền</Text>
-                      </>
-                    ) : (
-                      <>
-                        <Text style={{ fontSize: 13, color: '#047857', fontWeight: '700', lineHeight: 18 }}>🚀 Tạo lịch trình du lịch bằng AI không giới hạn</Text>
-                        <Text style={{ fontSize: 13, color: '#047857', fontWeight: '700', lineHeight: 18 }}>⚡ Bao gồm tất cả tính năng của gói Starter</Text>
-                        <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>🏔️ "Super hidden gems" cho 10+ tỉnh vùng núi & vùng biển độc lạ</Text>
-                        <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>🏨 Chỗ nghỉ, quán ăn bản địa và dịch vụ thuê xe được tuyển chọn kỹ</Text>
-                        <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>👥 Cho phép thành viên nhóm cùng truy cập & sửa đổi lịch trình</Text>
-                        <Text style={{ fontSize: 13, color: '#047857', fontWeight: '600', lineHeight: 18 }}>🍀 Đo lường và tính toán lượng dấu chân carbon (Carbon Footprint)</Text>
-                      </>
-                    )}
-                  </View>
-                </View>
-              );
-            })()}
-
-            {/* Payment Method Selector — only show when no active order */}
-            {!orderData && (
-              <View>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: '#064E3B', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  2. Phương thức thanh toán
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  {(['payos', 'momo'] as const).map(method => {
-                    const isSel = paymentMethod === method;
-                    return (
-                      <Pressable
-                        key={method}
-                        onPress={() => { setPaymentMethod(method); setErrorMessage(''); }}
-                        style={{
-                          flex: 1, borderRadius: 14, borderWidth: isSel ? 2.5 : 1.5,
-                          borderColor: isSel ? '#059669' : '#e2e8f0',
-                          backgroundColor: isSel ? '#F0FDF4' : '#ffffff',
-                          padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12,
-                          cursor: 'pointer' as any,
-                        }}
-                      >
-                        <Text style={{ fontSize: 26 }}>{method === 'payos' ? '🏦' : '💜'}</Text>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontWeight: '800', color: isSel ? '#064E3B' : '#1e293b', fontSize: 14 }}>
-                            {method === 'payos' ? 'PayOS (Ngân hàng)' : 'Ví MoMo'}
-                          </Text>
-                          <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
-                            {method === 'payos' ? 'Cổng thanh toán PayOS' : 'Cổng thanh toán Ví MoMo'}
-                          </Text>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
+                  </>
+                )}
+              </>
             )}
 
-            {/* QR Code Display */}
-            {orderData && (
-              <View style={{ backgroundColor: '#f8f4ec', borderRadius: 20, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: '#e0dbd0' }}>
-                <Text style={{ fontWeight: '800', color: '#1B3A2D', fontSize: 16, marginBottom: 4 }}>
-                  {orderData.method === 'payos' ? '🏦 Cổng thanh toán PayOS' : '💜 Cổng thanh toán MoMo'}
-                </Text>
-                <Text style={{ color: '#888', fontSize: 12, marginBottom: 16, textAlign: 'center' }}>
-                  Quét mã QR bên dưới hoặc nhấn nút để mở trang thanh toán chính thức
-                </Text>
-
-                {qrImage ? (
-                  Platform.OS === 'web' ? (
-                    // @ts-ignore
-                    <img
-                      src={qrImage}
-                      alt="Payment QR"
-                      style={{ width: 220, height: 220, borderRadius: 16, border: '3px solid #1F6F54', padding: 8, backgroundColor: '#fff' }}
-                    />
-                  ) : (
-                    <View style={{ width: 200, height: 200, backgroundColor: '#fff', borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: BRAND_COLORS.primary }}>
-                      <Text style={{ fontSize: 32 }}>📱</Text>
-                      <Text style={{ color: '#888', fontSize: 12, marginTop: 8 }}>Mở trên trình duyệt web</Text>
-                    </View>
-                  )
-                ) : null}
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 }}>
-                  <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
-                  <Text style={{ color: '#666', fontSize: 12, fontWeight: '600' }}>Tự động kiểm tra giao dịch...</Text>
-                </View>
-
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, width: '100%' }}>
-                  {externalUrl && (
-                    <Pressable
-                      onPress={() => {
-                        if (Platform.OS === 'web') window.open(externalUrl, '_blank');
-                        else Linking.openURL(externalUrl);
-                      }}
-                      style={{ flex: 1, backgroundColor: orderData.method === 'momo' ? '#a50064' : '#334155', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center' }}
-                    >
-                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
-                        {orderData.method === 'momo' ? '💜 Mở MoMo ↗' : '🏦 Mở PayOS ↗'}
-                      </Text>
-                    </Pressable>
-                  )}
-                  {/* Cancel button — switch payment method */}
-                  <Pressable
-                    onPress={handleCancelOrder}
-                    style={{ flex: 1, backgroundColor: '#f1f5f9', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0' }}
-                  >
-                    <Text style={{ color: '#64748b', fontWeight: '700', fontSize: 13 }}>✕ Đổi phương thức</Text>
+            {/* TAB 2: LỊCH SỬ GIAO DỊCH */}
+            {activeTab === 'history' && (
+              <View style={{ gap: 12 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#1B3A2D' }}>
+                    Lịch Sử Đơn Hàng Của Bạn
+                  </Text>
+                  <Pressable onPress={() => refetchHistory()} style={{ padding: 6, borderRadius: 8, backgroundColor: '#F1F5F9' }}>
+                    <RefreshCw size={14} color="#475569" />
                   </Pressable>
                 </View>
+
+                {historyLoading ? (
+                  <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
+                  </View>
+                ) : !historyData?.orders || historyData.orders.length === 0 ? (
+                  <View style={{ paddingVertical: 40, alignItems: 'center', gap: 10 }}>
+                    <Text style={{ fontSize: 32 }}>📜</Text>
+                    <Text style={{ fontSize: 14, color: '#64748B', fontWeight: '600' }}>Bạn chưa có giao dịch nào.</Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 10 }}>
+                    {historyData.orders.map(order => {
+                      const isCompleted = order.status === 'completed' || order.status === 'success';
+                      const isPending = order.status === 'pending';
+
+                      return (
+                        <View
+                          key={order.id}
+                          style={{
+                            padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC',
+                            flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+                          }}
+                        >
+                          <View style={{ gap: 4 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>
+                                {order.id}
+                              </Text>
+                              <View style={{
+                                paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10,
+                                backgroundColor: isCompleted ? '#DCFCE7' : (isPending ? '#FEF9C3' : '#F1F5F9'),
+                              }}>
+                                <Text style={{
+                                  fontSize: 10, fontWeight: '800',
+                                  color: isCompleted ? '#166534' : (isPending ? '#854D0E' : '#64748B'),
+                                }}>
+                                  {isCompleted ? 'THÀNH CÔNG' : (isPending ? 'CHỜ THANH TOÁN' : 'ĐÃ HỦY')}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text style={{ fontSize: 12, color: '#64748B' }}>
+                              {order.plan === 'plus' || order.plan === 'starter' ? 'Gói Starter' : 'Gói Premium'} • {order.method === 'momo' ? 'MoMo' : 'VietQR'} • {new Date(order.created_at).toLocaleDateString('vi-VN')}
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: isCompleted ? '#059669' : '#0F172A' }}>
+                            {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.amount)}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             )}
-
-            {/* Error Display */}
-            {errorMessage ? (
-              <View style={{ backgroundColor: '#fee2e2', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#fca5a5' }}>
-                <Text style={{ color: '#991b1b', fontWeight: '700', fontSize: 13, marginBottom: 4 }}>❌ Khởi tạo thanh toán chưa thành công:</Text>
-                <Text style={{ color: '#7f1d1d', fontSize: 12 }}>{errorMessage}</Text>
-              </View>
-            ) : null}
-
-            {/* Main Action Button */}
-            {!orderData && (() => {
-              const currentPlan = PLANS.find(p => p.id === selectedPlan) || PLANS[1];
-              return (
-                <Pressable
-                  onPress={handleCreateOrder}
-                  disabled={loading}
-                  style={{ backgroundColor: '#059669', borderRadius: 16, padding: 18, alignItems: 'center', cursor: 'pointer' as any }}
-                >
-                  {loading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>
-                      {paymentMethod === 'payos'
-                        ? `🏦 Tạo mã VietQR nạp ${currentPlan.label} (${currentPlan.price})`
-                        : `💜 Thanh toán MoMo ${currentPlan.label} (${currentPlan.price})`}
-                    </Text>
-                  )}
-                </Pressable>
-              );
-            })()}
 
           </ScrollView>
         </View>

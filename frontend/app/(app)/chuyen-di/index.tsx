@@ -16,6 +16,7 @@ import SystemClock from '../../../components/SystemClock';
 import { BRAND_COLORS, APP_ROUTES } from '../../../constants';
 import PremiumModal from '../../../components/PremiumModal';
 import ConfirmModal from '../../../components/ConfirmModal';
+import ProfileModal from '../../../components/ProfileModal';
 
 interface Trip {
   id: string;
@@ -84,6 +85,7 @@ export default function Dashboard() {
   const [cachedTrips, setCachedTrips] = useState<Trip[] | null>(null);
   const [fromCache, setFromCache] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
     visible: boolean;
     title: string;
@@ -238,12 +240,16 @@ export default function Dashboard() {
                 <Text className="text-brand-accent text-xs font-bold">Quản trị</Text>
               </Pressable>
             )}
-            <View className="flex-row items-center gap-1 px-3 py-1.5 rounded-full border border-brand-line">
-              <User size={13} color={BRAND_COLORS.textSoft} />
+            <Pressable
+              onPress={() => setShowProfileModal(true)}
+              className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full border border-brand-line bg-brand-bgAlt/50 hover:border-brand-primary"
+              style={{ cursor: 'pointer' as any }}
+            >
+              <User size={13} color={BRAND_COLORS.primary} />
               <Text className="text-brand-textSoft text-xs font-semibold" numberOfLines={1}>
                 {userEmail}
               </Text>
-            </View>
+            </Pressable>
             <Pressable
               onPress={handleLogout}
               className="flex-row items-center gap-1 px-3 py-2 rounded-lg bg-brand-danger/10"
@@ -427,6 +433,10 @@ export default function Dashboard() {
       onActivated={() => {
         refetchStatus();
       }}
+    />
+    <ProfileModal
+      visible={showProfileModal}
+      onClose={() => setShowProfileModal(false)}
     />
     <ConfirmModal
       visible={!!confirmModal?.visible}

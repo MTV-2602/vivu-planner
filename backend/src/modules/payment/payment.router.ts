@@ -59,6 +59,31 @@ router.post('/create-order', requireAuth, async (req: any, res: Response) => {
     await loadPlansFromDb();
     const { method, plan = 'monthly', buyerName, buyerEmail, buyerPhone } = req.body;
     const userId = req.user!.id;
+
+    // 1. Kiểm tra trạng thái gói cước hiện tại của user để tránh downgrade sai logic
+    const { data: currentProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('is_premium, premium_until, quota_total')
+      .eq('id', userId)
+      .maybeSingle();
+
+    const isCurrentlyPremium = isUserPremium(currentProfile);
+    if (isCurrentlyPremium && (currentProfile?.quota_total ?? 0) > 10) {
+      // Đang có gói Premium không giới hạn, không cho phép mua gói Starter
+      if (plan === 'starter' || plan === 'plus') {
+        return res.status(400).json({
+          error: 'Tài khoản của bạn đang sở hữu Gói Premium cao cấp hơn. Bạn không thể hạ cấp xuống gói Starter khi gói hiện tại đang có hiệu lực.',
+        });
+      }
+    }
+
+    // 2. Tự động hủy các đơn pending cũ của người dùng để tránh xung đột đơn hàng
+    await supabaseAdmin
+      .from('payment_orders')
+      .update({ status: PaymentStatus.CANCELLED })
+      .eq('user_id', userId)
+      .eq('status', PaymentStatus.PENDING);
+
     const planConfig = PREMIUM_PLANS[plan as keyof typeof PREMIUM_PLANS] || PREMIUM_PLANS.monthly;
     const orderCode = Date.now();
     const orderId = `VIVU${orderCode}`;
@@ -373,10 +398,18 @@ router.get('/status', requireAuth, async (req: any, res: Response) => {
     let planId = 'free';
 
     if (isPremium) {
-      planId = latestOrder?.plan || 'pro';
-      if (planId === 'plus' || planId === 'starter') {
+      const orderPlan = latestOrder?.plan;
+      if (orderPlan === 'plus' || orderPlan === 'starter') {
+        planId = 'starter';
+        planName = 'Gói Starter';
+      } else if (orderPlan === 'monthly' || orderPlan === 'pro' || orderPlan === 'premium' || orderPlan === 'quarterly' || orderPlan === 'vip') {
+        planId = 'pro';
+        planName = 'Gói Premium';
+      } else if (profile?.quota_total && profile.quota_total <= 10) {
+        planId = 'starter';
         planName = 'Gói Starter';
       } else {
+        planId = 'pro';
         planName = 'Gói Premium';
       }
     }
@@ -400,6 +433,26 @@ router.get('/status', requireAuth, async (req: any, res: Response) => {
       tripsQuota: 3,
       remainingTrips: 3,
     });
+  }
+});
+
+// ─── GET /api/payment/my-orders ─────────────────────────────────────────────
+// Lấy danh sách lịch sử giao dịch nạp gói của người dùng hiện tại
+router.get('/my-orders', requireAuth, async (req: any, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { data: orders, error } = await supabaseAdmin
+      .from('payment_orders')
+      .select('id, amount, plan, method, status, order_code, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) throw error;
+    return res.json({ success: true, orders: orders || [] });
+  } catch (err: any) {
+    console.error('[Payment] my-orders error:', err.message);
+    return res.status(500).json({ error: `Lỗi lấy lịch sử giao dịch: ${err.message}` });
   }
 });
 
@@ -679,7 +732,21 @@ async function activatePremiumForUser(userId: string, planKey: string = 'pro') {
   const plan = dbPlan || PREMIUM_PLANS[planKey as keyof typeof PREMIUM_PLANS] || PREMIUM_PLANS.pro;
   const newQuota = Number(plan?.quota_total_grant ?? 9999);
   const durationDays = Number(plan?.duration_days || 30);
-  const premiumUntil = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+  // Lấy thông tin tài khoản hiện tại để hỗ trợ gia hạn cộng dồn (Cumulative Renewal)
+  const { data: currentProfile } = await supabaseAdmin
+    .from('profiles')
+    .select('premium_until, quota_total, quota_used')
+    .eq('id', userId)
+    .maybeSingle();
+
+  let baseTime = Date.now();
+  if (currentProfile?.premium_until && new Date(currentProfile.premium_until).getTime() > Date.now()) {
+    // Nếu đang còn hạn thì cộng dồn thêm số ngày vào hạn hiện tại
+    baseTime = new Date(currentProfile.premium_until).getTime();
+  }
+
+  const premiumUntil = new Date(baseTime + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
   // Try Schema v2 update first (quota_total)
   const { error: updateV2Err } = await supabaseAdmin

@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView,
   ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Compass, Sparkles, AlertCircle, ArrowRight, Check } from 'lucide-react-native';
+import { Compass, Sparkles, AlertCircle, ArrowRight, Check, KeyRound, Mail, X, CheckCircle2, Lock } from 'lucide-react-native';
 import { supabase, decodeJwtRole } from '../lib/supabase';
+import { api } from '../lib/api';
 import { BRAND_COLORS, APP_ROUTES, UI_BREAKPOINTS, UserRole } from '../constants';
 
 const F = {
@@ -34,6 +36,86 @@ export default function AuthScreen({ mode }: Props) {
   const [infoMsg, setInfoMsg] = useState('');
   const [focused, setFocused] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
+
+  // Quên mật khẩu state
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotStep, setForgotStep] = useState<'email' | 'otp' | 'newPassword'>('email');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState('');
+
+  const handleSendOtp = async () => {
+    if (!forgotEmail || !forgotEmail.includes('@')) {
+      setForgotError('Vui lòng nhập địa chỉ email hợp lệ.');
+      return;
+    }
+    setForgotLoading(true);
+    setForgotError('');
+    setForgotSuccess('');
+    try {
+      const res = await api.post('/auth/forgot-password', { email: forgotEmail });
+      setForgotSuccess(res.data.message || 'Mã OTP đã được gửi đến email của bạn.');
+      setForgotStep('otp');
+    } catch (err: any) {
+      setForgotError(err.response?.data?.error || err.message || 'Không thể gửi mã OTP.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!forgotOtp || forgotOtp.trim().length < 4) {
+      setForgotError('Vui lòng nhập mã xác nhận OTP.');
+      return;
+    }
+    setForgotLoading(true);
+    setForgotError('');
+    try {
+      await api.post('/auth/verify-otp', { email: forgotEmail, otp: forgotOtp });
+      setForgotSuccess('');
+      setForgotStep('newPassword');
+    } catch (err: any) {
+      setForgotError(err.response?.data?.error || err.message || 'Mã OTP không hợp lệ.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!forgotNewPassword || forgotNewPassword.length < 6) {
+      setForgotError('Mật khẩu mới phải có ít nhất 6 ký tự.');
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError('Mật khẩu xác nhận không khớp.');
+      return;
+    }
+    setForgotLoading(true);
+    setForgotError('');
+    try {
+      const res = await api.post('/auth/reset-password', {
+        email: forgotEmail,
+        otp: forgotOtp,
+        newPassword: forgotNewPassword,
+      });
+      setShowForgotModal(false);
+      setInfoMsg(res.data.message || 'Đặt lại mật khẩu thành công! Vui lòng đăng nhập.');
+      setPassword('');
+      setForgotEmail('');
+      setForgotOtp('');
+      setForgotNewPassword('');
+      setForgotConfirmPassword('');
+      setForgotStep('email');
+    } catch (err: any) {
+      setForgotError(err.response?.data?.error || err.message || 'Lỗi đặt lại mật khẩu.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -298,7 +380,25 @@ export default function AuthScreen({ mode }: Props) {
             </View>
 
             <View style={{ gap: 7 }}>
-              <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: '#1B2420' }}>Mật khẩu</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: '#1B2420' }}>Mật khẩu</Text>
+                {!isSignUp && (
+                  <Pressable
+                    onPress={() => {
+                      setForgotEmail(email);
+                      setForgotError('');
+                      setForgotSuccess('');
+                      setForgotStep('email');
+                      setShowForgotModal(true);
+                    }}
+                    style={{ cursor: 'pointer' as any }}
+                  >
+                    <Text style={{ fontFamily: F.semiBold, fontSize: 12, color: BRAND_COLORS.primary }}>
+                      Quên mật khẩu?
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
               <TextInput
                 style={fieldStyle('password')}
                 placeholder="••••••••"
@@ -390,6 +490,213 @@ export default function AuthScreen({ mode }: Props) {
 
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ── MODAL QUÊN MẬT KHẨU ────────────────────────────────────────── */}
+      {showForgotModal && (
+        <Modal visible={showForgotModal} transparent animationType="fade" onRequestClose={() => setShowForgotModal(false)}>
+          <View
+            style={(Platform.OS === 'web' ? {
+              position: 'fixed' as any,
+              top: 0, left: 0, right: 0, bottom: 0,
+              width: '100vw' as any, height: '100vh' as any,
+              zIndex: 9999, justifyContent: 'center', alignItems: 'center',
+              backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+              padding: 16,
+            } : {
+              flex: 1, justifyContent: 'center', alignItems: 'center',
+              backgroundColor: 'rgba(0,0,0,0.65)', padding: 16,
+            }) as any}
+          >
+            <View
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: 24,
+                width: '100%',
+                maxWidth: 480,
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 12 },
+                shadowOpacity: 0.15,
+                shadowRadius: 24,
+                elevation: 12,
+              }}
+            >
+              {/* Modal Header */}
+              <View style={{ backgroundColor: '#1B3A2D', paddingHorizontal: 24, paddingVertical: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(110,231,183,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                    <KeyRound size={20} color="#6EE7B7" />
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 17, fontWeight: '800', color: '#ffffff' }}>Quên Mật Khẩu</Text>
+                    <Text style={{ fontSize: 12, color: '#A7F3D0' }}>Khôi phục quyền truy cập tài khoản</Text>
+                  </View>
+                </View>
+                <Pressable
+                  onPress={() => setShowForgotModal(false)}
+                  style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <X size={18} color="#ffffff" />
+                </Pressable>
+              </View>
+
+              <View style={{ padding: 24, gap: 16 }}>
+                {/* Thông báo lỗi / thành công */}
+                {forgotError ? (
+                  <View style={{ backgroundColor: '#FEF2F2', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#FECACA', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <AlertCircle size={16} color="#DC2626" />
+                    <Text style={{ fontSize: 12, color: '#991B1B', fontWeight: '600', flex: 1 }}>{forgotError}</Text>
+                  </View>
+                ) : null}
+
+                {forgotSuccess ? (
+                  <View style={{ backgroundColor: '#ECFDF5', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#A7F3D0', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <CheckCircle2 size={16} color="#059669" />
+                    <Text style={{ fontSize: 12, color: '#065F46', fontWeight: '600', flex: 1 }}>{forgotSuccess}</Text>
+                  </View>
+                ) : null}
+
+                {/* BƯỚC 1: NHẬP EMAIL */}
+                {forgotStep === 'email' && (
+                  <View style={{ gap: 14 }}>
+                    <Text style={{ fontSize: 13, color: '#475569', lineHeight: 20 }}>
+                      Nhập địa chỉ email tài khoản của bạn. Chúng tôi sẽ gửi mã xác nhận OTP 6 số về hòm thư Gmail để bạn đặt lại mật khẩu.
+                    </Text>
+                    <View style={{ gap: 6 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>Email tài khoản</Text>
+                      <TextInput
+                        style={{
+                          backgroundColor: '#ffffff', borderWidth: 1.5, borderColor: '#CBD5E1',
+                          borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#0F172A',
+                        }}
+                        placeholder="email@example.com"
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        value={forgotEmail}
+                        onChangeText={setForgotEmail}
+                      />
+                    </View>
+                    <Pressable
+                      onPress={handleSendOtp}
+                      disabled={forgotLoading}
+                      style={{
+                        backgroundColor: BRAND_COLORS.primary, paddingVertical: 12, borderRadius: 12,
+                        alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, marginTop: 6,
+                      }}
+                    >
+                      {forgotLoading ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <>
+                          <Mail size={16} color="#ffffff" />
+                          <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 14 }}>Gửi mã xác nhận OTP</Text>
+                        </>
+                      )}
+                    </Pressable>
+                  </View>
+                )}
+
+                {/* BƯỚC 2: NHẬP MÃ OTP */}
+                {forgotStep === 'otp' && (
+                  <View style={{ gap: 14 }}>
+                    <Text style={{ fontSize: 13, color: '#475569', lineHeight: 20 }}>
+                      Mã xác nhận gồm 6 chữ số đã được gửi đến <strong>{forgotEmail}</strong>. Mã có hiệu lực trong 10 phút.
+                    </Text>
+                    <View style={{ gap: 6 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>Mã OTP (6 chữ số)</Text>
+                      <TextInput
+                        style={{
+                          backgroundColor: '#ffffff', borderWidth: 1.5, borderColor: '#CBD5E1',
+                          borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 20,
+                          fontWeight: '800', textAlign: 'center', letterSpacing: 6, color: BRAND_COLORS.primary,
+                        }}
+                        placeholder="123456"
+                        keyboardType="number-pad"
+                        maxLength={6}
+                        value={forgotOtp}
+                        onChangeText={setForgotOtp}
+                      />
+                    </View>
+                    <Pressable
+                      onPress={handleVerifyOtp}
+                      disabled={forgotLoading}
+                      style={{
+                        backgroundColor: BRAND_COLORS.primary, paddingVertical: 12, borderRadius: 12,
+                        alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, marginTop: 6,
+                      }}
+                    >
+                      {forgotLoading ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 14 }}>Xác thực mã OTP</Text>
+                      )}
+                    </Pressable>
+                    <Pressable onPress={() => setForgotStep('email')} style={{ alignItems: 'center', paddingVertical: 4 }}>
+                      <Text style={{ fontSize: 12, color: '#64748B', textDecorationLine: 'underline' }}>
+                        Gửi lại mã hoặc đổi email
+                      </Text>
+                    </Pressable>
+                  </View>
+                )}
+
+                {/* BƯỚC 3: ĐẶT MẬT KHẨU MỚI */}
+                {forgotStep === 'newPassword' && (
+                  <View style={{ gap: 14 }}>
+                    <Text style={{ fontSize: 13, color: '#475569', lineHeight: 20 }}>
+                      Mã xác thực thành công. Vui lòng nhập mật khẩu mới cho tài khoản của bạn.
+                    </Text>
+                    <View style={{ gap: 6 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>Mật khẩu mới</Text>
+                      <TextInput
+                        style={{
+                          backgroundColor: '#ffffff', borderWidth: 1.5, borderColor: '#CBD5E1',
+                          borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#0F172A',
+                        }}
+                        placeholder="Tối thiểu 6 ký tự..."
+                        secureTextEntry
+                        value={forgotNewPassword}
+                        onChangeText={setForgotNewPassword}
+                      />
+                    </View>
+                    <View style={{ gap: 6 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>Xác nhận mật khẩu mới</Text>
+                      <TextInput
+                        style={{
+                          backgroundColor: '#ffffff', borderWidth: 1.5, borderColor: '#CBD5E1',
+                          borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#0F172A',
+                        }}
+                        placeholder="Nhập lại mật khẩu mới..."
+                        secureTextEntry
+                        value={forgotConfirmPassword}
+                        onChangeText={setForgotConfirmPassword}
+                      />
+                    </View>
+                    <Pressable
+                      onPress={handleResetPassword}
+                      disabled={forgotLoading}
+                      style={{
+                        backgroundColor: BRAND_COLORS.primary, paddingVertical: 12, borderRadius: 12,
+                        alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, marginTop: 6,
+                      }}
+                    >
+                      {forgotLoading ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <>
+                          <KeyRound size={16} color="#ffffff" />
+                          <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 14 }}>Hoàn tất đổi mật khẩu</Text>
+                        </>
+                      )}
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
 
     </View>
   );
