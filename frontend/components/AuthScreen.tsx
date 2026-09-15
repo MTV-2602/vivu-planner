@@ -59,12 +59,19 @@ export default function AuthScreen({ mode }: Props) {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: { data: { full_name: fullName } }
         });
         if (error) throw error;
+
+        if (data.session) {
+          const isAdmin = decodeJwtRole(data.session.access_token) === UserRole.ADMIN;
+          router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
+          return;
+        }
+
         setInfoMsg('Đăng ký thành công! Vui lòng kiểm tra email để xác nhận.');
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
