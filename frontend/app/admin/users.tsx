@@ -375,7 +375,7 @@ export default function AdminUsers() {
                     })}
                     className="p-1.5 rounded-lg border border-brand-primary/30 bg-brand-primary/10 hover:bg-brand-primary/20"
                     style={{ cursor: 'pointer' as any }}
-                    title="Chỉnh sửa thông tin"
+                    accessibilityLabel="Chỉnh sửa thông tin"
                   >
                     <Edit3 size={13} color={BRAND_COLORS.primary} />
                   </Pressable>
@@ -389,7 +389,7 @@ export default function AdminUsers() {
                       opacity: (u.email === 'mockuser@vivu.vn' || currentUser?.id === u.id) ? 0.3 : 1,
                       cursor: 'pointer' as any,
                     }}
-                    title="Xóa người dùng"
+                    accessibilityLabel="Xóa người dùng"
                   >
                     <Trash2 size={13} color={BRAND_COLORS.danger} />
                   </Pressable>
@@ -587,11 +587,35 @@ export default function AdminUsers() {
                   placeholder="Ví dụ: 5 hoặc 9999 (không giới hạn)"
                   placeholderTextColor={BRAND_COLORS.textMuted}
                   keyboardType="numeric"
-                  className="bg-white border border-brand-line/60 rounded-xl px-3 py-2.5 text-xs text-brand-text outline-none"
+                  className="bg-white border border-brand-line/60 rounded-xl px-3 py-2.5 text-xs text-brand-text outline-none font-bold"
                 />
-                <Text className="text-[10px] text-brand-textMuted italic">
-                  * Nhập 9999 để cho phép người dùng tạo chuyến đi không giới hạn.
-                </Text>
+                {/* Quick Quota Chips */}
+                <View className="flex-row flex-wrap gap-1.5 pt-1">
+                  {[
+                    { val: '3', label: '3 lượt (Free)' },
+                    { val: '10', label: '+10 lượt' },
+                    { val: '30', label: '+30 lượt' },
+                    { val: '9999', label: '👑 Vô hạn (9999)' }
+                  ].map(q => (
+                    <Pressable
+                      key={q.val}
+                      onPress={() => setEditUserModal(prev => ({ ...prev, quotaTotal: q.val }))}
+                      className="px-2.5 py-1 rounded-lg border text-[10px]"
+                      style={{
+                        borderColor: editUserModal.quotaTotal === q.val ? BRAND_COLORS.primary : 'rgba(27,36,32,0.15)',
+                        backgroundColor: editUserModal.quotaTotal === q.val ? `${BRAND_COLORS.primary}15` : '#FFFFFF',
+                        cursor: 'pointer' as any
+                      }}
+                    >
+                      <Text
+                        className="text-[10px] font-bold"
+                        style={{ color: editUserModal.quotaTotal === q.val ? BRAND_COLORS.primary : BRAND_COLORS.textSoft }}
+                      >
+                        {q.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
 
               {/* Đổi mật khẩu mới */}

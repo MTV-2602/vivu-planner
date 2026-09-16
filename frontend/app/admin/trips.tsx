@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import { useState, useEffect, useMemo } from 'react';
+import { View, Text, ScrollView, ActivityIndicator, Pressable, TextInput } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { Trash2, MapPin, Calendar, Wallet, ChevronRight, AlertTriangle } from 'lucide-react-native';
+import { Trash2, MapPin, Calendar, Wallet, ChevronRight, AlertTriangle, Search, X, RefreshCw } from 'lucide-react-native';
 import { BRAND_COLORS, APP_ROUTES } from '../../constants';
 import { api } from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
@@ -33,8 +33,10 @@ export default function AdminTrips() {
   const { isAdmin } = useAuth();
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ visible: boolean; title: string; message: string; onConfirm: () => void; confirmText?: string; cancelText?: string; isDestructive?: boolean } | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed' | 'draft'>('all');
 
-  const { data: trips, isLoading: tripsLoading } = useQuery<TripRecord[]>({
+  const { data: trips, isLoading: tripsLoading, refetch: refetchTrips } = useQuery<TripRecord[]>({
     queryKey: ['adminTrips'],
     queryFn: async () => (await api.get('/admin/trips')).data,
     enabled: !!isAdmin,
@@ -50,6 +52,21 @@ export default function AdminTrips() {
     },
     onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
   });
+
+  const filteredTrips = useMemo(() => {
+    if (!trips) return [];
+    return trips.filter((t: TripRecord) => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchSearch = !q ||
+        (t.title || '').toLowerCase().includes(q) ||
+        (t.destination_city || '').toLowerCase().includes(q) ||
+        (t.user_email || '').toLowerCase().includes(q);
+
+      if (!matchSearch) return false;
+      if (statusFilter === 'all') return true;
+      return t.status === statusFilter;
+    });
+  }, [trips, searchQuery, statusFilter]);
 
   useEffect(() => {
     if (toast) {
@@ -100,7 +117,74 @@ export default function AdminTrips() {
         </View>
       )}
 
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 24, gap: 24 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ padding: 24, gap: 20 }}>
+        {/* Header Title & Actions */}
+        <View className="flex-row justify-between items-start flex-wrap gap-4">
+          <View className="gap-1">
+            <Text className="font-display font-extrabold text-2xl text-brand-text">Quản Lý Chuyến Đi Toàn Hệ Thống</Text>
+            <Text className="text-xs text-brand-textSoft">
+              Hiển thị {filteredTrips.length} / {trips?.length || 0} chuyến đi của tất cả người dùng
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => refetchTrips()}
+            className="flex-row items-center gap-1.5 px-3.5 py-2 rounded-xl border border-brand-line bg-white hover:bg-brand-bgAlt/50"
+            style={{ cursor: 'pointer' as any }}
+          >
+            <RefreshCw size={13} color={BRAND_COLORS.primary} />
+            <Text className="text-xs font-bold text-brand-primary">Làm mới</Text>
+          </Pressable>
+        </View>
+
+        {/* Search & Filter Bar */}
+        <View className="flex-row items-center gap-3 flex-wrap">
+          {/* Ô tìm kiếm */}
+          <View className="flex-1 min-w-[260px] flex-row items-center px-3.5 py-2.5 rounded-xl border border-brand-line/60 bg-white gap-2">
+            <Search size={15} color={BRAND_COLORS.textSoft} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Tìm theo tiêu đề, địa điểm hoặc email người dùng..."
+              placeholderTextColor={BRAND_COLORS.textMuted}
+              className="flex-1 text-xs text-brand-text font-medium"
+              style={{ outline: 'none' as any }}
+            />
+            {!!searchQuery && (
+              <Pressable onPress={() => setSearchQuery('')} style={{ cursor: 'pointer' as any }}>
+                <X size={14} color={BRAND_COLORS.textMuted} />
+              </Pressable>
+            )}
+          </View>
+
+          {/* Filter Status Chips */}
+          <View className="flex-row gap-1.5 flex-wrap">
+            {[
+              { key: 'all', label: 'Tất cả' },
+              { key: 'active', label: 'Hoạt động' },
+              { key: 'completed', label: 'Hoàn thành' },
+              { key: 'draft', label: 'Bản nháp' },
+            ].map(f => (
+              <Pressable
+                key={f.key}
+                onPress={() => setStatusFilter(f.key as any)}
+                className="px-3 py-2 rounded-xl border text-xs font-bold"
+                style={{
+                  backgroundColor: statusFilter === f.key ? BRAND_COLORS.primary : '#FFFFFF',
+                  borderColor: statusFilter === f.key ? BRAND_COLORS.primary : 'rgba(27,36,32,0.15)',
+                  cursor: 'pointer' as any,
+                }}
+              >
+                <Text
+                  className="text-xs font-bold"
+                  style={{ color: statusFilter === f.key ? '#FFFFFF' : BRAND_COLORS.textSoft }}
+                >
+                  {f.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
         <View className="rounded-2xl border border-brand-line/40 overflow-hidden bg-brand-bgAlt/30">
           <TableHeader cols={['Chuyến đi', 'Chủ sở hữu', 'Ngân sách', 'Trạng thái', '']} />
           {tripsLoading ? (
@@ -108,9 +192,13 @@ export default function AdminTrips() {
               <ActivityIndicator color={BRAND_COLORS.primary} />
               <Text className="text-xs text-brand-textSoft">Đang tải danh sách chuyến đi...</Text>
             </View>
-          ) : !trips?.length ? (
-            <Text className="text-center py-12 text-brand-textSoft text-sm">Chưa có chuyến đi nào.</Text>
-          ) : trips.map(t => {
+          ) : !filteredTrips.length ? (
+            <View className="py-12 items-center gap-2">
+              <Text className="text-center text-brand-textSoft text-sm font-semibold">
+                {searchQuery ? 'Không tìm thấy chuyến đi nào khớp với từ khóa tìm kiếm.' : 'Chưa có chuyến đi nào trong hệ thống.'}
+              </Text>
+            </View>
+          ) : filteredTrips.map(t => {
             const statusMeta = t.status === 'completed'
               ? { label: 'Hoàn thành', bg: `${BRAND_COLORS.textSoft}20`, color: BRAND_COLORS.textSoft }
               : t.status === 'active'

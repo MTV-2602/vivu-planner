@@ -683,9 +683,9 @@ export default function TripDetail() {
         {/* Navbar */}
         <View className="bg-brand-bg border-b border-brand-line px-6 py-4">
           <View className="flex-row justify-between items-center">
-            <Pressable onPress={() => router.push(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any))} className="flex-row items-center gap-1.5">
+            <Pressable onPress={() => router.push(isAdmin ? (APP_ROUTES.ADMIN_TRIPS as any) : (APP_ROUTES.TRIPS as any))} className="flex-row items-center gap-1.5" style={{ cursor: 'pointer' as any }}>
               <ArrowLeft size={16} color={BRAND_COLORS.textSoft} />
-              <Text className="text-xs font-bold text-brand-textSoft">{isAdmin ? 'Quản trị' : 'Bảng điều khiển'}</Text>
+              <Text className="text-xs font-bold text-brand-textSoft">{isAdmin ? 'Quản lý Chuyến đi' : 'Bảng điều khiển'}</Text>
             </Pressable>
             <View className="flex-row items-center gap-3">
               <SystemClock />

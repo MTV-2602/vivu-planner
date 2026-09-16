@@ -914,7 +914,7 @@ router.get('/ai-config', async (_req: any, res: Response) => {
         baseUrl: config.baseUrl || '',
         apiKey: maskedKey,
         hasApiKey: !!config.apiKey,
-        model: config.model || 'gemini-3.8-flash-high',
+        model: config.model || 'ag/gemini-3.8-flash',
         isActive: config.isActive,
         maxTokens: config.maxTokens || 16384,
         geminiMaxTokens: config.geminiMaxTokens || 16384
@@ -941,7 +941,7 @@ router.put('/ai-config', async (req: any, res: Response) => {
       provider: provider === 'custom_openai' ? 'custom_openai' : 'gemini',
       baseUrl: baseUrl || '',
       apiKey: finalKey || '',
-      model: model || 'gemini-3.8-flash-high',
+      model: model || 'ag/gemini-3.8-flash',
       isActive: Boolean(isActive),
       maxTokens: maxTokens ? Math.max(1024, Math.min(65536, Number(maxTokens))) : (currentConfig.maxTokens || 16384),
       geminiMaxTokens: geminiMaxTokens ? Math.max(1024, Math.min(65536, Number(geminiMaxTokens))) : (currentConfig.geminiMaxTokens || 16384)
@@ -975,7 +975,7 @@ router.post('/ai-config/test', async (req: any, res: Response) => {
     const testResult = await testAiGatewayConnection({
       baseUrl: finalBaseUrl,
       apiKey: finalKey,
-      model: model || 'gemini-3.8-flash-high'
+      model: model || 'ag/gemini-3.8-flash'
     });
 
     return res.json({

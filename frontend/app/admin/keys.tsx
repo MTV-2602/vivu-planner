@@ -58,7 +58,7 @@ export default function AdminKeys() {
   const [aiProvider, setAiProvider] = useState<'gemini' | 'custom_openai'>('gemini');
   const [aiBaseUrl, setAiBaseUrl] = useState('');
   const [aiApiKey, setAiApiKey] = useState('');
-  const [aiModel, setAiModel] = useState('gemini-3.8-flash-high');
+  const [aiModel, setAiModel] = useState('ag/gemini-3.8-flash');
   const [customMaxTokens, setCustomMaxTokens] = useState('16384');
   const [geminiMaxTokens, setGeminiMaxTokens] = useState('16384');
   const [pingStatus, setPingStatus] = useState<{ success?: boolean; message?: string; durationMs?: number } | null>(null);
@@ -79,7 +79,7 @@ export default function AdminKeys() {
       setAiProvider(aiConfig.data.provider || 'gemini');
       setAiBaseUrl(aiConfig.data.baseUrl || '');
       setAiApiKey(aiConfig.data.apiKey || '');
-      setAiModel(aiConfig.data.model || 'gemini-3.8-flash-high');
+      setAiModel(aiConfig.data.model || 'ag/gemini-3.8-flash');
       setCustomMaxTokens(String(aiConfig.data.maxTokens || 16384));
       setGeminiMaxTokens(String(aiConfig.data.geminiMaxTokens || 16384));
     }
@@ -109,9 +109,10 @@ export default function AdminKeys() {
       return (await api.post('/admin/ai-config/test', payload)).data;
     },
     onSuccess: (data: any) => {
+      const notice = data.fallbackNotice ? `\n💡 ${data.fallbackNotice}` : '';
       setPingStatus({
         success: true,
-        message: `Kết nối thành công (${data.durationMs}ms)! AI phản hồi: "${data.reply?.substring(0, 80)}..."`,
+        message: `Kết nối thành công (${data.durationMs}ms)! Model: ${data.modelUsed || 'Chuẩn'}. AI phản hồi: "${data.reply?.substring(0, 80)}..."${notice}`,
         durationMs: data.durationMs,
       });
       showToast(`Ping thành công (${data.durationMs}ms)!`, 'success');
@@ -439,10 +440,36 @@ export default function AdminKeys() {
                         testID="ai-model-input"
                         value={aiModel}
                         onChangeText={setAiModel}
-                        placeholder="gemini-3.8-flash-high"
+                        placeholder="ag/gemini-3.8-flash"
                         placeholderTextColor={BRAND_COLORS.textMuted}
                         className="w-full px-3.5 py-2.5 rounded-xl border border-brand-line/60 text-xs bg-brand-bg text-brand-text font-mono"
                       />
+                      {/* Chips chọn nhanh mô hình AI Gateway an toàn & ổn định */}
+                      <View className="flex-row flex-wrap gap-1.5 pt-1">
+                        {[
+                          { id: 'ag/gemini-3.8-flash', label: '⭐ ag/gemini-3.8-flash (Chuẩn ổn định)' },
+                          { id: 'ag/gemini-3-flash', label: '⚡ ag/gemini-3-flash (Tốc độ cao)' },
+                          { id: 'ag/gemini-3.7-flash', label: '✨ ag/gemini-3.7-flash (Lý luận sâu)' },
+                        ].map(m => (
+                          <Pressable
+                            key={m.id}
+                            onPress={() => setAiModel(m.id)}
+                            className="px-2.5 py-1 rounded-lg border text-[10px]"
+                            style={{
+                              borderColor: aiModel === m.id ? '#059669' : 'rgba(27,36,32,0.15)',
+                              backgroundColor: aiModel === m.id ? '#ECFDF5' : '#FFFFFF',
+                              cursor: 'pointer' as any
+                            }}
+                          >
+                            <Text
+                              className="text-[10px] font-bold"
+                              style={{ color: aiModel === m.id ? '#059669' : BRAND_COLORS.textSoft }}
+                            >
+                              {m.label}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
                     </View>
 
                     {/* Giới hạn Token (Max Output Tokens) */}
@@ -474,11 +501,14 @@ export default function AdminKeys() {
                             style={{
                               borderColor: customMaxTokens === t.val ? '#2563EB' : 'rgba(27,36,32,0.15)',
                               backgroundColor: customMaxTokens === t.val ? '#EFF6FF' : (t.val === '50000' ? '#FFF7ED' : '#FFFFFF'),
+                              cursor: 'pointer' as any
                             }}
                           >
                             <Text
                               className="text-[10px] font-bold"
-                              style={{ color: customMaxTokens === t.val ? '#2563EB' : (t.val === '50000' ? '#EA580C' : BRAND_COLORS.textSoft) }}
+                              style={{
+                                color: customMaxTokens === t.val ? '#2563EB' : (t.val === '50000' ? '#C2410C' : BRAND_COLORS.textSoft),
+                              }}
                             >
                               {t.label}
                             </Text>
@@ -491,10 +521,10 @@ export default function AdminKeys() {
                   {/* Kết quả Ping Test */}
                   {pingStatus && (
                     <View
-                      className="p-3 rounded-xl border flex-row items-start gap-2.5"
+                      className="p-3.5 rounded-xl border flex-row items-start gap-2.5"
                       style={{
                         backgroundColor: pingStatus.success ? '#F0FDF4' : '#FEF2F2',
-                        borderColor: pingStatus.success ? '#86EFAC' : '#FECACA',
+                        borderColor: pingStatus.success ? '#BBF7D0' : '#FECACA',
                       }}
                     >
                       {pingStatus.success ? (
@@ -536,7 +566,7 @@ export default function AdminKeys() {
                         <Zap size={14} color="#2563EB" />
                       )}
                       <Text className="text-xs font-bold text-brand-text">
-                        {testAiConfigMutation.isPending ? 'Đang ping...' : 'Kiểm tra kết nối (Ping Test)'}
+                        {testAiConfigMutation.isPending ? 'Đang ping (ước tính 15-25s)...' : 'Kiểm tra kết nối (Ping Test)'}
                       </Text>
                     </Pressable>
 

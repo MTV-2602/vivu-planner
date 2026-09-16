@@ -31,6 +31,7 @@ export async function getNextGeminiApiKey(): Promise<string> {
     let { data: keys, error } = await supabaseAdmin
       .from('gemini_api_keys')
       .select('*')
+      .neq('notes', 'ai_gateway_config')
       .eq('is_active', true)
       .eq('status', ApiKeyStatus.ACTIVE)
       .order('last_used_at', { ascending: true, nullsFirst: true });
@@ -41,11 +42,13 @@ export async function getNextGeminiApiKey(): Promise<string> {
         await supabaseAdmin
           .from('gemini_api_keys')
           .update({ is_active: true, status: ApiKeyStatus.ACTIVE })
-          .neq('key_value', ''); // reactivate all keys
+          .neq('key_value', '')
+          .neq('notes', 'ai_gateway_config'); // reactivate regular keys only
         
         const retryResult = await supabaseAdmin
           .from('gemini_api_keys')
           .select('*')
+          .neq('notes', 'ai_gateway_config')
           .eq('is_active', true)
           .eq('status', ApiKeyStatus.ACTIVE)
           .order('last_used_at', { ascending: true, nullsFirst: true });

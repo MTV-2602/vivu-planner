@@ -394,51 +394,56 @@ function safeParseJson(raw: string): any {
 }
 
     if (shouldUseGateway) {
-      const messages = [
-        { role: 'system' as const, content: `${systemPrompt}\n\nĐẶC BIỆT DÀNH CHO BẢN CAO CẤP (AI PRO):\n1. YÊU CẦU ĐỘ PHONG PHÚ: Mỗi ngày trong lịch trình BẮT BUỘC phải có tối thiểu 4 đến 5 hoạt động phong phú trải dài từ sáng đến tối: Chỗ nghỉ (accommodation), Ăn sáng (dining), Tham quan buổi sáng (attraction), Ăn trưa đặc sản (dining), Điểm check-in buổi chiều (attraction), Ăn tối và trải nghiệm đêm (dining/experience).\n2. Điền chính xác tên quán ăn, khách sạn và địa điểm nổi tiếng thực tế kèm tọa độ lat/lng và địa chỉ chi tiết tại Việt Nam.\n3. Bắt buộc trả về JSON object thuần túy khớp cấu trúc: {"days":[{"day_number":1,"date":"YYYY-MM-DD","weather_note":"...","items":[{"item_type":"attraction","title":"...","description":"...","start_time":"08:00","end_time":"10:00","estimated_cost":100000,"order_index":0,"lat":16.0,"lng":108.0,"address":"..."}]}],"budget_summary":{"estimated_total":0,"remaining":0}}. Tuyệt đối không bọc ngoài bằng key nào khác!` },
-        { role: 'user' as const, content: userPrompt }
-      ];
-      const gatewayTokens = Math.max(effectiveCustomTokens, 32768);
-      const rawText = await callOpenAiCompatibleGateway({
-        messages,
-        jsonMode: true,
-        temperature: AI_CONFIG.DEFAULT_TEMPERATURE,
-        maxTokens: gatewayTokens
-      });
-      const parsed = safeParseJson(rawText);
-
-      let extractedDays = parsed.days || parsed.itinerary?.days || parsed.itinerary_days;
-      if (!Array.isArray(extractedDays) && Array.isArray(parsed)) {
-        extractedDays = parsed;
-      }
-      if (!Array.isArray(extractedDays)) {
-        throw new Error('AI Gateway response does not contain a valid "days" array');
-      }
-      parsed.days = extractedDays;
-
-      if (!parsed.budget_summary) {
-        parsed.budget_summary = {
-          estimated_total: calculateEstimatedTotal(parsed.days),
-          remaining: 0
-        };
-      }
-
-      // Validate google_place_ids to prevent hallucinations
-      const validIds = new Set<string>();
-      Object.values(candidatePlaces).forEach(list => {
-        list.forEach(place => validIds.add(place.google_place_id));
-      });
-      parsed.days.forEach((day: any) => {
-        if (!Array.isArray(day.items)) {
-          day.items = [];
-        }
-        day.items.forEach((item: any) => {
-          if (item.google_place_id && !validIds.has(item.google_place_id)) {
-            item.google_place_id = undefined;
-          }
+      try {
+        const messages = [
+          { role: 'system' as const, content: `${systemPrompt}\n\nĐẶC BIỆT DÀNH CHO BẢN CAO CẤP (AI PRO):\n1. YÊU CẦU ĐỘ PHONG PHÚ: Mỗi ngày trong lịch trình BẮT BUỘC phải có tối thiểu 4 đến 5 hoạt động phong phú trải dài từ sáng đến tối: Chỗ nghỉ (accommodation), Ăn sáng (dining), Tham quan buổi sáng (attraction), Ăn trưa đặc sản (dining), Điểm check-in buổi chiều (attraction), Ăn tối và trải nghiệm đêm (dining/experience).\n2. Điền chính xác tên quán ăn, khách sạn và địa điểm nổi tiếng thực tế kèm tọa độ lat/lng và địa chỉ chi tiết tại Việt Nam.\n3. Bắt buộc trả về JSON object thuần túy khớp cấu trúc: {"days":[{"day_number":1,"date":"YYYY-MM-DD","weather_note":"...","items":[{"item_type":"attraction","title":"...","description":"...","start_time":"08:00","end_time":"10:00","estimated_cost":100000,"order_index":0,"lat":16.0,"lng":108.0,"address":"..."}]}],"budget_summary":{"estimated_total":0,"remaining":0}}. Tuyệt đối không bọc ngoài bằng key nào khác!` },
+          { role: 'user' as const, content: userPrompt }
+        ];
+        const gatewayTokens = Math.max(effectiveCustomTokens, 32768);
+        const rawText = await callOpenAiCompatibleGateway({
+          messages,
+          jsonMode: true,
+          temperature: AI_CONFIG.DEFAULT_TEMPERATURE,
+          maxTokens: gatewayTokens
         });
-      });
-      return parsed as GeneratedItinerary;
+        const parsed = safeParseJson(rawText);
+
+        let extractedDays = parsed.days || parsed.itinerary?.days || parsed.itinerary_days;
+        if (!Array.isArray(extractedDays) && Array.isArray(parsed)) {
+          extractedDays = parsed;
+        }
+        if (!Array.isArray(extractedDays)) {
+          throw new Error('AI Gateway response does not contain a valid "days" array');
+        }
+        parsed.days = extractedDays;
+
+        if (!parsed.budget_summary) {
+          parsed.budget_summary = {
+            estimated_total: calculateEstimatedTotal(parsed.days),
+            remaining: 0
+          };
+        }
+
+        // Validate google_place_ids to prevent hallucinations
+        const validIds = new Set<string>();
+        Object.values(candidatePlaces).forEach(list => {
+          list.forEach(place => validIds.add(place.google_place_id));
+        });
+        parsed.days.forEach((day: any) => {
+          if (!Array.isArray(day.items)) {
+            day.items = [];
+          }
+          day.items.forEach((item: any) => {
+            if (item.google_place_id && !validIds.has(item.google_place_id)) {
+              item.google_place_id = undefined;
+            }
+          });
+        });
+        return parsed as GeneratedItinerary;
+      } catch (gatewayErr: any) {
+        console.warn(`[GeminiService] AI Gateway thất bại (${gatewayErr.message}), tự động kích hoạt bế keys Google Gemini dự phòng!`);
+        // Tự động chuyển tiếp xuống khối executeWithApiKeyRotation bên dưới
+      }
     }
 
     return await executeWithApiKeyRotation(async (apiKey) => {
@@ -1357,78 +1362,83 @@ QUY TẮC PHẢN HỒI:
     const isCustomGateway = (effectiveProvider === 'custom_openai') && Boolean(aiConfig.baseUrl && aiConfig.apiKey);
 
     if (isCustomGateway) {
-      const formattedMessages = [
-        { role: 'system' as const, content: `${systemPrompt}\n\nIMPORTANT: Return ONLY a valid JSON object matching the responseSchema. No markdown ticks, strictly raw JSON.` },
-        ...history.map(h => ({
-          role: (h.role === 'model' ? 'assistant' : 'user') as 'assistant' | 'user',
-          content: h.content
-        })),
-        { role: 'user' as const, content: message }
-      ];
-
-      const chatTokens = Math.max(aiConfig.maxTokens || 32768, 16384);
-      const rawText = await callOpenAiCompatibleGateway({
-        messages: formattedMessages,
-        jsonMode: true,
-        temperature: AI_CONFIG.DEFAULT_TEMPERATURE,
-        maxTokens: chatTokens
-      });
-      let cleaned = rawText.trim();
-      const firstBrace = cleaned.indexOf('{');
-      const lastBrace = cleaned.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-        cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-      } else {
-        cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-      }
-      let parsed: any;
       try {
-        parsed = JSON.parse(cleaned);
-      } catch (jsonErr) {
-        console.warn('[chatWithItinerary] Custom Gateway returned non-JSON, fallback:', rawText);
-        parsed = {
-          responseText: rawText,
-          hasChanges: false,
-          isCreateTrip: false,
-          createTripParams: null
+        const formattedMessages = [
+          { role: 'system' as const, content: `${systemPrompt}\n\nIMPORTANT: Return ONLY a valid JSON object matching the responseSchema. No markdown ticks, strictly raw JSON.` },
+          ...history.map(h => ({
+            role: (h.role === 'model' ? 'assistant' : 'user') as 'assistant' | 'user',
+            content: h.content
+          })),
+          { role: 'user' as const, content: message }
+        ];
+
+        const chatTokens = Math.max(aiConfig.maxTokens || 32768, 16384);
+        const rawText = await callOpenAiCompatibleGateway({
+          messages: formattedMessages,
+          jsonMode: true,
+          temperature: AI_CONFIG.DEFAULT_TEMPERATURE,
+          maxTokens: chatTokens
+        });
+        let cleaned = rawText.trim();
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+        } else {
+          cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        }
+        let parsed: any;
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch (jsonErr) {
+          console.warn('[chatWithItinerary] Custom Gateway returned non-JSON, fallback:', rawText);
+          parsed = {
+            responseText: rawText,
+            hasChanges: false,
+            isCreateTrip: false,
+            createTripParams: null
+          };
+        }
+        let diff = '';
+
+        if (parsed.hasChanges && parsed.adaptedItinerary && currentItinerary && tripData) {
+          const budgetTotal = Number(tripData.budget_total) || currentItinerary.budget_summary.estimated_total + currentItinerary.budget_summary.remaining;
+          parsed.adaptedItinerary = enforceBudgetLimit(parsed.adaptedItinerary, budgetTotal, tripData);
+          diff = generateItineraryDiff(currentItinerary, parsed.adaptedItinerary, 'other');
+        }
+
+        let normalizedCreateTripParams: any = undefined;
+        if (parsed.isCreateTrip && (parsed.createTripParams || parsed.params)) {
+          const p = parsed.createTripParams || parsed.params || {};
+          const dest = p.destination_city || p.destination || p.city;
+          const budget = Number(p.budget_total || p.budget) || 5000000;
+          const count = Number(p.traveler_count || p.travelers || p.guests) || 1;
+          normalizedCreateTripParams = {
+            title: p.title || `Du lịch ${dest || 'Việt Nam'}`,
+            destination_city: dest,
+            start_date: p.start_date,
+            end_date: p.end_date,
+            budget_total: budget,
+            traveler_count: count,
+            traveler_type: p.traveler_type || (count === 2 ? 'couple' : count > 2 ? 'family' : 'solo'),
+            special_requirements: p.special_requirements || ''
+          };
+        }
+
+        const extractedResponseText = parsed.responseText || parsed.reply || parsed.message || (typeof parsed === 'string' ? parsed : rawText);
+
+        return {
+          responseText: extractedResponseText,
+          hasChanges: Boolean(parsed.hasChanges),
+          adaptedItinerary: parsed.adaptedItinerary,
+          diff: diff || parsed.diff,
+          isCreateTrip: Boolean(parsed.isCreateTrip),
+          createTripParams: normalizedCreateTripParams || parsed.createTripParams
         };
+      } catch (gatewayErr: any) {
+        console.warn(`[chatWithItinerary] AI Gateway thất bại (${gatewayErr.message}), tự động chuyển sang Google Gemini!`);
+        // Tự động chuyển xuống khối executeWithApiKeyRotation bên dưới
       }
-      let diff = '';
-
-      if (parsed.hasChanges && parsed.adaptedItinerary && currentItinerary && tripData) {
-        const budgetTotal = Number(tripData.budget_total) || currentItinerary.budget_summary.estimated_total + currentItinerary.budget_summary.remaining;
-        parsed.adaptedItinerary = enforceBudgetLimit(parsed.adaptedItinerary, budgetTotal, tripData);
-        diff = generateItineraryDiff(currentItinerary, parsed.adaptedItinerary, 'other');
-      }
-
-      let normalizedCreateTripParams: any = undefined;
-      if (parsed.isCreateTrip && (parsed.createTripParams || parsed.params)) {
-        const p = parsed.createTripParams || parsed.params || {};
-        const dest = p.destination_city || p.destination || p.city;
-        const budget = Number(p.budget_total || p.budget) || 5000000;
-        const count = Number(p.traveler_count || p.travelers || p.guests) || 1;
-        normalizedCreateTripParams = {
-          title: p.title || `Du lịch ${dest || 'Việt Nam'}`,
-          destination_city: dest,
-          start_date: p.start_date,
-          end_date: p.end_date,
-          budget_total: budget,
-          traveler_count: count,
-          traveler_type: p.traveler_type || (count === 2 ? 'couple' : count > 2 ? 'family' : 'solo'),
-          special_requirements: p.special_requirements || ''
-        };
-      }
-
-      const extractedResponseText = parsed.responseText || parsed.reply || parsed.message || (typeof parsed === 'string' ? parsed : rawText);
-
-      return {
-        responseText: extractedResponseText,
-        hasChanges: Boolean(parsed.hasChanges),
-        adaptedItinerary: parsed.adaptedItinerary,
-        diff: diff || parsed.diff,
-        isCreateTrip: Boolean(parsed.isCreateTrip),
-        createTripParams: normalizedCreateTripParams || parsed.createTripParams
-      };
     }
 
     return await executeWithApiKeyRotation(async (apiKey) => {

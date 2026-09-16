@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  Animated, Platform, KeyboardAvoidingView,
+  Animated, Platform, KeyboardAvoidingView, ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
@@ -247,17 +247,6 @@ export default function TripWizard() {
     }
   }, [isAdmin]);
 
-  if (isAdmin) {
-    return (
-      <View className="flex-1 bg-brand-bg items-center justify-center p-6 gap-3">
-        <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-        <Text className="text-sm font-bold text-brand-text">Tài khoản Quản trị viên (Admin)</Text>
-        <Text className="text-xs text-brand-textSoft text-center">
-          Quản trị viên chỉ quản lý nghiệp vụ hệ thống và không tạo chuyến đi cá nhân. Đang chuyển hướng về Bảng Quản Trị...
-        </Text>
-      </View>
-    );
-  }
 
   const [selectedAiProvider, setSelectedAiProvider] = useState<'gemini' | 'custom_openai'>('gemini');
   const [showPremiumModal, setShowPremiumModal] = useState(false);
@@ -493,6 +482,25 @@ export default function TripWizard() {
       setStep(4);
     }
   };
+
+  if (isAdmin) {
+    return (
+      <View className="flex-1 bg-brand-bg items-center justify-center p-6 gap-4">
+        <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
+        <Text className="text-base font-bold text-brand-text">Tài khoản Quản trị viên (Admin)</Text>
+        <Text className="text-xs text-brand-textSoft text-center max-w-sm">
+          Quản trị viên chuyên tâm quản trị hệ thống và không tạo chuyến đi cá nhân. Đang chuyển hướng về Bảng Quản Trị...
+        </Text>
+        <Pressable
+          onPress={() => router.replace(APP_ROUTES.ADMIN as any)}
+          className="mt-2 px-5 py-2.5 rounded-xl bg-brand-primary"
+          style={{ cursor: 'pointer' as any }}
+        >
+          <Text className="text-white text-xs font-bold">Vào Bảng Quản Trị ngay →</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   if (loading) return <LoadingScreen stage={loadingStage} onCancel={handleCancelLoading} />;
 

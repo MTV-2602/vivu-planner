@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  View, Text, ScrollView, Pressable, Alert, Platform,
+  View, Text, ScrollView, Pressable, Alert, Platform, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -112,17 +112,6 @@ export default function Dashboard() {
 
   const [paymentSuccessMsg, setPaymentSuccessMsg] = useState('');
 
-  if (isAdmin) {
-    return (
-      <View className="flex-1 bg-brand-bg items-center justify-center p-6 gap-3">
-        <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-        <Text className="text-sm font-bold text-brand-text">Tài khoản Quản trị viên (Admin)</Text>
-        <Text className="text-xs text-brand-textSoft text-center">
-          Quản trị viên chỉ quản lý nghiệp vụ hệ thống và không tạo chuyến đi cá nhân. Đang chuyển hướng về Bảng Quản Trị...
-        </Text>
-      </View>
-    );
-  }
 
   useEffect(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -238,6 +227,25 @@ export default function Dashboard() {
     await clearCache();
     router.replace(APP_ROUTES.SIGN_IN as any);
   };
+
+  if (isAdmin) {
+    return (
+      <View className="flex-1 bg-brand-bg items-center justify-center p-6 gap-4">
+        <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
+        <Text className="text-base font-bold text-brand-text">Tài khoản Quản trị viên (Admin)</Text>
+        <Text className="text-xs text-brand-textSoft text-center max-w-sm">
+          Quản trị viên chuyên tâm quản lý hệ thống và không tạo chuyến đi cá nhân. Đang chuyển hướng về Bảng Quản Trị...
+        </Text>
+        <Pressable
+          onPress={() => router.replace(APP_ROUTES.ADMIN as any)}
+          className="mt-2 px-5 py-2.5 rounded-xl bg-brand-primary flex-row items-center gap-2"
+          style={{ cursor: 'pointer' as any }}
+        >
+          <Text className="text-white text-xs font-bold">Vào Bảng Quản Trị ngay →</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1 }}>
