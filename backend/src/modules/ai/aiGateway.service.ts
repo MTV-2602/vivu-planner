@@ -145,16 +145,17 @@ export async function testAiGatewayConnection(params: { baseUrl: string; apiKey:
     {
       model: params.model.trim() || 'gemini-3.8-flash-high',
       messages: [
-        { role: 'user', content: 'Xin chào! Kiểm tra kết nối API Gateway ViVu Planner.' }
+        { role: 'user', content: 'Ping test. Vui lòng trả lời "OK".' }
       ],
-      temperature: 0.2
+      max_tokens: 30,
+      temperature: 0.1
     },
     {
       headers: {
         'Authorization': `Bearer ${params.apiKey.trim()}`,
         'Content-Type': 'application/json'
       },
-      timeout: 20000 // 20s
+      timeout: 60000 // 60s
     }
   );
 
