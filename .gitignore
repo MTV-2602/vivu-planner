@@ -6,6 +6,7 @@ dist/
 backend/dist/
 build/
 out/
+test/
 
 # Environment variables
 .env

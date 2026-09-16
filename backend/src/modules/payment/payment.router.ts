@@ -257,7 +257,7 @@ router.get('/diagnose', requireAuth, requireAdmin, async (req: Request, res: Res
       return res.status(500).json({ error: 'Lỗi lấy danh sách user từ auth: ' + listErr.message });
     }
 
-    const userObj = listData.users.find(u => u.email?.toLowerCase().trim() === email.toLowerCase().trim());
+    const userObj = (listData.users as any[]).find((u: any) => u.email?.toLowerCase().trim() === String(email).toLowerCase().trim());
     if (!userObj) {
       return res.status(404).json({ error: `Không tìm thấy user nào với email: ${email} trong auth.users` });
     }
@@ -343,7 +343,7 @@ router.get('/status', requireAuth, async (req: any, res: Response) => {
       console.error('[Payment Status] Supabase query crashed:', err.message);
     }
 
-    // Query for any completed or successful order to perform auto-healing activation
+    // Lấy đơn hàng thành công gần nhất để tham chiếu tên gói khi user đang là Premium
     const { data: latestOrder } = await supabaseAdmin
       .from('payment_orders')
       .select('plan, created_at, status')
@@ -352,25 +352,6 @@ router.get('/status', requireAuth, async (req: any, res: Response) => {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-
-    // Auto-healing: If user has a completed order, but profile is not premium yet (e.g. columns were missing before), activate now!
-    if (latestOrder && profile && !dbWarning) {
-      const isCurrentlyPremium = isUserPremium(profile);
-      
-      if (!isCurrentlyPremium) {
-        console.log(`[Payment Status] 🔮 Auto-healing: User ${userId} has a completed order (${latestOrder.plan}) but profile is not premium. Activating now...`);
-        await activatePremiumForUser(userId, latestOrder.plan || 'pro');
-        // Reload profile after activation
-        try {
-          const { data: reloaded } = await supabaseAdmin
-            .from('profiles')
-            .select('*')
-            .eq('id', userId)
-            .maybeSingle();
-          if (reloaded) profile = reloaded;
-        } catch (_) {}
-      }
-    }
 
     const isAdmin = req.isAdmin === true || profile?.role === UserRole.ADMIN;
 
@@ -404,19 +385,19 @@ router.get('/status', requireAuth, async (req: any, res: Response) => {
         planName = 'Gói Starter';
       } else if (orderPlan === 'monthly' || orderPlan === 'pro' || orderPlan === 'premium' || orderPlan === 'quarterly' || orderPlan === 'vip') {
         planId = 'pro';
-        planName = 'Gói Premium';
+        planName = 'Gói Premium Pro';
       } else if (profile?.quota_total && profile.quota_total <= 10) {
         planId = 'starter';
         planName = 'Gói Starter';
       } else {
         planId = 'pro';
-        planName = 'Gói Premium';
+        planName = 'Gói Premium Pro';
       }
     }
 
     return res.json({
       isPremium,
-      premiumUntil: profile?.premium_until || null,
+      premiumUntil: isPremium ? (profile?.premium_until || null) : null,
       planName,
       planId,
       tripsUsed,

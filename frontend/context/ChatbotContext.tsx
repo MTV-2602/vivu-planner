@@ -4,6 +4,10 @@ import { usePathname } from 'expo-router';
 interface ChatbotContextType {
   tripId: string | null;
   setTripId: (id: string | null) => void;
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+  openChatbot: () => void;
+  closeChatbot: () => void;
   triggerPreview: (adaptedItinerary: any, diff: string, previousSnapshot: any) => void;
   registerPreviewTrigger: (handler: (adaptedItinerary: any, diff: string, previousSnapshot: any) => void) => void;
   unregisterPreviewTrigger: () => void;
@@ -12,6 +16,10 @@ interface ChatbotContextType {
 export const ChatbotContext = createContext<ChatbotContextType>({
   tripId: null,
   setTripId: () => {},
+  isOpen: false,
+  setIsOpen: () => {},
+  openChatbot: () => {},
+  closeChatbot: () => {},
   triggerPreview: () => {},
   registerPreviewTrigger: () => {},
   unregisterPreviewTrigger: () => {},
@@ -19,15 +27,15 @@ export const ChatbotContext = createContext<ChatbotContextType>({
 
 export const ChatbotProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [tripId, setTripIdState] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const [previewHandler, setPreviewHandler] = useState<((adaptedItinerary: any, diff: string, previousSnapshot: any) => void) | null>(null);
   const pathname = usePathname();
 
   // Automatically sync tripId with pathname changes
   useEffect(() => {
-    // Match /chuyen-di/[id]
-    // Under Web, pathname might contain slash, query params, etc.
+    // Match /chuyen-di/[id] nhưng loại trừ 'moi'
     const match = pathname.match(/\/chuyen-di\/([^\/\?]+)/);
-    if (match) {
+    if (match && match[1] !== 'moi') {
       const idFromPath = match[1];
       if (tripId !== idFromPath) {
         setTripIdState(idFromPath);
@@ -41,6 +49,14 @@ export const ChatbotProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const setTripId = useCallback((id: string | null) => {
     setTripIdState(id);
+  }, []);
+
+  const openChatbot = useCallback(() => {
+    setIsOpen(true);
+  }, []);
+
+  const closeChatbot = useCallback(() => {
+    setIsOpen(false);
   }, []);
 
   const registerPreviewTrigger = useCallback((handler: (adaptedItinerary: any, diff: string, previousSnapshot: any) => void) => {
@@ -60,7 +76,17 @@ export const ChatbotProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [previewHandler]);
 
   return (
-    <ChatbotContext.Provider value={{ tripId, setTripId, triggerPreview, registerPreviewTrigger, unregisterPreviewTrigger }}>
+    <ChatbotContext.Provider value={{
+      tripId,
+      setTripId,
+      isOpen,
+      setIsOpen,
+      openChatbot,
+      closeChatbot,
+      triggerPreview,
+      registerPreviewTrigger,
+      unregisterPreviewTrigger
+    }}>
       {children}
     </ChatbotContext.Provider>
   );

@@ -10,7 +10,8 @@ import {
   QUOTA_CONFIG,
   DEFAULT_PLANS_CONFIG,
   PaymentStatus,
-  PaymentMethod
+  PaymentMethod,
+  isUserPremium
 } from '../../constants';
 
 const router = Router();
@@ -118,8 +119,10 @@ router.get('/users', async (req: any, res: Response) => {
       id: p.id,
       email: p.email || '',
       full_name: p.full_name || 'Người dùng',
+      phone: p.phone || '',
       role: p.role || UserRole.USER,
-      is_premium: !!p.is_premium,
+      is_premium: isUserPremium(p),
+      premium_until: p.premium_until || null,
       quota_total: p.quota_total || 3,
       quota_used: p.quota_used || 0,
       created_at: p.created_at,
@@ -130,6 +133,65 @@ router.get('/users', async (req: any, res: Response) => {
     return res.json(formattedUsers);
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to retrieve users', details: err.message });
+  }
+});
+
+// PUT /api/admin/users/:id - Chỉnh sửa thông tin chi tiết của người dùng (Họ tên, SĐT, Quota, Mật khẩu)
+router.put('/users/:id', async (req: any, res: Response) => {
+  const userId = req.params.id;
+  const { full_name, phone, quota_total, new_password, role } = req.body;
+
+  try {
+    const updateData: any = { updated_at: new Date().toISOString() };
+    if (full_name !== undefined) updateData.full_name = String(full_name).trim();
+    if (phone !== undefined) updateData.phone = phone ? String(phone).trim() : null;
+    if (quota_total !== undefined) {
+      updateData.quota_total = Math.max(0, parseInt(quota_total) || 0);
+    }
+    if (role && [UserRole.USER, UserRole.ADMIN].includes(role)) {
+      if (req.user?.id !== userId) {
+        updateData.role = role;
+      }
+    }
+
+    // 1. Cập nhật bảng profiles
+    const { data: updatedProfile, error: profileErr } = await supabaseAdmin
+      .from('profiles')
+      .update(updateData)
+      .eq('id', userId)
+      .select()
+      .maybeSingle();
+
+    if (profileErr) throw profileErr;
+
+    // 2. Nếu có yêu cầu đổi mật khẩu mới (tối thiểu 6 ký tự)
+    if (new_password && String(new_password).trim().length >= 6) {
+      const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+        password: String(new_password).trim()
+      });
+      if (authErr) {
+        console.error('[Admin Update User] Đổi mật khẩu thất bại:', authErr.message);
+      }
+    }
+
+    // 3. Phát Realtime broadcast cho client của user
+    try {
+      const channel = supabaseAdmin.channel(`user_channel_${userId}`);
+      await channel.send({
+        type: 'broadcast',
+        event: 'user_updated',
+        payload: { userId, timestamp: Date.now() },
+      });
+    } catch (_) {}
+
+    return res.json({
+      success: true,
+      message: 'Cập nhật thông tin người dùng thành công!',
+      data: updatedProfile
+    });
+  } catch (err: any) {
+    console.error('[Admin Update User] Error:', err.message);
+    return res.status(500).json({ error: 'Không thể cập nhật thông tin người dùng', details: err.message });
   }
 });
 
@@ -246,6 +308,15 @@ router.put('/users/:id/toggle-ban', async (req: any, res: Response) => {
 
     if (updateError) throw updateError;
 
+    try {
+      const channel = supabaseAdmin.channel(`user_channel_${userId}`);
+      await channel.send({
+        type: 'broadcast',
+        event: 'user_updated',
+        payload: { userId, isBanned: !isBanned, timestamp: Date.now() },
+      });
+    } catch (_) {}
+
     return res.json({
       success: true,
       isBanned: !isBanned,
@@ -280,6 +351,15 @@ router.put('/users/:id/role', async (req: any, res: Response) => {
       .single();
 
     if (error) throw error;
+
+    try {
+      const channel = supabaseAdmin.channel(`user_channel_${userId}`);
+      await channel.send({
+        type: 'broadcast',
+        event: 'user_updated',
+        payload: { userId, role, timestamp: Date.now() },
+      });
+    } catch (_) {}
 
     return res.json({
       success: true,
@@ -634,6 +714,25 @@ router.put('/users/:id/package', async (req: any, res: Response) => {
     }
 
     if (result.error) throw result.error;
+
+    // Phát broadcast Realtime tới client của user để cập nhật giao diện lập tức
+    try {
+      const channel = supabaseAdmin.channel(`user_channel_${userId}`);
+      await channel.send({
+        type: 'broadcast',
+        event: 'user_updated',
+        payload: {
+          userId,
+          is_premium: !!is_premium,
+          quota_total: targetQuota,
+          premium_until,
+          timestamp: Date.now(),
+        },
+      });
+    } catch (e: any) {
+      console.error('[Admin] Realtime broadcast error:', e.message);
+    }
+
     return res.json({ success: true, message: 'User package updated successfully', data: result.data });
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to update user package', details: err.message });
@@ -713,6 +812,24 @@ router.post('/plans', async (req: any, res: Response) => {
     // Clear and reload cache
     await loadPlansFromDb();
 
+    // Phát tín hiệu Realtime qua Supabase Realtime cho tất cả client đang kết nối
+    try {
+      const realtimeChannel = supabaseAdmin.channel('pricing_realtime');
+      realtimeChannel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          realtimeChannel.send({
+            type: 'broadcast',
+            event: 'plans_updated',
+            payload: { timestamp: Date.now() },
+          }).then(() => {
+            supabaseAdmin.removeChannel(realtimeChannel);
+          });
+        }
+      });
+    } catch (realtimeErr: any) {
+      console.warn('[Admin] Realtime broadcast warning:', realtimeErr?.message);
+    }
+
     return res.json({ success: true, message: 'Cấu hình giá đã được cập nhật thành công!' });
   } catch (err: any) {
     return res.status(500).json({ error: 'Lỗi cập nhật cấu hình giá', details: err.message });
@@ -770,4 +887,110 @@ router.get('/revenue', async (_req: any, res: Response) => {
   }
 });
 
+// ==========================================
+// CẤU HÌNH AI GATEWAY & THIRD-PARTY AI
+// ==========================================
+
+import { getEffectiveAiConfig, saveAiGatewayConfig, testAiGatewayConnection } from '../ai/aiGateway.service';
+
+// GET /api/admin/ai-config - Lấy cấu hình AI hiện tại
+router.get('/ai-config', async (_req: any, res: Response) => {
+  try {
+    const config = await getEffectiveAiConfig();
+    // Che bớt API key khi trả về client để bảo mật
+    let maskedKey = '';
+    if (config.apiKey) {
+      if (config.apiKey.length <= 8) {
+        maskedKey = '********';
+      } else {
+        maskedKey = `${config.apiKey.substring(0, 4)}...${config.apiKey.substring(config.apiKey.length - 4)}`;
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        provider: config.provider,
+        baseUrl: config.baseUrl || '',
+        apiKey: maskedKey,
+        hasApiKey: !!config.apiKey,
+        model: config.model || 'gemini-3.8-flash-high',
+        isActive: config.isActive,
+        maxTokens: config.maxTokens || 16384,
+        geminiMaxTokens: config.geminiMaxTokens || 16384
+      }
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Lỗi lấy cấu hình AI', details: err.message });
+  }
+});
+
+// PUT /api/admin/ai-config - Cập nhật cấu hình AI
+router.put('/ai-config', async (req: any, res: Response) => {
+  try {
+    const { provider, baseUrl, apiKey, model, isActive, maxTokens, geminiMaxTokens } = req.body;
+    const currentConfig = await getEffectiveAiConfig();
+
+    // Nếu người dùng không nhập key mới (đang hiển thị masked), giữ nguyên key cũ
+    let finalKey = apiKey;
+    if (!apiKey || apiKey.includes('...')) {
+      finalKey = currentConfig.apiKey;
+    }
+
+    await saveAiGatewayConfig({
+      provider: provider === 'custom_openai' ? 'custom_openai' : 'gemini',
+      baseUrl: baseUrl || '',
+      apiKey: finalKey || '',
+      model: model || 'gemini-3.8-flash-high',
+      isActive: Boolean(isActive),
+      maxTokens: maxTokens ? Math.max(1024, Math.min(65536, Number(maxTokens))) : (currentConfig.maxTokens || 16384),
+      geminiMaxTokens: geminiMaxTokens ? Math.max(1024, Math.min(65536, Number(geminiMaxTokens))) : (currentConfig.geminiMaxTokens || 16384)
+    });
+
+    return res.json({ success: true, message: 'Cập nhật cấu hình AI thành công!' });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Lỗi lưu cấu hình AI', details: err.message });
+  }
+});
+
+// POST /api/admin/ai-config/test - Kiểm tra kết nối nhanh đến Gateway bên thứ 3
+router.post('/ai-config/test', async (req: any, res: Response) => {
+  try {
+    const { baseUrl, apiKey, model } = req.body;
+    const currentConfig = await getEffectiveAiConfig();
+
+    let finalKey = apiKey;
+    if (!apiKey || apiKey.includes('...')) {
+      finalKey = currentConfig.apiKey;
+    }
+
+    const finalBaseUrl = baseUrl?.trim() || currentConfig.baseUrl || process.env.CUSTOM_AI_BASE_URL || '';
+    if (!finalBaseUrl) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp Base URL hoặc cấu hình CUSTOM_AI_BASE_URL trên hệ thống' });
+    }
+    if (!finalKey) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp API Key / Bearer Token' });
+    }
+
+    const testResult = await testAiGatewayConnection({
+      baseUrl: finalBaseUrl,
+      apiKey: finalKey,
+      model: model || 'gemini-3.8-flash-high'
+    });
+
+    return res.json({
+      message: 'Kết nối API Gateway thành công!',
+      ...testResult
+    });
+  } catch (err: any) {
+    const errMsg = err.response?.data?.error?.message || err.response?.data?.error || err.message || 'Kết nối thất bại';
+    return res.status(500).json({
+      success: false,
+      error: 'Không thể kết nối đến API Gateway',
+      details: errMsg
+    });
+  }
+});
+
 export default router;
+

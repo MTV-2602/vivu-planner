@@ -3,9 +3,11 @@ import {
   View, Text, ScrollView, Pressable, TextInput,
   ActivityIndicator, Platform, Dimensions
 } from 'react-native';
-import { MessageSquare, Send, Sparkles, X, Bot, User } from 'lucide-react-native';
+import { MessageSquare, Send, Sparkles, X, Bot, User, Crown, Zap, Lock } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useChatbot } from '../context/ChatbotContext';
+import { useAuth } from '../hooks/useAuth';
+import PremiumModal from './PremiumModal';
 import { api } from '../lib/api';
 import { BRAND_COLORS } from '../constants';
 
@@ -20,9 +22,11 @@ interface ChatMessage {
 }
 
 export function ChatbotWidget() {
-  const { tripId, triggerPreview } = useChatbot();
+  const { tripId, triggerPreview, isOpen, setIsOpen } = useChatbot();
+  const { isPremium, isAdmin } = useAuth();
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
+  const [selectedAi, setSelectedAi] = useState<'gemini' | 'custom_openai'>('gemini');
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -131,7 +135,8 @@ export function ChatbotWidget() {
       const endpoint = tripId ? `/trips/${tripId}/chat` : '/trips/chat';
       const response = await api.post(endpoint, {
         message: userMessage,
-        history
+        history,
+        ai_provider: selectedAi
       });
 
       if (response.data?.success) {
@@ -199,17 +204,24 @@ export function ChatbotWidget() {
       setCreationProgress(boundedProg);
     }, 150);
 
+    const city = params.destination_city || params.destination || params.city || 'Đà Nẵng';
+    const budget = Number(params.budget_total || params.budget) || 5000000;
+    const travelers = Number(params.traveler_count || params.travelers || params.guests) || 1;
+    const type = params.traveler_type || (travelers === 2 ? 'couple' : travelers > 2 ? 'friends' : 'solo');
+    const title = params.title || `Du hí ${city}`;
+
     try {
       const response = await api.post('/trips', {
-        title: params.title || `Du hí ${params.destination_city}`,
-        destination_city: params.destination_city,
+        title,
+        destination_city: city,
         start_date: params.start_date,
         end_date: params.end_date,
-        budget_total: Number(params.budget_total) || 5000000,
-        traveler_count: Number(params.traveler_count) || 1,
-        traveler_type: params.traveler_type || 'solo',
+        budget_total: budget,
+        traveler_count: travelers,
+        traveler_type: type,
         special_requirements: params.special_requirements || '',
-        preferences: { food: true, nature: true, culture: true, entertainment: true } // default preferences
+        preferences: { food: true, nature: true, culture: true, entertainment: true }, // default preferences
+        ai_provider: selectedAi
       }, {
         timeout: 120000 // 2 minutes (120s) timeout to prevent premature aborts
       });
@@ -221,7 +233,7 @@ export function ChatbotWidget() {
       // Small delay for the user to see 100% completion
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      if (response.status === 201 && response.data?.id) {
+      if ((response.status === 201 || response.status === 200) && response.data?.id) {
         setIsOpen(false); // Close chatbot
         setIsCreatingTrip(false); // Reset loading state
         isCreatingRef.current = false; // Reset block ref
@@ -245,6 +257,7 @@ export function ChatbotWidget() {
   if (!isOpen) {
     return (
       <Pressable
+        testID="chatbot-floating-btn"
         onPress={() => setIsOpen(true)}
         className="bg-brand-primary items-center justify-center shadow-lg"
         style={{
@@ -303,9 +316,72 @@ export function ChatbotWidget() {
             </Text>
           </View>
         </View>
-        <Pressable onPress={() => setIsOpen(false)} className="p-1 rounded-full bg-white/10 hover:bg-white/20">
+        <Pressable
+          testID="chatbot-close-btn"
+          onPress={() => setIsOpen(false)}
+          className="p-1 rounded-full bg-white/10 hover:bg-white/20"
+        >
           <X size={16} color="white" />
         </Pressable>
+      </View>
+
+      {/* Sub-header: Bộ chọn AI Model linh động */}
+      <View
+        className="flex-row justify-between items-center px-3.5 py-1.5"
+        style={{ backgroundColor: '#0D1713', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' }}
+      >
+        <View className="flex-row items-center gap-1.5">
+          <Text className="text-white/60 text-[10px] font-semibold">Mô hình AI:</Text>
+          {selectedAi === 'custom_openai' ? (
+            <View className="flex-row items-center gap-0.5 px-1.5 py-0.5 rounded bg-brand-accent/20 border border-brand-accent/30">
+              <Crown size={9} color={BRAND_COLORS.accent} />
+              <Text className="text-[9px] font-extrabold text-brand-accent">PRO</Text>
+            </View>
+          ) : (
+            <View className="px-1.5 py-0.5 rounded bg-white/10">
+              <Text className="text-[9px] font-bold text-white/70">Tiêu chuẩn</Text>
+            </View>
+          )}
+        </View>
+
+        <View className="flex-row gap-1 bg-white/5 p-0.5 rounded-lg border border-white/5">
+          {/* Option 1: AI Tiêu chuẩn */}
+          <Pressable
+            testID="chatbot-ai-standard-btn"
+            onPress={() => setSelectedAi('gemini')}
+            className={`px-2 py-0.5 rounded-md flex-row items-center gap-1 ${
+              selectedAi === 'gemini' ? 'bg-brand-primary' : 'bg-transparent'
+            }`}
+          >
+            <Zap size={10} color={selectedAi === 'gemini' ? 'white' : 'rgba(255,255,255,0.6)'} />
+            <Text className={`text-[10px] font-bold ${selectedAi === 'gemini' ? 'text-white' : 'text-white/60'}`}>
+              Tiêu chuẩn
+            </Text>
+          </Pressable>
+
+          {/* Option 2: AI Pro */}
+          <Pressable
+            testID="chatbot-ai-pro-btn"
+            onPress={() => {
+              if (isPremium || isAdmin) {
+                setSelectedAi('custom_openai');
+              } else {
+                setShowPremiumModal(true);
+              }
+            }}
+            className={`px-2 py-0.5 rounded-md flex-row items-center gap-1 ${
+              selectedAi === 'custom_openai' ? 'bg-brand-accent' : 'bg-transparent'
+            }`}
+          >
+            <Crown size={10} color={selectedAi === 'custom_openai' ? 'white' : BRAND_COLORS.gold} />
+            <Text className={`text-[10px] font-bold ${selectedAi === 'custom_openai' ? 'text-white' : 'text-white/60'}`}>
+              AI Pro
+            </Text>
+            {(!isPremium && !isAdmin) && (
+              <Lock size={9} color={BRAND_COLORS.gold} />
+            )}
+          </Pressable>
+        </View>
       </View>
 
       {isCreatingTrip ? (
@@ -394,6 +470,7 @@ export function ChatbotWidget() {
                     {/* If changes are proposed, show the action button */}
                     {isModel && msg.adaptedItinerary && msg.diff && (
                       <Pressable
+                        testID="chatbot-apply-diff-btn"
                         onPress={() => triggerPreview(msg.adaptedItinerary, msg.diff!, msg.previousSnapshot)}
                         className="mt-3.5 bg-brand-accent px-3 py-2 rounded-xl flex-row items-center gap-1.5 align-middle self-start"
                         style={{ backgroundColor: '#E2703A' }}
@@ -406,6 +483,7 @@ export function ChatbotWidget() {
                     {/* Chỉ hiển thị nút tạo chuyến đi nếu chưa ở trong một chuyến đi cụ thể */}
                     {isModel && msg.isCreateTrip && msg.createTripParams && !tripId && (
                       <Pressable
+                        testID="chatbot-create-trip-action-btn"
                         onPress={() => handleCreateTripFromChat(msg.createTripParams)}
                         disabled={isCreatingTrip}
                         className="mt-3.5 bg-brand-primary px-3 py-2 rounded-xl flex-row items-center gap-1.5 align-middle self-start"
@@ -450,6 +528,7 @@ export function ChatbotWidget() {
             style={{ borderTopWidth: 1, borderTopColor: 'rgba(27,36,32,0.12)', backgroundColor: '#14201B' }}
           >
             <TextInput
+              testID="chatbot-input"
               value={inputText}
               onChangeText={setInputText}
               onSubmitEditing={handleSend}
@@ -465,6 +544,7 @@ export function ChatbotWidget() {
               }}
             />
             <Pressable
+              testID="chatbot-send-btn"
               onPress={handleSend}
               disabled={!inputText.trim() || isLoading}
               className="w-9 h-9 bg-brand-primary rounded-full items-center justify-center"
@@ -475,6 +555,16 @@ export function ChatbotWidget() {
           </View>
         </>
       )}
+
+      {/* Premium Upgrade Modal */}
+      <PremiumModal
+        visible={showPremiumModal}
+        onClose={() => setShowPremiumModal(false)}
+        onActivated={() => {
+          setShowPremiumModal(false);
+          setSelectedAi('custom_openai');
+        }}
+      />
     </View>
   );
 }

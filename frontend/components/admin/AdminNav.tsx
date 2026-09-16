@@ -15,16 +15,21 @@ export default function AdminNav() {
     { key: 'packages', path: APP_ROUTES.ADMIN_PACKAGES, label: 'Gói thành viên & Giá 👑' },
     { key: 'revenue', path: APP_ROUTES.ADMIN_REVENUE, label: 'Doanh thu 📊' },
     { key: 'trips', path: APP_ROUTES.ADMIN_TRIPS, label: 'Chuyến đi' },
-    { key: 'keys', path: APP_ROUTES.ADMIN_KEYS, label: 'Gemini Keys' },
+    { key: 'keys', path: APP_ROUTES.ADMIN_KEYS, label: 'Quản trị AI' },
     { key: 'partners', path: APP_ROUTES.ADMIN_PARTNERS, label: 'Đối tác' },
   ];
 
   return (
     <View className="bg-brand-bg">
       <View className="border-b border-brand-line/40 px-6 py-4 flex-row justify-between items-center">
-        <Pressable onPress={() => router.push(APP_ROUTES.TRIPS as any)} className="flex-row items-center gap-2">
+        <Pressable onPress={() => router.push(APP_ROUTES.ADMIN as any)} className="flex-row items-center gap-2">
           <Compass size={26} color={BRAND_COLORS.primary} />
-          <Text className="font-display font-bold text-xl text-brand-primary">ViVu Planner</Text>
+          <View className="flex-row items-baseline gap-1.5">
+            <Text className="font-display font-bold text-xl text-brand-primary">ViVu Planner</Text>
+            <View className="px-2 py-0.5 rounded bg-brand-primary/10 border border-brand-primary/20">
+              <Text className="text-[10px] font-extrabold text-brand-primary uppercase tracking-wider">Hệ Thống Quản Trị</Text>
+            </View>
+          </View>
         </Pressable>
         <View className="flex-row items-center gap-3">
           <View className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full border" style={{ backgroundColor: `${BRAND_COLORS.accent}1A`, borderColor: `${BRAND_COLORS.accent}4D` }}>

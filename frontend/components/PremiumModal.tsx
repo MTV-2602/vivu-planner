@@ -10,6 +10,7 @@ import {
   ShieldCheck, CreditCard, ChevronRight,
 } from 'lucide-react-native';
 import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { BRAND_COLORS } from '../constants';
 
 interface PremiumModalProps {
@@ -82,6 +83,39 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     enabled: visible,
   });
 
+  // Lấy giá các gói dịch vụ thời gian thực
+  const { data: plansData, refetch: refetchPlans } = useQuery({
+    queryKey: ['paymentPlansModal'],
+    queryFn: async () => {
+      const res = await api.get('/payment/plans');
+      return res.data;
+    },
+    staleTime: 10000,
+    enabled: visible,
+  });
+
+  // Lắng nghe thay đổi giá từ Supabase Realtime
+  useEffect(() => {
+    const channelName = `pricing_realtime_modal_${Math.random().toString(36).substring(2, 9)}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pricing_plans' },
+        () => {
+          refetchPlans();
+        }
+      )
+      .on('broadcast', { event: 'plans_updated' }, () => {
+        refetchPlans();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   // Lấy lịch sử giao dịch
   const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery<{ success: boolean; orders: OrderHistoryItem[] }>({
     queryKey: ['myOrdersModal'],
@@ -100,6 +134,7 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
       setActiveTab('upgrade');
     } else {
       refetchStatus();
+      refetchPlans();
     }
   }, [visible]);
 
@@ -174,6 +209,21 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
   const isCurrentStarter = statusData?.planId === 'starter' || (isCurrentPremium && statusData?.tripsQuota <= 10);
   const isCurrentPro = isCurrentPremium && !isCurrentStarter;
 
+  const plusAmount = plansData?.plans?.plus?.amount ?? plansData?.plans?.starter?.amount ?? 29000;
+  const proAmount = plansData?.plans?.pro?.amount ?? plansData?.plans?.premium?.amount ?? 49000;
+
+  const formattedPlusPrice = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(plusAmount);
+  const formattedProPrice = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(proAmount);
+
+  const dynamicPlans = PLANS.map(plan => {
+    const isStarter = plan.id === 'plus' || plan.id === 'starter';
+    return {
+      ...plan,
+      price: isStarter ? formattedPlusPrice : formattedProPrice,
+      rawAmount: isStarter ? plusAmount : proAmount,
+    };
+  });
+
   // Thành công screen
   if (activated) {
     return (
@@ -233,12 +283,11 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     } else if (orderData.accountNumber && orderData.amount) {
       const bin = orderData.bin || 'MB';
       qrImage = `https://img.vietqr.io/image/${bin}-${orderData.accountNumber}-compact2.png?amount=${orderData.amount}&addInfo=VIVU${orderData.orderCode || ''}&accountName=${encodeURIComponent(orderData.accountName || 'VIVU PLANNER')}`;
+    } else if (orderData.method === 'momo' && (momoDeeplink || webUrl)) {
+      const target = momoDeeplink || webUrl;
+      qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(target)}`;
     } else if (webUrl) {
       qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(webUrl)}`;
-    }
-
-    if (orderData.method === 'momo' && momoDeeplink && !directQr) {
-      qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(momoDeeplink)}`;
     }
   }
 
@@ -293,6 +342,7 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
             </View>
             <Pressable
               onPress={onClose}
+              accessibilityLabel="close-modal"
               style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
             >
               <X size={18} color="#ffffff" />
@@ -356,14 +406,14 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                   </View>
                   {isCurrentPremium && statusData?.premiumUntil && (
                     <Text style={{ fontSize: 12, color: '#A16207' }}>
-                      📅 Hạn dùng: <strong>{new Date(statusData.premiumUntil).toLocaleDateString('vi-VN')}</strong> (Còn {Math.max(0, Math.ceil((new Date(statusData.premiumUntil).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} ngày) — Nạp tiếp sẽ được <strong>gia hạn cộng dồn thêm 30 ngày</strong>.
+                      📅 Hạn dùng: <Text style={{ fontWeight: '800', color: '#854D0E' }}>{new Date(statusData.premiumUntil).toLocaleDateString('vi-VN')}</Text> (Còn {Math.max(0, Math.ceil((new Date(statusData.premiumUntil).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} ngày) — Nạp tiếp sẽ được <Text style={{ fontWeight: '800', color: '#854D0E' }}>gia hạn cộng dồn thêm 30 ngày</Text>.
                     </Text>
                   )}
                 </View>
 
                 {/* Khi Đang Hiển Thị Mã QR Thanh Toán */}
                 {orderData ? (
-                  <View style={{ backgroundColor: '#F8FAFC', borderRadius: 20, padding: 20, borderWidth: 1.5, borderColor: '#CBD5E1', alignItems: 'center', gap: 14 }}>
+                  <View style={{ backgroundColor: '#F8FAFC', borderRadius: 20, padding: 20, borderWidth: 1.5, borderColor: orderData.method === 'momo' ? '#E879F9' : '#CBD5E1', alignItems: 'center', gap: 14 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Clock size={16} color="#DC2626" />
@@ -378,18 +428,58 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
 
                     {/* QR Code Container */}
                     {qrImage ? (
-                      <View style={{ padding: 12, backgroundColor: '#fff', borderRadius: 16, borderWidth: 2, borderColor: '#10B981', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 }}>
+                      <View style={{
+                        padding: 12, backgroundColor: '#fff', borderRadius: 16, borderWidth: 2,
+                        borderColor: orderData.method === 'momo' ? '#A21CAF' : '#10B981',
+                        alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10,
+                      }}>
                         {Platform.OS === 'web' ? (
                           <img src={qrImage} alt="QR Thanh toán" style={{ width: 220, height: 220, borderRadius: 8 }} />
                         ) : (
                           <Text style={{ fontSize: 12, color: '#64748B' }}>Đang nạp mã QR...</Text>
                         )}
-                        <Text style={{ marginTop: 10, fontSize: 15, fontWeight: '800', color: '#065F46' }}>
-                          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(orderData.amount || 29000)}
+                        <Text style={{ marginTop: 10, fontSize: 15, fontWeight: '800', color: orderData.method === 'momo' ? '#86198F' : '#065F46' }}>
+                          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(orderData.amount || (selectedPlan === 'plus' ? plusAmount : proAmount))}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                          {orderData.method === 'momo' ? 'Mở MoMo quét QR hoặc bấm nút bên dưới' : 'Quét mã VietQR bằng mọi ứng dụng ngân hàng'}
                         </Text>
                       </View>
                     ) : (
                       <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
+                    )}
+
+                    {/* Nút mở trực tiếp cổng thanh toán MoMo / PayOS */}
+                    {(orderData.payUrl || orderData.deeplink || orderData.checkoutUrl) && (
+                      <Pressable
+                        onPress={() => {
+                          const targetUrl = orderData.payUrl || orderData.deeplink || orderData.checkoutUrl;
+                          if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                            window.open(targetUrl, '_blank');
+                          } else {
+                            Linking.openURL(targetUrl).catch(() => {});
+                          }
+                        }}
+                        style={{
+                          backgroundColor: orderData.method === 'momo' ? '#A21CAF' : BRAND_COLORS.primary,
+                          paddingVertical: 12,
+                          paddingHorizontal: 20,
+                          borderRadius: 14,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          width: '100%',
+                          shadowColor: orderData.method === 'momo' ? '#A21CAF' : BRAND_COLORS.primary,
+                          shadowOpacity: 0.25,
+                          shadowRadius: 10,
+                        }}
+                      >
+                        <ExternalLink size={16} color="#fff" />
+                        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
+                          {orderData.method === 'momo' ? 'Mở Cổng / Ứng Dụng MoMo Để Thanh Toán' : 'Mở Trang Thanh Toán Trực Tiếp'}
+                        </Text>
+                      </Pressable>
                     )}
 
                     {/* Thông tin chuyển khoản */}
@@ -406,13 +496,15 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                       )}
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                         <Text style={{ fontSize: 12, color: '#64748B' }}>Phương thức:</Text>
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{orderData.method === 'momo' ? 'Ví MoMo' : 'VietQR (Chuyển khoản 24/7)'}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: orderData.method === 'momo' ? '#A21CAF' : '#0F172A' }}>
+                          {orderData.method === 'momo' ? 'Ví Điện Tử MoMo 💜' : 'VietQR (Chuyển khoản 24/7)'}
+                        </Text>
                       </View>
                     </View>
 
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <ActivityIndicator size="small" color="#10B981" />
-                      <Text style={{ fontSize: 12, color: '#047857', fontWeight: '600' }}>
+                      <ActivityIndicator size="small" color={orderData.method === 'momo' ? '#A21CAF' : '#10B981'} />
+                      <Text style={{ fontSize: 12, color: orderData.method === 'momo' ? '#86198F' : '#047857', fontWeight: '600' }}>
                         Hệ thống đang tự động lắng nghe giao dịch...
                       </Text>
                     </View>
@@ -434,7 +526,7 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                       </Text>
 
                       <View style={{ flexDirection: 'row', gap: 14 }}>
-                        {PLANS.map(plan => {
+                        {dynamicPlans.map(plan => {
                           const isSelected = selectedPlan === plan.id;
                           const isStarter = plan.id === 'plus';
                           // Chặn mua Starter nếu user đang là Pro
@@ -547,12 +639,12 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                           <ShieldCheck size={18} color="#fff" />
                           <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>
                             {isCurrentPro && selectedPlan === 'pro'
-                              ? 'Gia Hạn Gói Premium (49.000đ / +30 ngày)'
+                              ? `Gia Hạn Gói Premium (${formattedProPrice} / +30 ngày)`
                               : isCurrentStarter && selectedPlan === 'plus'
-                              ? 'Gia Hạn Gói Starter (29.000đ / +30 ngày)'
+                              ? `Gia Hạn Gói Starter (${formattedPlusPrice} / +30 ngày)`
                               : selectedPlan === 'plus'
-                              ? 'Thanh Toán Gói Starter (29.000đ)'
-                              : 'Thanh Toán Gói Premium (49.000đ)'}
+                              ? `Thanh Toán Gói Starter (${formattedPlusPrice})`
+                              : `Thanh Toán Gói Premium (${formattedProPrice})`}
                           </Text>
                         </>
                       )}

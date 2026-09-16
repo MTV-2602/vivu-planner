@@ -173,6 +173,7 @@ export default function ProfileModal({ visible, onClose }: ProfileModalProps) {
             </View>
             <Pressable
               onPress={onClose}
+              accessibilityLabel="close-modal"
               style={{
                 width: 32,
                 height: 32,

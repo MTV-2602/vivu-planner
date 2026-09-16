@@ -57,11 +57,12 @@ function deduplicatePlaces(places: PlaceCandidate[]): PlaceCandidate[] {
 function formatTimeForDb(timeStr?: string | null): string | null {
   if (!timeStr) return null;
   const clean = timeStr.trim();
-  const parts = clean.split(':');
-  if (parts.length >= 2) {
-    const hh = parts[0].padStart(2, '0');
-    const mm = parts[1].padStart(2, '0');
-    const ss = parts.length >= 3 ? parts[2].substring(0, 2).padStart(2, '0') : '00';
+  // Khớp định dạng HH:MM hoặc HH:MM:SS đầu tiên (an toàn với các dải giờ như "18:00-19:00" hoặc "18:00 - 20:00")
+  const match = clean.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (match) {
+    const hh = match[1].padStart(2, '0');
+    const mm = match[2].padStart(2, '0');
+    const ss = match[3] ? match[3].padStart(2, '0') : '00';
     return `${hh}:${mm}:${ss}`;
   }
   return null;
@@ -83,15 +84,15 @@ function parseOptionalCost(value: unknown): number | null {
 
 // GET /api/trips - List all trips of the current user
 router.get('/', requireAuth, async (req: any, res: Response) => {
-  const client = getSupabaseUserClient(req.token!);
   try {
-    const { data: trips, error } = await client
+    const { data: trips, error } = await supabaseAdmin
       .from('trips')
       .select('*')
+      .eq('user_id', req.user!.id)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return res.json(trips);
+    return res.json(trips || []);
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to retrieve trips', details: error.message });
   }
@@ -165,11 +166,10 @@ router.get('/:id/public', async (req, res: Response) => {
 });
 
 router.get('/:id', requireAuth, async (req: any, res: Response) => {
-  const client = getSupabaseUserClient(req.token!);
   const tripId = req.params.id;
 
   try {
-    const { data: trip, error: tripError } = await client
+    const { data: trip, error: tripError } = await supabaseAdmin
       .from('trips')
       .select('*')
       .eq('id', tripId)
@@ -179,7 +179,15 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
       return res.status(404).json({ error: 'Trip not found' });
     }
 
-    const { data: days, error: daysError } = await client
+    // Check authorization: owner, public, or admin
+    const isOwner = trip.user_id === req.user!.id;
+    const isPublic = !!trip.is_public;
+    const isAdmin = req.isAdmin === true || req.user?.role === 'admin';
+    if (!isOwner && !isPublic && !isAdmin) {
+      return res.status(403).json({ error: 'Bạn không có quyền truy cập chuyến đi này' });
+    }
+
+    const { data: days, error: daysError } = await supabaseAdmin
       .from('itinerary_days')
       .select('*')
       .eq('trip_id', tripId)
@@ -190,7 +198,7 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
     let daysWithItems: any[] = [];
     if (days && days.length > 0) {
       const dayIds = days.map(d => d.id);
-      const { data: items, error: itemsError } = await client
+      const { data: items, error: itemsError } = await supabaseAdmin
         .from('itinerary_items')
         .select('*')
         .in('day_id', dayIds)
@@ -270,7 +278,7 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
     }
 
     // Retrieve revision logs
-    const { data: revisions } = await client
+    const { data: revisions } = await supabaseAdmin
       .from('itinerary_revisions')
       .select('*')
       .eq('trip_id', tripId)
@@ -329,16 +337,32 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
 
   const isAdmin = req.isAdmin === true || profile?.role === UserRole.ADMIN;
   const isPremium = isUserPremium(profile);
+
+  // Admin chỉ quản lý nghiệp vụ hệ thống, không tạo chuyến đi cá nhân
+  if (isAdmin) {
+    return res.status(403).json({
+      error: 'Tài khoản Quản trị viên chỉ quản lý nghiệp vụ hệ thống và không tạo chuyến đi cá nhân. Vui lòng đăng nhập tài khoản Người dùng để tạo lịch trình.'
+    });
+  }
+
   const quotaTotal = profile?.quota_total ?? (profile?.custom_quota ?? QUOTA_CONFIG.DEFAULT_FREE_TRIPS);
   const quotaUsed = Math.max(profile?.quota_used ?? 0, profile?.trips_used ?? 0, dbTripsCount || 0);
   const currentUsed = quotaUsed;
 
-  if (!isAdmin && !isPremium && quotaUsed >= quotaTotal) {
+  if (!isPremium && quotaUsed >= quotaTotal) {
     return res.status(403).json({
       error: `Bạn đã sử dụng hết hạn mức (${quotaTotal} chuyến đi). Vui lòng nâng cấp gói để tiếp tục sáng tạo chuyến đi!`
     });
   }
 
+  // Kiểm tra phân quyền sử dụng AI Gateway bên thứ 3 (Chỉ dành cho gói Premium hoặc Admin)
+  const requestedAiProvider = req.body.ai_provider;
+  if (requestedAiProvider === 'custom_openai' && !isPremium && !isAdmin) {
+    return res.status(403).json({
+      error: 'Mô hình AI Chuyên Sâu (GPT-5.4 / Gemini 3.8 Flash High) là đặc quyền dành riêng cho gói Premium. Vui lòng nâng cấp gói để trải nghiệm!',
+      requires_premium: true
+    });
+  }
 
   if (!destination_city || !start_date || !end_date || !budget_total) {
     return res.status(400).json({ error: 'Missing required parameters: destination_city, start_date, end_date, budget_total' });
@@ -441,7 +465,7 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
     );
 
     // 5. Save trip to Supabase
-    const { data: trip, error: tripError } = await client
+    const { data: trip, error: tripError } = await supabaseAdmin
       .from('trips')
       .insert({
         user_id: req.user!.id,
@@ -480,13 +504,23 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
     }
 
     // 6. Tối ưu hóa: Sinh UUID client-side và lưu song song các ngày và hoạt động (Parallel DB Writes)
-    const daysToInsert = itinerary.days.map(day => ({
-      id: crypto.randomUUID(), // Chủ động sinh UUID để liên kết song song
-      trip_id: trip.id,
-      day_number: day.day_number,
-      date: day.date,
-      weather_summary: { note: day.weather_note }
-    }));
+    const validPartnerIds = new Set(relevantPartners.map(p => p.id));
+
+    const daysToInsert = itinerary.days.map((day, idx) => {
+      let validDate = day.date;
+      if (!validDate || !/^\d{4}-\d{2}-\d{2}$/.test(validDate)) {
+        const d = new Date(correctedStartDate);
+        d.setDate(d.getDate() + idx);
+        validDate = d.toISOString().split('T')[0];
+      }
+      return {
+        id: crypto.randomUUID(),
+        trip_id: trip.id,
+        day_number: Number(day.day_number) || idx + 1,
+        date: validDate,
+        weather_summary: { note: day.weather_note || 'Trời đẹp' }
+      };
+    });
 
     const itemsToInsert: any[] = [];
     itinerary.days.forEach(day => {
@@ -517,13 +551,30 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
 
         let itemPartnerId: string | null = null;
         if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
-          itemPartnerId = item.google_place_id.replace('partner_', '');
+          const candidateId = item.google_place_id.replace('partner_', '');
+          if (validPartnerIds.has(candidateId)) {
+            itemPartnerId = candidateId;
+          }
+        }
+
+        const rawType = String(item.item_type || '').toLowerCase();
+        let normalizedItemType: 'accommodation' | 'transport' | 'dining' | 'attraction' | 'rental' | 'experience' = 'attraction';
+        if (['accommodation', 'transport', 'dining', 'attraction', 'rental', 'experience'].includes(rawType)) {
+          normalizedItemType = rawType as any;
+        } else if (rawType === 'activity' || rawType === 'sightseeing' || rawType === 'entertainment') {
+          normalizedItemType = 'attraction';
+        } else if (rawType === 'food' || rawType === 'restaurant') {
+          normalizedItemType = 'dining';
+        } else if (rawType === 'hotel' || rawType === 'stay') {
+          normalizedItemType = 'accommodation';
+        } else {
+          normalizedItemType = 'experience';
         }
 
         itemsToInsert.push({
           day_id: dbDay.id, // Sử dụng UUID đã sinh ở trên để liên kết
-          partner_id: itemPartnerId, // Lưu khóa ngoại partner_id chuẩn vào database
-          item_type: item.item_type,
+          partner_id: itemPartnerId, // Chỉ lưu khi partner_id thực sự tồn tại trong DB
+          item_type: normalizedItemType,
           title: item.title,
           description: item.description || itemAddress || '',
           start_time: formatTimeForDb(item.start_time),
@@ -541,11 +592,11 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
     });
 
     // Ghi itinerary_days trước để tránh lỗi vi phạm RLS policy do race condition khi check foreign key ở itinerary_items
-    const daysResult = await client.from('itinerary_days').insert(daysToInsert);
+    const daysResult = await supabaseAdmin.from('itinerary_days').insert(daysToInsert);
     if (daysResult.error) throw daysResult.error;
 
     const itemsResult = itemsToInsert.length > 0 
-      ? await client.from('itinerary_items').insert(itemsToInsert) 
+      ? await supabaseAdmin.from('itinerary_items').insert(itemsToInsert) 
       : { error: null };
     if (itemsResult.error) throw itemsResult.error;
 
@@ -583,7 +634,7 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
     }
 
     // Fetch the full assembled trip details to return
-    const { data: fullTrip } = await client
+    const { data: fullTrip } = await supabaseAdmin
       .from('trips')
       .select('*')
       .eq('id', trip.id)
@@ -620,10 +671,23 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
 
 // PUT /api/trips/:id - Edit trip details (e.g. status)
 router.put('/:id', requireAuth, async (req: any, res: Response) => {
-  const client = getSupabaseUserClient(req.token!);
   const tripId = req.params.id;
 
   try {
+    const { data: currentTrip } = await supabaseAdmin
+      .from('trips')
+      .select('*')
+      .eq('id', tripId)
+      .maybeSingle();
+
+    if (!currentTrip) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+
+    if (currentTrip.user_id !== req.user!.id && !req.isAdmin) {
+      return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa chuyến đi này' });
+    }
+
     const {
       title,
       description,
@@ -659,13 +723,7 @@ router.put('/:id', requireAuth, async (req: any, res: Response) => {
       }
 
       // State machine validation: fetch current trip status
-      const { data: currentTrip } = await client
-        .from('trips')
-        .select('status')
-        .eq('id', tripId)
-        .maybeSingle();
-
-      if (currentTrip && currentTrip.status !== status) {
+      if (currentTrip.status !== status) {
         const allowedNext = VALID_TRIP_TRANSITIONS[currentTrip.status] || [];
         if (!allowedNext.includes(status)) {
           return res.status(400).json({
@@ -679,7 +737,7 @@ router.put('/:id', requireAuth, async (req: any, res: Response) => {
 
     updatePayload.updated_at = new Date().toISOString();
 
-    const { data: trip, error } = await client
+    const { data: trip, error } = await supabaseAdmin
       .from('trips')
       .update(updatePayload)
       .eq('id', tripId)
@@ -695,11 +753,24 @@ router.put('/:id', requireAuth, async (req: any, res: Response) => {
 
 // DELETE /api/trips/:id - Delete a trip
 router.delete('/:id', requireAuth, async (req: any, res: Response) => {
-  const client = getSupabaseUserClient(req.token!);
   const tripId = req.params.id;
 
   try {
-    const { error } = await client
+    const { data: currentTrip } = await supabaseAdmin
+      .from('trips')
+      .select('user_id')
+      .eq('id', tripId)
+      .maybeSingle();
+
+    if (!currentTrip) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+
+    if (currentTrip.user_id !== req.user!.id && !req.isAdmin) {
+      return res.status(403).json({ error: 'Bạn không có quyền xóa chuyến đi này' });
+    }
+
+    const { error } = await supabaseAdmin
       .from('trips')
       .delete()
       .eq('id', tripId);
@@ -767,17 +838,33 @@ router.get('/:id/chat', requireAuth, async (req: any, res: Response) => {
 
 // POST /api/trips/chat - Trò chuyện chung không có ngữ cảnh chuyến đi
 router.post('/chat', requireAuth, aiChatLimiter, async (req: any, res: Response) => {
-  const { message, history } = req.body;
+  const { message, history, ai_provider } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: 'message is required' });
+  }
+
+  const { data: userProfile } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('id', req.user!.id)
+    .maybeSingle();
+
+  const isPremium = isUserPremium(userProfile);
+  const isAdmin = req.isAdmin === true || req.user?.role === UserRole.ADMIN || userProfile?.role === UserRole.ADMIN;
+  let targetProvider = ai_provider;
+  if (targetProvider === 'custom_openai' && !isPremium && !isAdmin) {
+    return res.status(403).json({
+      error: 'Mô hình AI Pro chỉ dành riêng cho tài khoản Gói Premium.',
+      requires_premium: true
+    });
   }
 
   try {
     // Save user message
     await saveChatMessage(null, req.user!.id, ChatMessageRole.USER, message);
 
-    const chatResponse = await chatWithItinerary(message, history || []);
+    const chatResponse = await chatWithItinerary(message, history || [], undefined, undefined, undefined, targetProvider);
 
     // Save model response
     await saveChatMessage(null, req.user!.id, ChatMessageRole.MODEL, chatResponse.responseText, {
@@ -799,10 +886,26 @@ router.post('/chat', requireAuth, aiChatLimiter, async (req: any, res: Response)
 router.post('/:id/chat', requireAuth, aiChatLimiter, async (req: any, res: Response) => {
   const client = getSupabaseUserClient(req.token!);
   const tripId = req.params.id;
-  const { message, history } = req.body;
+  const { message, history, ai_provider } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: 'message is required' });
+  }
+
+  const { data: userProfile } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('id', req.user!.id)
+    .maybeSingle();
+
+  const isPremium = isUserPremium(userProfile);
+  const isAdmin = req.isAdmin === true || req.user?.role === UserRole.ADMIN || userProfile?.role === UserRole.ADMIN;
+  let targetProvider = ai_provider;
+  if (targetProvider === 'custom_openai' && !isPremium && !isAdmin) {
+    return res.status(403).json({
+      error: 'Mô hình AI Pro chỉ dành riêng cho tài khoản Gói Premium.',
+      requires_premium: true
+    });
   }
 
   try {
@@ -853,7 +956,7 @@ router.post('/:id/chat', requireAuth, aiChatLimiter, async (req: any, res: Respo
       }
     }
 
-    const chatResponse = await chatWithItinerary(message, history || [], trip, previousSnapshot, weatherForecast);
+    const chatResponse = await chatWithItinerary(message, history || [], trip, previousSnapshot, weatherForecast, targetProvider);
 
     // Save model response
     await saveChatMessage(tripId, req.user!.id, 'model', chatResponse.responseText, {
@@ -1255,6 +1358,47 @@ router.post('/:id/disruptions/apply', requireAuth, async (req: any, res: Respons
   } catch (error: any) {
     console.error('Apply adaptation failed:', error);
     return res.status(500).json({ error: 'Failed to apply adapted itinerary', details: error.message });
+  }
+});
+
+// 2.5 POST /api/trips/days/:dayId/items - Thêm hoạt động mới vào một ngày
+router.post('/days/:dayId/items', requireAuth, async (req: any, res: Response) => {
+  const client = getSupabaseUserClient(req.token!);
+  const dayId = req.params.dayId;
+  const { title, description, start_time, end_time, estimated_cost, status, item_type } = req.body;
+
+  try {
+    const { data: existingItems } = await client
+      .from('itinerary_items')
+      .select('order_index')
+      .eq('day_id', dayId)
+      .order('order_index', { ascending: false })
+      .limit(1);
+
+    const nextOrderIndex = (existingItems?.[0]?.order_index ?? -1) + 1;
+
+    const { data: newItem, error } = await client
+      .from('itinerary_items')
+      .insert({
+        day_id: dayId,
+        title: title || 'Hoạt động mới',
+        description: description || '',
+        start_time: formatTimeForDb(start_time),
+        end_time: formatTimeForDb(end_time),
+        estimated_cost: parseOptionalCost(estimated_cost),
+        status: status || 'planned',
+        item_type: item_type || 'attraction',
+        order_index: nextOrderIndex,
+        location_name: title || 'Địa điểm'
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return res.status(201).json(newItem);
+  } catch (error: any) {
+    console.error('[Add Item Route] Error:', error.message);
+    return res.status(500).json({ error: 'Failed to add itinerary item', details: error.message });
   }
 });
 

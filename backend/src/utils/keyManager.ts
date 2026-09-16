@@ -16,22 +16,16 @@ export async function getNextGeminiApiKey(): Promise<string> {
   }
 
   try {
-    // 0. Cool down and reactivate rate_limited keys (after 3 minutes) and invalid keys (after 15 minutes) automatically
+    // 0. Cool down and reactivate rate_limited keys (after 3 minutes) automatically
     const threeMinutesAgo = new Date(Date.now() - KEY_COOLDOWN_CONFIG.RATE_LIMITED_MS).toISOString();
-    const fifteenMinutesAgo = new Date(Date.now() - KEY_COOLDOWN_CONFIG.INVALID_MS).toISOString();
 
-    Promise.all([
+    Promise.resolve(
       supabaseAdmin
         .from('gemini_api_keys')
         .update({ status: ApiKeyStatus.ACTIVE, is_active: true })
         .eq('status', ApiKeyStatus.RATE_LIMITED)
-        .lt('last_used_at', threeMinutesAgo),
-      supabaseAdmin
-        .from('gemini_api_keys')
-        .update({ status: ApiKeyStatus.ACTIVE, is_active: true })
-        .eq('status', ApiKeyStatus.INVALID)
-        .lt('last_used_at', fifteenMinutesAgo)
-    ]).catch(err => console.error('[KeyManager] Failed to auto cool down keys:', err.message));
+        .lt('last_used_at', threeMinutesAgo)
+    ).catch(err => console.error('[KeyManager] Failed to auto cool down rate_limited keys:', err.message));
 
     // Fetch active keys from database ordered by last_used_at ascending
     let { data: keys, error } = await supabaseAdmin
@@ -102,7 +96,7 @@ export async function getNextGeminiApiKey(): Promise<string> {
 }
 
 export async function reportKeyError(keyValue: string, errorType: ApiKeyStatus.RATE_LIMITED | ApiKeyStatus.INVALID): Promise<void> {
-  if (isDbMocked) return;
+  if (isDbMocked || !keyValue) return;
 
   try {
     await supabaseAdmin
@@ -123,11 +117,14 @@ export async function executeWithApiKeyRotation<T>(
   fn: (apiKey: string) => Promise<T>
 ): Promise<T> {
   let attempts = 0;
-  const maxAttempts = 3;
+  const maxAttempts = 5;
   let lastError: any = null;
 
   while (attempts < maxAttempts) {
     const apiKey = await getNextGeminiApiKey();
+    if (!apiKey) {
+      break;
+    }
     try {
       return await fn(apiKey);
     } catch (error: any) {
@@ -135,11 +132,28 @@ export async function executeWithApiKeyRotation<T>(
       lastError = error;
       console.warn(`[KeyManager] Attempt ${attempts} failed with key ${apiKey.substring(0, 8)}... Error: ${error.message}`);
       
-      const msg = error.message?.toLowerCase() || '';
-      if (msg.includes('api key not valid') || msg.includes('invalid') || msg.includes('400')) {
+      const status = error.status || error.code;
+      const msg = (error.message || '').toLowerCase();
+      const isAuthError = status === 401 || status === 403 || 
+        msg.includes('401') || msg.includes('403') ||
+        msg.includes('unauthenticated') || msg.includes('permission_denied') || 
+        msg.includes('api key not valid') || msg.includes('invalid') || msg.includes('400');
+        
+      const isRateLimit = status === 429 || msg.includes('429') ||
+        msg.includes('quota') || msg.includes('rate limit') || msg.includes('exhausted');
+
+      const isUnavailable = status === 503 || msg.includes('503') ||
+        msg.includes('high demand') || msg.includes('unavailable') || msg.includes('overloaded');
+
+      if (isAuthError) {
         await reportKeyError(apiKey, ApiKeyStatus.INVALID);
-      } else if (msg.includes('quota') || msg.includes('rate limit') || msg.includes('exhausted') || msg.includes('429')) {
+      } else if (isRateLimit) {
         await reportKeyError(apiKey, ApiKeyStatus.RATE_LIMITED);
+      }
+
+      if (isUnavailable || isRateLimit) {
+        // Đợi 1.5s để Google phục hồi trước khi gọi key tiếp theo
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
     }
   }

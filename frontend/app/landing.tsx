@@ -7,6 +7,7 @@ import {
 } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import Reveal from '../components/Reveal';
 import { BRAND_COLORS, VIETNAMESE_CITIES, APP_ROUTES } from '../constants';
@@ -143,17 +144,38 @@ export default function Landing() {
   const { session, isAdmin, signOut } = useAuth();
   const isLoggedIn = !!session;
 
-  const { data: plansData } = useQuery({
+  const { data: plansData, refetch: refetchPlans } = useQuery({
     queryKey: ['publicPlansLanding'],
     queryFn: async () => {
       const res = await api.get('/payment/plans');
       return res.data;
     },
+    staleTime: 10000,
   });
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('pricing_realtime_landing')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pricing_plans' },
+        () => {
+          refetchPlans();
+        }
+      )
+      .on('broadcast', { event: 'plans_updated' }, () => {
+        refetchPlans();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const getPlanPrice = (planId: string, defaultPrice: string) => {
     if (!plansData?.plans) return defaultPrice;
-    const plan = plansData.plans[planId];
+    const plan = (planId === 'starter' ? (plansData.plans.starter || plansData.plans.plus) : (plansData.plans.premium || plansData.plans.pro)) || plansData.plans[planId];
     if (plan?.amount != null) {
       return `${plan.amount.toLocaleString('vi-VN')} VNĐ`;
     }

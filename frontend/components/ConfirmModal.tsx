@@ -55,6 +55,7 @@ export default function ConfirmModal({
             <Text className="text-xs font-bold" style={{ color: '#55655D' }}>{cancelText}</Text>
           </Pressable>
           <Pressable 
+            testID="btn-confirm-action"
             onPress={onConfirm}
             className="px-4 py-2.5 rounded-xl"
             style={{ backgroundColor: isDestructive ? BRAND_COLORS.danger : BRAND_COLORS.primary }}

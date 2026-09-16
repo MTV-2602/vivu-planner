@@ -9,7 +9,7 @@ import {
   Compass, ArrowLeft, AlertTriangle, Calendar, Wallet, MapPin,
   Sparkles, Clock, Map, Utensils, Home, Bike, Check, X,
   HelpCircle, ChevronRight, Activity, ThermometerSun, Trash2, PenLine,
-  Shield, Share2, Crown,
+  Shield, Share2, Crown, Plus,
 } from 'lucide-react-native';
 import { api } from '../../../lib/api';
 import { getCache, setCache } from '../../../lib/cache';
@@ -165,6 +165,7 @@ export default function TripDetail() {
 
   // Edit modal
   const [editOpen, setEditOpen] = useState(false);
+  const [isAddingNewItem, setIsAddingNewItem] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
@@ -342,6 +343,16 @@ export default function TripDetail() {
     onError: (err: any) => Alert.alert('Lỗi cập nhật', err.response?.data?.error || err.message),
   });
 
+  const addItemMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const dayId = activeTabId || sortedDays[0]?.id;
+      const r = await api.post(`/trips/days/${dayId}/items`, payload);
+      return r.data;
+    },
+    onSuccess: () => { setEditOpen(false); refetch(); },
+    onError: (err: any) => Alert.alert('Lỗi thêm hoạt động', err.response?.data?.error || err.message),
+  });
+
   const aiReplaceMutation = useMutation({
     mutationFn: async ({ itemId, payload }: { itemId: string; payload: any }) => {
       const r = await api.put(`/trips/items/${itemId}`, payload);
@@ -379,6 +390,7 @@ export default function TripDetail() {
   };
 
   const openEdit = (item: any) => {
+    setIsAddingNewItem(false);
     setEditingItem(item);
     setEditTitle(item.title);
     setEditDesc(item.description || '');
@@ -387,6 +399,19 @@ export default function TripDetail() {
     setEditCost(item.estimated_cost == null ? '' : String(item.estimated_cost));
     setEditStatus(item.status);
     setEditItemType(item.item_type);
+    setEditOpen(true);
+  };
+
+  const openAddItem = () => {
+    setIsAddingNewItem(true);
+    setEditingItem({ id: 'new' });
+    setEditTitle('');
+    setEditDesc('');
+    setEditStartTime('09:00');
+    setEditEndTime('11:00');
+    setEditCost('');
+    setEditStatus('planned');
+    setEditItemType('attraction');
     setEditOpen(true);
   };
 
@@ -944,7 +969,29 @@ export default function TripDetail() {
             {/* Timeline */}
             <View className="bg-brand-bgAlt p-6 rounded-3xl border border-brand-line/50 gap-6">
               <View className="flex-row justify-between items-center flex-wrap gap-2">
-                <Text className="font-display font-extrabold text-2xl text-brand-text">Chi tiết hoạt động</Text>
+                <View className="flex-row items-center gap-3">
+                  <Text className="font-display font-extrabold text-2xl text-brand-text">Chi tiết hoạt động</Text>
+                  {!isAdmin && (
+                    <Pressable
+                      testID="btn-add-activity"
+                      onPress={openAddItem}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 10,
+                        backgroundColor: 'rgba(27,58,45,0.08)',
+                        borderWidth: 1,
+                        borderColor: 'rgba(27,58,45,0.2)'
+                      }}
+                    >
+                      <Plus size={14} color={BRAND_COLORS.primary} />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: BRAND_COLORS.primary }}>+ Thêm hoạt động</Text>
+                    </Pressable>
+                  )}
+                </View>
                 {activeDay && (
                   <View className="flex-row gap-2">
                     <View className="px-2.5 py-1 rounded-lg bg-brand-accent/10 border border-brand-accent/20">
@@ -1041,10 +1088,10 @@ export default function TripDetail() {
                                   <Pressable onPress={() => { setAiReplaceItem(item); setAiAlternatives([]); setAiRequirement(''); setAiReplaceOpen(true); }} className="p-1.5 rounded bg-brand-accent/10">
                                     <Sparkles size={14} color={BRAND_COLORS.accent} />
                                   </Pressable>
-                                  <Pressable onPress={() => openEdit(item)} className="p-1.5 rounded bg-brand-primary/10">
+                                  <Pressable testID={`btn-edit-item-${item.id}`} onPress={() => openEdit(item)} className="p-1.5 rounded bg-brand-primary/10">
                                     <PenLine size={14} color={BRAND_COLORS.primary} />
                                   </Pressable>
-                                  <Pressable onPress={() => confirmDelete(item.id, item.title)} className="p-1.5 rounded bg-brand-danger/10">
+                                  <Pressable testID={`btn-delete-item-${item.id}`} onPress={() => confirmDelete(item.id, item.title)} className="p-1.5 rounded bg-brand-danger/10">
                                     <Trash2 size={14} color={BRAND_COLORS.danger} />
                                   </Pressable>
                                 </View>
@@ -1289,8 +1336,10 @@ export default function TripDetail() {
             <View className="p-8 gap-6">
               <View className="flex-row justify-between items-center border-b border-brand-line/35 pb-4">
                 <View className="flex-row items-center gap-2">
-                  <PenLine size={20} color={BRAND_COLORS.primary} />
-                  <Text className="font-display font-extrabold text-lg text-brand-text">Chỉnh sửa hoạt động</Text>
+                  {isAddingNewItem ? <Plus size={20} color={BRAND_COLORS.primary} /> : <PenLine size={20} color={BRAND_COLORS.primary} />}
+                  <Text className="font-display font-extrabold text-lg text-brand-text">
+                    {isAddingNewItem ? 'Thêm hoạt động mới' : 'Chỉnh sửa hoạt động'}
+                  </Text>
                 </View>
                 <Pressable onPress={() => setEditOpen(false)} className="p-1 rounded bg-brand-line/10">
                   <X size={16} color={BRAND_COLORS.textSoft} />
@@ -1300,7 +1349,7 @@ export default function TripDetail() {
               <View className="gap-4">
                 <View className="gap-1.5">
                   <Text className="text-sm font-bold text-brand-textSoft">Tên hoạt động</Text>
-                  <TextInput value={editTitle} onChangeText={setEditTitle} className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
+                  <TextInput testID="input-activity-title" value={editTitle} onChangeText={setEditTitle} className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
                 </View>
                 <View className="gap-1.5">
                   <Text className="text-sm font-bold text-brand-textSoft">Mô tả</Text>
@@ -1318,7 +1367,7 @@ export default function TripDetail() {
                 </View>
                 <View className="gap-1.5">
                   <Text className="text-sm font-bold text-brand-textSoft">Chi phí (VND)</Text>
-                  <TextInput value={editCost} onChangeText={setEditCost} keyboardType="numeric" placeholder="Để trống nếu chưa có giá" className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
+                  <TextInput testID="input-activity-cost" value={editCost} onChangeText={setEditCost} keyboardType="numeric" placeholder="Để trống nếu chưa có giá" className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
                 </View>
                 <View className="gap-1.5">
                   <Text className="text-sm font-bold text-brand-textSoft">Trạng thái</Text>
@@ -1335,13 +1384,32 @@ export default function TripDetail() {
                   <Text className="text-xs font-bold text-brand-textSoft">Hủy bỏ</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => { if (!editTitle) return; editMutation.mutate({ title: editTitle, description: editDesc, start_time: editStartTime || null, end_time: editEndTime || null, estimated_cost: editCost.trim() === '' ? null : Number(editCost), status: editStatus, item_type: editItemType }); }}
-                  disabled={editMutation.isPending}
+                  testID="btn-save-activity"
+                  onPress={() => {
+                    if (!editTitle) return;
+                    const payload = {
+                      title: editTitle,
+                      description: editDesc,
+                      start_time: editStartTime || null,
+                      end_time: editEndTime || null,
+                      estimated_cost: editCost.trim() === '' ? null : Number(editCost),
+                      status: editStatus,
+                      item_type: editItemType
+                    };
+                    if (isAddingNewItem) {
+                      addItemMutation.mutate(payload);
+                    } else {
+                      editMutation.mutate(payload);
+                    }
+                  }}
+                  disabled={editMutation.isPending || addItemMutation.isPending}
                   className="flex-row items-center gap-1.5 px-5 py-3 rounded-xl bg-brand-primary"
-                  style={editMutation.isPending ? { opacity: 0.5 } : undefined}
+                  style={(editMutation.isPending || addItemMutation.isPending) ? { opacity: 0.5 } : undefined}
                 >
-                  {editMutation.isPending ? <ActivityIndicator size="small" color="white" /> : <Check size={16} color="white" />}
-                  <Text className="text-white text-xs font-bold">{editMutation.isPending ? 'Đang lưu...' : 'Lưu thay đổi'}</Text>
+                  {(editMutation.isPending || addItemMutation.isPending) ? <ActivityIndicator size="small" color="white" /> : <Check size={16} color="white" />}
+                  <Text className="text-white text-xs font-bold">
+                    {(editMutation.isPending || addItemMutation.isPending) ? 'Đang lưu...' : (isAddingNewItem ? 'Thêm hoạt động' : 'Lưu thay đổi')}
+                  </Text>
                 </Pressable>
               </View>
             </View>

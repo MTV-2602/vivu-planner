@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { View, ActivityIndicator, Platform } from 'react-native';
+import { View, ActivityIndicator, Platform, StyleSheet } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import {
   useFonts,
@@ -17,6 +17,10 @@ import {
 } from '@expo-google-fonts/roboto';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import '../global.css';
+
+if (typeof (StyleSheet as any).setFlag === 'function') {
+  (StyleSheet as any).setFlag('darkMode', 'class');
+}
 
 if (Platform.OS !== 'web') {
   Notifications.setNotificationHandler({

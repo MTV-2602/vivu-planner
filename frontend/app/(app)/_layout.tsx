@@ -1,9 +1,11 @@
-﻿import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../hooks/useAuth';
 import { Redirect, Stack } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
+import { ChatbotProvider } from '../../context/ChatbotContext';
+import { ChatbotWidget } from '../../components/ChatbotWidget';
 
 export default function AppLayout() {
-  const { session, loading } = useAuth();
+  const { session, loading, isAdmin } = useAuth();
 
   if (loading) {
     return (
@@ -14,6 +16,14 @@ export default function AppLayout() {
   }
 
   if (!session) return <Redirect href="/(auth)/dang-nhap" />;
+  if (isAdmin) return <Redirect href="/admin" />;
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <ChatbotProvider>
+      <View style={{ flex: 1 }}>
+        <Stack screenOptions={{ headerShown: false }} />
+        <ChatbotWidget />
+      </View>
+    </ChatbotProvider>
+  );
 }

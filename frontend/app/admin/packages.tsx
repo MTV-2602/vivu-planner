@@ -3,6 +3,7 @@ import { View, Text, ScrollView, ActivityIndicator, Pressable, TextInput } from 
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { BRAND_COLORS } from '../../constants';
 import { api } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import AdminNav from '../../components/admin/AdminNav';
 
@@ -50,6 +51,20 @@ export default function AdminPackages() {
     onSuccess: () => {
       showToast('Cập nhật cấu hình giá thành công!', 'success');
       refetchPlans();
+      try {
+        const realtimeChannel = supabase.channel('pricing_realtime');
+        realtimeChannel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            realtimeChannel.send({
+              type: 'broadcast',
+              event: 'plans_updated',
+              payload: { timestamp: Date.now() },
+            }).then(() => {
+              supabase.removeChannel(realtimeChannel);
+            });
+          }
+        });
+      } catch (e) {}
     },
     onError: (err: any) => showToast('Lỗi cập nhật cấu hình: ' + (err.response?.data?.error || err.message), 'error'),
   });

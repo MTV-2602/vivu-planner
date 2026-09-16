@@ -7,9 +7,12 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Compass, Plus, LogOut, Calendar, MapPin, Wallet, DollarSign,
   RefreshCw, User, Shield, WifiOff, Crown, Trash2, Sparkles, X,
+  ArrowRight, Zap, CheckCircle, MessageSquare,
 } from 'lucide-react-native';
 import { useAuth } from '../../../hooks/useAuth';
+import { useChatbot } from '../../../context/ChatbotContext';
 import { api } from '../../../lib/api';
+import { supabase } from '../../../lib/supabase';
 import { getCache, setCache, clearCache } from '../../../lib/cache';
 import Reveal from '../../../components/Reveal';
 import SystemClock from '../../../components/SystemClock';
@@ -80,6 +83,7 @@ function getTripStatusInfo(startDateStr: string, endDateStr: string, dbStatus: s
 export default function Dashboard() {
   const router = useRouter();
   const { user, isAdmin, signOut } = useAuth();
+  const { openChatbot } = useChatbot();
   const userEmail = user?.email || '';
 
   const [cachedTrips, setCachedTrips] = useState<Trip[] | null>(null);
@@ -95,12 +99,30 @@ export default function Dashboard() {
   } | null>(null);
 
   useEffect(() => {
+    if (isAdmin) {
+      router.replace(APP_ROUTES.ADMIN as any);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
     getCache<Trip[]>('trips').then(data => {
       if (data) { setCachedTrips(data); setFromCache(true); }
     });
   }, []);
 
   const [paymentSuccessMsg, setPaymentSuccessMsg] = useState('');
+
+  if (isAdmin) {
+    return (
+      <View className="flex-1 bg-brand-bg items-center justify-center p-6 gap-3">
+        <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
+        <Text className="text-sm font-bold text-brand-text">Tài khoản Quản trị viên (Admin)</Text>
+        <Text className="text-xs text-brand-textSoft text-center">
+          Quản trị viên chỉ quản lý nghiệp vụ hệ thống và không tạo chuyến đi cá nhân. Đang chuyển hướng về Bảng Quản Trị...
+        </Text>
+      </View>
+    );
+  }
 
   useEffect(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -125,6 +147,8 @@ export default function Dashboard() {
       return res.data;
     },
     placeholderData: cachedTrips ?? undefined,
+    enabled: !!user?.id,
+    retry: 1,
   });
 
   const { data: paymentStatus, refetch: refetchStatus } = useQuery({
@@ -133,7 +157,43 @@ export default function Dashboard() {
       const r = await api.get('/payment/status');
       return r.data;
     },
+    enabled: !!user?.id,
   });
+
+  // ─── LẮNG NGHE SUPABASE REALTIME ĐỒNG BỘ GÓI CƯỚC THỜI GIAN THỰC ───────
+  useEffect(() => {
+    if (!user?.id) return;
+
+    // 1. Kênh Broadcast trực tiếp từ Admin
+    const userChannel = supabase.channel(`user_channel_${user.id}`);
+    userChannel
+      .on('broadcast', { event: 'user_updated' }, () => {
+        refetchStatus();
+      })
+      .subscribe();
+
+    // 2. Kênh PostgreSQL Changes lắng nghe thay đổi trên bảng profiles
+    const profileChannel = supabase
+      .channel(`profile_realtime_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${user.id}`,
+        },
+        () => {
+          refetchStatus();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(userChannel);
+      supabase.removeChannel(profileChannel);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (paymentStatus?.dbWarning) {
@@ -181,7 +241,25 @@ export default function Dashboard() {
 
   return (
     <View style={{ flex: 1 }}>
-    <ScrollView className="flex-1 bg-brand-bg" contentContainerStyle={{ flexGrow: 1 }}>
+      {/* Admin Quick Banner */}
+      {isAdmin && (
+        <View className="bg-brand-primary px-6 py-2.5 flex-row items-center justify-between border-b border-brand-primaryStrong">
+          <View className="flex-row items-center gap-2">
+            <Shield size={15} color="#fff" />
+            <Text className="text-white text-xs font-bold">
+              ⚡ Bạn đang đăng nhập với tư cách Quản Trị Viên (Admin)
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => router.push(APP_ROUTES.ADMIN as any)}
+            className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg"
+            style={{ cursor: 'pointer' as any }}
+          >
+            <Text className="text-white text-xs font-extrabold">Vào Trang Quản Trị Hệ Thống →</Text>
+          </Pressable>
+        </View>
+      )}
+      <ScrollView className="flex-1 bg-brand-bg" contentContainerStyle={{ flexGrow: 1 }}>
       {/* Navbar */}
       <View className="bg-brand-bg border-b border-brand-line px-6 py-4">
         <View className="flex-row justify-between items-center">
@@ -331,21 +409,86 @@ export default function Dashboard() {
           </View>
         ) : !trips || trips.length === 0 ? (
           <Reveal>
-            <View className="bg-brand-bgAlt border border-brand-line/50 rounded-2xl p-12 items-center gap-4">
-              <Compass size={48} color={BRAND_COLORS.primary} />
-              <View className="items-center gap-1">
-                <Text className="text-lg font-bold text-brand-text">Bạn chưa tạo chuyến đi nào</Text>
-                <Text className="text-xs text-brand-textSoft text-center px-4">
-                  Hãy để ViVu Planner thiết kế lịch trình du lịch đầu tiên của bạn!
+            <View className="bg-brand-bgAlt border border-brand-line/60 rounded-3xl p-8 md:p-12 shadow-sm items-center text-center gap-6">
+              {/* Compass AI Icon */}
+              <View className="w-16 h-16 rounded-3xl bg-brand-primary/10 items-center justify-center border border-brand-primary/20 shadow-sm">
+                <Compass size={32} color={BRAND_COLORS.primary} />
+              </View>
+
+              <View className="items-center gap-2 max-w-xl">
+                <View className="flex-row items-center gap-1.5 px-3 py-1 rounded-full bg-brand-primary/10 border border-brand-primary/20">
+                  <Sparkles size={12} color={BRAND_COLORS.primary} />
+                  <Text className="text-brand-primary font-bold text-[11px] uppercase tracking-wider">
+                    Trợ Lý Du Lịch AI Thông Minh
+                  </Text>
+                </View>
+
+                <Text className="font-display font-black text-2xl md:text-3xl text-brand-text text-center">
+                  Bắt Đầu Hành Trình Của Bạn
+                </Text>
+
+                <Text className="text-xs md:text-sm text-brand-textSoft text-center leading-relaxed">
+                  Bạn chưa có chuyến đi nào được lưu. Hãy lên kế hoạch chuyến đi mới theo sở thích cá nhân, hoặc trò chuyện trực tiếp với trợ lý ViVu AI để được tư vấn lộ trình và tạo lịch trình tự động!
                 </Text>
               </View>
-              <Pressable
-                onPress={() => router.push(APP_ROUTES.NEW_TRIP as any)}
-                className="flex-row items-center gap-2 px-5 py-3 rounded-xl bg-brand-primary"
-              >
-                <Plus size={16} color="white" />
-                <Text className="text-white font-bold">Lên lịch trình ngay</Text>
-              </Pressable>
+
+              {/* Dual Action Buttons: Tạo chuyến đi mới & Trò chuyện cùng Chatbot AI */}
+              <View className="flex-row flex-wrap items-center justify-center gap-3.5 w-full max-w-md">
+                {/* Button 1: Tạo chuyến đi mới */}
+                <Pressable
+                  testID="create-new-trip-btn"
+                  onPress={() => router.push(APP_ROUTES.NEW_TRIP as any)}
+                  className="flex-1 flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-brand-primary shadow-md hover:bg-brand-primaryStrong"
+                  style={{ minWidth: 200, cursor: 'pointer' as any }}
+                >
+                  <Plus size={18} color="white" />
+                  <Text className="text-white font-bold text-sm">Lên Kế Hoạch Ngay</Text>
+                </Pressable>
+
+                {/* Button 2: Mở Chatbot Trợ Lý AI */}
+                <Pressable
+                  testID="open-ai-chat-btn"
+                  onPress={openChatbot}
+                  className="flex-1 flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-white border border-brand-primary/30 shadow-sm hover:bg-brand-primary/5"
+                  style={{ minWidth: 200, cursor: 'pointer' as any }}
+                >
+                  <MessageSquare size={17} color={BRAND_COLORS.primary} />
+                  <Text className="text-brand-primary font-extrabold text-sm">Chat Với ViVu AI</Text>
+                </Pressable>
+              </View>
+
+              {/* 3 Core Value Pillars */}
+              <View className="flex-row flex-wrap gap-4 pt-6 border-t border-brand-line/40 w-full max-w-2xl justify-around">
+                <View className="flex-row items-center gap-2.5">
+                  <View className="w-8 h-8 rounded-xl bg-brand-primary/10 items-center justify-center">
+                    <Zap size={16} color={BRAND_COLORS.primary} />
+                  </View>
+                  <View>
+                    <Text className="text-xs font-bold text-brand-text">Lịch trình cá nhân hóa</Text>
+                    <Text className="text-[10px] text-brand-textSoft">Theo sở thích & thời tiết thực</Text>
+                  </View>
+                </View>
+
+                <View className="flex-row items-center gap-2.5">
+                  <View className="w-8 h-8 rounded-xl bg-amber-500/10 items-center justify-center">
+                    <MapPin size={16} color="#D97706" />
+                  </View>
+                  <View>
+                    <Text className="text-xs font-bold text-brand-text">Bản đồ tối ưu lộ trình</Text>
+                    <Text className="text-[10px] text-brand-textSoft">Địa điểm xác thực thực tế</Text>
+                  </View>
+                </View>
+
+                <View className="flex-row items-center gap-2.5">
+                  <View className="w-8 h-8 rounded-xl bg-emerald-500/10 items-center justify-center">
+                    <CheckCircle size={16} color="#059669" />
+                  </View>
+                  <View>
+                    <Text className="text-xs font-bold text-brand-text">Kiểm soát ngân sách</Text>
+                    <Text className="text-[10px] text-brand-textSoft">Rõ ràng từng bữa ăn, lưu trú</Text>
+                  </View>
+                </View>
+              </View>
             </View>
           </Reveal>
         ) : (

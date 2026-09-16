@@ -3,6 +3,7 @@ import { WeatherForecast } from '../weather/weather.service';
 import { PlaceCandidate } from '../places/places.service';
 import { executeWithApiKeyRotation } from '../../utils/keyManager';
 import { AI_CONFIG } from '../../constants';
+import { getEffectiveAiConfig, callOpenAiCompatibleGateway } from './aiGateway.service';
 
 export interface ItineraryItem {
   item_type: 'accommodation' | 'transport' | 'dining' | 'attraction' | 'rental' | 'experience';
@@ -322,17 +323,143 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
   });
 
   try {
+    const aiConfig = await getEffectiveAiConfig();
+    const effectiveCustomTokens = aiConfig.maxTokens || 16384;
+    const effectiveGeminiTokens = aiConfig.geminiMaxTokens || 16384;
+
+    const requestedProvider = tripData?.ai_provider;
+    const shouldUseGateway = requestedProvider === 'custom_openai' || 
+                             (requestedProvider !== 'gemini' && aiConfig.isActive && aiConfig.provider === 'custom_openai');
+
+function safeParseJson(raw: string): any {
+  let cleaned = raw.trim();
+  const firstBrace = cleaned.indexOf('{');
+  if (firstBrace !== -1) {
+    cleaned = cleaned.substring(firstBrace);
+  } else {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  }
+
+  // 1. Parse chuẩn
+  try {
+    return JSON.parse(cleaned);
+  } catch (err1) {
+    // 2. Xóa trailing commas (dấu phẩy thừa trước ] hoặc })
+    let fixed = cleaned.replace(/,\s*([\]}])/g, '$1');
+    try {
+      return JSON.parse(fixed);
+    } catch (err2) {
+      // 3. Tự động đóng các ngoặc chưa đóng nếu JSON bị cắt cụt
+      let openBrackets: string[] = [];
+      let inString = false;
+      let escape = false;
+
+      for (let i = 0; i < fixed.length; i++) {
+        const char = fixed[i];
+        if (escape) {
+          escape = false;
+          continue;
+        }
+        if (char === '\\') {
+          escape = true;
+          continue;
+        }
+        if (char === '"') {
+          inString = !inString;
+          continue;
+        }
+        if (!inString) {
+          if (char === '{') openBrackets.push('}');
+          else if (char === '[') openBrackets.push(']');
+          else if (char === '}' || char === ']') {
+            if (openBrackets.length > 0 && openBrackets[openBrackets.length - 1] === char) {
+              openBrackets.pop();
+            }
+          }
+        }
+      }
+
+      if (inString) fixed += '"';
+      while (openBrackets.length > 0) {
+        fixed += openBrackets.pop();
+      }
+
+      try {
+        return JSON.parse(fixed);
+      } catch (err3) {
+        throw err1;
+      }
+    }
+  }
+}
+
+    if (shouldUseGateway) {
+      const messages = [
+        { role: 'system' as const, content: `${systemPrompt}\n\nĐẶC BIỆT DÀNH CHO BẢN CAO CẤP (AI PRO):\n1. YÊU CẦU ĐỘ PHONG PHÚ: Mỗi ngày trong lịch trình BẮT BUỘC phải có tối thiểu 4 đến 5 hoạt động phong phú trải dài từ sáng đến tối: Chỗ nghỉ (accommodation), Ăn sáng (dining), Tham quan buổi sáng (attraction), Ăn trưa đặc sản (dining), Điểm check-in buổi chiều (attraction), Ăn tối và trải nghiệm đêm (dining/experience).\n2. Điền chính xác tên quán ăn, khách sạn và địa điểm nổi tiếng thực tế kèm tọa độ lat/lng và địa chỉ chi tiết tại Việt Nam.\n3. Bắt buộc trả về JSON object thuần túy khớp cấu trúc: {"days":[{"day_number":1,"date":"YYYY-MM-DD","weather_note":"...","items":[{"item_type":"attraction","title":"...","description":"...","start_time":"08:00","end_time":"10:00","estimated_cost":100000,"order_index":0,"lat":16.0,"lng":108.0,"address":"..."}]}],"budget_summary":{"estimated_total":0,"remaining":0}}. Tuyệt đối không bọc ngoài bằng key nào khác!` },
+        { role: 'user' as const, content: userPrompt }
+      ];
+      const gatewayTokens = Math.max(effectiveCustomTokens, 32768);
+      const rawText = await callOpenAiCompatibleGateway({
+        messages,
+        jsonMode: true,
+        temperature: AI_CONFIG.DEFAULT_TEMPERATURE,
+        maxTokens: gatewayTokens
+      });
+      const parsed = safeParseJson(rawText);
+
+      let extractedDays = parsed.days || parsed.itinerary?.days || parsed.itinerary_days;
+      if (!Array.isArray(extractedDays) && Array.isArray(parsed)) {
+        extractedDays = parsed;
+      }
+      if (!Array.isArray(extractedDays)) {
+        throw new Error('AI Gateway response does not contain a valid "days" array');
+      }
+      parsed.days = extractedDays;
+
+      if (!parsed.budget_summary) {
+        parsed.budget_summary = {
+          estimated_total: calculateEstimatedTotal(parsed.days),
+          remaining: 0
+        };
+      }
+
+      // Validate google_place_ids to prevent hallucinations
+      const validIds = new Set<string>();
+      Object.values(candidatePlaces).forEach(list => {
+        list.forEach(place => validIds.add(place.google_place_id));
+      });
+      parsed.days.forEach((day: any) => {
+        if (!Array.isArray(day.items)) {
+          day.items = [];
+        }
+        day.items.forEach((item: any) => {
+          if (item.google_place_id && !validIds.has(item.google_place_id)) {
+            item.google_place_id = undefined;
+          }
+        });
+      });
+      return parsed as GeneratedItinerary;
+    }
+
     return await executeWithApiKeyRotation(async (apiKey) => {
       const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
+      const generatePromise = ai.models.generateContent({
         model: AI_CONFIG.DEFAULT_MODEL,
         contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
         config: {
           responseMimeType: AI_CONFIG.RESPONSE_MIME_TYPE,
           responseSchema: ITINERARY_JSON_SCHEMA as any,
-          temperature: AI_CONFIG.DEFAULT_TEMPERATURE
+          temperature: AI_CONFIG.DEFAULT_TEMPERATURE,
+          maxOutputTokens: effectiveGeminiTokens,
+          thinkingConfig: { thinkingBudget: 0 } as any
         }
       });
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Gemini generation timed out after 35s')), 35000)
+      );
+
+      const response = (await Promise.race([generatePromise, timeoutPromise])) as any;
 
       const text = response.text;
       if (!text) {
@@ -1104,7 +1231,8 @@ export async function chatWithItinerary(
   history: Array<{ role: 'user' | 'model'; content: string }>,
   tripData?: any,
   currentItinerary?: GeneratedItinerary,
-  weatherForecast?: WeatherForecast[]
+  weatherForecast?: WeatherForecast[],
+  aiProviderOverride?: 'gemini' | 'custom_openai'
 ): Promise<{ responseText: string; hasChanges: boolean; adaptedItinerary?: GeneratedItinerary; diff?: string; isCreateTrip?: boolean; createTripParams?: any }> {
   // Get current local date in Vietnam timezone (GMT+7)
   const nowUtc = new Date();
@@ -1224,6 +1352,85 @@ QUY TẮC PHẢN HỒI:
   };
 
   try {
+    const aiConfig = await getEffectiveAiConfig();
+    const effectiveProvider = aiProviderOverride || aiConfig.provider;
+    const isCustomGateway = (effectiveProvider === 'custom_openai') && Boolean(aiConfig.baseUrl && aiConfig.apiKey);
+
+    if (isCustomGateway) {
+      const formattedMessages = [
+        { role: 'system' as const, content: `${systemPrompt}\n\nIMPORTANT: Return ONLY a valid JSON object matching the responseSchema. No markdown ticks, strictly raw JSON.` },
+        ...history.map(h => ({
+          role: (h.role === 'model' ? 'assistant' : 'user') as 'assistant' | 'user',
+          content: h.content
+        })),
+        { role: 'user' as const, content: message }
+      ];
+
+      const chatTokens = Math.max(aiConfig.maxTokens || 32768, 16384);
+      const rawText = await callOpenAiCompatibleGateway({
+        messages: formattedMessages,
+        jsonMode: true,
+        temperature: AI_CONFIG.DEFAULT_TEMPERATURE,
+        maxTokens: chatTokens
+      });
+      let cleaned = rawText.trim();
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+      } else {
+        cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      }
+      let parsed: any;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (jsonErr) {
+        console.warn('[chatWithItinerary] Custom Gateway returned non-JSON, fallback:', rawText);
+        parsed = {
+          responseText: rawText,
+          hasChanges: false,
+          isCreateTrip: false,
+          createTripParams: null
+        };
+      }
+      let diff = '';
+
+      if (parsed.hasChanges && parsed.adaptedItinerary && currentItinerary && tripData) {
+        const budgetTotal = Number(tripData.budget_total) || currentItinerary.budget_summary.estimated_total + currentItinerary.budget_summary.remaining;
+        parsed.adaptedItinerary = enforceBudgetLimit(parsed.adaptedItinerary, budgetTotal, tripData);
+        diff = generateItineraryDiff(currentItinerary, parsed.adaptedItinerary, 'other');
+      }
+
+      let normalizedCreateTripParams: any = undefined;
+      if (parsed.isCreateTrip && (parsed.createTripParams || parsed.params)) {
+        const p = parsed.createTripParams || parsed.params || {};
+        const dest = p.destination_city || p.destination || p.city;
+        const budget = Number(p.budget_total || p.budget) || 5000000;
+        const count = Number(p.traveler_count || p.travelers || p.guests) || 1;
+        normalizedCreateTripParams = {
+          title: p.title || `Du lịch ${dest || 'Việt Nam'}`,
+          destination_city: dest,
+          start_date: p.start_date,
+          end_date: p.end_date,
+          budget_total: budget,
+          traveler_count: count,
+          traveler_type: p.traveler_type || (count === 2 ? 'couple' : count > 2 ? 'family' : 'solo'),
+          special_requirements: p.special_requirements || ''
+        };
+      }
+
+      const extractedResponseText = parsed.responseText || parsed.reply || parsed.message || (typeof parsed === 'string' ? parsed : rawText);
+
+      return {
+        responseText: extractedResponseText,
+        hasChanges: Boolean(parsed.hasChanges),
+        adaptedItinerary: parsed.adaptedItinerary,
+        diff: diff || parsed.diff,
+        isCreateTrip: Boolean(parsed.isCreateTrip),
+        createTripParams: normalizedCreateTripParams || parsed.createTripParams
+      };
+    }
+
     return await executeWithApiKeyRotation(async (apiKey) => {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({

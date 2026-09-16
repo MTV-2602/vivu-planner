@@ -444,6 +444,8 @@ export default function AuthScreen({ mode }: Props) {
 
           {/* Submit */}
           <Pressable
+            accessibilityRole="button"
+            testID="submit-auth-btn"
             onPress={handleSubmit}
             disabled={loading}
             style={{
@@ -602,7 +604,7 @@ export default function AuthScreen({ mode }: Props) {
                 {forgotStep === 'otp' && (
                   <View style={{ gap: 14 }}>
                     <Text style={{ fontSize: 13, color: '#475569', lineHeight: 20 }}>
-                      Mã xác nhận gồm 6 chữ số đã được gửi đến <strong>{forgotEmail}</strong>. Mã có hiệu lực trong 10 phút.
+                      Mã xác nhận gồm 6 chữ số đã được gửi đến <Text style={{ fontWeight: '700', color: '#0F172A' }}>{forgotEmail}</Text>. Mã có hiệu lực trong 10 phút.
                     </Text>
                     <View style={{ gap: 6 }}>
                       <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>Mã OTP (6 chữ số)</Text>

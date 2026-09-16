@@ -3,14 +3,16 @@ import {
   View, Text, ScrollView, Pressable, TextInput,
   Animated, Platform, KeyboardAvoidingView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   Compass, Sparkles, ArrowLeft, ArrowRight,
-  MapPin, DollarSign, Heart, AlertTriangle,
+  MapPin, DollarSign, Heart, AlertTriangle, Crown, Zap, Lock,
 } from 'lucide-react-native';
 import { api } from '../../../lib/api';
 import { clearCache } from '../../../lib/cache';
 import { requestNotificationPermission, scheduleTripReminder } from '../../../lib/notifications';
+import { useAuth } from '../../../hooks/useAuth';
+import PremiumModal from '../../../components/PremiumModal';
 import Reveal from '../../../components/Reveal';
 import {
   VIETNAMESE_CITIES, TRAVELER_TYPES, PREFERENCE_OPTIONS, BRAND_COLORS,
@@ -221,6 +223,7 @@ function LoadingScreen({ stage, onCancel }: { stage: number; onCancel: () => voi
 
 export default function TripWizard() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ city?: string; days?: string; budget?: string; theme?: string }>();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState(0);
@@ -236,10 +239,37 @@ export default function TripWizard() {
   };
 
   // Form state
+  const { isPremium, isAdmin } = useAuth();
+
+  useEffect(() => {
+    if (isAdmin) {
+      router.replace(APP_ROUTES.ADMIN as any);
+    }
+  }, [isAdmin]);
+
+  if (isAdmin) {
+    return (
+      <View className="flex-1 bg-brand-bg items-center justify-center p-6 gap-3">
+        <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
+        <Text className="text-sm font-bold text-brand-text">Tài khoản Quản trị viên (Admin)</Text>
+        <Text className="text-xs text-brand-textSoft text-center">
+          Quản trị viên chỉ quản lý nghiệp vụ hệ thống và không tạo chuyến đi cá nhân. Đang chuyển hướng về Bảng Quản Trị...
+        </Text>
+      </View>
+    );
+  }
+
+  const [selectedAiProvider, setSelectedAiProvider] = useState<'gemini' | 'custom_openai'>('gemini');
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [title, setTitle] = useState('');
   const [destinationCity, setDestinationCity] = useState(VIETNAMESE_CITIES[0]);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 2);
+  const defaultEndDate = new Date(tomorrowDate);
+  defaultEndDate.setDate(tomorrowDate.getDate() + 3);
+
+  const [startDate, setStartDate] = useState(formatToISODate(tomorrowDate));
+  const [endDate, setEndDate] = useState(formatToISODate(defaultEndDate));
   const [travelerCount, setTravelerCount] = useState(1);
   const [travelerType, setTravelerType] = useState('solo');
   const [budgetTotal, setBudgetTotal] = useState(5000000);
@@ -247,6 +277,35 @@ export default function TripWizard() {
   const [healthConditions, setHealthConditions] = useState('');
   const [specialRequirements, setSpecialRequirements] = useState('');
   const [lodgingPreference, setLodgingPreference] = useState<'single' | 'multiple'>('single');
+
+  // Đọc params từ Smart Empty State hoặc liên kết ngoài để tự động điền
+  useEffect(() => {
+    if (params.city) {
+      const cityDecoded = decodeURIComponent(params.city);
+      const matchedCity = VIETNAMESE_CITIES.find(c => c.toLowerCase() === cityDecoded.toLowerCase()) || cityDecoded;
+      setDestinationCity(matchedCity);
+      setTitle(`Khám phá ${matchedCity}`);
+
+      const daysCount = parseInt(params.days || '3', 10) || 3;
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const endDay = new Date(tomorrow);
+      endDay.setDate(tomorrow.getDate() + (daysCount - 1));
+
+      setStartDate(formatToISODate(tomorrow));
+      setEndDate(formatToISODate(endDay));
+
+      if (params.budget) {
+        const b = parseInt(params.budget, 10);
+        if (!isNaN(b) && b > 0) setBudgetTotal(b);
+      }
+
+      if (params.theme) {
+        const themeDecoded = decodeURIComponent(params.theme);
+        setSelectedPrefs(prev => Array.from(new Set([...prev, themeDecoded])));
+      }
+    }
+  }, [params.city, params.days, params.budget, params.theme]);
 
 
   // Real-time validation for dates
@@ -411,6 +470,7 @@ export default function TripWizard() {
         preferences: formattedPrefs,
         health_conditions: healthConditions,
         special_requirements: fullSpecialRequirements,
+        ai_provider: selectedAiProvider,
       }, { signal: controller.signal });
       clearInterval(stageInterval);
       // Invalidate trips cache + schedule reminder notification
@@ -729,6 +789,83 @@ export default function TripWizard() {
                     />
                   </View>
 
+                  {/* ── LỰA CHỌN AI ENGINE ── */}
+                  <View className="gap-2.5">
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-sm font-bold text-brand-textSoft">Lựa chọn Mô hình Trí Tuệ Nhân Tạo (AI)</Text>
+                      {(isPremium || isAdmin) ? (
+                        <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-md bg-[#FFF2E0] border border-brand-accent/30">
+                          <Crown size={11} color={BRAND_COLORS.accent} />
+                          <Text className="text-[10px] font-extrabold text-brand-accent">PRO UNLOCKED</Text>
+                        </View>
+                      ) : (
+                        <Pressable onPress={() => setShowPremiumModal(true)} className="flex-row items-center gap-1 px-2 py-0.5 rounded-md bg-brand-bgAlt border border-brand-line/40">
+                          <Crown size={11} color={BRAND_COLORS.gold} />
+                          <Text className="text-[10px] font-bold text-brand-textSoft">Nâng cấp Pro</Text>
+                        </Pressable>
+                      )}
+                    </View>
+
+                    <View className="flex-row gap-3">
+                      {/* Option 1: AI Tiêu Chuẩn (Mặc định) */}
+                      <Pressable
+                        testID="ai-engine-gemini-card"
+                        onPress={() => setSelectedAiProvider('gemini')}
+                        className={`flex-1 p-3.5 rounded-xl border flex-col justify-between gap-2 ${selectedAiProvider === 'gemini' ? 'bg-brand-primary/10 border-brand-primary' : 'bg-brand-bg border-brand-line/50'}`}
+                      >
+                        <View className="flex-row items-center justify-between">
+                          <View className="flex-row items-center gap-1.5">
+                            <Zap size={14} color={BRAND_COLORS.primary} />
+                            <Text className={`text-xs font-bold ${selectedAiProvider === 'gemini' ? 'text-brand-primary' : 'text-brand-text'}`}>
+                              AI Tiêu Chuẩn
+                            </Text>
+                          </View>
+                          <View className="px-1.5 py-0.5 rounded bg-brand-line/20">
+                            <Text className="text-[9px] font-bold text-brand-textSoft">Miễn phí</Text>
+                          </View>
+                        </View>
+                        <Text className="text-[10px] text-brand-textSoft leading-tight">
+                          Tốc độ nhanh, gợi ý điểm đến phổ biến và lịch trình cơ bản.
+                        </Text>
+                      </Pressable>
+
+                      {/* Option 2: AI Pro (Độc quyền cho gói Pro) */}
+                      <Pressable
+                        testID="ai-engine-custom-card"
+                        onPress={() => {
+                          if (isPremium || isAdmin) {
+                            setSelectedAiProvider('custom_openai');
+                          } else {
+                            setShowPremiumModal(true);
+                          }
+                        }}
+                        className={`flex-1 p-3.5 rounded-xl border flex-col justify-between gap-2 ${selectedAiProvider === 'custom_openai' ? 'bg-brand-accent/10 border-brand-accent' : 'bg-brand-bg border-brand-line/50'}`}
+                      >
+                        <View className="flex-row items-center justify-between">
+                          <View className="flex-row items-center gap-1.5">
+                            <Crown size={14} color={BRAND_COLORS.accent} />
+                            <Text className={`text-xs font-bold ${selectedAiProvider === 'custom_openai' ? 'text-brand-accent' : 'text-brand-text'}`}>
+                              AI Pro
+                            </Text>
+                          </View>
+                          {(isPremium || isAdmin) ? (
+                            <View className="px-1.5 py-0.5 rounded bg-brand-accent/20">
+                              <Text className="text-[9px] font-extrabold text-brand-accent">PRO</Text>
+                            </View>
+                          ) : (
+                            <View className="flex-row items-center gap-0.5 px-1.5 py-0.5 rounded bg-brand-line/30">
+                              <Lock size={9} color={BRAND_COLORS.textSoft} />
+                              <Text className="text-[9px] font-extrabold text-brand-textSoft">PRO</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text className="text-[10px] text-brand-textSoft leading-tight">
+                          Tối ưu ngân sách sâu, lộ trình thông minh và khám phá điểm đến độc lạ.
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
                   {/* Summary */}
                   <View className="p-4 rounded-xl bg-brand-bgAlt border border-brand-line/50 gap-2.5">
                     <Text className="font-bold text-brand-text text-sm border-b border-brand-line/30 pb-2">Tóm tắt hành trình</Text>
@@ -764,6 +901,7 @@ export default function TripWizard() {
 
               {step < 4 ? (
                 <Pressable
+                  testID="btn-next-step"
                   onPress={handleNext}
                   disabled={!!errorMsg}
                   className={`flex-row items-center gap-1.5 px-5 py-3 rounded-xl ${!!errorMsg ? 'bg-brand-primary/40 opacity-50' : 'bg-brand-primary'}`}
@@ -773,6 +911,7 @@ export default function TripWizard() {
                 </Pressable>
               ) : (
                 <Pressable
+                  testID="btn-submit-trip"
                   onPress={handleSubmit}
                   disabled={!!errorMsg}
                   className={`flex-row items-center gap-2 px-6 py-3.5 rounded-xl ${!!errorMsg ? 'bg-brand-accent/40 opacity-50' : 'bg-brand-accent'}`}
@@ -785,6 +924,16 @@ export default function TripWizard() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Premium Upgrade Modal */}
+      <PremiumModal
+        visible={showPremiumModal}
+        onClose={() => setShowPremiumModal(false)}
+        onActivated={() => {
+          setShowPremiumModal(false);
+          setSelectedAiProvider('custom_openai');
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
