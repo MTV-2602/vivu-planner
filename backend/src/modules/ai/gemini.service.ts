@@ -330,7 +330,7 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
 
     const requestedProvider = tripData?.ai_provider;
     const hasActiveGateway = Boolean(aiConfig.isActive && aiConfig.apiKey);
-    const shouldUseGateway = requestedProvider === 'custom_openai' || hasActiveGateway;
+    const shouldUseGateway = requestedProvider === 'custom_openai' || (requestedProvider !== 'gemini' && hasActiveGateway);
 
 function safeParseJson(raw: string): any {
   if (!raw || typeof raw !== 'string') {

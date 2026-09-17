@@ -469,7 +469,7 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       candidatePlaces
     );
 
-    const isAiPro = req.body.ai_provider === 'custom_openai' || Boolean(isUserPremium(profile));
+    const isAiPro = req.body.ai_provider === 'custom_openai' || (!req.body.ai_provider && Boolean(isUserPremium(profile)));
     const enrichedPreferences = {
       ...(preferences || {}),
       is_ai_pro: isAiPro,
