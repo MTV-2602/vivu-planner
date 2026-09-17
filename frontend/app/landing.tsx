@@ -246,16 +246,16 @@ export default function Landing() {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#FBF5EA' }}>
+    <View style={{ flex: 1, backgroundColor: '#150A16' }}>
 
       {/* ── NAVBAR ──────────────────────────────────────────────────────────── */}
       <View style={{
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingHorizontal: px, paddingVertical: isMobile ? 12 : 16, zIndex: 100,
-        backgroundColor: scrolled ? 'rgba(251,245,234,0.92)' : '#FBF5EA',
+        paddingHorizontal: px, paddingVertical: isMobile ? 14 : 18, zIndex: 100,
+        backgroundColor: scrolled ? 'rgba(21, 10, 22, 0.92)' : 'transparent',
         borderBottomWidth: scrolled ? 1 : 0,
-        borderBottomColor: 'rgba(31,111,84,0.12)',
-        ...(isWeb && scrolled ? { backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } as any : {}),
+        borderBottomColor: 'rgba(255, 255, 255, 0.12)',
+        ...(isWeb && scrolled ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' } as any : {}),
       }}>
         <Pressable
           onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
@@ -263,26 +263,29 @@ export default function Landing() {
         >
           <View style={{
             width: isMobile ? 32 : 38, height: isMobile ? 32 : 38, borderRadius: 12,
-            backgroundColor: BRAND_COLORS.primary, alignItems: 'center', justifyContent: 'center',
-            shadowColor: BRAND_COLORS.primary, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 8,
+            backgroundColor: 'rgba(255, 255, 255, 0.15)', alignItems: 'center', justifyContent: 'center',
+            borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.3)',
           }}>
-            <Compass size={isMobile ? 16 : 20} color="#fff" />
+            <Compass size={isMobile ? 16 : 20} color="#FFF" />
           </View>
-          <Text style={{ fontFamily: F.loraBold, fontSize: isMobile ? 16 : 19, color: BRAND_COLORS.primary, letterSpacing: -0.3 }}>
+          <Text style={{ fontFamily: F.loraBold, fontSize: isMobile ? 16 : 20, color: '#FFFFFF', letterSpacing: -0.3 }}>
             ViVu Planner
           </Text>
         </Pressable>
 
         {isWeb && !isMobile && (
           <View style={{ flexDirection: 'row', gap: 36, alignItems: 'center' }}>
-            <Pressable onPress={() => scrollRef.current?.scrollTo({ y: featuresSectionY, animated: true })}>
-              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: BRAND_COLORS.textSoft }}>Tính năng</Text>
-            </Pressable>
             <Pressable onPress={() => scrollRef.current?.scrollTo({ y: howItWorksSectionY, animated: true })}>
-              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: BRAND_COLORS.textSoft }}>Cách dùng</Text>
+              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: 'rgba(255,255,255,0.75)' }}>Cách dùng</Text>
+            </Pressable>
+            <Pressable onPress={() => scrollRef.current?.scrollTo({ y: featuresSectionY, animated: true })}>
+              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: 'rgba(255,255,255,0.75)' }}>Tính năng</Text>
             </Pressable>
             <Pressable onPress={() => scrollRef.current?.scrollTo({ y: pricingSectionY, animated: true })}>
-              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: BRAND_COLORS.textSoft }}>Bảng giá</Text>
+              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: 'rgba(255,255,255,0.75)' }}>Bảng giá</Text>
+            </Pressable>
+            <Pressable onPress={() => scrollRef.current?.scrollTo({ y: pricingSectionY, animated: true })}>
+              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: 'rgba(255,255,255,0.75)' }}>Hỗ trợ</Text>
             </Pressable>
           </View>
         )}
@@ -291,7 +294,10 @@ export default function Landing() {
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <Pressable
               onPress={() => router.push(dashPath as any)}
-              style={{ paddingHorizontal: isMobile ? 14 : 18, paddingVertical: 10, borderRadius: 100, backgroundColor: BRAND_COLORS.primary }}
+              style={{
+                paddingHorizontal: isMobile ? 14 : 20, paddingVertical: 10, borderRadius: 100,
+                backgroundColor: 'rgba(255, 255, 255, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.3)',
+              }}
             >
               <Text style={{ fontFamily: F.bold, fontSize: 13, color: '#fff' }}>
                 {isAdmin ? 'Quản trị' : isMobile ? 'Dashboard' : 'Bảng điều khiển'}
@@ -300,28 +306,28 @@ export default function Landing() {
             {!isMobile && (
               <Pressable
                 onPress={handleSignOut}
-                style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 100, borderWidth: 1, borderColor: 'rgba(27,36,32,0.18)' }}
+                style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 100, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
               >
-                <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: BRAND_COLORS.textSoft }}>Đăng xuất</Text>
+                <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: 'rgba(255,255,255,0.8)' }}>Đăng xuất</Text>
               </Pressable>
             )}
           </View>
         ) : (
-          <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
             {!isMobile && (
-              <Pressable
-                onPress={() => router.push(APP_ROUTES.SIGN_IN as any)}
-                style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 100, borderWidth: 1.5, borderColor: BRAND_COLORS.primary }}
-              >
-                <Text style={{ fontFamily: F.bold, fontSize: 13, color: BRAND_COLORS.primary }}>Đăng Nhập</Text>
+              <Pressable onPress={() => router.push(APP_ROUTES.SIGN_IN as any)}>
+                <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: '#FFFFFF' }}>Đăng nhập</Text>
               </Pressable>
             )}
             <Pressable
               onPress={() => router.push((isMobile ? APP_ROUTES.SIGN_IN : APP_ROUTES.SIGN_UP) as any)}
-              style={{ paddingHorizontal: isMobile ? 16 : 20, paddingVertical: 10, borderRadius: 100, backgroundColor: BRAND_COLORS.primary }}
+              style={{
+                paddingHorizontal: isMobile ? 16 : 22, paddingVertical: 10, borderRadius: 100,
+                backgroundColor: 'rgba(255, 255, 255, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.35)',
+              }}
             >
               <Text style={{ fontFamily: F.bold, fontSize: 13, color: '#fff' }}>
-                {isMobile ? 'Đăng Nhập' : 'Bắt Đầu Ngay'}
+                {isMobile ? 'Đăng nhập' : 'Tạo Tài Khoản'}
               </Text>
             </Pressable>
           </View>
@@ -338,262 +344,246 @@ export default function Landing() {
         scrollEventThrottle={16}
       >
 
-        {/* ── HERO ──────────────────────────────────────────────────────────── */}
+        {/* ── HERO SUNSET TWILIGHT SECTION ───────────────────────────────────── */}
         <Animated.View style={{ opacity: heroAlpha }}>
           <View style={{
             paddingHorizontal: px,
-            paddingTop: isMobile ? 36 : 72,
-            paddingBottom: isMobile ? 44 : 88,
-            backgroundColor: '#FBF5EA',
+            paddingTop: isMobile ? 36 : 64,
+            paddingBottom: isMobile ? 40 : 72,
+            alignItems: 'center',
+            backgroundColor: '#2E1325',
+            ...(isWeb ? {
+              background: 'linear-gradient(180deg, #150A16 0%, #351528 35%, #6B293C 70%, #B84C55 100%)',
+            } as any : {}),
           }}>
-            <View style={{
-              flexDirection: isMobile ? 'column' : 'row',
-              gap: isMobile ? 28 : 64,
-              alignItems: isMobile ? 'stretch' : 'center',
-            }}>
+            
+            {/* Center Content Container */}
+            <View style={{ width: '100%', maxWidth: 840, alignItems: 'center', gap: isMobile ? 20 : 26 }}>
 
-              {/* Left: content */}
-              <View style={{ flex: isMobile ? undefined : 1, gap: isMobile ? 22 : 28 }}>
-
-                <Animated.View style={{ transform: [{ translateY: badgeY }] }}>
-                  <Reveal delay={0}>
-                    <View style={{
-                      alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center',
-                      gap: 8, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 100,
-                      backgroundColor: 'rgba(31,111,84,0.08)',
-                      borderWidth: 1, borderColor: 'rgba(31,111,84,0.22)',
-                    }}>
-                      <Sparkles size={13} color={BRAND_COLORS.primary} />
-                      <Text style={{ fontFamily: F.bold, fontSize: 11, color: BRAND_COLORS.primary, letterSpacing: 0.9, textTransform: 'uppercase' }}>
-                        AI thật · Địa điểm thật · Thích ứng thật
-                      </Text>
-                    </View>
-                  </Reveal>
-                </Animated.View>
-
-                <Animated.View style={{ transform: [{ translateY: titleY }] }}>
-                  <Reveal delay={80}>
-                    <Text style={{ fontFamily: F.loraBold, fontSize: isMobile ? 36 : 54, lineHeight: isMobile ? 46 : 68, color: '#1B2420' }}>
-                      Du lịch Việt Nam{'\n'}
-                      <Text style={{ color: BRAND_COLORS.primary }}>Trọn Vẹn,</Text>{'\n'}Không Lo Nghĩ
-                    </Text>
-                  </Reveal>
-                </Animated.View>
-
-                <Animated.View style={{ transform: [{ translateY: subtitleY }] }}>
-                  <Reveal delay={160}>
-                    <Text style={{ fontFamily: F.regular, fontSize: isMobile ? 15 : 17, lineHeight: isMobile ? 26 : 30, color: BRAND_COLORS.textSoft, maxWidth: 480 }}>
-                      Tự động xây dựng lịch trình cá nhân hóa dựa trên ngân sách thực tế, dữ liệu thời tiết và khả năng tự động thích ứng sự cố trong suốt chuyến đi.
-                    </Text>
-                  </Reveal>
-                </Animated.View>
-
-                {/* Quick Search Box */}
-                <Reveal delay={200}>
+              {/* Pill Badge */}
+              <Animated.View style={{ transform: [{ translateY: badgeY }] }}>
+                <Reveal delay={0}>
                   <View style={{
-                    flexDirection: isMobile ? 'column' : 'row',
-                    alignItems: isMobile ? 'stretch' : 'center',
-                    backgroundColor: '#fff',
-                    borderRadius: isMobile ? 16 : 100,
-                    paddingLeft: 18,
-                    paddingRight: 6,
-                    paddingVertical: 6,
-                    borderWidth: 1,
-                    borderColor: 'rgba(31,111,84,0.25)',
-                    shadowColor: BRAND_COLORS.primary,
-                    shadowOffset: { width: 0, height: 6 },
-                    shadowOpacity: 0.08,
-                    shadowRadius: 20,
-                    elevation: 4,
-                    gap: isMobile ? 10 : 0,
+                    flexDirection: 'row', alignItems: 'center', gap: 8,
+                    paddingHorizontal: 18, paddingVertical: 9, borderRadius: 100,
+                    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                    borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)',
+                    ...(isWeb ? { backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any : {}),
                   }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingVertical: isMobile ? 6 : 0 }}>
-                      <Search size={18} color={BRAND_COLORS.primary} style={{ marginRight: 10 }} />
-                      <TextInput
-                        value={quickDestination}
-                        onChangeText={setQuickDestination}
-                        onSubmitEditing={handleQuickSearchSubmit}
-                        placeholder="Bạn muốn đi đâu? (Ví dụ: Đà Nẵng, Phú Quốc, Sapa...)"
-                        placeholderTextColor={BRAND_COLORS.textMuted}
-                        style={{
-                          flex: 1,
-                          fontFamily: F.regular,
-                          fontSize: 14,
-                          color: '#1B2420',
-                          outlineStyle: 'none' as any,
-                        }}
-                      />
-                    </View>
-                    <Pressable
-                      onPress={handleQuickSearchSubmit}
-                      style={{
-                        backgroundColor: BRAND_COLORS.accent,
-                        paddingHorizontal: 22,
-                        paddingVertical: 14,
-                        borderRadius: 100,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 8,
-                      }}
-                    >
-                      <Text style={{ fontFamily: F.bold, fontSize: 14, color: '#fff' }}>Lập Lịch Trình</Text>
-                      <ArrowRight size={15} color="#fff" />
-                    </Pressable>
+                    <Sparkles size={14} color="#FFF" />
+                    <Text style={{ fontFamily: F.semiBold, fontSize: 12, color: '#FFFFFF', letterSpacing: 0.5 }}>
+                      ✨ AI-Powered Travel Planning & Booking
+                    </Text>
                   </View>
                 </Reveal>
+              </Animated.View>
 
-                <Animated.View style={{ transform: [{ translateY: citiesY }] }}>
-                  <Reveal delay={240}>
-                    <View style={{ gap: 8 }}>
-                      <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: BRAND_COLORS.textMuted, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                        Điểm đến phổ biến được ưa thích:
-                      </Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                        {VIETNAMESE_CITIES.map((city) => (
-                          <Pressable
-                            key={city}
-                            onPress={() => {
-                              setQuickDestination(city);
-                              if (isLoggedIn) {
-                                router.push(`${APP_ROUTES.NEW_TRIP}?destination=${encodeURIComponent(city)}` as any);
-                              } else {
-                                router.push(`${APP_ROUTES.SIGN_UP}?destination=${encodeURIComponent(city)}` as any);
-                              }
-                            }}
-                            style={{
-                              flexDirection: 'row', alignItems: 'center', gap: 6,
-                              paddingHorizontal: 12, paddingVertical: 7, borderRadius: 100,
-                              backgroundColor: '#fff',
-                              borderWidth: 1, borderColor: 'rgba(27,36,32,0.1)',
-                              shadowColor: '#1B2420', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6,
-                            }}
-                          >
-                            <Text style={{ fontSize: 12 }}>{CITY_EMOJIS[city]}</Text>
-                            <Text style={{ fontFamily: F.semiBold, fontSize: 12, color: BRAND_COLORS.textSoft }}>{city}</Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
-                  </Reveal>
-                </Animated.View>
-
-                <Animated.View style={{ transform: [{ translateY: ctaY }] }}>
-                  <Reveal delay={240}>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                      <Pressable
-                        onPress={() => router.push(isLoggedIn ? (dashPath as any) : (APP_ROUTES.SIGN_UP as any))}
-                        style={{
-                          flex: isMobile ? 1 : undefined, minWidth: isMobile ? 140 : undefined,
-                          paddingVertical: 16, paddingHorizontal: 28,
-                          borderRadius: 12, backgroundColor: BRAND_COLORS.accent,
-                          alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8,
-                        }}
-                      >
-                        <Text style={{ fontFamily: F.bold, fontSize: 14, color: '#fff' }}>
-                          {isLoggedIn ? 'Đến bảng điều khiển' : 'Bắt đầu miễn phí'}
-                        </Text>
-                        <ArrowRight size={15} color="#fff" />
-                      </Pressable>
-                      <Pressable
-                        onPress={() => scrollRef.current?.scrollTo({ y: howItWorksSectionY, animated: true })}
-                        style={{
-                          flex: isMobile ? 1 : undefined, minWidth: isMobile ? 120 : undefined,
-                          paddingVertical: 16, paddingHorizontal: 28,
-                          borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(27,36,32,0.18)',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: BRAND_COLORS.textSoft }}>Cách dùng</Text>
-                      </Pressable>
-                    </View>
-                  </Reveal>
-                </Animated.View>
-
-              </View>
-
-              {/* Right: AI preview card */}
-              <Animated.View style={{ transform: [{ translateY: cardY }], width: isMobile ? '100%' : 420, flexShrink: 0 }}>
-                <Reveal delay={isMobile ? 300 : 160}>
-                  <View style={{
-                    backgroundColor: '#fff', borderRadius: 22, borderWidth: 0.5,
-                    borderColor: 'rgba(27,36,32,0.08)', padding: 20, gap: 10,
-                    shadowColor: '#1B2420',
-                    shadowOffset: { width: 0, height: isMobile ? 8 : 20 },
-                    shadowOpacity: isMobile ? 0.07 : 0.1,
-                    shadowRadius: isMobile ? 24 : 48,
-                    elevation: isMobile ? 6 : 14,
+              {/* Main Headline */}
+              <Animated.View style={{ transform: [{ translateY: titleY }], width: '100%' }}>
+                <Reveal delay={80}>
+                  <Text style={{
+                    fontFamily: F.loraBold,
+                    fontSize: isMobile ? 34 : 56,
+                    lineHeight: isMobile ? 44 : 68,
+                    color: '#FFFFFF',
+                    textAlign: 'center',
+                    letterSpacing: -0.5,
                   }}>
-                    <View style={{
-                      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                      paddingBottom: 14, borderBottomWidth: 0.5, borderBottomColor: 'rgba(27,36,32,0.07)',
-                    }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <View style={{
-                          width: 36, height: 36, borderRadius: 10,
-                          backgroundColor: `${BRAND_COLORS.primary}15`, alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          <Sparkles size={16} color={BRAND_COLORS.primary} />
-                        </View>
-                        <View>
-                          <Text style={{ fontFamily: F.bold, fontSize: 13, color: '#1B2420' }}>Lịch trình từ ViVu AI</Text>
-                          <Text style={{ fontFamily: F.regular, fontSize: 11, color: BRAND_COLORS.textMuted, marginTop: 1 }}>
-                            Hà Nội · 3 ngày 2 đêm · 2 người
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7, backgroundColor: `${BRAND_COLORS.primary}12` }}>
-                        <Text style={{ fontFamily: F.semiBold, fontSize: 10, color: BRAND_COLORS.primary }}>Ngày 1</Text>
-                      </View>
-                    </View>
+                    Lập kế hoạch du lịch Việt Nam{'\n'}
+                    thông minh cùng AI
+                  </Text>
+                </Reveal>
+              </Animated.View>
 
-                    <View style={{
-                      flexDirection: 'row', gap: 12, padding: 12, borderRadius: 10,
-                      backgroundColor: '#FBF5EA', borderWidth: 0.5, borderColor: 'rgba(27,36,32,0.06)',
-                    }}>
-                      <View style={{ width: 44, height: 30, borderRadius: 7, backgroundColor: `${BRAND_COLORS.primary}15`, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontFamily: F.bold, fontSize: 9, color: BRAND_COLORS.primary }}>09:00</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontFamily: F.bold, fontSize: 12, color: '#1B2420' }}>Đền Ngọc Sơn & Hồ Hoàn Kiếm</Text>
-                        <Text style={{ fontFamily: F.regular, fontSize: 11, color: BRAND_COLORS.textMuted, marginTop: 2, lineHeight: 16 }}>
-                          Đi bộ quanh hồ, chụp cầu Thê Húc lúc bình minh sớm.
-                        </Text>
-                      </View>
-                    </View>
+              {/* Subtitle */}
+              <Animated.View style={{ transform: [{ translateY: subtitleY }], width: '100%' }}>
+                <Reveal delay={160}>
+                  <Text style={{
+                    fontFamily: F.regular,
+                    fontSize: isMobile ? 15 : 17,
+                    lineHeight: isMobile ? 26 : 30,
+                    color: 'rgba(255, 255, 255, 0.85)',
+                    textAlign: 'center',
+                    maxWidth: 620,
+                    alignSelf: 'center',
+                  }}>
+                    Tự động xây dựng lịch trình cá nhân hóa dựa trên ngân sách thực tế, dữ liệu thời tiết thực và khả năng thích ứng sự cố tức thì.
+                  </Text>
+                </Reveal>
+              </Animated.View>
 
-                    <View style={{
-                      flexDirection: 'row', gap: 10, padding: 12, borderRadius: 10,
-                      backgroundColor: 'rgba(178,59,59,0.05)', borderWidth: 0.5, borderColor: 'rgba(178,59,59,0.18)',
-                    }}>
-                      <AlertTriangle size={14} color="#B23B3B" style={{ marginTop: 1 }} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontFamily: F.bold, fontSize: 11, color: '#B23B3B' }}>Phát hiện: Mưa dự báo 13:00–17:00</Text>
-                        <Text style={{ fontFamily: F.regular, fontSize: 11, color: 'rgba(178,59,59,0.75)', marginTop: 2, lineHeight: 16 }}>
-                          AI tự đổi sang Bảo Tàng Lịch Sử Quốc Gia & cà phê trứng phố cổ.
-                        </Text>
-                      </View>
-                    </View>
+              {/* Frosted Glass Pink Glow CTA Button */}
+              <Animated.View style={{ transform: [{ translateY: ctaY }] }}>
+                <Reveal delay={220}>
+                  <Pressable
+                    onPress={() => router.push(isLoggedIn ? (dashPath as any) : (APP_ROUTES.SIGN_UP as any))}
+                    style={{
+                      paddingHorizontal: isMobile ? 32 : 44,
+                      paddingVertical: isMobile ? 16 : 20,
+                      borderRadius: 100,
+                      backgroundColor: 'rgba(224, 116, 134, 0.42)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(255, 255, 255, 0.5)',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                      shadowColor: '#E07486',
+                      shadowOffset: { width: 0, height: 8 },
+                      shadowOpacity: 0.4,
+                      shadowRadius: 24,
+                      elevation: 8,
+                      ...(isWeb ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', cursor: 'pointer' } as any : {}),
+                    }}
+                  >
+                    <Text style={{ fontFamily: F.bold, fontSize: isMobile ? 15 : 17, color: '#FFFFFF' }}>
+                      {isLoggedIn ? 'Bắt Đầu Ngay' : 'Tạo Lịch Trình AI'}
+                    </Text>
+                    <ArrowRight size={18} color="#FFFFFF" />
+                  </Pressable>
+                </Reveal>
+              </Animated.View>
 
-                    <View style={{
-                      flexDirection: 'row', gap: 12, padding: 12, borderRadius: 10,
-                      backgroundColor: '#FBF5EA', borderWidth: 0.5, borderColor: 'rgba(27,36,32,0.06)', opacity: 0.4,
-                    }}>
-                      <View style={{ width: 44, height: 30, borderRadius: 7, backgroundColor: `${BRAND_COLORS.primary}15`, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontFamily: F.bold, fontSize: 9, color: BRAND_COLORS.primary }}>19:00</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontFamily: F.bold, fontSize: 12, color: '#1B2420' }}>Bún Chả Hương Liên</Text>
-                        <Text style={{ fontFamily: F.regular, fontSize: 11, color: BRAND_COLORS.textMuted, marginTop: 2 }}>
-                          Món bún chả nổi tiếng thế giới, đặt trước để có bàn.
-                        </Text>
-                      </View>
-                    </View>
+              {/* Quick Destination Chips */}
+              <Animated.View style={{ transform: [{ translateY: citiesY }] }}>
+                <Reveal delay={280}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 4 }}>
+                    {VIETNAMESE_CITIES.map((city) => (
+                      <Pressable
+                        key={city}
+                        onPress={() => {
+                          if (isLoggedIn) {
+                            router.push(`${APP_ROUTES.NEW_TRIP}?destination=${encodeURIComponent(city)}` as any);
+                          } else {
+                            router.push(`${APP_ROUTES.SIGN_UP}?destination=${encodeURIComponent(city)}` as any);
+                          }
+                        }}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 6,
+                          paddingHorizontal: 13, paddingVertical: 7, borderRadius: 100,
+                          backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                          borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.2)',
+                          ...(isWeb ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } as any : {}),
+                        }}
+                      >
+                        <Text style={{ fontSize: 12 }}>{CITY_EMOJIS[city]}</Text>
+                        <Text style={{ fontFamily: F.semiBold, fontSize: 12, color: '#FFFFFF' }}>{city}</Text>
+                      </Pressable>
+                    ))}
                   </View>
                 </Reveal>
               </Animated.View>
 
             </View>
+
+            {/* ── TABLET MOCKUP DEVICE FRAME ─────────────────────────────────── */}
+            <Animated.View style={{ transform: [{ translateY: cardY }], width: '100%', maxWidth: 980, marginTop: isMobile ? 32 : 48 }}>
+              <Reveal delay={320}>
+                <View style={{
+                  backgroundColor: '#11141A',
+                  borderRadius: isMobile ? 20 : 36,
+                  borderWidth: isMobile ? 4 : 8,
+                  borderColor: '#1D212A',
+                  padding: isMobile ? 10 : 18,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 24 },
+                  shadowOpacity: 0.45,
+                  shadowRadius: 48,
+                  elevation: 16,
+                }}>
+                  {/* Tablet Inner Screen */}
+                  <View style={{
+                    backgroundColor: '#160D19',
+                    borderRadius: isMobile ? 14 : 24,
+                    padding: isMobile ? 16 : 24,
+                    gap: 20,
+                    borderWidth: 1,
+                    borderColor: 'rgba(255, 255, 255, 0.1)',
+                  }}>
+                    {/* Tablet Header Tabs */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Text style={{ fontFamily: F.loraBold, fontSize: 18, color: '#FFF' }}>vivu</Text>
+                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                          <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: 'rgba(224, 116, 134, 0.35)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }}>
+                            <Text style={{ fontFamily: F.bold, fontSize: 11, color: '#FFF' }}>🤖 AI Chat</Text>
+                          </View>
+                          {!isMobile && (
+                            <>
+                              <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: 'rgba(255,255,255,0.08)' }}>
+                                <Text style={{ fontFamily: F.regular, fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>🗺️ Chuyến đi</Text>
+                              </View>
+                              <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: 'rgba(255,255,255,0.08)' }}>
+                                <Text style={{ fontFamily: F.regular, fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>🔍 Khám phá</Text>
+                              </View>
+                            </>
+                          )}
+                        </View>
+                      </View>
+                      <View style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.2)' }}>
+                        <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: '#FFF' }}>+ Tạo Chuyến Đi</Text>
+                      </View>
+                    </View>
+
+                    {/* Tablet Main App View */}
+                    <View style={{ flexDirection: isMobile ? 'column' : 'row', gap: 18, alignItems: 'stretch' }}>
+                      
+                      {/* Left: AI Companion Orb Box */}
+                      <View style={{
+                        flex: 1, padding: 24, borderRadius: 20,
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.1)',
+                        justifyContent: 'center', gap: 14, alignItems: 'flex-start',
+                      }}>
+                        <View style={{
+                          width: 56, height: 56, borderRadius: 28,
+                          backgroundColor: 'rgba(224, 116, 134, 0.4)',
+                          alignItems: 'center', justifyContent: 'center',
+                          borderWidth: 2, borderColor: '#FFF',
+                          shadowColor: '#E07486', shadowRadius: 16, shadowOpacity: 0.6,
+                        }}>
+                          <Sparkles size={24} color="#FFF" />
+                        </View>
+                        <Text style={{ fontFamily: F.loraBold, fontSize: 18, color: '#FFF', lineHeight: 26 }}>
+                          Xin chào! Tôi là Trợ lý ViVu AI đồng hành cùng chuyến đi của bạn.
+                        </Text>
+                        <Text style={{ fontFamily: F.regular, fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 20 }}>
+                          Chỉ cần chọn ngày & ngân sách, AI sẽ lập tức thiết kế lịch trình hoàn chỉnh từ thời tiết đến địa điểm thực tế.
+                        </Text>
+                      </View>
+
+                      {/* Right: Place Recommendation Cards */}
+                      <View style={{ flex: isMobile ? undefined : 1.2, flexDirection: 'row', gap: 12 }}>
+                        {/* Place 1 */}
+                        <View style={{
+                          flex: 1, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)',
+                          borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)', padding: 14, gap: 10,
+                        }}>
+                          <View style={{ height: 110, borderRadius: 12, backgroundColor: 'rgba(224,116,134,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ fontSize: 32 }}>🏛️</Text>
+                          </View>
+                          <Text style={{ fontFamily: F.bold, fontSize: 13, color: '#FFF' }}>Hà Nội · Phố Cổ</Text>
+                          <Text style={{ fontFamily: F.regular, fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>⭐ 4.9 · 3 ngày 2 đêm</Text>
+                        </View>
+
+                        {/* Place 2 */}
+                        <View style={{
+                          flex: 1, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)',
+                          borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)', padding: 14, gap: 10,
+                        }}>
+                          <View style={{ height: 110, borderRadius: 12, backgroundColor: 'rgba(139,92,246,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ fontSize: 32 }}>🌊</Text>
+                          </View>
+                          <Text style={{ fontFamily: F.bold, fontSize: 13, color: '#FFF' }}>Đà Nẵng · Cầu Vàng</Text>
+                          <Text style={{ fontFamily: F.regular, fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>⭐ 4.9 · 4 ngày 3 đêm</Text>
+                        </View>
+                      </View>
+
+                    </View>
+                  </View>
+                </View>
+              </Reveal>
+            </Animated.View>
+
           </View>
         </Animated.View>
 
