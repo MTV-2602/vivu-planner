@@ -220,20 +220,20 @@ export default function Landing() {
     <View style={{
       flexDirection: 'row', gap: 16, alignItems: 'flex-start',
       padding: 22, borderRadius: 16,
-      backgroundColor: step.dark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+      backgroundColor: step.dark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 255, 255, 0.03)',
       borderWidth: 1,
-      borderColor: step.dark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+      borderColor: step.dark ? 'rgba(249, 158, 117, 0.3)' : 'rgba(255, 255, 255, 0.08)',
       ...(isWeb ? { backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } as any : {}),
     }}>
       <View style={{
         width: 46, height: 46, borderRadius: 13,
-        backgroundColor: step.dark ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)',
+        backgroundColor: step.dark ? 'rgba(249, 158, 117, 0.2)' : 'rgba(255,255,255,0.08)',
         alignItems: 'center', justifyContent: 'center', flexShrink: 0,
       }}>
-        {step.dark ? <Sparkles size={20} color="#FFB800" /> : step.icon}
+        {step.dark ? <Sparkles size={20} color="#F99E75" /> : step.icon}
       </View>
       <View style={{ flex: 1, gap: 5 }}>
-        <Text style={{ fontFamily: F.semiBold, fontSize: 10, letterSpacing: 1.2, color: step.dark ? '#FFB800' : 'rgba(255,255,255,0.45)' }}>
+        <Text style={{ fontFamily: F.semiBold, fontSize: 10, letterSpacing: 1.2, color: step.dark ? '#F99E75' : 'rgba(255,255,255,0.45)' }}>
           BƯỚC {step.num}
         </Text>
         <Text style={{ fontFamily: F.bold, fontSize: 15, color: '#FFFFFF' }}>
@@ -247,15 +247,15 @@ export default function Landing() {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#150A16' }}>
+    <View style={{ flex: 1, backgroundColor: '#0A0A0C' }}>
 
       {/* ── NAVBAR ──────────────────────────────────────────────────────────── */}
       <View style={{
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
         paddingHorizontal: px, paddingVertical: isMobile ? 14 : 18, zIndex: 100,
-        backgroundColor: scrolled ? 'rgba(21, 10, 22, 0.92)' : 'transparent',
+        backgroundColor: scrolled ? 'rgba(10, 10, 12, 0.92)' : 'transparent',
         borderBottomWidth: scrolled ? 1 : 0,
-        borderBottomColor: 'rgba(255, 255, 255, 0.12)',
+        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
         ...(isWeb && scrolled ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' } as any : {}),
       }}>
         <Pressable
@@ -264,8 +264,8 @@ export default function Landing() {
         >
           <View style={{
             width: isMobile ? 32 : 38, height: isMobile ? 32 : 38, borderRadius: 12,
-            backgroundColor: 'rgba(255, 255, 255, 0.15)', alignItems: 'center', justifyContent: 'center',
-            borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.3)',
+            backgroundColor: 'rgba(255, 255, 255, 0.12)', alignItems: 'center', justifyContent: 'center',
+            borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)',
           }}>
             <Compass size={isMobile ? 16 : 20} color="#FFF" />
           </View>
@@ -297,7 +297,7 @@ export default function Landing() {
               onPress={() => router.push(dashPath as any)}
               style={{
                 paddingHorizontal: isMobile ? 14 : 20, paddingVertical: 10, borderRadius: 100,
-                backgroundColor: 'rgba(255, 255, 255, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.3)',
+                backgroundColor: 'rgba(255, 255, 255, 0.12)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)',
               }}
             >
               <Text style={{ fontFamily: F.bold, fontSize: 13, color: '#fff' }}>
@@ -352,9 +352,9 @@ export default function Landing() {
             paddingTop: isMobile ? 36 : 64,
             paddingBottom: isMobile ? 40 : 72,
             alignItems: 'center',
-            backgroundColor: '#2E1325',
+            backgroundColor: '#1E121C',
             ...(isWeb ? {
-              background: 'linear-gradient(180deg, #150A16 0%, #351528 35%, #6B293C 70%, #B84C55 100%)',
+              background: 'linear-gradient(180deg, #F99E75 0%, #C55A52 18%, #4A2738 48%, #0A0A0C 100%)',
             } as any : {}),
           }}>
             
@@ -367,11 +367,11 @@ export default function Landing() {
                   <View style={{
                     flexDirection: 'row', alignItems: 'center', gap: 8,
                     paddingHorizontal: 18, paddingVertical: 9, borderRadius: 100,
-                    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.35)',
                     borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)',
                     ...(isWeb ? { backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any : {}),
                   }}>
-                    <Sparkles size={14} color="#FFF" />
+                    <Sparkles size={14} color="#F99E75" />
                     <Text style={{ fontFamily: F.semiBold, fontSize: 12, color: '#FFFFFF', letterSpacing: 0.5 }}>
                       ✨ AI-Powered Travel Planning & Booking
                     </Text>
@@ -413,7 +413,7 @@ export default function Landing() {
                 </Reveal>
               </Animated.View>
 
-              {/* Frosted Glass Pink Glow CTA Button */}
+              {/* Soft Rose-Coral Soft Glassmorphic CTA Button */}
               <Animated.View style={{ transform: [{ translateY: ctaY }] }}>
                 <Reveal delay={220}>
                   <Pressable
@@ -422,15 +422,15 @@ export default function Landing() {
                       paddingHorizontal: isMobile ? 32 : 44,
                       paddingVertical: isMobile ? 16 : 20,
                       borderRadius: 100,
-                      backgroundColor: 'rgba(224, 116, 134, 0.42)',
+                      backgroundColor: 'rgba(249, 158, 117, 0.35)',
                       borderWidth: 1,
-                      borderColor: 'rgba(255, 255, 255, 0.5)',
+                      borderColor: 'rgba(255, 255, 255, 0.6)',
                       flexDirection: 'row',
                       alignItems: 'center',
                       gap: 10,
-                      shadowColor: '#E07486',
+                      shadowColor: '#F99E75',
                       shadowOffset: { width: 0, height: 8 },
-                      shadowOpacity: 0.4,
+                      shadowOpacity: 0.45,
                       shadowRadius: 24,
                       elevation: 8,
                       ...(isWeb ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', cursor: 'pointer' } as any : {}),
@@ -597,7 +597,7 @@ export default function Landing() {
             { num: '24/7', label: 'AI thích ứng\nsự cố' },
           ];
           return (
-            <View style={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: 'rgba(255, 255, 255, 0.1)', backgroundColor: 'rgba(255, 255, 255, 0.03)' }}>
+            <View style={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: 'rgba(255, 255, 255, 0.08)', backgroundColor: 'rgba(255, 255, 255, 0.02)' }}>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
                 {stats.map((stat, i) => (
                   <View
@@ -608,15 +608,15 @@ export default function Landing() {
                       paddingHorizontal: 8,
                       alignItems: 'center',
                       borderRightWidth: isMobile ? (i % 2 === 0 ? 1 : 0) : (i < 3 ? 1 : 0),
-                      borderRightColor: 'rgba(255, 255, 255, 0.08)',
+                      borderRightColor: 'rgba(255, 255, 255, 0.06)',
                       borderBottomWidth: isMobile && i < 2 ? 1 : 0,
-                      borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+                      borderBottomColor: 'rgba(255, 255, 255, 0.06)',
                     }}
                   >
-                    <Text style={{ fontFamily: F.loraBold, fontSize: isMobile ? 32 : 42, color: '#FFB800', marginBottom: 6 }}>
+                    <Text style={{ fontFamily: F.loraBold, fontSize: isMobile ? 32 : 42, color: '#F99E75', marginBottom: 6 }}>
                       {stat.num}
                     </Text>
-                    <Text style={{ fontFamily: F.regular, fontSize: isMobile ? 11 : 12, color: 'rgba(255, 255, 255, 0.7)', textAlign: 'center', lineHeight: 18 }}>
+                    <Text style={{ fontFamily: F.regular, fontSize: isMobile ? 11 : 12, color: 'rgba(255, 255, 255, 0.65)', textAlign: 'center', lineHeight: 18 }}>
                       {stat.label}
                     </Text>
                   </View>
@@ -628,17 +628,17 @@ export default function Landing() {
 
         {/* ── HOW IT WORKS ──────────────────────────────────────────────────── */}
         <View
-          style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#1B0C1B' }}
+          style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#0A0A0C' }}
           onLayout={(e) => setHowItWorksSectionY(e.nativeEvent.layout.y)}
         >
           <View style={{ gap: 14 }}>
             <Reveal>
               <View style={{
                 alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100,
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.2)',
+                backgroundColor: 'rgba(249, 158, 117, 0.12)',
+                borderWidth: 1, borderColor: 'rgba(249, 158, 117, 0.3)',
               }}>
-                <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: '#FFB800', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: '#F99E75', letterSpacing: 0.8, textTransform: 'uppercase' }}>
                   Cách hoạt động
                 </Text>
               </View>
@@ -685,17 +685,17 @@ export default function Landing() {
 
         {/* ── FEATURES ──────────────────────────────────────────────────────── */}
         <View
-          style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#220E22' }}
+          style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#0A0A0C' }}
           onLayout={(e) => setFeaturesSectionY(e.nativeEvent.layout.y)}
         >
           <View style={{ gap: 14 }}>
             <Reveal>
               <View style={{
                 alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100,
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.2)',
+                backgroundColor: 'rgba(249, 158, 117, 0.12)',
+                borderWidth: 1, borderColor: 'rgba(249, 158, 117, 0.3)',
               }}>
-                <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: '#FFB800', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: '#F99E75', letterSpacing: 0.8, textTransform: 'uppercase' }}>
                   Tính năng
                 </Text>
               </View>
@@ -717,19 +717,19 @@ export default function Landing() {
               <Reveal key={i} delay={i * 100} style={isMobile ? undefined : { flex: 1 }}>
                 <View style={{
                   flex: isMobile ? undefined : 1,
-                  backgroundColor: 'rgba(255, 255, 255, 0.05)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.1)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.03)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.08)',
                   borderRadius: 20, padding: 28, gap: 16,
                   ...(isWeb ? { backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } as any : {}),
                 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text style={{ fontFamily: F.regular, fontSize: 11, color: 'rgba(255, 255, 255, 0.45)' }}>{feat.num}</Text>
-                    <View style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7, backgroundColor: 'rgba(255, 255, 255, 0.1)' }}>
-                      <Text style={{ fontFamily: F.regular, fontSize: 9.5, color: 'rgba(255, 255, 255, 0.8)', letterSpacing: 0.3 }}>
+                    <View style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7, backgroundColor: 'rgba(249, 158, 117, 0.15)' }}>
+                      <Text style={{ fontFamily: F.regular, fontSize: 9.5, color: '#F99E75', letterSpacing: 0.3 }}>
                         {feat.tag}
                       </Text>
                     </View>
                   </View>
-                  <View style={{ width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255, 255, 255, 0.12)' }}>
+                  <View style={{ width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255, 255, 255, 0.08)' }}>
                     {feat.icon}
                   </View>
                   <Text style={{ fontFamily: F.bold, fontSize: 17, lineHeight: 24, color: '#FFFFFF' }}>{feat.title}</Text>
@@ -742,17 +742,17 @@ export default function Landing() {
 
         {/* ── PRICING SECTION (COMING SOON / ROADMAP) ───────────────────────── */}
         <View
-          style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#1B0C1B' }}
+          style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#08080A' }}
           onLayout={(e) => setPricingSectionY(e.nativeEvent.layout.y)}
         >
           <View style={{ gap: 14 }}>
             <Reveal>
               <View style={{
                 alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100,
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.2)',
+                backgroundColor: 'rgba(249, 158, 117, 0.12)',
+                borderWidth: 1, borderColor: 'rgba(249, 158, 117, 0.3)',
               }}>
-                <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: '#FFB800', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: '#F99E75', letterSpacing: 0.8, textTransform: 'uppercase' }}>
                   Bảng giá & Định hướng
                 </Text>
               </View>
@@ -774,9 +774,9 @@ export default function Landing() {
               <Reveal key={i} delay={i * 100} style={isMobile ? undefined : { flex: 1 }}>
                 <View style={{
                   flex: isMobile ? undefined : 1,
-                  backgroundColor: pkg.isPremium ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)',
+                  backgroundColor: pkg.isPremium ? 'rgba(249, 158, 117, 0.08)' : 'rgba(255, 255, 255, 0.03)',
                   borderWidth: pkg.isPremium ? 2 : 1,
-                  borderColor: pkg.isPremium ? '#FFB800' : 'rgba(255, 255, 255, 0.1)',
+                  borderColor: pkg.isPremium ? '#F99E75' : 'rgba(255, 255, 255, 0.08)',
                   borderRadius: 20,
                   padding: 28,
                   gap: 16,
@@ -790,8 +790,8 @@ export default function Landing() {
                     </View>
                     {pkg.isPremium && (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Star size={12} color="#FFB800" fill="#FFB800" />
-                        <Text style={{ fontFamily: F.bold, fontSize: 10, color: '#FFB800', textTransform: 'uppercase' }}>Phổ biến nhất</Text>
+                        <Star size={12} color="#F99E75" fill="#F99E75" />
+                        <Text style={{ fontFamily: F.bold, fontSize: 10, color: '#F99E75', textTransform: 'uppercase' }}>Phổ biến nhất</Text>
                       </View>
                     )}
                   </View>
@@ -803,8 +803,8 @@ export default function Landing() {
                     </Text>
                   </View>
 
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255, 255, 255, 0.1)' }}>
-                    <Text style={{ fontFamily: F.loraBold, fontSize: 26, color: '#FFB800' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255, 255, 255, 0.08)' }}>
+                    <Text style={{ fontFamily: F.loraBold, fontSize: 26, color: '#F99E75' }}>
                       {getPlanPrice(pkg.id, pkg.price)}
                     </Text>
                     <Text style={{ fontFamily: F.regular, fontSize: 12, color: 'rgba(255, 255, 255, 0.5)' }}>
@@ -819,14 +819,14 @@ export default function Landing() {
                           width: 14, 
                           height: 14, 
                           borderRadius: 7, 
-                          backgroundColor: feat.enabled ? 'rgba(255, 184, 0, 0.2)' : 'rgba(239, 68, 68, 0.15)', 
+                          backgroundColor: feat.enabled ? 'rgba(249, 158, 117, 0.2)' : 'rgba(239, 68, 68, 0.15)', 
                           alignItems: 'center', 
                           justifyContent: 'center', 
                           marginTop: 3, 
                           flexShrink: 0 
                         }}>
                           {feat.enabled ? (
-                            <Check size={8} color="#FFB800" strokeWidth={4} />
+                            <Check size={8} color="#F99E75" strokeWidth={4} />
                           ) : (
                             <Lock size={8} color="#EF4444" strokeWidth={3} />
                           )}
@@ -851,11 +851,11 @@ export default function Landing() {
         </View>
 
         {/* ── DARK — TESTIMONIALS + CTA ──────────────────────────────────────── */}
-        <View style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#150A16' }}>
+        <View style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#0A0A0C' }}>
           <View style={{ gap: 14 }}>
             <Reveal>
-              <View style={{ alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}>
-                <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: '#FFB800', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+              <View style={{ alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: 'rgba(249, 158, 117, 0.12)', borderWidth: 1, borderColor: 'rgba(249, 158, 117, 0.3)' }}>
+                <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: '#F99E75', letterSpacing: 0.8, textTransform: 'uppercase' }}>
                   Đánh giá
                 </Text>
               </View>
@@ -872,14 +872,14 @@ export default function Landing() {
               <Reveal key={i} delay={i * 90} style={isMobile ? undefined : { flex: 1 }}>
                 <View style={{
                   flex: isMobile ? undefined : 1,
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
                   borderRadius: 20, padding: 24, gap: 16,
                   ...(isWeb ? { backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } as any : {}),
                 }}>
                   <View style={{ flexDirection: 'row', gap: 3 }}>
                     {[...Array(5)].map((_, si) => (
-                      <Star key={si} size={13} color="#FFB800" fill="#FFB800" />
+                      <Star key={si} size={13} color="#F99E75" fill="#F99E75" />
                     ))}
                   </View>
                   <Text style={{ fontFamily: F.loraRegular, fontSize: 14, lineHeight: 26, color: 'rgba(255,255,255,0.85)', flex: 1 }}>
@@ -887,7 +887,7 @@ export default function Landing() {
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                      <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
                         <Text style={{ fontFamily: F.bold, fontSize: 12, color: '#FFFFFF' }}>{t.initial}</Text>
                       </View>
                       <View>
@@ -895,7 +895,7 @@ export default function Landing() {
                         <Text style={{ fontFamily: F.regular, fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 1 }}>{t.location}</Text>
                       </View>
                     </View>
-                    <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+                    <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
                       <Text style={{ fontFamily: F.regular, fontSize: 10, color: 'rgba(255,255,255,0.6)' }}>{t.tag}</Text>
                     </View>
                   </View>
@@ -913,8 +913,8 @@ export default function Landing() {
                 'Địa điểm từ Google Places, không bịa đặt',
               ].map((item, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(255, 184, 0, 0.2)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Check size={11} color="#FFB800" strokeWidth={3} />
+                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(249, 158, 117, 0.2)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Check size={11} color="#F99E75" strokeWidth={3} />
                   </View>
                   <Text style={{ fontFamily: F.regular, fontSize: 14, color: 'rgba(255,255,255,0.85)', flex: 1 }}>{item}</Text>
                 </View>
@@ -927,24 +927,25 @@ export default function Landing() {
               onPress={() => router.push(isLoggedIn ? (dashPath as any) : (APP_ROUTES.SIGN_UP as any))}
               style={{
                 alignItems: 'center', paddingVertical: 18, borderRadius: 100,
-                backgroundColor: '#FFB800',
+                backgroundColor: '#F99E75',
                 flexDirection: 'row', justifyContent: 'center', gap: 8,
-                shadowColor: '#FFB800', shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.25, shadowRadius: 16,
+                shadowColor: '#F99E75', shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.35, shadowRadius: 16,
               }}
             >
-              <Text style={{ fontFamily: F.bold, fontSize: 15, color: '#150A16' }}>
+              <Text style={{ fontFamily: F.bold, fontSize: 15, color: '#0A0A0C' }}>
                 {isLoggedIn ? 'Đến bảng điều khiển' : 'Bắt đầu miễn phí ngay hôm nay'}
               </Text>
-              <ArrowRight size={16} color="#150A16" />
+              <ArrowRight size={16} color="#0A0A0C" />
             </Pressable>
           </Reveal>
         </View>
 
         {/* ── FOOTER ────────────────────────────────────────────────────────── */}
         <View style={{
-          backgroundColor: '#0F060F', borderTopWidth: 1, borderTopColor: 'rgba(255, 255, 255, 0.1)',
-          paddingHorizontal: px, paddingVertical: isMobile ? 36 : 52,
+          backgroundColor: '#050505', borderTopWidth: 1, borderTopColor: 'rgba(255, 255, 255, 0.08)',
+          paddingHorizontal: px, paddingTop: isMobile ? 36 : 52, paddingBottom: isMobile ? 24 : 36,
+          overflow: 'hidden',
         }}>
           <View style={{
             flexDirection: isMobile ? 'column' : 'row',
@@ -954,7 +955,7 @@ export default function Landing() {
           }}>
             <View style={{ gap: 12, maxWidth: 280 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: 'rgba(255, 255, 255, 0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.2)' }}>
+                <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: 'rgba(255, 255, 255, 0.12)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.2)' }}>
                   <Compass size={16} color="#FFF" />
                 </View>
                 <Text style={{ fontFamily: F.loraBold, fontSize: 17, color: '#FFFFFF' }}>ViVu Planner</Text>
@@ -986,11 +987,25 @@ export default function Landing() {
             )}
           </View>
 
-          <View style={{ borderTopWidth: 1, borderTopColor: 'rgba(255, 255, 255, 0.1)', paddingTop: 20 }}>
+          <View style={{ borderTopWidth: 1, borderTopColor: 'rgba(255, 255, 255, 0.08)', paddingTop: 20 }}>
             <Text style={{ fontFamily: F.regular, fontSize: 12, color: 'rgba(255, 255, 255, 0.4)' }}>
               © 2026 ViVu Planner · Dự án du lịch thông minh Việt Nam
             </Text>
           </View>
+
+          {/* Huge Brand Watermark at Bottom (Matching Touri reference) */}
+          <Text style={{
+            fontFamily: F.loraBold,
+            fontSize: isMobile ? 48 : 100,
+            color: 'rgba(255, 255, 255, 0.04)',
+            letterSpacing: isMobile ? 4 : 10,
+            textAlign: 'center',
+            marginTop: 28,
+            marginBottom: -20,
+            userSelect: 'none',
+          } as any}>
+            VIVU PLANNER
+          </Text>
         </View>
 
       </Animated.ScrollView>
