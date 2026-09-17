@@ -665,7 +665,15 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       }
     }
 
-    return res.status(500).json({ error: 'Failed to create trip and generate itinerary', details: error.message });
+    const statusCode = error.status || (error.message?.includes('503') ? 503 : (error.message?.includes('429') ? 429 : 500));
+    const userMessage = error.message || 'Không thể tạo lịch trình bằng AI lúc này. Vui lòng thử lại sau ít phút.';
+
+    return res.status(statusCode).json({
+      success: false,
+      error: userMessage,
+      code: error.code || (statusCode === 503 ? 'AI_OVERLOADED' : (statusCode === 429 ? 'AI_RATE_LIMIT' : 'AI_SERVICE_ERROR')),
+      details: error.message
+    });
   }
 });
 

@@ -153,34 +153,47 @@ export default function Dashboard() {
   useEffect(() => {
     if (!user?.id) return;
 
-    // 1. Kênh Broadcast trực tiếp từ Admin
-    const userChannel = supabase.channel(`user_channel_${user.id}`);
-    userChannel
-      .on('broadcast', { event: 'user_updated' }, () => {
-        refetchStatus();
-      })
-      .subscribe();
+    let userChannel: any = null;
+    let profileChannel: any = null;
 
-    // 2. Kênh PostgreSQL Changes lắng nghe thay đổi trên bảng profiles
-    const profileChannel = supabase
-      .channel(`profile_realtime_${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'profiles',
-          filter: `id=eq.${user.id}`,
-        },
-        () => {
+    try {
+      // 1. Kênh Broadcast trực tiếp từ Admin (dùng unique name chống trùng lặp channel sau khi re-mount)
+      const userChanName = `user_channel_${user.id}_${Date.now()}`;
+      userChannel = supabase.channel(userChanName);
+      userChannel
+        .on('broadcast', { event: 'user_updated' }, () => {
           refetchStatus();
-        }
-      )
-      .subscribe();
+        })
+        .subscribe();
+
+      // 2. Kênh PostgreSQL Changes lắng nghe thay đổi trên bảng profiles
+      const profileChanName = `profile_realtime_${user.id}_${Date.now()}`;
+      profileChannel = supabase
+        .channel(profileChanName)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'profiles',
+            filter: `id=eq.${user.id}`,
+          },
+          () => {
+            refetchStatus();
+          }
+        )
+        .subscribe();
+    } catch (realtimeErr) {
+      console.warn('[Realtime] Failed to setup realtime subscription:', realtimeErr);
+    }
 
     return () => {
-      supabase.removeChannel(userChannel);
-      supabase.removeChannel(profileChannel);
+      try {
+        if (userChannel) supabase.removeChannel(userChannel);
+        if (profileChannel) supabase.removeChannel(profileChannel);
+      } catch (cleanupErr) {
+        console.warn('[Realtime] Cleanup error:', cleanupErr);
+      }
     };
   }, [user?.id]);
 

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { supabaseAdmin } from '../../config/supabase';
 import { GEO_CONFIG, EXTERNAL_APIS, TIMEOUTS, OSM_FALLBACK_RATING_MIN, OSM_FALLBACK_RATING_RANGE } from '../../constants';
+import { getDefaultPlacesForCity } from './defaultPlaces';
 
 export interface PlaceCandidate {
   google_place_id: string;
@@ -259,12 +260,7 @@ export async function fetchCandidatePlacesForCity(
     console.warn('[placesService] Failed to load batch cache from DB:', err.message);
   }
 
-  // Nếu không có cache, trả về mảng rỗng để Gemini hoàn toàn tự do thiết kế địa điểm theo thời gian thực
-  console.log(`[placesService] Batch Cache MISS cho thành phố "${city}". Trả về mảng trống để Gemini tự do thiết kế lịch trình thực tế...`);
-  return {
-    accommodation: [],
-    dining: [],
-    attraction: [],
-    rental: []
-  };
+  // Nếu không có cache hoặc cache ít, trả về kho địa điểm thực tế phong phú của thành phố
+  console.log(`[placesService] Sử dụng kho địa điểm thực tế chất lượng cao cho thành phố "${city}"...`);
+  return getDefaultPlacesForCity(city);
 }

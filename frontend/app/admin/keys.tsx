@@ -58,7 +58,7 @@ export default function AdminKeys() {
   const [aiProvider, setAiProvider] = useState<'gemini' | 'custom_openai'>('gemini');
   const [aiBaseUrl, setAiBaseUrl] = useState('');
   const [aiApiKey, setAiApiKey] = useState('');
-  const [aiModel, setAiModel] = useState('ag/gemini-3.8-flash');
+  const [aiModel, setAiModel] = useState('ag/gemini-3-flash');
   const [customMaxTokens, setCustomMaxTokens] = useState('16384');
   const [geminiMaxTokens, setGeminiMaxTokens] = useState('16384');
   const [pingStatus, setPingStatus] = useState<{ success?: boolean; message?: string; durationMs?: number } | null>(null);
@@ -79,7 +79,7 @@ export default function AdminKeys() {
       setAiProvider(aiConfig.data.provider || 'gemini');
       setAiBaseUrl(aiConfig.data.baseUrl || '');
       setAiApiKey(aiConfig.data.apiKey || '');
-      setAiModel(aiConfig.data.model || 'ag/gemini-3.8-flash');
+      setAiModel(aiConfig.data.model && !aiConfig.data.model.includes('3.8') ? aiConfig.data.model : 'ag/gemini-3-flash');
       setCustomMaxTokens(String(aiConfig.data.maxTokens || 16384));
       setGeminiMaxTokens(String(aiConfig.data.geminiMaxTokens || 16384));
     }
@@ -440,16 +440,16 @@ export default function AdminKeys() {
                         testID="ai-model-input"
                         value={aiModel}
                         onChangeText={setAiModel}
-                        placeholder="ag/gemini-3.8-flash"
+                        placeholder="ag/gemini-3-flash"
                         placeholderTextColor={BRAND_COLORS.textMuted}
                         className="w-full px-3.5 py-2.5 rounded-xl border border-brand-line/60 text-xs bg-brand-bg text-brand-text font-mono"
                       />
                       {/* Chips chọn nhanh mô hình AI Gateway an toàn & ổn định */}
                       <View className="flex-row flex-wrap gap-1.5 pt-1">
                         {[
-                          { id: 'ag/gemini-3.8-flash', label: '⭐ ag/gemini-3.8-flash (Chuẩn ổn định)' },
-                          { id: 'ag/gemini-3-flash', label: '⚡ ag/gemini-3-flash (Tốc độ cao)' },
+                          { id: 'ag/gemini-3-flash', label: '⭐ ag/gemini-3-flash (Chuẩn ổn định 100%)' },
                           { id: 'ag/gemini-3.7-flash', label: '✨ ag/gemini-3.7-flash (Lý luận sâu)' },
+                          { id: 'ag/gemini-3-flash-agent', label: '🤖 ag/gemini-3-flash-agent' },
                         ].map(m => (
                           <Pressable
                             key={m.id}

@@ -409,6 +409,7 @@ export default function TripWizard() {
   };
 
   const handleSubmit = async () => {
+    setErrorMsg('');
     const { minBudget, daysCount, nightsCount } = calculateMinimumBudget(startDate, endDate, travelerCount);
     if (budgetTotal < minBudget) {
       setErrorMsg(`Ngân sách tối thiểu dự kiến cho chuyến đi ${daysCount} ngày (${nightsCount} đêm) của ${travelerCount} khách là ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(minBudget)}. Vui lòng quay lại bước 2 để nâng ngân sách.`);
@@ -921,11 +922,12 @@ export default function TripWizard() {
                 <Pressable
                   testID="btn-submit-trip"
                   onPress={handleSubmit}
-                  disabled={!!errorMsg}
-                  className={`flex-row items-center gap-2 px-6 py-3.5 rounded-xl ${!!errorMsg ? 'bg-brand-accent/40 opacity-50' : 'bg-brand-accent'}`}
+                  className="flex-row items-center gap-2 px-6 py-3.5 rounded-xl bg-brand-accent active:opacity-80"
                 >
                   <Sparkles size={16} color="white" />
-                  <Text className="text-white text-sm font-bold">Tạo lịch trình AI</Text>
+                  <Text className="text-white text-sm font-bold">
+                    {errorMsg ? 'Thử lại tạo lịch trình AI' : 'Tạo lịch trình AI'}
+                  </Text>
                 </Pressable>
               )}
             </View>

@@ -154,22 +154,30 @@ export default function Landing() {
   });
 
   useEffect(() => {
-    const channel = supabase
-      .channel('pricing_realtime_landing')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'pricing_plans' },
-        () => {
+    let channel: any = null;
+    try {
+      const channelName = `pricing_realtime_landing_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'pricing_plans' },
+          () => {
+            refetchPlans();
+          }
+        )
+        .on('broadcast', { event: 'plans_updated' }, () => {
           refetchPlans();
-        }
-      )
-      .on('broadcast', { event: 'plans_updated' }, () => {
-        refetchPlans();
-      })
-      .subscribe();
+        })
+        .subscribe();
+    } catch (err) {
+      console.warn('[Realtime] Landing subscribe failed:', err);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      try {
+        if (channel) supabase.removeChannel(channel);
+      } catch (err) {}
     };
   }, []);
 

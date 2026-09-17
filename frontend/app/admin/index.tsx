@@ -124,7 +124,7 @@ export default function AdminDashboard() {
           </View>
           <View className="flex-row flex-wrap gap-3">
             {[
-              { title: 'Cổng AI Gateway (Pro)', sub: 'ag/gemini-3.8-flash (Auto-fallback BẬT)', status: 'Hoạt động', color: '#059669' },
+              { title: 'Cổng AI Gateway (Pro)', sub: 'ag/gemini-3-flash (Tốc độ cao & Ổn định)', status: 'Hoạt động', color: '#059669' },
               { title: 'Bể Keys Google Gemini', sub: 'Tự động xoay vòng 5 API Keys', status: 'Hoạt động', color: '#059669' },
               { title: 'Thanh toán MoMo & PayOS', sub: 'Webhook & Chữ ký HMAC SHA256', status: 'Sẵn sàng', color: '#059669' },
               { title: 'Supabase PostgreSQL', sub: 'Cơ sở dữ liệu & Realtime Cloud', status: 'Đã kết nối', color: '#059669' },

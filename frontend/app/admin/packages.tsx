@@ -57,7 +57,7 @@ export default function AdminPackages() {
       showToast('Cập nhật cấu hình giá thành công!', 'success');
       refetchPlans();
       try {
-        const realtimeChannel = supabase.channel('pricing_realtime');
+        const realtimeChannel = supabase.channel(`pricing_realtime_${Date.now()}`);
         realtimeChannel.subscribe((status) => {
           if (status === 'SUBSCRIBED') {
             realtimeChannel.send({

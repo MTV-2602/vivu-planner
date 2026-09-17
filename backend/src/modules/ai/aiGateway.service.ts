@@ -63,7 +63,7 @@ export async function getEffectiveAiConfig(): Promise<AiGatewayConfig> {
   const envProvider = (process.env.AI_PROVIDER as any) === 'custom_openai' ? 'custom_openai' : 'gemini';
   const envBaseUrl = process.env.CUSTOM_AI_BASE_URL || '';
   const envApiKey = process.env.CUSTOM_AI_API_KEY || '';
-  const envModel = process.env.CUSTOM_AI_MODEL || 'ag/gemini-3.8-flash';
+  const envModel = process.env.CUSTOM_AI_MODEL || 'ag/gemini-3-flash';
   const envMaxTokens = Number(process.env.CUSTOM_AI_MAX_TOKENS) || 65536;
   const envGeminiMaxTokens = Number(process.env.GEMINI_MAX_TOKENS) || 32768;
 
@@ -96,7 +96,7 @@ export async function saveAiGatewayConfig(config: AiGatewayConfig): Promise<void
     provider: config.provider,
     baseUrl: config.baseUrl?.trim(),
     apiKey: config.apiKey?.trim(),
-    model: config.model?.trim() || 'ag/gemini-3.8-flash',
+    model: config.model?.trim() || 'ag/gemini-3-flash',
     isActive: config.isActive,
     maxTokens: config.maxTokens ? Number(config.maxTokens) : 65536,
     geminiMaxTokens: config.geminiMaxTokens ? Number(config.geminiMaxTokens) : 32768
@@ -192,68 +192,50 @@ export async function testAiGatewayConnection(params: { baseUrl: string; apiKey:
   const cleanBaseUrl = params.baseUrl.trim().replace(/\/+$/, '');
   const url = `${cleanBaseUrl}/chat/completions`;
 
-  const rawRequested = params.model?.trim() || 'ag/gemini-3.8-flash';
-  // Chuẩn hóa, tự động thay thế model bị 503 sang model ổn định
-  const requestedModel = (rawRequested === 'ag/gemini-3.8-flash-high' || rawRequested === 'gemini-3.8-flash-high')
-    ? 'ag/gemini-3.8-flash'
-    : rawRequested;
+  const requestedModel = params.model?.trim() || 'ag/gemini-3.8-flash';
+  const startTime = Date.now();
 
-  const candidateModels = Array.from(new Set([
-    requestedModel,
-    'ag/gemini-3.8-flash',
-    'ag/gemini-3-flash',
-    'ag/gemini-3.7-flash',
-    'ag/gemini-3.8-flash-low'
-  ])).filter(m => m !== 'ag/gemini-3.8-flash-high' && m !== 'gemini-3.8-flash-high');
-
-  let lastError: any = null;
-
-  for (const modelCandidate of candidateModels) {
-    const startTime = Date.now();
-    try {
-      const response = await axios.post(
-        url,
-        {
-          model: modelCandidate,
-          messages: [
-            { role: 'user', content: 'Ping test. Vui lòng trả lời "OK".' }
-          ],
-          max_tokens: 50,
-          temperature: 0.1,
-          stream: false
+  try {
+    const response = await axios.post(
+      url,
+      {
+        model: requestedModel,
+        messages: [
+          { role: 'user', content: 'Ping test. Vui lòng trả lời "OK".' }
+        ],
+        max_tokens: 50,
+        temperature: 0.1,
+        stream: false
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${params.apiKey.trim()}`,
+          'Content-Type': 'application/json'
         },
-        {
-          headers: {
-            'Authorization': `Bearer ${params.apiKey.trim()}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 45000
-        }
-      );
+        timeout: 45000
+      }
+    );
 
-      const durationMs = Date.now() - startTime;
-      const replyContent = extractContentFromGatewayResponse(response.data) || 'OK';
-      const actualModel = response.data?.model || modelCandidate;
-      const wasFallback = modelCandidate !== rawRequested;
+    const durationMs = Date.now() - startTime;
+    const replyContent = extractContentFromGatewayResponse(response.data) || 'OK';
+    const actualModel = response.data?.model || requestedModel;
 
-      return {
-        success: true,
-        durationMs,
-        reply: replyContent,
-        modelUsed: actualModel,
-        fallbackNotice: wasFallback
-          ? `Model "${rawRequested}" không khả dụng hoặc quá tải (503), đã tự động kết nối qua model ổn định "${actualModel}" thành công!`
-          : undefined
-      };
-    } catch (err: any) {
-      lastError = err;
-      const status = err.response?.status;
-      const errMsg = err.response?.data?.error?.message || err.response?.data || err.message;
-      console.warn(`[AiGateway:PingTest] Model "${modelCandidate}" thất bại (${status || 'timeout'} - ${errMsg}). Thử model kế tiếp...`);
-    }
+    return {
+      success: true,
+      durationMs,
+      reply: replyContent,
+      modelUsed: actualModel
+    };
+  } catch (err: any) {
+    const status = err.response?.status;
+    const errMsg = err.response?.data?.error?.message || err.response?.data || err.message;
+    const message = status === 503 
+      ? `Model "${requestedModel}" trên máy chủ AI Gateway đang bị quá tải (Mã lỗi 503).`
+      : `Kiểm tra kết nối thất bại (${status || 'timeout'}): ${errMsg}`;
+    const pingErr: any = new Error(message);
+    pingErr.status = status || 500;
+    throw pingErr;
   }
-
-  throw lastError || new Error('Tất cả các mô hình AI Gateway đều không phản hồi');
 }
 
 /**
@@ -273,25 +255,20 @@ export async function callOpenAiCompatibleGateway(options: {
   const cleanBaseUrl = config.baseUrl.trim().replace(/\/+$/, '');
   const url = `${cleanBaseUrl}/chat/completions`;
 
-  const rawPrimary = config.model?.trim() || 'ag/gemini-3.8-flash';
-  const primaryModel = (rawPrimary === 'ag/gemini-3.8-flash-high' || rawPrimary === 'gemini-3.8-flash-high')
-    ? 'ag/gemini-3.8-flash'
-    : rawPrimary;
-
-  const candidateModels = Array.from(new Set([
-    primaryModel,
-    'ag/gemini-3.8-flash',
-    'ag/gemini-3-flash',
-    'ag/gemini-3.7-flash',
-    'ag/gemini-3.8-flash-low'
-  ])).filter(m => m !== 'ag/gemini-3.8-flash-high' && m !== 'gemini-3.8-flash-high');
-
+  const targetModel = config.model?.trim() || 'ag/gemini-3.8-flash';
+  const MAX_RETRIES = 2;
   let lastError: any = null;
 
-  for (const modelCandidate of candidateModels) {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
+      if (attempt > 0) {
+        const delayMs = attempt * 2500;
+        console.log(`[AiGateway] Thử lại lần ${attempt}/${MAX_RETRIES} sau ${delayMs}ms cho model: ${targetModel}...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+
       const payload: any = {
-        model: modelCandidate,
+        model: targetModel,
         messages: options.messages,
         temperature: options.temperature ?? AI_CONFIG.DEFAULT_TEMPERATURE,
         stream: false
@@ -310,23 +287,38 @@ export async function callOpenAiCompatibleGateway(options: {
           'Authorization': `Bearer ${config.apiKey.trim()}`,
           'Content-Type': 'application/json'
         },
-        timeout: 120000 // 120s
+        timeout: 60000 // 60s
       });
 
       const content = extractContentFromGatewayResponse(response.data);
       if (content) {
-        if (modelCandidate !== primaryModel) {
-          console.info(`[AiGateway] Đã sử dụng thành công model dự phòng: ${modelCandidate} (thay cho ${primaryModel})`);
-        }
         return content;
       }
+      throw new Error('Máy chủ AI Gateway trả về phản hồi rỗng');
     } catch (err: any) {
       lastError = err;
       const status = err.response?.status;
       const errDetail = err.response?.data?.error?.message || err.response?.data || err.message;
-      console.warn(`[AiGateway] Model "${modelCandidate}" thất bại (${status} - ${errDetail}). Đang thử model dự phòng tiếp theo...`);
+      console.warn(`[AiGateway] Model "${targetModel}" gặp lỗi (Lần ${attempt + 1}/${MAX_RETRIES + 1}): Status ${status || 'timeout'} - ${errDetail}`);
+
+      // Nếu lỗi 401/403/400 thì không retry vô ích
+      if (status === 401 || status === 403 || status === 400) {
+        break;
+      }
     }
   }
 
-  throw lastError || new Error('Không thể kết nối đến AI Gateway với bất kỳ mô hình nào');
+  const finalStatus = lastError?.response?.status;
+  const detailMsg = lastError?.response?.data?.error?.message || lastError?.message || '';
+  const userMessage = finalStatus === 503
+    ? `Máy chủ AI Gateway (${targetModel}) hiện đang quá tải (Mã lỗi 503). Vui lòng thử lại sau ít phút.`
+    : (finalStatus === 429
+      ? `Model AI Gateway (${targetModel}) đã vượt quá giới hạn tần suất (Rate Limit 429). Vui lòng thử lại sau.`
+      : `Không thể kết nối đến máy chủ AI (${targetModel}): ${detailMsg}`);
+
+  const appError: any = new Error(userMessage);
+  appError.status = finalStatus || 503;
+  appError.code = finalStatus === 503 ? 'AI_OVERLOADED' : (finalStatus === 429 ? 'AI_RATE_LIMIT' : 'AI_GATEWAY_ERROR');
+  appError.originalError = lastError;
+  throw appError;
 }

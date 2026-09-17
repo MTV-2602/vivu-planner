@@ -96,23 +96,30 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
 
   // Lắng nghe thay đổi giá từ Supabase Realtime
   useEffect(() => {
-    const channelName = `pricing_realtime_modal_${Math.random().toString(36).substring(2, 9)}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'pricing_plans' },
-        () => {
+    let channel: any = null;
+    try {
+      const channelName = `pricing_realtime_modal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'pricing_plans' },
+          () => {
+            refetchPlans();
+          }
+        )
+        .on('broadcast', { event: 'plans_updated' }, () => {
           refetchPlans();
-        }
-      )
-      .on('broadcast', { event: 'plans_updated' }, () => {
-        refetchPlans();
-      })
-      .subscribe();
+        })
+        .subscribe();
+    } catch (err) {
+      console.warn('[Realtime] PremiumModal subscribe failed:', err);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      try {
+        if (channel) supabase.removeChannel(channel);
+      } catch (err) {}
     };
   }, []);
 
