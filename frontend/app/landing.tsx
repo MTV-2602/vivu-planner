@@ -230,61 +230,61 @@ export default function Landing() {
   };
 
   const T = {
-    bg: isDarkMode ? '#0A0A0C' : '#FDFBF7',
+    bg: isDarkMode ? '#0A0A0C' : '#FFFFFF',
     navBg: isDarkMode
       ? (scrolled ? 'rgba(10, 10, 12, 0.92)' : 'transparent')
-      : (scrolled ? 'rgba(253, 251, 247, 0.94)' : 'transparent'),
-    navBorder: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(224, 122, 95, 0.18)',
-    logoBg: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(224, 122, 95, 0.12)',
-    logoBorder: isDarkMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(224, 122, 95, 0.25)',
-    logoColor: isDarkMode ? '#FFFFFF' : '#E07A5F',
-    text: isDarkMode ? '#FFFFFF' : '#1F2937',
+      : (scrolled ? 'rgba(255, 255, 255, 0.95)' : 'transparent'),
+    navBorder: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#E5E7EB',
+    logoBg: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+    logoBorder: isDarkMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(16, 185, 129, 0.25)',
+    logoColor: isDarkMode ? '#FFFFFF' : '#059669',
+    text: isDarkMode ? '#FFFFFF' : '#111827',
     textMuted: isDarkMode ? 'rgba(255, 255, 255, 0.75)' : '#4B5563',
     textSoft: isDarkMode ? 'rgba(255, 255, 255, 0.55)' : '#6B7280',
-    accent: isDarkMode ? '#F99E75' : '#E07A5F',
+    accent: isDarkMode ? '#34D399' : '#059669',
     heroBg: isDarkMode
-      ? 'linear-gradient(180deg, #F99E75 0%, #C55A52 18%, #4A2738 48%, #0A0A0C 100%)'
-      : 'linear-gradient(180deg, #FFEBDD 0%, #FFCAD4 35%, #FFF9F5 75%, #FDFBF7 100%)',
-    heroBgFallback: isDarkMode ? '#1E121C' : '#FFEBDD',
+      ? 'linear-gradient(180deg, #10B981 0%, #064E3B 25%, #0A0A0C 100%)'
+      : 'linear-gradient(180deg, #ECFDF5 0%, #F9FAFB 50%, #FFFFFF 100%)',
+    heroBgFallback: isDarkMode ? '#064E3B' : '#ECFDF5',
     heroTitle: isDarkMode ? '#FFFFFF' : '#111827',
     cardBg: isDarkMode ? 'rgba(255, 255, 255, 0.03)' : '#FFFFFF',
-    cardBorder: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(224, 122, 95, 0.15)',
-    cardShadow: isDarkMode ? 'rgba(0,0,0,0.4)' : 'rgba(224, 122, 95, 0.08)',
-    badgeBg: isDarkMode ? 'rgba(0, 0, 0, 0.35)' : 'rgba(255, 255, 255, 0.85)',
-    badgeBorder: isDarkMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(224, 122, 95, 0.25)',
-    badgeText: isDarkMode ? '#FFFFFF' : '#991B1B',
-    chipBg: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.9)',
-    chipBorder: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(224, 122, 95, 0.2)',
+    cardBorder: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : '#E5E7EB',
+    cardShadow: isDarkMode ? 'rgba(0,0,0,0.4)' : 'rgba(0, 0, 0, 0.05)',
+    badgeBg: isDarkMode ? 'rgba(0, 0, 0, 0.35)' : 'rgba(16, 185, 129, 0.12)',
+    badgeBorder: isDarkMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(16, 185, 129, 0.25)',
+    badgeText: isDarkMode ? '#FFFFFF' : '#059669',
+    chipBg: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : '#F3F4F6',
+    chipBorder: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : '#E5E7EB',
     chipText: isDarkMode ? '#FFFFFF' : '#1F2937',
-    heroCtaBg: isDarkMode ? 'rgba(249, 158, 117, 0.35)' : '#E07A5F',
-    heroCtaBorder: isDarkMode ? 'rgba(255, 255, 255, 0.6)' : '#E07A5F',
+    heroCtaBg: isDarkMode ? '#10B981' : '#111827',
+    heroCtaBorder: isDarkMode ? '#10B981' : '#111827',
     heroCtaText: '#FFFFFF',
     mockupBg: isDarkMode ? '#11141A' : '#FFFFFF',
-    mockupBorder: isDarkMode ? '#1D212A' : '#F3E8E2',
-    mockupInnerBg: isDarkMode ? '#160D19' : '#FFF5F0',
-    statsBg: isDarkMode ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.85)',
-    statsBorder: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(224, 122, 95, 0.15)',
+    mockupBorder: isDarkMode ? '#1D212A' : '#E5E7EB',
+    mockupInnerBg: isDarkMode ? '#160D19' : '#F9FAFB',
+    statsBg: isDarkMode ? 'rgba(255, 255, 255, 0.02)' : '#FFFFFF',
+    statsBorder: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : '#E5E7EB',
     howItWorksBg: isDarkMode
-      ? 'radial-gradient(ellipse at 15% 10%, rgba(249, 158, 117, 0.1) 0%, rgba(74, 39, 56, 0.05) 45%, #0A0A0C 90%)'
-      : 'radial-gradient(ellipse at 15% 10%, rgba(255, 200, 180, 0.35) 0%, rgba(255, 248, 240, 0.6) 50%, #FDFBF7 90%)',
+      ? 'radial-gradient(ellipse at 15% 10%, rgba(16, 185, 129, 0.1) 0%, #0A0A0C 90%)'
+      : 'linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%)',
     featuresBg: isDarkMode
-      ? 'radial-gradient(ellipse at 88% 50%, rgba(249, 158, 117, 0.14) 0%, rgba(74, 39, 56, 0.08) 50%, #0A0A0C 90%)'
-      : 'radial-gradient(ellipse at 88% 50%, rgba(255, 210, 190, 0.35) 0%, rgba(255, 248, 240, 0.6) 50%, #FDFBF7 90%)',
+      ? 'radial-gradient(ellipse at 88% 50%, rgba(16, 185, 129, 0.14) 0%, #0A0A0C 90%)'
+      : 'linear-gradient(180deg, #F9FAFB 0%, #FFFFFF 100%)',
     pricingBg: isDarkMode
-      ? 'radial-gradient(ellipse at 50% 20%, rgba(249, 158, 117, 0.09) 0%, rgba(74, 39, 56, 0.04) 50%, #08080A 90%)'
-      : 'radial-gradient(ellipse at 50% 20%, rgba(255, 220, 200, 0.35) 0%, rgba(255, 248, 240, 0.6) 50%, #F5EBE6 90%)',
+      ? 'radial-gradient(ellipse at 50% 20%, rgba(16, 185, 129, 0.09) 0%, #08080A 90%)'
+      : 'linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%)',
     testimonialsBg: isDarkMode
-      ? 'radial-gradient(ellipse at 50% 80%, rgba(249, 158, 117, 0.16) 0%, rgba(74, 39, 56, 0.1) 45%, #0A0A0C 90%)'
-      : 'radial-gradient(ellipse at 50% 80%, rgba(255, 200, 180, 0.35) 0%, rgba(255, 235, 225, 0.5) 45%, #FDFBF7 90%)',
+      ? 'radial-gradient(ellipse at 50% 80%, rgba(16, 185, 129, 0.16) 0%, #0A0A0C 90%)'
+      : 'linear-gradient(180deg, #F9FAFB 0%, #FFFFFF 100%)',
     ctaBoxBg: isDarkMode
-      ? 'linear-gradient(135deg, rgba(249, 158, 117, 0.16) 0%, rgba(74, 39, 56, 0.25) 50%, rgba(10, 10, 12, 0.6) 100%)'
-      : 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 230, 215, 0.9) 100%)',
-    ctaBoxBorder: isDarkMode ? 'rgba(249, 158, 117, 0.25)' : 'rgba(224, 122, 95, 0.25)',
-    ctaButtonBg: isDarkMode ? '#F99E75' : '#E07A5F',
+      ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(10, 10, 12, 0.6) 100%)'
+      : 'linear-gradient(135deg, #111827 0%, #1F2937 100%)',
+    ctaBoxBorder: isDarkMode ? 'rgba(16, 185, 129, 0.25)' : '#374151',
+    ctaButtonBg: isDarkMode ? '#10B981' : '#059669',
     ctaButtonText: '#FFFFFF',
-    footerBg: isDarkMode ? '#050505' : '#F5EBE6',
-    footerBorder: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(224, 122, 95, 0.15)',
-    watermarkColor: isDarkMode ? 'rgba(255, 255, 255, 0.04)' : 'rgba(224, 122, 95, 0.08)',
+    footerBg: isDarkMode ? '#050505' : '#111827',
+    footerBorder: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : '#1F2937',
+    watermarkColor: isDarkMode ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.05)',
   };
 
   const renderStep = (step: typeof STEPS[0], _delay?: number) => (
@@ -862,7 +862,7 @@ export default function Landing() {
         <View style={{
           paddingHorizontal: px,
           paddingVertical: isMobile ? 48 : 72,
-          backgroundColor: isDarkMode ? '#0A0A0C' : '#0F172A',
+          backgroundColor: isDarkMode ? '#0A0A0C' : '#F9FAFB',
         }}>
           <Reveal>
             <LocalizedBentoGrid />
@@ -873,7 +873,7 @@ export default function Landing() {
         <View style={{
           paddingHorizontal: px,
           paddingVertical: isMobile ? 48 : 72,
-          backgroundColor: isDarkMode ? '#050507' : '#0B0F17',
+          backgroundColor: isDarkMode ? '#050507' : '#FFFFFF',
         }}>
           <Reveal>
             <TripWorkspaceSplitView />

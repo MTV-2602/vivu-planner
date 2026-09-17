@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, Platform, ActivityIndicator } from 'react-native';
-import { Sparkles, ArrowRight, Loader2 } from 'lucide-react-native';
+import { Sparkles, ArrowRight } from 'lucide-react-native';
 
 interface HeroAISearchProps {
   onGenerate?: (promptText: string) => void;
@@ -34,7 +34,6 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
   };
 
   const handleTagClick = (tag: string) => {
-    // Strip emoji if prefixing or append cleanly
     const cleanTagText = tag.replace(/^[^\w\s\u00C0-\u1EF9]+/, '').trim();
     if (!promptText) {
       setPromptText(`Lập lịch trình ${cleanTagText}`);
@@ -49,15 +48,15 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
       maxWidth: 860,
       alignSelf: 'center',
       borderRadius: 28,
-      backgroundColor: 'rgba(9, 9, 11, 0.85)',
+      backgroundColor: 'rgba(255, 255, 255, 0.95)',
       borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.12)',
+      borderColor: 'rgba(229, 231, 235, 0.9)',
       padding: 16,
-      shadowColor: '#10B981',
+      shadowColor: '#000000',
       shadowOffset: { width: 0, height: 12 },
-      shadowOpacity: 0.15,
+      shadowOpacity: 0.12,
       shadowRadius: 32,
-      elevation: 12,
+      elevation: 10,
       ...(Platform.OS === 'web' ? {
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
@@ -68,9 +67,9 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
         flexDirection: Platform.OS === 'web' ? 'row' : 'column',
         alignItems: 'center',
         gap: 12,
-        backgroundColor: 'rgba(24, 24, 27, 0.75)',
+        backgroundColor: '#F9FAFB',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: '#E5E7EB',
         borderRadius: 20,
         paddingHorizontal: 16,
         paddingVertical: 10,
@@ -80,16 +79,13 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           width: 42,
           height: 42,
           borderRadius: 14,
-          backgroundColor: 'rgba(16, 185, 129, 0.15)',
+          backgroundColor: 'rgba(16, 185, 129, 0.12)',
           alignItems: 'center',
-          justify: 'center',
+          justifyContent: 'center',
           borderWidth: 1,
-          borderColor: 'rgba(52, 211, 153, 0.3)',
-          ...(Platform.OS === 'web' ? {
-            boxShadow: '0 0 16px rgba(52, 211, 153, 0.35)',
-          } as any : {}),
+          borderColor: 'rgba(16, 185, 129, 0.25)',
         }}>
-          <Sparkles size={22} color="#34D399" />
+          <Sparkles size={22} color="#059669" />
         </View>
 
         {/* Center Text Input */}
@@ -98,12 +94,13 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           onChangeText={setPromptText}
           onSubmitEditing={handleGenerate}
           placeholder="Lên lịch trình: '3 ngày ở Đà Lạt tìm quán cà phê yên tĩnh, ngân sách 2 triệu'..."
-          placeholderTextColor="rgba(255, 255, 255, 0.45)"
+          placeholderTextColor="#9CA3AF"
           style={{
             flex: 1,
             width: '100%',
-            color: '#FFFFFF',
+            color: '#111827',
             fontSize: 15,
+            fontWeight: '500',
             fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
             paddingVertical: 10,
             paddingHorizontal: 6,
@@ -111,15 +108,15 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           } as any}
         />
 
-        {/* Right CTA Button */}
+        {/* Right CTA Button - Signature Layla AI Black Pill Button */}
         <Pressable
           onPress={handleGenerate}
           disabled={isLoading}
           style={({ pressed }) => [{
-            backgroundColor: isLoading ? '#059669' : '#059669',
+            backgroundColor: '#111827',
             paddingHorizontal: 24,
             paddingVertical: 13,
-            borderRadius: 16,
+            borderRadius: 100,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
@@ -128,7 +125,7 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
             opacity: pressed ? 0.85 : 1,
             transform: [{ scale: pressed ? 0.97 : 1 }],
             ...(Platform.OS === 'web' ? {
-              boxShadow: '0 0 20px rgba(5, 150, 105, 0.4)',
+              boxShadow: '0 4px 14px rgba(17, 24, 39, 0.25)',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
             } as any : {}),
@@ -157,7 +154,7 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
         marginTop: 14,
         paddingHorizontal: 4,
       }}>
-        <Text style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12, fontWeight: '500', marginRight: 4 }}>
+        <Text style={{ color: '#6B7280', fontSize: 12, fontWeight: '600', marginRight: 4 }}>
           Gợi ý nhanh:
         </Text>
 
@@ -166,11 +163,11 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
             key={idx}
             onPress={() => handleTagClick(tag)}
             style={({ pressed }) => [{
-              backgroundColor: 'rgba(255, 255, 255, 0.06)',
+              backgroundColor: '#F3F4F6',
               borderWidth: 1,
-              borderColor: 'rgba(255, 255, 255, 0.12)',
+              borderColor: '#E5E7EB',
               borderRadius: 100,
-              paddingHorizontal: 13,
+              paddingHorizontal: 14,
               paddingVertical: 6,
               opacity: pressed ? 0.75 : 1,
               transform: [{ scale: pressed ? 0.95 : 1 }],
@@ -180,7 +177,7 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
               } as any : {}),
             }]}
           >
-            <Text style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 12, fontWeight: '500' }}>
+            <Text style={{ color: '#374151', fontSize: 12, fontWeight: '600' }}>
               {tag}
             </Text>
           </Pressable>
@@ -193,20 +190,20 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           marginTop: 16,
           padding: 16,
           borderRadius: 16,
-          backgroundColor: 'rgba(24, 24, 27, 0.9)',
+          backgroundColor: '#F9FAFB',
           borderWidth: 1,
-          borderColor: 'rgba(16, 185, 129, 0.3)',
+          borderColor: '#10B981',
           gap: 12,
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#34D399' }} />
-            <Text style={{ color: '#34D399', fontSize: 13, fontWeight: '600' }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#059669' }} />
+            <Text style={{ color: '#059669', fontSize: 13, fontWeight: '700' }}>
               Gemini AI đang phân tích địa điểm & dự báo thời tiết...
             </Text>
           </View>
           {/* Skeleton bars */}
-          <View style={{ height: 12, width: '85%', borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.1)' }} />
-          <View style={{ height: 12, width: '60%', borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.07)' }} />
+          <View style={{ height: 12, width: '85%', borderRadius: 6, backgroundColor: '#E5E7EB' }} />
+          <View style={{ height: 12, width: '60%', borderRadius: 6, backgroundColor: '#F3F4F6' }} />
         </View>
       )}
 
@@ -216,15 +213,15 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           marginTop: 14,
           padding: 12,
           borderRadius: 14,
-          backgroundColor: 'rgba(16, 185, 129, 0.15)',
+          backgroundColor: '#ECFDF5',
           borderWidth: 1,
-          borderColor: 'rgba(52, 211, 153, 0.4)',
+          borderColor: '#A7F3D0',
           flexDirection: 'row',
           alignItems: 'center',
           gap: 10,
         }}>
-          <Sparkles size={16} color="#34D399" />
-          <Text style={{ color: '#34D399', fontSize: 13, fontWeight: '600' }}>
+          <Sparkles size={16} color="#059669" />
+          <Text style={{ color: '#047857', fontSize: 13, fontWeight: '700' }}>
             Đã khởi tạo lịch trình thành công! Đang đồng bộ tới Workspace...
           </Text>
         </View>
