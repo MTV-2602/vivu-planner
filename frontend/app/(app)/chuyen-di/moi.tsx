@@ -434,7 +434,10 @@ export default function TripWizard() {
     const formattedPrefs = PREFERENCE_OPTIONS.reduce((acc, pref) => {
       acc[pref.id] = selectedPrefs.includes(pref.id);
       return acc;
-    }, {} as Record<string, boolean>);
+    }, {} as Record<string, any>);
+
+    formattedPrefs.is_ai_pro = selectedAiProvider === 'custom_openai' || isPremium;
+    formattedPrefs.ai_tier = (selectedAiProvider === 'custom_openai' || isPremium) ? 'pro' : 'standard';
 
     const fullSpecialRequirements = [
       specialRequirements,

@@ -514,21 +514,31 @@ export default function Dashboard() {
           </Reveal>
         ) : (
           <View className="flex-row flex-wrap gap-6">
-            {trips?.map((trip, idx) => (
+            {trips?.map((trip, idx) => {
+              const isAiPro = Boolean(trip.preferences?.is_ai_pro || (trip as any).is_ai_pro || trip.preferences?.ai_tier === 'pro');
+              return (
               <Reveal key={trip.id} delay={idx * 60}>
                 <Pressable
                   onPress={() => router.push(APP_ROUTES.TRIP_DETAIL(trip.id) as any)}
-                  className="bg-brand-bgAlt border border-brand-line/50 rounded-2xl p-6 shadow-sm"
-                  style={{ minWidth: 280 }}
+                  className={`rounded-2xl p-6 shadow-sm ${isAiPro ? 'bg-gradient-to-br from-amber-50/40 via-white to-brand-bgAlt border-2 border-amber-400' : 'bg-brand-bgAlt border border-brand-line/50'}`}
+                  style={{ minWidth: 280, ...(isAiPro ? { borderColor: '#F59E0B', shadowColor: '#F59E0B', shadowOpacity: 0.15, shadowRadius: 10 } : {}) }}
                 >
                   <View className="gap-6">
                     <View className="gap-3">
                       <View className="flex-row justify-between items-start">
-                        <View className="flex-row items-center gap-1 px-2.5 py-1 rounded-full bg-brand-primary/10">
-                          <MapPin size={12} color={BRAND_COLORS.primary} />
-                          <Text className="text-brand-primary font-bold text-[10px] uppercase tracking-wider">
-                            {trip.destination_city}
-                          </Text>
+                        <View className="flex-row items-center gap-2 flex-wrap">
+                          <View className="flex-row items-center gap-1 px-2.5 py-1 rounded-full bg-brand-primary/10">
+                            <MapPin size={12} color={BRAND_COLORS.primary} />
+                            <Text className="text-brand-primary font-bold text-[10px] uppercase tracking-wider">
+                              {trip.destination_city}
+                            </Text>
+                          </View>
+                          {isAiPro && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2.5, borderRadius: 999, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B' }}>
+                              <Crown size={11} color="#D97706" />
+                              <Text style={{ fontSize: 10, fontWeight: '900', color: '#B45309', letterSpacing: 0.5 }}>AI PRO 👑</Text>
+                            </View>
+                          )}
                         </View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           {(() => {
@@ -553,7 +563,15 @@ export default function Dashboard() {
                           </Pressable>
                         </View>
                       </View>
-                      <Text className="text-xl font-bold text-brand-text">{trip.title}</Text>
+                      <View className="gap-1">
+                        <Text className="text-xl font-bold text-brand-text">{trip.title}</Text>
+                        {isAiPro && (
+                          <View className="flex-row items-center gap-1.5 mt-0.5">
+                            <Sparkles size={11} color="#D97706" />
+                            <Text className="text-[11px] font-extrabold text-amber-700">Lịch trình tối ưu chuyên sâu bởi AI Pro</Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
 
                     <View className="gap-2.5 pt-3 border-t border-brand-line/40">
@@ -586,7 +604,8 @@ export default function Dashboard() {
                   </View>
                 </Pressable>
               </Reveal>
-            ))}
+              );
+            })}
           </View>
         )}
       </View>

@@ -768,6 +768,28 @@ export default function TripDetail() {
                     <MapPin size={14} color={BRAND_COLORS.primary} />
                     <Text className="text-brand-primary font-bold text-xs">{trip.destination_city}</Text>
                   </View>
+                  {Boolean(trip.preferences?.is_ai_pro || (trip as any).is_ai_pro || trip.preferences?.ai_tier === 'pro') && (
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 5,
+                      paddingHorizontal: 10,
+                      paddingVertical: 3.5,
+                      borderRadius: 999,
+                      backgroundColor: '#FFFBEB',
+                      borderWidth: 1.5,
+                      borderColor: '#F59E0B',
+                      shadowColor: '#F59E0B',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.15,
+                      shadowRadius: 4,
+                    }}>
+                      <Crown size={13} color="#D97706" />
+                      <Text style={{ fontSize: 11, fontWeight: '900', color: '#B45309', letterSpacing: 0.5 }}>
+                        LỊCH TRÌNH AI PRO 👑
+                      </Text>
+                    </View>
+                  )}
                   {!locLoading && distanceKm !== null && (
                     <View className="flex-row items-center gap-1.5 self-start px-3 py-1 rounded-full bg-brand-bgAlt border border-brand-line/40">
                       <Activity size={12} color={BRAND_COLORS.textSoft} />
@@ -840,6 +862,50 @@ export default function TripDetail() {
               </View>
             </View>
           </View>
+
+          {/* AI Pro VIP Exclusive Callout Banner */}
+          {Boolean(trip.preferences?.is_ai_pro || (trip as any).is_ai_pro || trip.preferences?.ai_tier === 'pro') && (
+            <View style={{
+              backgroundColor: '#FFFDF5',
+              borderColor: '#FCD34D',
+              borderWidth: 1.5,
+              borderRadius: 20,
+              padding: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 14,
+              shadowColor: '#F59E0B',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.1,
+              shadowRadius: 8,
+            }}>
+              <View style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: '#FEF3C7',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1.5,
+                borderColor: '#F59E0B'
+              }}>
+                <Crown size={22} color="#D97706" />
+              </View>
+              <View style={{ flex: 1, gap: 3 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Text style={{ fontSize: 14, fontWeight: '900', color: '#92400E' }}>
+                    Đặc Quyền Lịch Trình AI Pro Cao Cấp
+                  </Text>
+                  <View style={{ backgroundColor: '#F59E0B', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1.5 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '900', color: '#FFF', letterSpacing: 0.5 }}>EXCLUSIVE</Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 12, color: '#B45309', lineHeight: 18 }}>
+                  Lịch trình này được kiến tạo riêng bằng mô hình AI Pro cao cấp, tối ưu hóa điểm đến độc quyền, định tuyến thời gian khoa học và phân bổ ngân sách chuẩn xác nhất.
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Body: Day switcher + Timeline */}
           <View className="gap-8">

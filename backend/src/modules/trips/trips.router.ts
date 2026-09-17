@@ -92,7 +92,11 @@ router.get('/', requireAuth, async (req: any, res: Response) => {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return res.json(trips || []);
+    const mappedTrips = (trips || []).map(t => ({
+      ...t,
+      is_ai_pro: Boolean(t.preferences?.is_ai_pro || t.preferences?.ai_tier === 'pro')
+    }));
+    return res.json(mappedTrips);
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to retrieve trips', details: error.message });
   }
@@ -295,6 +299,7 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
 
     return res.json({
       ...trip,
+      is_ai_pro: Boolean(trip.preferences?.is_ai_pro || trip.preferences?.ai_tier === 'pro'),
       days: daysWithItems,
       revisions: revisions || [],
       is_free_tier: isFreeTier
@@ -464,6 +469,13 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       candidatePlaces
     );
 
+    const isAiPro = req.body.ai_provider === 'custom_openai' || Boolean(isUserPremium(profile));
+    const enrichedPreferences = {
+      ...(preferences || {}),
+      is_ai_pro: isAiPro,
+      ai_tier: isAiPro ? 'pro' : 'standard',
+    };
+
     // 5. Save trip to Supabase
     const { data: trip, error: tripError } = await supabaseAdmin
       .from('trips')
@@ -477,7 +489,7 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
         budget_total: parseFloat(budget_total),
         traveler_count: parseInt(traveler_count || '1'),
         traveler_type: traveler_type || TravelerType.SOLO,
-        preferences: preferences || {},
+        preferences: enrichedPreferences,
         health_conditions: health_conditions || '',
         special_requirements: special_requirements || '',
         status: TripStatus.DRAFT
@@ -649,6 +661,7 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
 
     return res.status(201).json({
       ...fullTrip,
+      is_ai_pro: Boolean(fullTrip?.preferences?.is_ai_pro || fullTrip?.preferences?.ai_tier === 'pro'),
       days: dbDaysWithItems
     });
   } catch (error: any) {
