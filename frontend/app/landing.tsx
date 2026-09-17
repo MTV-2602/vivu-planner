@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, Pressable, Platform, Animated, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, Platform, Animated, useWindowDimensions, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   Compass, Sparkles, AlertTriangle, MapPin, ShieldAlert, Check, Lock,
-  ArrowRight, CalendarDays, Wallet, Star, ChevronUp,
+  ArrowRight, CalendarDays, Wallet, Star, ChevronUp, Search,
 } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -191,6 +191,16 @@ export default function Landing() {
   };
   const [scrolled, setScrolled] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [quickDestination, setQuickDestination] = useState('');
+
+  const handleQuickSearchSubmit = () => {
+    const dest = quickDestination.trim();
+    if (isLoggedIn) {
+      router.push(`${APP_ROUTES.NEW_TRIP}${dest ? `?destination=${encodeURIComponent(dest)}` : ''}` as any);
+    } else {
+      router.push(`${APP_ROUTES.SIGN_UP}${dest ? `?destination=${encodeURIComponent(dest)}` : ''}` as any);
+    }
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -241,75 +251,77 @@ export default function Landing() {
       {/* ── NAVBAR ──────────────────────────────────────────────────────────── */}
       <View style={{
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingHorizontal: px, paddingVertical: isMobile ? 12 : 14, zIndex: 100,
-        backgroundColor: scrolled ? 'rgba(251,245,234,0.97)' : '#FBF5EA',
-        borderBottomWidth: scrolled ? 0.5 : 0,
-        borderBottomColor: 'rgba(27,36,32,0.1)',
+        paddingHorizontal: px, paddingVertical: isMobile ? 12 : 16, zIndex: 100,
+        backgroundColor: scrolled ? 'rgba(251,245,234,0.92)' : '#FBF5EA',
+        borderBottomWidth: scrolled ? 1 : 0,
+        borderBottomColor: 'rgba(31,111,84,0.12)',
+        ...(isWeb && scrolled ? { backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } as any : {}),
       }}>
         <Pressable
           onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
         >
           <View style={{
-            width: isMobile ? 30 : 34, height: isMobile ? 30 : 34, borderRadius: 9,
+            width: isMobile ? 32 : 38, height: isMobile ? 32 : 38, borderRadius: 12,
             backgroundColor: BRAND_COLORS.primary, alignItems: 'center', justifyContent: 'center',
+            shadowColor: BRAND_COLORS.primary, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 8,
           }}>
-            <Compass size={isMobile ? 15 : 18} color="#fff" />
+            <Compass size={isMobile ? 16 : 20} color="#fff" />
           </View>
-          <Text style={{ fontFamily: F.loraBold, fontSize: isMobile ? 15 : 17, color: BRAND_COLORS.primary }}>
+          <Text style={{ fontFamily: F.loraBold, fontSize: isMobile ? 16 : 19, color: BRAND_COLORS.primary, letterSpacing: -0.3 }}>
             ViVu Planner
           </Text>
         </Pressable>
 
         {isWeb && !isMobile && (
-          <View style={{ flexDirection: 'row', gap: 32, alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', gap: 36, alignItems: 'center' }}>
             <Pressable onPress={() => scrollRef.current?.scrollTo({ y: featuresSectionY, animated: true })}>
-              <Text style={{ fontFamily: F.regular, fontSize: 14, color: BRAND_COLORS.textSoft }}>Tính năng</Text>
+              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: BRAND_COLORS.textSoft }}>Tính năng</Text>
             </Pressable>
             <Pressable onPress={() => scrollRef.current?.scrollTo({ y: howItWorksSectionY, animated: true })}>
-              <Text style={{ fontFamily: F.regular, fontSize: 14, color: BRAND_COLORS.textSoft }}>Cách dùng</Text>
+              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: BRAND_COLORS.textSoft }}>Cách dùng</Text>
             </Pressable>
             <Pressable onPress={() => scrollRef.current?.scrollTo({ y: pricingSectionY, animated: true })}>
-              <Text style={{ fontFamily: F.regular, fontSize: 14, color: BRAND_COLORS.textSoft }}>Bảng giá</Text>
+              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: BRAND_COLORS.textSoft }}>Bảng giá</Text>
             </Pressable>
           </View>
         )}
 
         {isLoggedIn ? (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
             <Pressable
               onPress={() => router.push(dashPath as any)}
-              style={{ paddingHorizontal: isMobile ? 12 : 16, paddingVertical: 9, borderRadius: 8, backgroundColor: BRAND_COLORS.primary }}
+              style={{ paddingHorizontal: isMobile ? 14 : 18, paddingVertical: 10, borderRadius: 100, backgroundColor: BRAND_COLORS.primary }}
             >
-              <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: '#fff' }}>
+              <Text style={{ fontFamily: F.bold, fontSize: 13, color: '#fff' }}>
                 {isAdmin ? 'Quản trị' : isMobile ? 'Dashboard' : 'Bảng điều khiển'}
               </Text>
             </Pressable>
             {!isMobile && (
               <Pressable
                 onPress={handleSignOut}
-                style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(27,36,32,0.2)' }}
+                style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 100, borderWidth: 1, borderColor: 'rgba(27,36,32,0.18)' }}
               >
-                <Text style={{ fontFamily: F.regular, fontSize: 13, color: BRAND_COLORS.textSoft }}>Đăng xuất</Text>
+                <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: BRAND_COLORS.textSoft }}>Đăng xuất</Text>
               </Pressable>
             )}
           </View>
         ) : (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
             {!isMobile && (
               <Pressable
                 onPress={() => router.push(APP_ROUTES.SIGN_IN as any)}
-                style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 8, borderWidth: 1.5, borderColor: BRAND_COLORS.primary }}
+                style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 100, borderWidth: 1.5, borderColor: BRAND_COLORS.primary }}
               >
-                <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: BRAND_COLORS.primary }}>Đăng Nhập</Text>
+                <Text style={{ fontFamily: F.bold, fontSize: 13, color: BRAND_COLORS.primary }}>Đăng Nhập</Text>
               </Pressable>
             )}
             <Pressable
               onPress={() => router.push((isMobile ? APP_ROUTES.SIGN_IN : APP_ROUTES.SIGN_UP) as any)}
-              style={{ paddingHorizontal: isMobile ? 14 : 16, paddingVertical: 9, borderRadius: 8, backgroundColor: BRAND_COLORS.primary }}
+              style={{ paddingHorizontal: isMobile ? 16 : 20, paddingVertical: 10, borderRadius: 100, backgroundColor: BRAND_COLORS.primary }}
             >
-              <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: '#fff' }}>
-                {isMobile ? 'Đăng Nhập' : 'Đăng Ký'}
+              <Text style={{ fontFamily: F.bold, fontSize: 13, color: '#fff' }}>
+                {isMobile ? 'Đăng Nhập' : 'Bắt Đầu Ngay'}
               </Text>
             </Pressable>
           </View>
@@ -330,29 +342,29 @@ export default function Landing() {
         <Animated.View style={{ opacity: heroAlpha }}>
           <View style={{
             paddingHorizontal: px,
-            paddingTop: isMobile ? 40 : 80,
+            paddingTop: isMobile ? 36 : 72,
             paddingBottom: isMobile ? 44 : 88,
             backgroundColor: '#FBF5EA',
           }}>
             <View style={{
               flexDirection: isMobile ? 'column' : 'row',
-              gap: isMobile ? 24 : 64,
+              gap: isMobile ? 28 : 64,
               alignItems: isMobile ? 'stretch' : 'center',
             }}>
 
               {/* Left: content */}
-              <View style={{ flex: isMobile ? undefined : 1, gap: isMobile ? 20 : 28 }}>
+              <View style={{ flex: isMobile ? undefined : 1, gap: isMobile ? 22 : 28 }}>
 
                 <Animated.View style={{ transform: [{ translateY: badgeY }] }}>
                   <Reveal delay={0}>
                     <View style={{
                       alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center',
-                      gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 100,
-                      backgroundColor: `${BRAND_COLORS.primary}12`,
-                      borderWidth: 1, borderColor: `${BRAND_COLORS.primary}30`,
+                      gap: 8, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 100,
+                      backgroundColor: 'rgba(31,111,84,0.08)',
+                      borderWidth: 1, borderColor: 'rgba(31,111,84,0.22)',
                     }}>
-                      <Sparkles size={12} color={BRAND_COLORS.primary} />
-                      <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: BRAND_COLORS.primary, letterSpacing: 0.9, textTransform: 'uppercase' }}>
+                      <Sparkles size={13} color={BRAND_COLORS.primary} />
+                      <Text style={{ fontFamily: F.bold, fontSize: 11, color: BRAND_COLORS.primary, letterSpacing: 0.9, textTransform: 'uppercase' }}>
                         AI thật · Địa điểm thật · Thích ứng thật
                       </Text>
                     </View>
@@ -361,7 +373,7 @@ export default function Landing() {
 
                 <Animated.View style={{ transform: [{ translateY: titleY }] }}>
                   <Reveal delay={80}>
-                    <Text style={{ fontFamily: F.loraBold, fontSize: isMobile ? 36 : 52, lineHeight: isMobile ? 46 : 66, color: '#1B2420' }}>
+                    <Text style={{ fontFamily: F.loraBold, fontSize: isMobile ? 36 : 54, lineHeight: isMobile ? 46 : 68, color: '#1B2420' }}>
                       Du lịch Việt Nam{'\n'}
                       <Text style={{ color: BRAND_COLORS.primary }}>Trọn Vẹn,</Text>{'\n'}Không Lo Nghĩ
                     </Text>
@@ -370,26 +382,98 @@ export default function Landing() {
 
                 <Animated.View style={{ transform: [{ translateY: subtitleY }] }}>
                   <Reveal delay={160}>
-                    <Text style={{ fontFamily: F.regular, fontSize: isMobile ? 15 : 16, lineHeight: isMobile ? 26 : 28, color: BRAND_COLORS.textSoft, maxWidth: 460 }}>
-                      Điền 4 bước, nhận lịch trình cá nhân hóa hoàn chỉnh — từ thời tiết thực, địa điểm thật, đến tự động xử lý sự cố bất ngờ.
+                    <Text style={{ fontFamily: F.regular, fontSize: isMobile ? 15 : 17, lineHeight: isMobile ? 26 : 30, color: BRAND_COLORS.textSoft, maxWidth: 480 }}>
+                      Tự động xây dựng lịch trình cá nhân hóa dựa trên ngân sách thực tế, dữ liệu thời tiết và khả năng tự động thích ứng sự cố trong suốt chuyến đi.
                     </Text>
                   </Reveal>
                 </Animated.View>
 
+                {/* Quick Search Box */}
+                <Reveal delay={200}>
+                  <View style={{
+                    flexDirection: isMobile ? 'column' : 'row',
+                    alignItems: isMobile ? 'stretch' : 'center',
+                    backgroundColor: '#fff',
+                    borderRadius: isMobile ? 16 : 100,
+                    paddingLeft: 18,
+                    paddingRight: 6,
+                    paddingVertical: 6,
+                    borderWidth: 1,
+                    borderColor: 'rgba(31,111,84,0.25)',
+                    shadowColor: BRAND_COLORS.primary,
+                    shadowOffset: { width: 0, height: 6 },
+                    shadowOpacity: 0.08,
+                    shadowRadius: 20,
+                    elevation: 4,
+                    gap: isMobile ? 10 : 0,
+                  }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingVertical: isMobile ? 6 : 0 }}>
+                      <Search size={18} color={BRAND_COLORS.primary} style={{ marginRight: 10 }} />
+                      <TextInput
+                        value={quickDestination}
+                        onChangeText={setQuickDestination}
+                        onSubmitEditing={handleQuickSearchSubmit}
+                        placeholder="Bạn muốn đi đâu? (Ví dụ: Đà Nẵng, Phú Quốc, Sapa...)"
+                        placeholderTextColor={BRAND_COLORS.textMuted}
+                        style={{
+                          flex: 1,
+                          fontFamily: F.regular,
+                          fontSize: 14,
+                          color: '#1B2420',
+                          outlineStyle: 'none' as any,
+                        }}
+                      />
+                    </View>
+                    <Pressable
+                      onPress={handleQuickSearchSubmit}
+                      style={{
+                        backgroundColor: BRAND_COLORS.accent,
+                        paddingHorizontal: 22,
+                        paddingVertical: 14,
+                        borderRadius: 100,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <Text style={{ fontFamily: F.bold, fontSize: 14, color: '#fff' }}>Lập Lịch Trình</Text>
+                      <ArrowRight size={15} color="#fff" />
+                    </Pressable>
+                  </View>
+                </Reveal>
+
                 <Animated.View style={{ transform: [{ translateY: citiesY }] }}>
-                  <Reveal delay={200}>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                      {VIETNAMESE_CITIES.map((city) => (
-                        <View key={city} style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 5,
-                          paddingHorizontal: 11, paddingVertical: 6, borderRadius: 100,
-                          backgroundColor: '#fff',
-                          borderWidth: 0.5, borderColor: 'rgba(27,36,32,0.12)',
-                        }}>
-                          <Text style={{ fontSize: 11 }}>{CITY_EMOJIS[city]}</Text>
-                          <Text style={{ fontFamily: F.regular, fontSize: 11, color: BRAND_COLORS.textSoft }}>{city}</Text>
-                        </View>
-                      ))}
+                  <Reveal delay={240}>
+                    <View style={{ gap: 8 }}>
+                      <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: BRAND_COLORS.textMuted, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                        Điểm đến phổ biến được ưa thích:
+                      </Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {VIETNAMESE_CITIES.map((city) => (
+                          <Pressable
+                            key={city}
+                            onPress={() => {
+                              setQuickDestination(city);
+                              if (isLoggedIn) {
+                                router.push(`${APP_ROUTES.NEW_TRIP}?destination=${encodeURIComponent(city)}` as any);
+                              } else {
+                                router.push(`${APP_ROUTES.SIGN_UP}?destination=${encodeURIComponent(city)}` as any);
+                              }
+                            }}
+                            style={{
+                              flexDirection: 'row', alignItems: 'center', gap: 6,
+                              paddingHorizontal: 12, paddingVertical: 7, borderRadius: 100,
+                              backgroundColor: '#fff',
+                              borderWidth: 1, borderColor: 'rgba(27,36,32,0.1)',
+                              shadowColor: '#1B2420', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6,
+                            }}
+                          >
+                            <Text style={{ fontSize: 12 }}>{CITY_EMOJIS[city]}</Text>
+                            <Text style={{ fontFamily: F.semiBold, fontSize: 12, color: BRAND_COLORS.textSoft }}>{city}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
                     </View>
                   </Reveal>
                 </Animated.View>
