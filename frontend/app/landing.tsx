@@ -628,7 +628,13 @@ export default function Landing() {
 
         {/* ── HOW IT WORKS ──────────────────────────────────────────────────── */}
         <View
-          style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#0A0A0C' }}
+          style={{
+            paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52,
+            backgroundColor: '#0A0A0C',
+            ...(isWeb ? {
+              background: 'radial-gradient(ellipse at 15% 10%, rgba(249, 158, 117, 0.1) 0%, rgba(74, 39, 56, 0.05) 45%, #0A0A0C 90%)',
+            } as any : {}),
+          }}
           onLayout={(e) => setHowItWorksSectionY(e.nativeEvent.layout.y)}
         >
           <View style={{ gap: 14 }}>
@@ -685,7 +691,13 @@ export default function Landing() {
 
         {/* ── FEATURES ──────────────────────────────────────────────────────── */}
         <View
-          style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#0A0A0C' }}
+          style={{
+            paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52,
+            backgroundColor: '#0A0A0C',
+            ...(isWeb ? {
+              background: 'radial-gradient(ellipse at 88% 50%, rgba(249, 158, 117, 0.14) 0%, rgba(74, 39, 56, 0.08) 50%, #0A0A0C 90%)',
+            } as any : {}),
+          }}
           onLayout={(e) => setFeaturesSectionY(e.nativeEvent.layout.y)}
         >
           <View style={{ gap: 14 }}>
@@ -742,7 +754,13 @@ export default function Landing() {
 
         {/* ── PRICING SECTION (COMING SOON / ROADMAP) ───────────────────────── */}
         <View
-          style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#08080A' }}
+          style={{
+            paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52,
+            backgroundColor: '#08080A',
+            ...(isWeb ? {
+              background: 'radial-gradient(ellipse at 50% 20%, rgba(249, 158, 117, 0.09) 0%, rgba(74, 39, 56, 0.04) 50%, #08080A 90%)',
+            } as any : {}),
+          }}
           onLayout={(e) => setPricingSectionY(e.nativeEvent.layout.y)}
         >
           <View style={{ gap: 14 }}>
@@ -851,7 +869,13 @@ export default function Landing() {
         </View>
 
         {/* ── DARK — TESTIMONIALS + CTA ──────────────────────────────────────── */}
-        <View style={{ paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52, backgroundColor: '#0A0A0C' }}>
+        <View style={{
+          paddingHorizontal: px, paddingVertical: isMobile ? 56 : 80, gap: isMobile ? 32 : 52,
+          backgroundColor: '#0A0A0C',
+          ...(isWeb ? {
+            background: 'radial-gradient(ellipse at 50% 80%, rgba(249, 158, 117, 0.16) 0%, rgba(74, 39, 56, 0.1) 45%, #0A0A0C 90%)',
+          } as any : {}),
+        }}>
           <View style={{ gap: 14 }}>
             <Reveal>
               <View style={{ alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: 'rgba(249, 158, 117, 0.12)', borderWidth: 1, borderColor: 'rgba(249, 158, 117, 0.3)' }}>
@@ -904,40 +928,49 @@ export default function Landing() {
             ))}
           </View>
 
+          {/* Bottom Ambient Sunset Glow Banner Box */}
           <Reveal delay={200}>
-            <View style={{ gap: 14 }}>
-              {[
-                'Đi một mình, đôi, gia đình hoặc nhóm bạn',
-                'Tự động cập nhật theo thời tiết thực tế',
-                'Ngân sách luôn trong tầm kiểm soát',
-                'Địa điểm từ Google Places, không bịa đặt',
-              ].map((item, i) => (
-                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(249, 158, 117, 0.2)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Check size={11} color="#F99E75" strokeWidth={3} />
+            <View style={{
+              borderRadius: 24, padding: isMobile ? 24 : 36, gap: 24,
+              backgroundColor: 'rgba(249, 158, 117, 0.05)',
+              borderWidth: 1, borderColor: 'rgba(249, 158, 117, 0.25)',
+              ...(isWeb ? {
+                background: 'linear-gradient(135deg, rgba(249, 158, 117, 0.16) 0%, rgba(74, 39, 56, 0.25) 50%, rgba(10, 10, 12, 0.6) 100%)',
+                backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+              } as any : {}),
+            }}>
+              <View style={{ gap: 14 }}>
+                {[
+                  'Đi một mình, đôi, gia đình hoặc nhóm bạn',
+                  'Tự động cập nhật theo thời tiết thực tế',
+                  'Ngân sách luôn trong tầm kiểm soát',
+                  'Địa điểm từ Google Places, không bịa đặt',
+                ].map((item, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(249, 158, 117, 0.25)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Check size={11} color="#F99E75" strokeWidth={3} />
+                    </View>
+                    <Text style={{ fontFamily: F.regular, fontSize: 14, color: 'rgba(255,255,255,0.9)', flex: 1 }}>{item}</Text>
                   </View>
-                  <Text style={{ fontFamily: F.regular, fontSize: 14, color: 'rgba(255,255,255,0.85)', flex: 1 }}>{item}</Text>
-                </View>
-              ))}
-            </View>
-          </Reveal>
+                ))}
+              </View>
 
-          <Reveal delay={280}>
-            <Pressable
-              onPress={() => router.push(isLoggedIn ? (dashPath as any) : (APP_ROUTES.SIGN_UP as any))}
-              style={{
-                alignItems: 'center', paddingVertical: 18, borderRadius: 100,
-                backgroundColor: '#F99E75',
-                flexDirection: 'row', justifyContent: 'center', gap: 8,
-                shadowColor: '#F99E75', shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.35, shadowRadius: 16,
-              }}
-            >
-              <Text style={{ fontFamily: F.bold, fontSize: 15, color: '#0A0A0C' }}>
-                {isLoggedIn ? 'Đến bảng điều khiển' : 'Bắt đầu miễn phí ngay hôm nay'}
-              </Text>
-              <ArrowRight size={16} color="#0A0A0C" />
-            </Pressable>
+              <Pressable
+                onPress={() => router.push(isLoggedIn ? (dashPath as any) : (APP_ROUTES.SIGN_UP as any))}
+                style={{
+                  alignItems: 'center', paddingVertical: 18, borderRadius: 100,
+                  backgroundColor: '#F99E75',
+                  flexDirection: 'row', justifyContent: 'center', gap: 8,
+                  shadowColor: '#F99E75', shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.4, shadowRadius: 16,
+                }}
+              >
+                <Text style={{ fontFamily: F.bold, fontSize: 15, color: '#0A0A0C' }}>
+                  {isLoggedIn ? 'Đến bảng điều khiển' : 'Bắt đầu miễn phí ngay hôm nay'}
+                </Text>
+                <ArrowRight size={16} color="#0A0A0C" />
+              </Pressable>
+            </View>
           </Reveal>
         </View>
 
