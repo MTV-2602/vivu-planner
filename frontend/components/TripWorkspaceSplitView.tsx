@@ -134,12 +134,12 @@ export default function TripWorkspaceSplitView() {
           paddingHorizontal: 12,
           paddingVertical: 6,
           borderRadius: 100,
-          backgroundColor: 'rgba(16, 185, 129, 0.12)',
+          backgroundColor: '#E6F0F3',
           borderWidth: 1,
-          borderColor: 'rgba(16, 185, 129, 0.25)',
+          borderColor: '#CBE0E6',
         }}>
-          <Sparkles size={14} color="#059669" />
-          <Text style={{ color: '#059669', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+          <Sparkles size={14} color="#3B7A8C" />
+          <Text style={{ color: '#3B7A8C', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>
             Màn hình Quản trị Lịch trình (Split-View Workspace)
           </Text>
         </View>
@@ -147,7 +147,7 @@ export default function TripWorkspaceSplitView() {
         <Text style={{
           fontSize: Platform.OS === 'web' ? 30 : 22,
           fontWeight: '800',
-          color: '#111827',
+          color: '#2D4B54',
           letterSpacing: -0.5,
         }}>
           Lịch trình cá nhân hóa + Bản đồ Mapbox Dark tương tác
@@ -160,11 +160,11 @@ export default function TripWorkspaceSplitView() {
         gap: 20,
         backgroundColor: '#FFFFFF',
         borderWidth: 1,
-        borderColor: '#E5E7EB',
+        borderColor: '#D4E3E8',
         borderRadius: 28,
         padding: Platform.OS === 'web' ? 24 : 14,
         ...(Platform.OS === 'web' ? {
-          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.06)',
+          boxShadow: '0 10px 40px rgba(74, 112, 125, 0.08)',
         } as any : {}),
       }}>
         
@@ -173,16 +173,16 @@ export default function TripWorkspaceSplitView() {
           flex: Platform.OS === 'web' ? 1.5 : undefined,
           gap: 20,
         }}>
-          {/* Day Navigation Tabs - Signature Layla AI Black Active Tab */}
+          {/* Day Navigation Tabs - Misty Slate Cyan Active Tab */}
           <View style={{
             flexDirection: 'row',
             flexWrap: 'wrap',
             gap: 10,
-            backgroundColor: '#F3F4F6',
+            backgroundColor: '#E6F0F3',
             padding: 6,
             borderRadius: 100,
             borderWidth: 1,
-            borderColor: '#E5E7EB',
+            borderColor: '#CBE0E6',
           }}>
             {DAY_TABS.map((tab) => {
               const isActive = activeDay === tab.day;
@@ -194,16 +194,17 @@ export default function TripWorkspaceSplitView() {
                     paddingHorizontal: 18,
                     paddingVertical: 10,
                     borderRadius: 100,
-                    backgroundColor: isActive ? '#111827' : 'transparent',
+                    backgroundColor: isActive ? '#3B7A8C' : 'transparent',
                     opacity: pressed ? 0.85 : 1,
                     ...(Platform.OS === 'web' ? {
                       cursor: 'pointer',
                       transition: 'all 0.2s ease',
+                      boxShadow: isActive ? '0 4px 12px rgba(59, 122, 140, 0.25)' : 'none',
                     } as any : {}),
                   }]}
                 >
                   <Text style={{
-                    color: isActive ? '#FFFFFF' : '#4B5563',
+                    color: isActive ? '#FFFFFF' : '#4B6E79',
                     fontSize: 13,
                     fontWeight: isActive ? '700' : '600',
                   }}>
@@ -218,7 +219,7 @@ export default function TripWorkspaceSplitView() {
           <View style={{ gap: 14 }}>
             {timelineItems.length === 0 ? (
               <View style={{ padding: 24, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: '#9CA3AF' }}>Chưa có điểm dừng nào cho ngày này.</Text>
+                <Text style={{ color: '#769FA9' }}>Chưa có điểm dừng nào cho ngày này.</Text>
               </View>
             ) : (
               timelineItems.map((item, idx) => {
@@ -238,25 +239,25 @@ export default function TripWorkspaceSplitView() {
                       gap: 14,
                       padding: 16,
                       borderRadius: 18,
-                      backgroundColor: isHovered ? '#F0FDF4' : '#FFFFFF',
+                      backgroundColor: isHovered ? '#E6F0F3' : '#FFFFFF',
                       borderWidth: 1,
-                      borderColor: isHovered ? '#A7F3D0' : '#E5E7EB',
+                      borderColor: isHovered ? '#9BBEC8' : '#D4E3E8',
                       ...(Platform.OS === 'web' ? {
                         transition: 'all 0.2s ease',
-                        boxShadow: isHovered ? '0 4px 16px rgba(16, 185, 129, 0.15)' : '0 2px 8px rgba(0, 0, 0, 0.03)',
+                        boxShadow: isHovered ? '0 4px 16px rgba(59, 122, 140, 0.15)' : '0 2px 8px rgba(74, 112, 125, 0.04)',
                       } as any : {}),
                     }}
                   >
                     {/* Drag Handle Icon & Pin Number */}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <View style={{ cursor: 'grab' } as any}>
-                        <GripVertical size={18} color="#9CA3AF" />
+                        <GripVertical size={18} color="#769FA9" />
                       </View>
                       <View style={{
                         width: 28,
                         height: 28,
                         borderRadius: 14,
-                        backgroundColor: isHovered ? '#059669' : '#111827',
+                        backgroundColor: isHovered ? '#3B7A8C' : '#2D4B54',
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}>
@@ -269,19 +270,19 @@ export default function TripWorkspaceSplitView() {
                     {/* Timeline Item Details */}
                     <View style={{ flex: 1, gap: 4 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Text style={{ color: '#059669', fontSize: 12, fontWeight: '700' }}>
+                        <Text style={{ color: '#3B7A8C', fontSize: 12, fontWeight: '700' }}>
                           {item.time}
                         </Text>
-                        <Text style={{ color: '#D1D5DB', fontSize: 11 }}>•</Text>
-                        <Text style={{ color: '#6B7280', fontSize: 11, fontWeight: '600' }}>
+                        <Text style={{ color: '#9BBEC8', fontSize: 11 }}>•</Text>
+                        <Text style={{ color: '#4B6E79', fontSize: 11, fontWeight: '600' }}>
                           {item.category}
                         </Text>
                       </View>
 
-                      <Text style={{ color: '#111827', fontSize: 15, fontWeight: '700' }}>
+                      <Text style={{ color: '#2D4B54', fontSize: 15, fontWeight: '700' }}>
                         {item.title}
                       </Text>
-                      <Text style={{ color: '#4B5563', fontSize: 12 }}>
+                      <Text style={{ color: '#4B6E79', fontSize: 12 }}>
                         {item.detail}
                       </Text>
                     </View>
@@ -293,11 +294,11 @@ export default function TripWorkspaceSplitView() {
                         style={({ pressed }) => [{
                           padding: 6,
                           borderRadius: 8,
-                          backgroundColor: '#F3F4F6',
+                          backgroundColor: '#E6F0F3',
                           opacity: pressed ? 0.7 : 1,
                         }]}
                       >
-                        <Text style={{ color: '#374151', fontSize: 10, fontWeight: '800' }}>▲</Text>
+                        <Text style={{ color: '#2D4B54', fontSize: 10, fontWeight: '800' }}>▲</Text>
                       </Pressable>
 
                       <Pressable
@@ -305,11 +306,11 @@ export default function TripWorkspaceSplitView() {
                         style={({ pressed }) => [{
                           padding: 6,
                           borderRadius: 8,
-                          backgroundColor: '#F3F4F6',
+                          backgroundColor: '#E6F0F3',
                           opacity: pressed ? 0.7 : 1,
                         }]}
                       >
-                        <Text style={{ color: '#374151', fontSize: 10, fontWeight: '800' }}>▼</Text>
+                        <Text style={{ color: '#2D4B54', fontSize: 10, fontWeight: '800' }}>▼</Text>
                       </Pressable>
 
                       <Pressable
@@ -334,9 +335,9 @@ export default function TripWorkspaceSplitView() {
           <View style={{
             padding: 18,
             borderRadius: 20,
-            backgroundColor: '#F9FAFB',
+            backgroundColor: '#F4F8FA',
             borderWidth: 1,
-            borderColor: '#E5E7EB',
+            borderColor: '#D4E3E8',
             gap: 16,
             marginTop: 6,
           }}>
@@ -344,12 +345,12 @@ export default function TripWorkspaceSplitView() {
             <View style={{ gap: 8 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Wallet size={15} color="#059669" />
-                  <Text style={{ color: '#111827', fontSize: 13, fontWeight: '700' }}>
+                  <Wallet size={15} color="#3B7A8C" />
+                  <Text style={{ color: '#2D4B54', fontSize: 13, fontWeight: '700' }}>
                     Ngân sách chuyến đi
                   </Text>
                 </View>
-                <Text style={{ color: '#059669', fontSize: 12, fontWeight: '700' }}>
+                <Text style={{ color: '#3B7A8C', fontSize: 12, fontWeight: '700' }}>
                   Đã chi 850.000đ / Dự toán 2.000.000đ
                 </Text>
               </View>
@@ -359,23 +360,23 @@ export default function TripWorkspaceSplitView() {
                 height: 8,
                 width: '100%',
                 borderRadius: 4,
-                backgroundColor: '#E5E7EB',
+                backgroundColor: '#D4E3E8',
                 overflow: 'hidden',
               }}>
                 <View style={{
                   height: '100%',
                   width: '42.5%',
                   borderRadius: 4,
-                  backgroundColor: '#059669',
+                  backgroundColor: '#3B7A8C',
                 }} />
               </View>
             </View>
 
             {/* Carbon Footprint Meter */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6, borderTopWidth: 1, borderTopColor: '#E5E7EB' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6, borderTopWidth: 1, borderTopColor: '#D4E3E8' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Leaf size={15} color="#059669" />
-                <Text style={{ color: '#374151', fontSize: 12, fontWeight: '600' }}>
+                <Leaf size={15} color="#3B7A8C" />
+                <Text style={{ color: '#2D4B54', fontSize: 12, fontWeight: '600' }}>
                   Dấu chân Carbon dự toán
                 </Text>
               </View>
@@ -383,11 +384,11 @@ export default function TripWorkspaceSplitView() {
                 paddingHorizontal: 10,
                 paddingVertical: 4,
                 borderRadius: 100,
-                backgroundColor: '#ECFDF5',
+                backgroundColor: '#E6F0F3',
                 borderWidth: 1,
-                borderColor: '#A7F3D0',
+                borderColor: '#CBE0E6',
               }}>
-                <Text style={{ color: '#047857', fontSize: 11, fontWeight: '700' }}>
+                <Text style={{ color: '#2D4B54', fontSize: 11, fontWeight: '700' }}>
                   ~8.5 kg CO2e (Mức thấp)
                 </Text>
               </View>
@@ -395,14 +396,14 @@ export default function TripWorkspaceSplitView() {
           </View>
         </View>
 
-        {/* RIGHT PANEL: INTERACTIVE MAP (40% width on desktop) */}
+        {/* RIGHT PANEL: INTERACTIVE OCEANIC MAP (40% width on desktop) */}
         <View style={{
           flex: Platform.OS === 'web' ? 1 : undefined,
           minHeight: 380,
           borderRadius: 22,
-          backgroundColor: '#0F172A',
+          backgroundColor: '#0E1B22',
           borderWidth: 1,
-          borderColor: '#1E293B',
+          borderColor: '#1C323D',
           position: 'relative',
           overflow: 'hidden',
           padding: 16,
@@ -417,13 +418,13 @@ export default function TripWorkspaceSplitView() {
               paddingHorizontal: 12,
               paddingVertical: 6,
               borderRadius: 100,
-              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              backgroundColor: 'rgba(255, 255, 255, 0.12)',
               borderWidth: 1,
-              borderColor: 'rgba(255, 255, 255, 0.15)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
             }}>
-              <Navigation size={13} color="#34D399" />
+              <Navigation size={13} color="#38BDF8" />
               <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
-                Mapbox Dark · Hà Nội
+                Mapbox Oceanic · Hà Nội
               </Text>
             </View>
 
@@ -431,9 +432,9 @@ export default function TripWorkspaceSplitView() {
               paddingHorizontal: 10,
               paddingVertical: 5,
               borderRadius: 8,
-              backgroundColor: 'rgba(16, 185, 129, 0.25)',
+              backgroundColor: 'rgba(56, 189, 248, 0.25)',
             }}>
-              <Text style={{ color: '#34D399', fontSize: 10, fontWeight: '800' }}>LIVE ROUTE</Text>
+              <Text style={{ color: '#38BDF8', fontSize: 10, fontWeight: '800' }}>LIVE ROUTE</Text>
             </View>
           </View>
 
@@ -454,7 +455,7 @@ export default function TripWorkspaceSplitView() {
               height: '100%',
               opacity: 0.15,
               borderWidth: 1,
-              borderColor: '#34D399',
+              borderColor: '#38BDF8',
             }} />
 
             {/* Simulated SVG Route Lines & Pins */}
@@ -464,10 +465,10 @@ export default function TripWorkspaceSplitView() {
                 <path
                   d="M 120 130 Q 220 180 310 260"
                   fill="none"
-                  stroke="#10B981"
+                  stroke="#38BDF8"
                   strokeWidth="3"
                   strokeDasharray="6 4"
-                  style={{ opacity: 0.75 }}
+                  style={{ opacity: 0.8 }}
                 />
               </svg>
             )}
@@ -496,13 +497,13 @@ export default function TripWorkspaceSplitView() {
                     width: isHighlighted ? 44 : 36,
                     height: isHighlighted ? 44 : 36,
                     borderRadius: 22,
-                    backgroundColor: isHighlighted ? '#10B981' : '#18181B',
+                    backgroundColor: isHighlighted ? '#38BDF8' : '#1C323D',
                     borderWidth: 2,
-                    borderColor: '#34D399',
+                    borderColor: '#38BDF8',
                     alignItems: 'center',
                     justifyContent: 'center',
                     ...(Platform.OS === 'web' ? {
-                      boxShadow: isHighlighted ? '0 0 24px #34D399' : '0 4px 12px rgba(0,0,0,0.5)',
+                      boxShadow: isHighlighted ? '0 0 24px #38BDF8' : '0 4px 12px rgba(0,0,0,0.5)',
                       transition: 'all 0.2s ease',
                       cursor: 'pointer',
                     } as any : {}),
@@ -519,9 +520,9 @@ export default function TripWorkspaceSplitView() {
                       bottom: 50,
                       left: -50,
                       width: 140,
-                      backgroundColor: '#18181B',
+                      backgroundColor: '#1C323D',
                       borderWidth: 1,
-                      borderColor: '#34D399',
+                      borderColor: '#38BDF8',
                       padding: 8,
                       borderRadius: 10,
                       alignItems: 'center',
@@ -538,7 +539,7 @@ export default function TripWorkspaceSplitView() {
 
           {/* Map Footer Note */}
           <View style={{ zIndex: 10, alignSelf: 'flex-start' }}>
-            <Text style={{ color: 'rgba(255, 255, 255, 0.55)', fontSize: 11 }}>
+            <Text style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: 11 }}>
               💡 Rê chuột vào Timeline hoặc Marker để xem liên kết trực quan.
             </Text>
           </View>

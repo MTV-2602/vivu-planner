@@ -78,12 +78,12 @@ export default function LocalizedBentoGrid() {
           paddingHorizontal: 12,
           paddingVertical: 6,
           borderRadius: 100,
-          backgroundColor: 'rgba(16, 185, 129, 0.12)',
+          backgroundColor: '#E6F0F3',
           borderWidth: 1,
-          borderColor: 'rgba(16, 185, 129, 0.25)',
+          borderColor: '#CBE0E6',
         }}>
-          <Sparkles size={14} color="#059669" />
-          <Text style={{ color: '#059669', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+          <Sparkles size={14} color="#3B7A8C" />
+          <Text style={{ color: '#3B7A8C', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>
             Kho Địa Điểm Ngách (Hidden Gems)
           </Text>
         </View>
@@ -91,12 +91,12 @@ export default function LocalizedBentoGrid() {
         <Text style={{
           fontSize: Platform.OS === 'web' ? 32 : 24,
           fontWeight: '800',
-          color: '#111827',
+          color: '#2D4B54',
           letterSpacing: -0.5,
         }}>
           Địa điểm bản địa tuyển chọn bởi AI & Du khách
         </Text>
-        <Text style={{ color: '#4B5563', fontSize: 14, maxWidth: 640, lineHeight: 22 }}>
+        <Text style={{ color: '#4B6E79', fontSize: 14, maxWidth: 640, lineHeight: 22 }}>
           Khám phá những trải nghiệm độc lạ, nét văn hóa đặc trưng và địa điểm nguyên sơ không có trên các bản đồ thông thường.
         </Text>
       </View>
@@ -120,11 +120,11 @@ export default function LocalizedBentoGrid() {
                 overflow: 'hidden',
                 backgroundColor: '#FFFFFF',
                 borderWidth: 1,
-                borderColor: '#E5E7EB',
+                borderColor: '#D4E3E8',
                 position: 'relative',
                 ...(Platform.OS === 'web' ? {
                   transition: 'all 0.3s ease',
-                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.06)',
+                  boxShadow: '0 6px 24px rgba(74, 112, 125, 0.08)',
                 } as any : {}),
               }}
             >
@@ -141,10 +141,10 @@ export default function LocalizedBentoGrid() {
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  backgroundColor: 'rgba(0, 0, 0, 0.35)',
+                  backgroundColor: 'rgba(26, 44, 51, 0.35)',
                   borderRadius: 24,
                   ...(Platform.OS === 'web' ? {
-                    backgroundImage: 'linear-gradient(180deg, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.85) 85%)',
+                    backgroundImage: 'linear-gradient(180deg, rgba(26, 44, 51, 0.15) 0%, rgba(15, 27, 34, 0.85) 85%)',
                   } as any : {}),
                 }} />
 
@@ -154,12 +154,12 @@ export default function LocalizedBentoGrid() {
                     paddingHorizontal: 12,
                     paddingVertical: 6,
                     borderRadius: 100,
-                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.92)',
                     borderWidth: 1,
                     borderColor: 'rgba(255, 255, 255, 0.5)',
                     ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)' } as any : {}),
                   }}>
-                    <Text style={{ color: '#111827', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
+                    <Text style={{ color: '#2D4B54', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
                       {item.tag}
                     </Text>
                   </View>
@@ -170,9 +170,9 @@ export default function LocalizedBentoGrid() {
                       width: 38,
                       height: 38,
                       borderRadius: 19,
-                      backgroundColor: isSaved ? '#111827' : 'rgba(255, 255, 255, 0.25)',
+                      backgroundColor: isSaved ? '#3B7A8C' : 'rgba(255, 255, 255, 0.25)',
                       borderWidth: 1,
-                      borderColor: isSaved ? '#111827' : 'rgba(255, 255, 255, 0.4)',
+                      borderColor: isSaved ? '#3B7A8C' : 'rgba(255, 255, 255, 0.4)',
                       alignItems: 'center',
                       justifyContent: 'center',
                       opacity: pressed ? 0.8 : 1,
@@ -216,10 +216,10 @@ export default function LocalizedBentoGrid() {
                       paddingHorizontal: 10,
                       paddingVertical: 5,
                       borderRadius: 8,
-                      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                      backgroundColor: 'rgba(255, 255, 255, 0.92)',
                     }}>
                       <Star size={12} color="#D97706" fill="#D97706" />
-                      <Text style={{ color: '#111827', fontSize: 11, fontWeight: '700' }}>
+                      <Text style={{ color: '#2D4B54', fontSize: 11, fontWeight: '700' }}>
                         {item.metric1}
                       </Text>
                     </View>
@@ -231,7 +231,7 @@ export default function LocalizedBentoGrid() {
                       paddingHorizontal: 10,
                       paddingVertical: 5,
                       borderRadius: 8,
-                      backgroundColor: 'rgba(16, 185, 129, 0.9)',
+                      backgroundColor: 'rgba(59, 122, 140, 0.9)',
                     }}>
                       <Leaf size={12} color="#FFFFFF" />
                       <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
