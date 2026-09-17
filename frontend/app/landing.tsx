@@ -10,6 +10,9 @@ import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import Reveal from '../components/Reveal';
+import HeroAISearch from '../components/HeroAISearch';
+import LocalizedBentoGrid from '../components/LocalizedBentoGrid';
+import TripWorkspaceSplitView from '../components/TripWorkspaceSplitView';
 import { BRAND_COLORS, VIETNAMESE_CITIES, APP_ROUTES } from '../constants';
 
 const isWeb = Platform.OS === 'web';
@@ -330,7 +333,12 @@ export default function Landing() {
       }}>
         <Pressable
           onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+          style={({ pressed }) => [{
+            flexDirection: 'row', alignItems: 'center', gap: 10,
+            opacity: pressed ? 0.75 : 1,
+            transform: [{ scale: pressed ? 0.97 : 1 }],
+            ...(isWeb ? { cursor: 'pointer' } as any : {}),
+          }]}
         >
           <View style={{
             width: isMobile ? 32 : 38, height: isMobile ? 32 : 38, borderRadius: 12,
@@ -346,16 +354,28 @@ export default function Landing() {
 
         {isWeb && !isMobile && (
           <View style={{ flexDirection: 'row', gap: 36, alignItems: 'center' }}>
-            <Pressable onPress={() => scrollRef.current?.scrollTo({ y: howItWorksSectionY, animated: true })}>
+            <Pressable
+              onPress={() => scrollRef.current?.scrollTo({ y: howItWorksSectionY, animated: true })}
+              style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1, ...(isWeb ? { cursor: 'pointer' } as any : {}) }]}
+            >
               <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: T.textMuted }}>Cách dùng</Text>
             </Pressable>
-            <Pressable onPress={() => scrollRef.current?.scrollTo({ y: featuresSectionY, animated: true })}>
+            <Pressable
+              onPress={() => scrollRef.current?.scrollTo({ y: featuresSectionY, animated: true })}
+              style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1, ...(isWeb ? { cursor: 'pointer' } as any : {}) }]}
+            >
               <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: T.textMuted }}>Tính năng</Text>
             </Pressable>
-            <Pressable onPress={() => scrollRef.current?.scrollTo({ y: pricingSectionY, animated: true })}>
+            <Pressable
+              onPress={() => scrollRef.current?.scrollTo({ y: pricingSectionY, animated: true })}
+              style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1, ...(isWeb ? { cursor: 'pointer' } as any : {}) }]}
+            >
               <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: T.textMuted }}>Bảng giá</Text>
             </Pressable>
-            <Pressable onPress={() => scrollRef.current?.scrollTo({ y: pricingSectionY, animated: true })}>
+            <Pressable
+              onPress={() => scrollRef.current?.scrollTo({ y: pricingSectionY, animated: true })}
+              style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1, ...(isWeb ? { cursor: 'pointer' } as any : {}) }]}
+            >
               <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: T.textMuted }}>Hỗ trợ</Text>
             </Pressable>
           </View>
@@ -365,12 +385,14 @@ export default function Landing() {
           {/* Theme Toggle Button (Sun / Moon Switch) */}
           <Pressable
             onPress={toggleTheme}
-            style={{
+            style={({ pressed }) => [{
               width: 38, height: 38, borderRadius: 19,
               backgroundColor: T.chipBg, borderWidth: 1, borderColor: T.chipBorder,
               alignItems: 'center', justifyContent: 'center',
-              ...(isWeb ? { backdropFilter: 'blur(8px)', cursor: 'pointer' } as any : {}),
-            }}
+              opacity: pressed ? 0.8 : 1,
+              transform: [{ scale: pressed ? 0.92 : 1 }],
+              ...(isWeb ? { backdropFilter: 'blur(8px)', cursor: 'pointer', transition: 'all 0.2s ease' } as any : {}),
+            }]}
           >
             {isDarkMode ? <Sun size={18} color="#F99E75" /> : <Moon size={18} color="#E07A5F" />}
           </Pressable>
@@ -379,10 +401,13 @@ export default function Landing() {
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <Pressable
                 onPress={() => router.push(dashPath as any)}
-                style={{
+                style={({ pressed }) => [{
                   paddingHorizontal: isMobile ? 14 : 20, paddingVertical: 10, borderRadius: 100,
                   backgroundColor: T.chipBg, borderWidth: 1, borderColor: T.chipBorder,
-                }}
+                  opacity: pressed ? 0.8 : 1,
+                  transform: [{ scale: pressed ? 0.96 : 1 }],
+                  ...(isWeb ? { cursor: 'pointer' } as any : {}),
+                }]}
               >
                 <Text style={{ fontFamily: F.bold, fontSize: 13, color: T.text }}>
                   {isAdmin ? 'Quản trị' : isMobile ? 'Dashboard' : 'Bảng điều khiển'}
@@ -391,7 +416,12 @@ export default function Landing() {
               {!isMobile && (
                 <Pressable
                   onPress={handleSignOut}
-                  style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 100, borderWidth: 1, borderColor: T.cardBorder }}
+                  style={({ pressed }) => [{
+                    paddingHorizontal: 18, paddingVertical: 10, borderRadius: 100, borderWidth: 1, borderColor: T.cardBorder,
+                    opacity: pressed ? 0.8 : 1,
+                    transform: [{ scale: pressed ? 0.96 : 1 }],
+                    ...(isWeb ? { cursor: 'pointer' } as any : {}),
+                  }]}
                 >
                   <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: T.textMuted }}>Đăng xuất</Text>
                 </Pressable>
@@ -400,16 +430,22 @@ export default function Landing() {
           ) : (
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               {!isMobile && (
-                <Pressable onPress={() => router.push(APP_ROUTES.SIGN_IN as any)}>
+                <Pressable
+                  onPress={() => router.push(APP_ROUTES.SIGN_IN as any)}
+                  style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1, ...(isWeb ? { cursor: 'pointer' } as any : {}) }]}
+                >
                   <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: T.text }}>Đăng nhập</Text>
                 </Pressable>
               )}
               <Pressable
                 onPress={() => router.push((isMobile ? APP_ROUTES.SIGN_IN : APP_ROUTES.SIGN_UP) as any)}
-                style={{
+                style={({ pressed }) => [{
                   paddingHorizontal: isMobile ? 16 : 22, paddingVertical: 10, borderRadius: 100,
                   backgroundColor: T.heroCtaBg, borderWidth: 1, borderColor: T.heroCtaBorder,
-                }}
+                  opacity: pressed ? 0.85 : 1,
+                  transform: [{ scale: pressed ? 0.96 : 1 }],
+                  ...(isWeb ? { cursor: 'pointer' } as any : {}),
+                }]}
               >
                 <Text style={{ fontFamily: F.bold, fontSize: 13, color: '#FFF' }}>
                   {isMobile ? 'Đăng nhập' : 'Tạo Tài Khoản'}
@@ -498,34 +534,16 @@ export default function Landing() {
                 </Reveal>
               </Animated.View>
 
-              {/* Soft Rose-Coral Soft Glassmorphic CTA Button */}
-              <Animated.View style={{ transform: [{ translateY: ctaY }] }}>
+              {/* Dribbble Standalone Interactive Component: HeroAISearch */}
+              <Animated.View style={{ transform: [{ translateY: ctaY }], width: '100%', marginTop: 12 }}>
                 <Reveal delay={220}>
-                  <Pressable
-                    onPress={() => router.push(isLoggedIn ? (dashPath as any) : (APP_ROUTES.SIGN_UP as any))}
-                    style={{
-                      paddingHorizontal: isMobile ? 32 : 44,
-                      paddingVertical: isMobile ? 16 : 20,
-                      borderRadius: 100,
-                      backgroundColor: T.heroCtaBg,
-                      borderWidth: 1,
-                      borderColor: T.heroCtaBorder,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 10,
-                      shadowColor: T.accent,
-                      shadowOffset: { width: 0, height: 8 },
-                      shadowOpacity: 0.35,
-                      shadowRadius: 24,
-                      elevation: 8,
-                      ...(isWeb ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', cursor: 'pointer' } as any : {}),
-                    }}
-                  >
-                    <Text style={{ fontFamily: F.bold, fontSize: isMobile ? 15 : 17, color: T.heroCtaText }}>
-                      {isLoggedIn ? 'Bắt Đầu Ngay' : 'Tạo Lịch Trình AI'}
-                    </Text>
-                    <ArrowRight size={18} color={T.heroCtaText} />
-                  </Pressable>
+                  <HeroAISearch onGenerate={(prompt) => {
+                    if (isLoggedIn) {
+                      router.push(`${APP_ROUTES.NEW_TRIP}${prompt ? `?prompt=${encodeURIComponent(prompt)}` : ''}` as any);
+                    } else {
+                      router.push(`${APP_ROUTES.SIGN_UP}${prompt ? `?prompt=${encodeURIComponent(prompt)}` : ''}` as any);
+                    }
+                  }} />
                 </Reveal>
               </Animated.View>
 
@@ -543,13 +561,15 @@ export default function Landing() {
                             router.push(`${APP_ROUTES.SIGN_UP}?destination=${encodeURIComponent(city)}` as any);
                           }
                         }}
-                        style={{
+                        style={({ pressed }) => [{
                           flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingHorizontal: 13, paddingVertical: 7, borderRadius: 100,
                           backgroundColor: T.chipBg,
                           borderWidth: 0.5, borderColor: T.chipBorder,
-                          ...(isWeb ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } as any : {}),
-                        }}
+                          opacity: pressed ? 0.75 : 1,
+                          transform: [{ scale: pressed ? 0.95 : 1 }],
+                          ...(isWeb ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', cursor: 'pointer' } as any : {}),
+                        }]}
                       >
                         <Text style={{ fontSize: 12 }}>{CITY_EMOJIS[city]}</Text>
                         <Text style={{ fontFamily: F.semiBold, fontSize: 12, color: T.chipText }}>{city}</Text>
@@ -648,19 +668,19 @@ export default function Landing() {
                             <Text style={{ fontSize: 32 }}>🏛️</Text>
                           </View>
                           <Text style={{ fontFamily: F.bold, fontSize: 13, color: T.text }}>Hà Nội · Phố Cổ</Text>
-                          <Text style={{ fontFamily: F.regular, fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>⭐ 4.9 · 3 ngày 2 đêm</Text>
+                          <Text style={{ fontFamily: F.regular, fontSize: 11, color: T.textMuted }}>⭐ 4.9 · 3 ngày 2 đêm</Text>
                         </View>
 
                         {/* Place 2 */}
                         <View style={{
-                          flex: 1, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)',
-                          borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)', padding: 14, gap: 10,
+                          flex: 1, borderRadius: 16, backgroundColor: T.cardBg,
+                          borderWidth: 0.5, borderColor: T.cardBorder, padding: 14, gap: 10,
                         }}>
                           <View style={{ height: 110, borderRadius: 12, backgroundColor: 'rgba(139,92,246,0.2)', alignItems: 'center', justifyContent: 'center' }}>
                             <Text style={{ fontSize: 32 }}>🌊</Text>
                           </View>
-                          <Text style={{ fontFamily: F.bold, fontSize: 13, color: '#FFF' }}>Đà Nẵng · Cầu Vàng</Text>
-                          <Text style={{ fontFamily: F.regular, fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>⭐ 4.9 · 4 ngày 3 đêm</Text>
+                          <Text style={{ fontFamily: F.bold, fontSize: 13, color: T.text }}>Đà Nẵng · Cầu Vàng</Text>
+                          <Text style={{ fontFamily: F.regular, fontSize: 11, color: T.textMuted }}>⭐ 4.9 · 4 ngày 3 đêm</Text>
                         </View>
                       </View>
 
@@ -836,6 +856,28 @@ export default function Landing() {
               </Reveal>
             ))}
           </View>
+        </View>
+
+        {/* ── LOCALIZED BENTO GRID SECTION (KHO ĐỊA ĐIỂM NGÁCH) ─────────────── */}
+        <View style={{
+          paddingHorizontal: px,
+          paddingVertical: isMobile ? 48 : 72,
+          backgroundColor: isDarkMode ? '#0A0A0C' : '#0F172A',
+        }}>
+          <Reveal>
+            <LocalizedBentoGrid />
+          </Reveal>
+        </View>
+
+        {/* ── TRIP WORKSPACE SPLIT-VIEW SECTION (WORKSPACE SPLIT-VIEW) ────── */}
+        <View style={{
+          paddingHorizontal: px,
+          paddingVertical: isMobile ? 48 : 72,
+          backgroundColor: isDarkMode ? '#050507' : '#0B0F17',
+        }}>
+          <Reveal>
+            <TripWorkspaceSplitView />
+          </Reveal>
         </View>
 
         {/* ── PRICING SECTION (COMING SOON / ROADMAP) ───────────────────────── */}
