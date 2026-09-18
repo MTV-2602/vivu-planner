@@ -194,6 +194,27 @@ export default function Landing() {
     scrollRef.current?.scrollTo({ y: targetY, animated: true });
   };
 
+  useEffect(() => {
+    const listenerId = scrollY.addListener(({ value }) => {
+      const scrollPos = value + 250;
+      let newIndex = 0;
+      if (pricingSectionY > 0 && scrollPos >= pricingSectionY) {
+        newIndex = 2;
+      } else if (featuresSectionY > 0 && scrollPos >= featuresSectionY) {
+        newIndex = 1;
+      } else if (howItWorksSectionY > 0 && scrollPos >= howItWorksSectionY) {
+        newIndex = 0;
+      } else {
+        newIndex = 0;
+      }
+      setActiveNavIndex((prev) => (prev !== newIndex ? newIndex : prev));
+    });
+
+    return () => {
+      scrollY.removeListener(listenerId);
+    };
+  }, [howItWorksSectionY, featuresSectionY, pricingSectionY]);
+
   const { session, isAdmin, signOut } = useAuth();
   const isLoggedIn = !!session;
 
@@ -423,13 +444,21 @@ export default function Landing() {
                     paddingHorizontal: 4,
                     opacity: pressed ? 0.75 : 1,
                     transform: [{ scale: pressed ? 0.94 : 1 }],
-                    ...(isWeb ? { cursor: 'pointer', transition: 'transform 0.15s ease, opacity 0.15s ease' } as any : {}),
+                    ...(isWeb ? {
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      WebkitUserSelect: 'none',
+                      outline: 'none',
+                      outlineStyle: 'none',
+                      transition: 'transform 0.15s ease, opacity 0.15s ease'
+                    } as any : {}),
                   }]}
                 >
                   <Text style={{
                     fontFamily: isActive ? F.bold : F.semiBold,
                     fontSize: 14,
                     color: isActive ? T.accent : T.textMuted,
+                    ...(isWeb ? { userSelect: 'none', WebkitUserSelect: 'none' } as any : {}),
                   }}>
                     {item.label}
                   </Text>
