@@ -768,7 +768,7 @@ export default function Landing() {
               </Reveal>
             </Animated.View>
 
-          </View>
+          </ImageBackground>
         </Animated.View>
 
         {/* ── STATS BAR ──────────────────────────────────────────────────────── */}
