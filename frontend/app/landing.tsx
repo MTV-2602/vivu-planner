@@ -174,12 +174,23 @@ export default function Landing() {
     ]).start();
   };
 
+  const isInitialUnderlineSet = useRef(false);
+
+  useEffect(() => {
+    const layout = navLayouts[activeNavIndex];
+    if (layout && layout.width > 0) {
+      if (!isInitialUnderlineSet.current) {
+        underlineLeft.setValue(layout.x);
+        underlineWidth.setValue(layout.width);
+        isInitialUnderlineSet.current = true;
+      } else {
+        animateUnderline(layout.x, layout.width);
+      }
+    }
+  }, [activeNavIndex, navLayouts]);
+
   const handleNavPress = (id: number, targetY: number) => {
     setActiveNavIndex(id);
-    const layout = navLayouts[id];
-    if (layout) {
-      animateUnderline(layout.x, layout.width);
-    }
     scrollRef.current?.scrollTo({ y: targetY, animated: true });
   };
 
@@ -402,12 +413,8 @@ export default function Landing() {
                   onLayout={(e) => {
                     const { x, width } = e.nativeEvent.layout;
                     setNavLayouts((prev) => {
-                      const next = { ...prev, [item.id]: { x, width } };
-                      if (item.id === 0 && (!prev[0] || prev[0].width === 0)) {
-                        underlineLeft.setValue(x);
-                        underlineWidth.setValue(width);
-                      }
-                      return next;
+                      if (prev[item.id]?.x === x && prev[item.id]?.width === width) return prev;
+                      return { ...prev, [item.id]: { x, width } };
                     });
                   }}
                   onPress={() => handleNavPress(item.id, targetY)}
