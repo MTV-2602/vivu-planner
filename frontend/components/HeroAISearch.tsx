@@ -48,18 +48,19 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
       maxWidth: 860,
       alignSelf: 'center',
       borderRadius: 28,
-      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+      backgroundColor: 'rgba(15, 23, 42, 0.78)',
       borderWidth: 1,
-      borderColor: '#CBE0E6',
+      borderColor: 'rgba(255, 255, 255, 0.25)',
       padding: 16,
-      shadowColor: '#3B7A8C',
-      shadowOffset: { width: 0, height: 12 },
-      shadowOpacity: 0.15,
-      shadowRadius: 32,
-      elevation: 10,
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 16 },
+      shadowOpacity: 0.35,
+      shadowRadius: 36,
+      elevation: 12,
       ...(Platform.OS === 'web' ? {
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
       } as any : {}),
     }}>
       {/* Input Bar Container */}
@@ -67,9 +68,9 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
         flexDirection: Platform.OS === 'web' ? 'row' : 'column',
         alignItems: 'center',
         gap: 12,
-        backgroundColor: '#F4F8FA',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
         borderWidth: 1,
-        borderColor: '#D4E3E8',
+        borderColor: 'rgba(255, 255, 255, 0.15)',
         borderRadius: 20,
         paddingHorizontal: 16,
         paddingVertical: 10,
@@ -79,13 +80,16 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           width: 42,
           height: 42,
           borderRadius: 14,
-          backgroundColor: 'rgba(59, 122, 140, 0.12)',
+          backgroundColor: 'rgba(56, 189, 248, 0.2)',
           alignItems: 'center',
           justifyContent: 'center',
           borderWidth: 1,
-          borderColor: 'rgba(59, 122, 140, 0.25)',
+          borderColor: 'rgba(56, 189, 248, 0.4)',
+          ...(Platform.OS === 'web' ? {
+            boxShadow: '0 0 16px rgba(56, 189, 248, 0.35)',
+          } as any : {}),
         }}>
-          <Sparkles size={22} color="#3B7A8C" />
+          <Sparkles size={22} color="#38BDF8" />
         </View>
 
         {/* Center Text Input */}
@@ -94,13 +98,13 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           onChangeText={setPromptText}
           onSubmitEditing={handleGenerate}
           placeholder="Lên lịch trình: '3 ngày ở Đà Lạt tìm quán cà phê yên tĩnh, ngân sách 2 triệu'..."
-          placeholderTextColor="#769FA9"
+          placeholderTextColor="rgba(255, 255, 255, 0.6)"
           style={{
             flex: 1,
             width: '100%',
-            color: '#2D4B54',
+            color: '#FFFFFF',
             fontSize: 15,
-            fontWeight: '600',
+            fontWeight: '500',
             fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
             paddingVertical: 10,
             paddingHorizontal: 6,
@@ -108,12 +112,12 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           } as any}
         />
 
-        {/* Right CTA Button - Misty Oceanic Cyan Button */}
+        {/* Right CTA Button */}
         <Pressable
           onPress={handleGenerate}
           disabled={isLoading}
           style={({ pressed }) => [{
-            backgroundColor: '#3B7A8C',
+            backgroundColor: '#0284C7',
             paddingHorizontal: 24,
             paddingVertical: 13,
             borderRadius: 100,
@@ -125,7 +129,7 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
             opacity: pressed ? 0.85 : 1,
             transform: [{ scale: pressed ? 0.97 : 1 }],
             ...(Platform.OS === 'web' ? {
-              boxShadow: '0 4px 16px rgba(59, 122, 140, 0.3)',
+              boxShadow: '0 4px 20px rgba(2, 132, 199, 0.45)',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
             } as any : {}),
@@ -154,7 +158,7 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
         marginTop: 14,
         paddingHorizontal: 4,
       }}>
-        <Text style={{ color: '#4B6E79', fontSize: 12, fontWeight: '600', marginRight: 4 }}>
+        <Text style={{ color: 'rgba(255, 255, 255, 0.75)', fontSize: 12, fontWeight: '600', marginRight: 4 }}>
           Gợi ý nhanh:
         </Text>
 
@@ -163,21 +167,22 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
             key={idx}
             onPress={() => handleTagClick(tag)}
             style={({ pressed }) => [{
-              backgroundColor: '#E6F0F3',
+              backgroundColor: 'rgba(255, 255, 255, 0.12)',
               borderWidth: 1,
-              borderColor: '#CBE0E6',
+              borderColor: 'rgba(255, 255, 255, 0.22)',
               borderRadius: 100,
               paddingHorizontal: 14,
               paddingVertical: 6,
               opacity: pressed ? 0.75 : 1,
               transform: [{ scale: pressed ? 0.95 : 1 }],
               ...(Platform.OS === 'web' ? {
+                backdropFilter: 'blur(8px)',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
               } as any : {}),
             }]}
           >
-            <Text style={{ color: '#2D4B54', fontSize: 12, fontWeight: '600' }}>
+            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>
               {tag}
             </Text>
           </Pressable>
@@ -190,20 +195,20 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           marginTop: 16,
           padding: 16,
           borderRadius: 16,
-          backgroundColor: '#F4F8FA',
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
           borderWidth: 1,
-          borderColor: '#3B7A8C',
+          borderColor: '#38BDF8',
           gap: 12,
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#3B7A8C' }} />
-            <Text style={{ color: '#3B7A8C', fontSize: 13, fontWeight: '700' }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#38BDF8' }} />
+            <Text style={{ color: '#38BDF8', fontSize: 13, fontWeight: '700' }}>
               Gemini AI đang phân tích địa điểm & dự báo thời tiết...
             </Text>
           </View>
           {/* Skeleton bars */}
-          <View style={{ height: 12, width: '85%', borderRadius: 6, backgroundColor: '#D4E3E8' }} />
-          <View style={{ height: 12, width: '60%', borderRadius: 6, backgroundColor: '#E6F0F3' }} />
+          <View style={{ height: 12, width: '85%', borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.15)' }} />
+          <View style={{ height: 12, width: '60%', borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.1)' }} />
         </View>
       )}
 
@@ -213,15 +218,15 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           marginTop: 14,
           padding: 12,
           borderRadius: 14,
-          backgroundColor: '#E6F0F3',
+          backgroundColor: 'rgba(56, 189, 248, 0.2)',
           borderWidth: 1,
-          borderColor: '#9BBEC8',
+          borderColor: 'rgba(56, 189, 248, 0.4)',
           flexDirection: 'row',
           alignItems: 'center',
           gap: 10,
         }}>
-          <Sparkles size={16} color="#3B7A8C" />
-          <Text style={{ color: '#2D4B54', fontSize: 13, fontWeight: '700' }}>
+          <Sparkles size={16} color="#38BDF8" />
+          <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
             Đã khởi tạo lịch trình thành công! Đang đồng bộ tới Workspace...
           </Text>
         </View>

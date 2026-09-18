@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, Pressable, Platform, Animated, useWindowDimensions, TextInput } from 'react-native';
+import { View, Text, Pressable, Platform, Animated, useWindowDimensions, TextInput, ImageBackground } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   Compass, Sparkles, AlertTriangle, MapPin, ShieldAlert, Check, Lock,
@@ -466,21 +466,93 @@ export default function Landing() {
         scrollEventThrottle={16}
       >
 
-        {/* ── HERO SUNSET TWILIGHT SECTION ───────────────────────────────────── */}
+        {/* ── HERO SECTION WITH SCENIC NATURE TRAVEL BACKGROUND (LAYLA AI STYLE) ── */}
         <Animated.View style={{ opacity: heroAlpha }}>
-          <View style={{
-            paddingHorizontal: px,
-            paddingTop: isMobile ? 36 : 64,
-            paddingBottom: isMobile ? 40 : 72,
-            alignItems: 'center',
-            backgroundColor: T.heroBgFallback,
-            ...(isWeb ? {
-              background: T.heroBg,
-            } as any : {}),
-          }}>
+          <ImageBackground
+            source={{ uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=2000&q=80' }}
+            style={{
+              width: '100%',
+              paddingHorizontal: px,
+              paddingTop: isMobile ? 36 : 64,
+              paddingBottom: isMobile ? 48 : 80,
+              alignItems: 'center',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Dark Ocean Slate Overlay Gradient */}
+            <View style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(28, 50, 61, 0.75)',
+              ...(isWeb ? {
+                backgroundImage: 'linear-gradient(180deg, rgba(28, 50, 61, 0.82) 0%, rgba(45, 75, 84, 0.72) 50%, rgba(15, 27, 34, 0.92) 100%)',
+              } as any : {}),
+            }} />
+
+            {/* Right Floating Preview Card (Layla AI Style) */}
+            {!isMobile && (
+              <Animated.View style={{
+                position: 'absolute',
+                top: 48,
+                right: px,
+                width: 260,
+                borderRadius: 22,
+                backgroundColor: 'rgba(15, 27, 34, 0.75)',
+                borderWidth: 1,
+                borderColor: 'rgba(255, 255, 255, 0.25)',
+                padding: 14,
+                gap: 10,
+                zIndex: 20,
+                shadowColor: '#000000',
+                shadowOffset: { width: 0, height: 16 },
+                shadowOpacity: 0.35,
+                shadowRadius: 28,
+                transform: [{ translateY: cardY }],
+                ...(isWeb ? {
+                  backdropFilter: 'blur(16px)',
+                  boxShadow: '0 16px 40px rgba(0, 0, 0, 0.4)',
+                } as any : {}),
+              }}>
+                <ImageBackground
+                  source={{ uri: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80' }}
+                  style={{ width: '100%', height: 115, borderRadius: 14, overflow: 'hidden', padding: 8, justifyContent: 'flex-start' }}
+                  imageStyle={{ borderRadius: 14 }}
+                >
+                  <View style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 100, backgroundColor: 'rgba(0,0,0,0.6)', alignSelf: 'flex-start' }}>
+                    <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '700' }}>✨ Vừa tạo xong</Text>
+                  </View>
+                </ImageBackground>
+
+                <View style={{ gap: 4 }}>
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>Đà Lạt · 3 ngày 2 đêm</Text>
+                  <Text style={{ color: 'rgba(255, 255, 255, 0.82)', fontSize: 11, lineHeight: 16 }}>
+                    Lịch trình tự động tối ưu bởi AI Gemini trong 2 phút.
+                  </Text>
+                </View>
+
+                <Pressable
+                  onPress={() => router.push(APP_ROUTES.NEW_TRIP as any)}
+                  style={({ pressed }) => [{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    paddingVertical: 8, borderRadius: 100,
+                    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                    borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.35)',
+                    opacity: pressed ? 0.8 : 1,
+                    transform: [{ scale: pressed ? 0.96 : 1 }],
+                    ...(isWeb ? { cursor: 'pointer', transition: 'all 0.2s ease' } as any : {}),
+                  }]}
+                >
+                  <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '700' }}>Plan my trip ↗</Text>
+                </Pressable>
+              </Animated.View>
+            )}
             
             {/* Center Content Container */}
-            <View style={{ width: '100%', maxWidth: 840, alignItems: 'center', gap: isMobile ? 20 : 26 }}>
+            <View style={{ width: '100%', maxWidth: 840, alignItems: 'center', gap: isMobile ? 20 : 26, zIndex: 10 }}>
 
               {/* Pill Badge */}
               <Animated.View style={{ transform: [{ translateY: badgeY }] }}>
@@ -488,12 +560,12 @@ export default function Landing() {
                   <View style={{
                     flexDirection: 'row', alignItems: 'center', gap: 8,
                     paddingHorizontal: 18, paddingVertical: 9, borderRadius: 100,
-                    backgroundColor: T.badgeBg,
-                    borderWidth: 1, borderColor: T.badgeBorder,
-                    ...(isWeb ? { backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any : {}),
+                    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+                    borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.4)',
+                    ...(isWeb ? { backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } as any : {}),
                   }}>
-                    <Sparkles size={14} color={T.accent} />
-                    <Text style={{ fontFamily: F.semiBold, fontSize: 12, color: T.heroTitle, letterSpacing: 0.5 }}>
+                    <Sparkles size={14} color="#38BDF8" />
+                    <Text style={{ fontFamily: F.semiBold, fontSize: 12, color: '#FFFFFF', letterSpacing: 0.5 }}>
                       ✨ AI-Powered Travel Planning & Booking
                     </Text>
                   </View>
@@ -507,9 +579,12 @@ export default function Landing() {
                     fontFamily: F.loraBold,
                     fontSize: isMobile ? 34 : 56,
                     lineHeight: isMobile ? 44 : 68,
-                    color: T.heroTitle,
+                    color: '#FFFFFF',
                     textAlign: 'center',
                     letterSpacing: -0.5,
+                    ...(isWeb ? {
+                      textShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+                    } as any : {}),
                   }}>
                     Lập kế hoạch du lịch Việt Nam{'\n'}
                     thông minh cùng AI
@@ -524,10 +599,13 @@ export default function Landing() {
                     fontFamily: F.regular,
                     fontSize: isMobile ? 15 : 17,
                     lineHeight: isMobile ? 26 : 30,
-                    color: isDarkMode ? 'rgba(255, 255, 255, 0.85)' : '#4B5563',
+                    color: 'rgba(255, 255, 255, 0.9)',
                     textAlign: 'center',
                     maxWidth: 620,
                     alignSelf: 'center',
+                    ...(isWeb ? {
+                      textShadow: '0 2px 10px rgba(0, 0, 0, 0.3)',
+                    } as any : {}),
                   }}>
                     Tự động xây dựng lịch trình cá nhân hóa dựa trên ngân sách thực tế, dữ liệu thời tiết thực và khả năng thích ứng sự cố tức thì.
                   </Text>
@@ -564,15 +642,15 @@ export default function Landing() {
                         style={({ pressed }) => [{
                           flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingHorizontal: 13, paddingVertical: 7, borderRadius: 100,
-                          backgroundColor: T.chipBg,
-                          borderWidth: 0.5, borderColor: T.chipBorder,
+                          backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                          borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.4)',
                           opacity: pressed ? 0.75 : 1,
                           transform: [{ scale: pressed ? 0.95 : 1 }],
-                          ...(isWeb ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', cursor: 'pointer' } as any : {}),
+                          ...(isWeb ? { backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', cursor: 'pointer' } as any : {}),
                         }]}
                       >
                         <Text style={{ fontSize: 12 }}>{CITY_EMOJIS[city]}</Text>
-                        <Text style={{ fontFamily: F.semiBold, fontSize: 12, color: T.chipText }}>{city}</Text>
+                        <Text style={{ fontFamily: F.semiBold, fontSize: 12, color: '#FFFFFF' }}>{city}</Text>
                       </Pressable>
                     ))}
                   </View>
@@ -582,7 +660,7 @@ export default function Landing() {
             </View>
 
             {/* ── TABLET MOCKUP DEVICE FRAME ─────────────────────────────────── */}
-            <Animated.View style={{ transform: [{ translateY: cardY }], width: '100%', maxWidth: 980, marginTop: isMobile ? 32 : 48 }}>
+            <Animated.View style={{ transform: [{ translateY: cardY }], width: '100%', maxWidth: 980, marginTop: isMobile ? 32 : 48, zIndex: 10 }}>
               <Reveal delay={320}>
                 <View style={{
                   backgroundColor: T.mockupBg,
