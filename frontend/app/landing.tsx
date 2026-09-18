@@ -52,6 +52,13 @@ const TESTIMONIALS = [
   { initial: 'PH', name: 'Phương Hà', location: 'Đà Nẵng', quote: 'Gia đình 5 người, 2 cháu nhỏ, AI hiểu ngay cần điểm thân thiện trẻ em. Lịch trình rất thực tế, không bị nhồi nhét.', tag: 'Phú Quốc · 5N4Đ' },
 ];
 
+const NAV_ITEMS = [
+  { id: 0, label: 'Cách dùng' },
+  { id: 1, label: 'Tính năng' },
+  { id: 2, label: 'Bảng giá' },
+  { id: 3, label: 'Hỗ trợ' },
+];
+
 const PRICING_PACKAGES = [
   {
     id: 'basis',
@@ -144,6 +151,38 @@ export default function Landing() {
   const [featuresSectionY, setFeaturesSectionY] = useState(0);
   const [howItWorksSectionY, setHowItWorksSectionY] = useState(0);
   const [pricingSectionY, setPricingSectionY] = useState(0);
+
+  const [activeNavIndex, setActiveNavIndex] = useState<number>(0);
+  const underlineLeft = useRef(new Animated.Value(0)).current;
+  const underlineWidth = useRef(new Animated.Value(0)).current;
+  const [navLayouts, setNavLayouts] = useState<Record<number, { x: number; width: number }>>({});
+
+  const animateUnderline = (x: number, width: number) => {
+    Animated.parallel([
+      Animated.spring(underlineLeft, {
+        toValue: x,
+        useNativeDriver: false,
+        friction: 18,
+        tension: 140,
+      }),
+      Animated.spring(underlineWidth, {
+        toValue: width,
+        useNativeDriver: false,
+        friction: 18,
+        tension: 140,
+      }),
+    ]).start();
+  };
+
+  const handleNavPress = (id: number, targetY: number) => {
+    setActiveNavIndex(id);
+    const layout = navLayouts[id];
+    if (layout) {
+      animateUnderline(layout.x, layout.width);
+    }
+    scrollRef.current?.scrollTo({ y: targetY, animated: true });
+  };
+
   const { session, isAdmin, signOut } = useAuth();
   const isLoggedIn = !!session;
 
@@ -353,31 +392,54 @@ export default function Landing() {
         </Pressable>
 
         {isWeb && !isMobile && (
-          <View style={{ flexDirection: 'row', gap: 36, alignItems: 'center' }}>
-            <Pressable
-              onPress={() => scrollRef.current?.scrollTo({ y: howItWorksSectionY, animated: true })}
-              style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1, ...(isWeb ? { cursor: 'pointer' } as any : {}) }]}
-            >
-              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: T.textMuted }}>Cách dùng</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => scrollRef.current?.scrollTo({ y: featuresSectionY, animated: true })}
-              style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1, ...(isWeb ? { cursor: 'pointer' } as any : {}) }]}
-            >
-              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: T.textMuted }}>Tính năng</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => scrollRef.current?.scrollTo({ y: pricingSectionY, animated: true })}
-              style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1, ...(isWeb ? { cursor: 'pointer' } as any : {}) }]}
-            >
-              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: T.textMuted }}>Bảng giá</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => scrollRef.current?.scrollTo({ y: pricingSectionY, animated: true })}
-              style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1, ...(isWeb ? { cursor: 'pointer' } as any : {}) }]}
-            >
-              <Text style={{ fontFamily: F.semiBold, fontSize: 14, color: T.textMuted }}>Hỗ trợ</Text>
-            </Pressable>
+          <View style={{ position: 'relative', flexDirection: 'row', gap: 28, alignItems: 'center', paddingVertical: 4 }}>
+            {NAV_ITEMS.map((item) => {
+              const isActive = activeNavIndex === item.id;
+              const targetY = item.id === 0 ? howItWorksSectionY : item.id === 1 ? featuresSectionY : pricingSectionY;
+              return (
+                <Pressable
+                  key={item.id}
+                  onLayout={(e) => {
+                    const { x, width } = e.nativeEvent.layout;
+                    setNavLayouts((prev) => {
+                      const next = { ...prev, [item.id]: { x, width } };
+                      if (item.id === 0 && (!prev[0] || prev[0].width === 0)) {
+                        underlineLeft.setValue(x);
+                        underlineWidth.setValue(width);
+                      }
+                      return next;
+                    });
+                  }}
+                  onPress={() => handleNavPress(item.id, targetY)}
+                  style={({ pressed }) => [{
+                    paddingVertical: 6,
+                    paddingHorizontal: 4,
+                    opacity: pressed ? 0.75 : 1,
+                    transform: [{ scale: pressed ? 0.94 : 1 }],
+                    ...(isWeb ? { cursor: 'pointer', transition: 'transform 0.15s ease, opacity 0.15s ease' } as any : {}),
+                  }]}
+                >
+                  <Text style={{
+                    fontFamily: isActive ? F.bold : F.semiBold,
+                    fontSize: 14,
+                    color: isActive ? T.accent : T.textMuted,
+                  }}>
+                    {item.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            <Animated.View
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: underlineLeft,
+                width: underlineWidth,
+                height: 2.5,
+                borderRadius: 2,
+                backgroundColor: T.accent,
+              }}
+            />
           </View>
         )}
 
