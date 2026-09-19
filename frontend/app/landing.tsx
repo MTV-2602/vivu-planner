@@ -1254,23 +1254,26 @@ export default function Landing() {
                   'Địa điểm từ Google Places, không bịa đặt',
                 ].map((item, i) => (
                   <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: isDarkMode ? 'rgba(249, 158, 117, 0.25)' : 'rgba(224, 122, 95, 0.2)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Check size={11} color={T.accent} strokeWidth={3} />
+                    <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(255, 255, 255, 0.2)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Check size={11} color="#FFFFFF" strokeWidth={3} />
                     </View>
-                    <Text style={{ fontFamily: F.regular, fontSize: 14, color: T.text, flex: 1 }}>{item}</Text>
+                    <Text style={{ fontFamily: F.regular, fontSize: 14, color: '#FFFFFF', flex: 1 }}>{item}</Text>
                   </View>
                 ))}
               </View>
 
               <Pressable
                 onPress={() => router.push(isLoggedIn ? (dashPath as any) : (APP_ROUTES.SIGN_UP as any))}
-                style={{
+                style={({ pressed }) => [{
                   alignItems: 'center', paddingVertical: 18, borderRadius: 100,
                   backgroundColor: T.ctaButtonBg,
                   flexDirection: 'row', justifyContent: 'center', gap: 8,
+                  opacity: pressed ? 0.9 : 1,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
                   shadowColor: T.ctaButtonBg, shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.35, shadowRadius: 16,
-                }}
+                  ...(isWeb ? { cursor: 'pointer', transition: 'all 0.15s ease' } as any : {}),
+                }]}
               >
                 <Text style={{ fontFamily: F.bold, fontSize: 15, color: T.ctaButtonText }}>
                   {isLoggedIn ? 'Đến bảng điều khiển' : 'Bắt đầu miễn phí ngay hôm nay'}
@@ -1290,45 +1293,33 @@ export default function Landing() {
           <View style={{
             flexDirection: isMobile ? 'column' : 'row',
             justifyContent: 'space-between',
+            alignItems: 'center',
             gap: isMobile ? 24 : 40,
             marginBottom: 32,
           }}>
-            <View style={{ gap: 12, maxWidth: 280 }}>
+            <View style={{ gap: 12, maxWidth: 380 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: T.logoBg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: T.logoBorder }}>
-                  <Compass size={16} color={T.logoColor} />
+                <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: 'rgba(255, 255, 255, 0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)' }}>
+                  <Compass size={16} color="#FFFFFF" />
                 </View>
-                <Text style={{ fontFamily: F.loraBold, fontSize: 17, color: T.text }}>ViVu Planner</Text>
+                <Text style={{ fontFamily: F.loraBold, fontSize: 18, color: '#FFFFFF' }}>ViVu Planner</Text>
               </View>
-              <Text style={{ fontFamily: F.regular, fontSize: 13, lineHeight: 21, color: T.textMuted }}>
+              <Text style={{ fontFamily: F.regular, fontSize: 13, lineHeight: 21, color: 'rgba(255, 255, 255, 0.75)' }}>
                 Lên kế hoạch du lịch Việt Nam thông minh hơn với sức mạnh của AI và dữ liệu thực.
               </Text>
             </View>
 
             {!isMobile && (
-              <View style={{ flexDirection: 'row', gap: 56 }}>
-                <View style={{ gap: 14 }}>
-                  <Text style={{ fontFamily: F.bold, fontSize: 11, color: T.text, textTransform: 'uppercase', letterSpacing: 1 }}>
-                    Sản phẩm
-                  </Text>
-                  {['Tính năng', 'Cách dùng', 'Thành phố hỗ trợ'].map((l) => (
-                    <Text key={l} style={{ fontFamily: F.regular, fontSize: 13, color: T.textMuted }}>{l}</Text>
-                  ))}
-                </View>
-                <View style={{ gap: 14 }}>
-                  <Text style={{ fontFamily: F.bold, fontSize: 11, color: T.text, textTransform: 'uppercase', letterSpacing: 1 }}>
-                    Tài khoản
-                  </Text>
-                  {['Đăng nhập', 'Đăng ký miễn phí', 'Bảng điều khiển'].map((l) => (
-                    <Text key={l} style={{ fontFamily: F.regular, fontSize: 13, color: T.textMuted }}>{l}</Text>
-                  ))}
-                </View>
+              <View style={{ flexDirection: 'row', gap: 24, alignItems: 'center' }}>
+                {['Tính năng', 'Cách dùng', 'Thành phố hỗ trợ'].map((l) => (
+                  <Text key={l} style={{ fontFamily: F.semiBold, fontSize: 13, color: 'rgba(255, 255, 255, 0.8)' }}>{l}</Text>
+                ))}
               </View>
             )}
           </View>
 
-          <View style={{ borderTopWidth: 1, borderTopColor: T.footerBorder, paddingTop: 20 }}>
-            <Text style={{ fontFamily: F.regular, fontSize: 12, color: T.textSoft }}>
+          <View style={{ borderTopWidth: 1, borderTopColor: 'rgba(255, 255, 255, 0.12)', paddingTop: 20 }}>
+            <Text style={{ fontFamily: F.regular, fontSize: 12, color: 'rgba(255, 255, 255, 0.55)' }}>
               © 2026 ViVu Planner · Dự án du lịch thông minh Việt Nam
             </Text>
           </View>
@@ -1337,7 +1328,7 @@ export default function Landing() {
           <Text style={{
             fontFamily: F.loraBold,
             fontSize: isMobile ? 48 : 100,
-            color: T.watermarkColor,
+            color: 'rgba(255, 255, 255, 0.08)',
             letterSpacing: isMobile ? 4 : 10,
             textAlign: 'center',
             marginTop: 28,
