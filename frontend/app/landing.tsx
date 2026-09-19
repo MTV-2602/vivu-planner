@@ -579,17 +579,21 @@ export default function Landing() {
             }}
           >
             {/* Dark Ocean Slate Overlay Gradient */}
-            <View style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(28, 50, 61, 0.75)',
-              ...(isWeb ? {
-                backgroundImage: 'linear-gradient(180deg, rgba(28, 50, 61, 0.82) 0%, rgba(45, 75, 84, 0.72) 50%, rgba(15, 27, 34, 0.92) 100%)',
-              } as any : {}),
-            }} />
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(28, 50, 61, 0.75)',
+                ...(isWeb ? {
+                  backgroundImage: 'linear-gradient(180deg, rgba(28, 50, 61, 0.82) 0%, rgba(45, 75, 84, 0.72) 50%, rgba(15, 27, 34, 0.92) 100%)',
+                  pointerEvents: 'none',
+                } as any : {}),
+              }}
+            />
 
             {/* Right Floating Preview Card (Layla AI Style) */}
             {!isMobile && (

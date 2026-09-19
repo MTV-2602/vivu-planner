@@ -57,10 +57,12 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
       shadowOpacity: 0.35,
       shadowRadius: 36,
       elevation: 12,
+      zIndex: 50,
       ...(Platform.OS === 'web' ? {
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
         boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+        pointerEvents: 'auto',
       } as any : {}),
     }}>
       {/* Input Bar Container */}
