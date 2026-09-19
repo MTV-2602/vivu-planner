@@ -137,7 +137,12 @@ export default function ProfileModal({ visible, onClose }: ProfileModalProps) {
     try {
       await linkGoogleAccount();
     } catch (err: any) {
-      showToast(err.message || 'Không thể khởi chạy liên kết tài khoản Google.', 'error');
+      const msg = err.message || '';
+      if (msg.includes('Manual linking is disabled')) {
+        showToast('Tính năng liên kết chưa được bật trên Supabase. Vui lòng gạt ON mục "Allow manual linking" trong Supabase Dashboard -> Authentication -> Settings.', 'error');
+      } else {
+        showToast(msg || 'Không thể khởi chạy liên kết tài khoản Google.', 'error');
+      }
       setLinkingGoogle(false);
     }
   };
