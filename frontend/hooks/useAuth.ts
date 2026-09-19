@@ -37,8 +37,32 @@ export function useAuth(): AuthState {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
-      setProfile(data ?? null);
+        .maybeSingle();
+
+      if (data) {
+        setProfile(data);
+      } else {
+        // Neu chua co profile (VD: dang nhap Google lan dau), tu dong tao profile moi
+        const { data: userData } = await supabase.auth.getUser();
+        const user = userData.user;
+        if (user) {
+          const newProfile: UserProfile = {
+            id: user.id,
+            full_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Nguời dùng ViVu',
+            avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
+            phone: null,
+            role: UserRole.USER,
+            is_premium: false,
+            premium_until: null,
+            quota_total: 5,
+            quota_used: 0,
+          };
+          await supabase.from('profiles').upsert(newProfile);
+          setProfile(newProfile);
+        } else {
+          setProfile(null);
+        }
+      }
     } catch {
       setProfile(null);
     }
