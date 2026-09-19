@@ -103,31 +103,39 @@ export function useAuth(): AuthState {
   useEffect(() => {
     if (!session?.user) return;
     const user = session.user;
-    const googleIdentity = user.identities?.find((i: any) => i.provider === 'google');
-    if (googleIdentity && user.email) {
-      const googleEmail = ((googleIdentity.identity_data as any)?.email || (googleIdentity as any).email || '').toLowerCase();
-      const primaryEmail = user.email.toLowerCase();
-      if (googleEmail && primaryEmail && googleEmail !== primaryEmail) {
-        // Huy lien ket vi email khong trùng khop
-        supabase.auth.unlinkIdentity(googleIdentity).then(() => {
+    const rawGoogleIdentity = user.identities?.find((i: any) => i.provider === 'google');
+    if (rawGoogleIdentity && user.email) {
+      const gEmail = ((rawGoogleIdentity.identity_data as any)?.email || (rawGoogleIdentity as any).email || '').toLowerCase();
+      const pEmail = user.email.toLowerCase();
+      if (gEmail && pEmail && gEmail !== pEmail) {
+        // Huy lien ket tren Supabase server vi email khong trung khop
+        supabase.auth.unlinkIdentity(rawGoogleIdentity).then(async () => {
           if (typeof window !== 'undefined' && window.localStorage) {
             window.localStorage.setItem(
               'vivu_link_error',
-              `Email tài khoản Google (${googleEmail}) không trùng khớp với Email đăng ký (${primaryEmail}) của bạn!`
+              `Email tài khoản Google (${gEmail}) không trùng khớp với Email đăng ký (${pEmail}) của bạn!`
             );
           }
-          supabase.auth.getSession().then(({ data: { session: updatedSession } }) => {
-            setSession(updatedSession);
-          });
+          // Refetch user data tu Supabase
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData?.user) {
+            setSession((prev) => prev ? { ...prev, user: userData.user } : prev);
+          }
+        }).catch((err) => {
+          console.warn('[useAuth] Unlink mismatched Google identity error:', err);
         });
       }
     }
   }, [session]);
 
-  // Read Google identity status
-  const googleIdentity = session?.user?.identities?.find((i: any) => i.provider === 'google');
-  const isGoogleLinked = !!googleIdentity;
-  const googleIdentityEmail = googleIdentity ? ((googleIdentity.identity_data as any)?.email || (googleIdentity as any).email || session?.user?.email || null) : null;
+  // Read Google identity status with strict email matching check
+  const rawGoogleIdentity = session?.user?.identities?.find((i: any) => i.provider === 'google');
+  const rawGoogleEmail = rawGoogleIdentity ? ((rawGoogleIdentity.identity_data as any)?.email || (rawGoogleIdentity as any).email || '').toLowerCase() : '';
+  const currentPrimaryEmail = session?.user?.email ? session.user.email.toLowerCase() : '';
+
+  const isEmailMatching = !!(rawGoogleEmail && currentPrimaryEmail && rawGoogleEmail === currentPrimaryEmail);
+  const isGoogleLinked = !!(rawGoogleIdentity && isEmailMatching);
+  const googleIdentityEmail = isGoogleLinked ? rawGoogleEmail : null;
 
   // isAdmin: doc tu profile.role hoac JWT claim user_role
   const isAdmin = (() => {
