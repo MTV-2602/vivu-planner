@@ -3,10 +3,20 @@ import {
   View, Text, TextInput, Pressable, Modal,
   ActivityIndicator, Platform, ScrollView, Alert,
 } from 'react-native';
-import { X, User, Lock, Phone, KeyRound, CheckCircle2, AlertCircle, Shield } from 'lucide-react-native';
+import Svg, { Path } from 'react-native-svg';
+import { X, User, Lock, Phone, KeyRound, CheckCircle2, AlertCircle, Shield, Link2, Unlink } from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
 import { BRAND_COLORS } from '../constants';
 import { useAuth } from '../hooks/useAuth';
+
+const GoogleIcon = () => (
+  <Svg width="16" height="16" viewBox="0 0 24 24">
+    <Path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+    <Path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+    <Path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+    <Path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+  </Svg>
+);
 
 interface ProfileModalProps {
   visible: boolean;
@@ -14,7 +24,11 @@ interface ProfileModalProps {
 }
 
 export default function ProfileModal({ visible, onClose }: ProfileModalProps) {
-  const { user, profile, refreshProfile } = useAuth();
+  const {
+    user, profile, refreshProfile,
+    isGoogleLinked, googleIdentityEmail,
+    linkGoogleAccount, unlinkGoogleAccount,
+  } = useAuth();
 
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -25,6 +39,7 @@ export default function ProfileModal({ visible, onClose }: ProfileModalProps) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
 
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -36,6 +51,15 @@ export default function ProfileModal({ visible, onClose }: ProfileModalProps) {
       setNewPassword('');
       setConfirmPassword('');
       setToastMsg(null);
+
+      // Kiem tra phan hoi loi lien ket
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const linkError = window.localStorage.getItem('vivu_link_error');
+        if (linkError) {
+          showToast(linkError, 'error');
+          window.localStorage.removeItem('vivu_link_error');
+        }
+      }
     }
   }, [visible, profile]);
 
@@ -104,6 +128,30 @@ export default function ProfileModal({ visible, onClose }: ProfileModalProps) {
       showToast(err.message || 'Lỗi khi đổi mật khẩu.', 'error');
     } finally {
       setChangingPassword(false);
+    }
+  };
+
+  const handleLinkGoogle = async () => {
+    setLinkingGoogle(true);
+    setToastMsg(null);
+    try {
+      await linkGoogleAccount();
+    } catch (err: any) {
+      showToast(err.message || 'Không thể khởi chạy liên kết tài khoản Google.', 'error');
+      setLinkingGoogle(false);
+    }
+  };
+
+  const handleUnlinkGoogle = async () => {
+    setLinkingGoogle(true);
+    setToastMsg(null);
+    try {
+      await unlinkGoogleAccount();
+      showToast('Hủy liên kết tài khoản Google thành công!', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Không thể hủy liên kết tài khoản Google.', 'error');
+    } finally {
+      setLinkingGoogle(false);
     }
   };
 
@@ -390,6 +438,111 @@ export default function ProfileModal({ visible, onClose }: ProfileModalProps) {
                   </>
                 )}
               </Pressable>
+            </View>
+
+            {/* 4. TÀI KHOẢN LIÊN KẾT (GOOGLE OAUTH LINKING) */}
+            <View style={{ gap: 14, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Link2 size={16} color="#1B3A2D" />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#1B3A2D', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Tài Khoản Liên Kết
+                </Text>
+              </View>
+
+              {isGoogleLinked ? (
+                <View style={{
+                  backgroundColor: '#F0FDF4',
+                  borderWidth: 1,
+                  borderColor: '#BBF7D0',
+                  borderRadius: 14,
+                  padding: 14,
+                  gap: 12,
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <GoogleIcon />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#166534' }}>
+                        Đã liên kết với Google
+                      </Text>
+                      <Text style={{ fontSize: 11, color: '#15803D' }}>
+                        {googleIdentityEmail || user?.email}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Pressable
+                    onPress={handleUnlinkGoogle}
+                    disabled={linkingGoogle}
+                    style={({ pressed }) => [{
+                      backgroundColor: '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: '#FECACA',
+                      paddingVertical: 9,
+                      paddingHorizontal: 12,
+                      borderRadius: 10,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      opacity: linkingGoogle ? 0.6 : (pressed ? 0.8 : 1),
+                    }]}
+                  >
+                    {linkingGoogle ? (
+                      <ActivityIndicator size="small" color="#DC2626" />
+                    ) : (
+                      <>
+                        <Unlink size={14} color="#DC2626" />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626' }}>
+                          Hủy liên kết với Google
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={{
+                  backgroundColor: '#F8FAFC',
+                  borderWidth: 1,
+                  borderColor: '#E2E8F0',
+                  borderRadius: 14,
+                  padding: 14,
+                  gap: 12,
+                }}>
+                  <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 18 }}>
+                    Liên kết với Google cho phép bạn đăng nhập nhanh chóng. Email của tài khoản Google phải trùng khớp với Email đăng ký (<Text style={{ fontWeight: '700', color: '#0F172A' }}>{user?.email}</Text>) của bạn.
+                  </Text>
+
+                  <Pressable
+                    onPress={handleLinkGoogle}
+                    disabled={linkingGoogle}
+                    style={({ pressed }) => [{
+                      backgroundColor: '#FFFFFF',
+                      borderWidth: 1.5,
+                      borderColor: '#CBD5E1',
+                      paddingVertical: 11,
+                      paddingHorizontal: 14,
+                      borderRadius: 12,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      opacity: linkingGoogle ? 0.6 : (pressed ? 0.85 : 1),
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    }]}
+                  >
+                    {linkingGoogle ? (
+                      <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
+                    ) : (
+                      <>
+                        <GoogleIcon />
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
+                          Liên kết với tài khoản Google
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+              )}
             </View>
           </ScrollView>
         </View>

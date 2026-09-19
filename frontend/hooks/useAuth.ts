@@ -22,8 +22,12 @@ export interface AuthState {
   isAdmin:   boolean;
   isPremium: boolean;
   loading:   boolean;
+  isGoogleLinked: boolean;
+  googleIdentityEmail: string | null;
   signOut:   () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  linkGoogleAccount: () => Promise<void>;
+  unlinkGoogleAccount: () => Promise<void>;
 }
 
 export function useAuth(): AuthState {
@@ -95,6 +99,36 @@ export function useAuth(): AuthState {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
+  // Tu dong kiem tra va huy lien ket neu email Google khong trung khop voi email dang ky
+  useEffect(() => {
+    if (!session?.user) return;
+    const user = session.user;
+    const googleIdentity = user.identities?.find((i: any) => i.provider === 'google');
+    if (googleIdentity && user.email) {
+      const googleEmail = ((googleIdentity.identity_data as any)?.email || (googleIdentity as any).email || '').toLowerCase();
+      const primaryEmail = user.email.toLowerCase();
+      if (googleEmail && primaryEmail && googleEmail !== primaryEmail) {
+        // Huy lien ket vi email khong trùng khop
+        supabase.auth.unlinkIdentity(googleIdentity).then(() => {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.setItem(
+              'vivu_link_error',
+              `Email tài khoản Google (${googleEmail}) không trùng khớp với Email đăng ký (${primaryEmail}) của bạn!`
+            );
+          }
+          supabase.auth.getSession().then(({ data: { session: updatedSession } }) => {
+            setSession(updatedSession);
+          });
+        });
+      }
+    }
+  }, [session]);
+
+  // Read Google identity status
+  const googleIdentity = session?.user?.identities?.find((i: any) => i.provider === 'google');
+  const isGoogleLinked = !!googleIdentity;
+  const googleIdentityEmail = googleIdentity ? ((googleIdentity.identity_data as any)?.email || (googleIdentity as any).email || session?.user?.email || null) : null;
+
   // isAdmin: doc tu profile.role hoac JWT claim user_role
   const isAdmin = (() => {
     if (profile?.role === UserRole.ADMIN) return true;
@@ -114,6 +148,34 @@ export function useAuth(): AuthState {
     if (session?.user) await fetchProfile(session.user.id);
   };
 
+  const linkGoogleAccount = async () => {
+    const redirectTo = typeof window !== 'undefined'
+      ? `${window.location.origin}/dang-nhap`
+      : 'vivuplanner://';
+
+    const { error } = await supabase.auth.linkIdentity({
+      provider: 'google',
+      options: {
+        redirectTo,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
+    });
+    if (error) throw error;
+  };
+
+  const unlinkGoogleAccount = async () => {
+    const identityToUnlink = session?.user?.identities?.find((i: any) => i.provider === 'google');
+    if (identityToUnlink) {
+      const { error } = await supabase.auth.unlinkIdentity(identityToUnlink);
+      if (error) throw error;
+      const { data: { session: updatedSession } } = await supabase.auth.getSession();
+      setSession(updatedSession);
+    }
+  };
+
   return {
     session,
     user:    session?.user ?? null,
@@ -121,7 +183,11 @@ export function useAuth(): AuthState {
     isAdmin,
     isPremium,
     loading,
+    isGoogleLinked,
+    googleIdentityEmail,
     signOut,
     refreshProfile,
+    linkGoogleAccount,
+    unlinkGoogleAccount,
   };
 }
