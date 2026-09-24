@@ -25,6 +25,9 @@
 /*
 DROP VIEW IF EXISTS public.admin_stats_view CASCADE;
 DROP VIEW IF EXISTS public.admin_users_view CASCADE;
+DROP TABLE IF EXISTS public.place_suggestions CASCADE;
+DROP TABLE IF EXISTS public.trip_tickets CASCADE;
+DROP TABLE IF EXISTS public.trip_cart_items CASCADE;
 DROP TABLE IF EXISTS public.payment_webhook_logs CASCADE;
 DROP TABLE IF EXISTS public.pricing_plan_history CASCADE;
 DROP TABLE IF EXISTS public.place_reviews CASCADE;
@@ -195,6 +198,10 @@ CREATE TABLE IF NOT EXISTS public.partners (
   partner_priority int     NOT NULL DEFAULT 0 CHECK (partner_priority BETWEEN 0 AND 10),
   active_status    boolean NOT NULL DEFAULT true,
   is_active        boolean GENERATED ALWAYS AS (active_status) STORED,
+  opening_hours    text    DEFAULT '07:00 - 22:00',
+  avg_duration_minutes int DEFAULT 60,
+  social_review_quote text,
+  social_review_url   text,
   impression_count int     NOT NULL DEFAULT 0 CHECK (impression_count >= 0),
   click_count      int     NOT NULL DEFAULT 0 CHECK (click_count >= 0),
   booking_count    int     NOT NULL DEFAULT 0 CHECK (booking_count >= 0),
@@ -220,6 +227,7 @@ CREATE TABLE IF NOT EXISTS public.trips (
   end_date              date       NOT NULL,
   budget_total          numeric    NOT NULL CHECK (budget_total >= 0),
   budget_currency       text       NOT NULL DEFAULT 'VND',
+  budget_breakdown      jsonb      NOT NULL DEFAULT '{"transport": 0, "hotel": 0, "food": 0, "cafe": 0, "entertainment": 0}'::jsonb,
   traveler_count        int        NOT NULL DEFAULT 1 CHECK (traveler_count > 0),
   traveler_type         public.traveler_type NOT NULL DEFAULT 'solo',
   preferences           jsonb      NOT NULL DEFAULT '[]'::jsonb,
@@ -473,9 +481,68 @@ CREATE TABLE IF NOT EXISTS public.payment_webhook_logs (
 
 COMMENT ON TABLE public.payment_webhook_logs IS 'Nhat ky webhook thanh toan tu PayOS va MoMo phuc vu doi soat va audit';
 
+-- ── 4.19 trip_cart_items ─────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.trip_cart_items (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  trip_id         uuid NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
+  partner_id      uuid REFERENCES public.partners(id) ON DELETE CASCADE,
+  custom_cost     numeric NOT NULL DEFAULT 0 CHECK (custom_cost >= 0),
+  pricing_option  text NOT NULL DEFAULT 'auto',
+  notes           text,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.trip_cart_items IS 'Gio chuyen di luu tru cac dia diem da chon truoc khi AI xep lich';
+
+-- ── 4.20 trip_tickets ────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.trip_tickets (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  trip_id          uuid NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
+  transport_type   text NOT NULL DEFAULT 'flight',
+  booking_code     text,
+  seat_number      text,
+  departure_time   timestamptz,
+  arrival_time     timestamptz,
+  departure_place  text,
+  arrival_place    text,
+  ticket_cost      numeric NOT NULL DEFAULT 0 CHECK (ticket_cost >= 0),
+  ticket_image_url text,
+  metadata         jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at       timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.trip_tickets IS 'Thong tin ve di chuyen boc tach bang AI Vision tu anh chup hoac PDF';
+
+-- ── 4.21 place_suggestions ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.place_suggestions (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  name            text NOT NULL,
+  category        text NOT NULL,
+  city            text NOT NULL,
+  address         text NOT NULL,
+  estimated_cost  numeric DEFAULT 0 CHECK (estimated_cost >= 0),
+  opening_hours   text,
+  user_review     text,
+  image_url       text,
+  status          text NOT NULL DEFAULT 'pending',
+  admin_notes     text,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.place_suggestions IS 'Dia diem do nguoi dung dong gop (UGC) cho admin phe duyet';
+
 -- ---------------------------------------------------------------------------
 -- 5. INCREMENTAL SCHEMA SYNC (Dam bao cot moi ton tai tren DB cu ma khong loi)
 -- ---------------------------------------------------------------------------
+ALTER TABLE public.partners
+  ADD COLUMN IF NOT EXISTS opening_hours text DEFAULT '07:00 - 22:00',
+  ADD COLUMN IF NOT EXISTS avg_duration_minutes int DEFAULT 60,
+  ADD COLUMN IF NOT EXISTS social_review_quote text,
+  ADD COLUMN IF NOT EXISTS social_review_url text;
+
+ALTER TABLE public.trips
+  ADD COLUMN IF NOT EXISTS budget_breakdown jsonb DEFAULT '{"transport": 0, "hotel": 0, "food": 0, "cafe": 0, "entertainment": 0}'::jsonb;
 ALTER TABLE public.pricing_plans 
   ADD COLUMN IF NOT EXISTS amount integer,
   ADD COLUMN IF NOT EXISTS label text,
@@ -675,6 +742,29 @@ CREATE POLICY "plan_history_modify" ON public.pricing_plan_history FOR ALL    US
 ALTER TABLE public.payment_webhook_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "webhook_logs_admin_all" ON public.payment_webhook_logs;
 CREATE POLICY "webhook_logs_admin_all" ON public.payment_webhook_logs FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- 7.19 trip_cart_items
+ALTER TABLE public.trip_cart_items ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "cart_items_manage" ON public.trip_cart_items;
+CREATE POLICY "cart_items_manage" ON public.trip_cart_items FOR ALL USING (public.can_edit_trip(trip_id)) WITH CHECK (public.can_edit_trip(trip_id));
+DROP POLICY IF EXISTS "cart_items_select" ON public.trip_cart_items;
+CREATE POLICY "cart_items_select" ON public.trip_cart_items FOR SELECT USING (public.can_view_trip(trip_id));
+
+-- 7.20 trip_tickets
+ALTER TABLE public.trip_tickets ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "tickets_manage" ON public.trip_tickets;
+CREATE POLICY "tickets_manage" ON public.trip_tickets FOR ALL USING (public.can_edit_trip(trip_id)) WITH CHECK (public.can_edit_trip(trip_id));
+DROP POLICY IF EXISTS "tickets_select" ON public.trip_tickets;
+CREATE POLICY "tickets_select" ON public.trip_tickets FOR SELECT USING (public.can_view_trip(trip_id));
+
+-- 7.21 place_suggestions
+ALTER TABLE public.place_suggestions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "suggestions_insert" ON public.place_suggestions;
+CREATE POLICY "suggestions_insert" ON public.place_suggestions FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "suggestions_select" ON public.place_suggestions;
+CREATE POLICY "suggestions_select" ON public.place_suggestions FOR SELECT USING (true);
+DROP POLICY IF EXISTS "suggestions_admin_all" ON public.place_suggestions;
+CREATE POLICY "suggestions_admin_all" ON public.place_suggestions FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 
 -- ---------------------------------------------------------------------------
 -- 8. TRIGGERS & SECURITY FUNCTIONS
@@ -898,6 +988,11 @@ CREATE INDEX IF NOT EXISTS idx_payments_user_status    ON public.payment_orders(
 CREATE INDEX IF NOT EXISTS idx_payments_order_code     ON public.payment_orders(order_code);
 CREATE INDEX IF NOT EXISTS idx_payments_created_at     ON public.payment_orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_bookings_user_id        ON public.bookings(user_id);
+
+-- Cart, Tickets & Suggestions
+CREATE INDEX IF NOT EXISTS idx_cart_trip_id            ON public.trip_cart_items(trip_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_trip_id         ON public.trip_tickets(trip_id);
+CREATE INDEX IF NOT EXISTS idx_suggestions_status      ON public.place_suggestions(status);
 CREATE INDEX IF NOT EXISTS idx_bookings_trip_id        ON public.bookings(trip_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_token          ON public.bookings(token);
 CREATE INDEX IF NOT EXISTS idx_bookings_status         ON public.bookings(status);
