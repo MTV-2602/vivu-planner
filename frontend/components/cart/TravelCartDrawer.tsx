@@ -26,7 +26,7 @@ export interface TravelCartDrawerProps {
 }
 
 export default function TravelCartDrawer({
-  visible = true,
+  visible = false,
   tripId,
   totalBudget,
   cartItems,
@@ -34,8 +34,9 @@ export default function TravelCartDrawer({
   onClose,
   onSavedSuccess,
 }: TravelCartDrawerProps) {
-  const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
+
+  if (!visible) return null;
 
   const cartTotal = cartItems.reduce((acc, item) => acc + item.custom_cost, 0);
 
@@ -49,7 +50,6 @@ export default function TravelCartDrawer({
 
     try {
       if (tripId && cartItems.length > 0) {
-        // Save cart items to API or Supabase
         const payload = cartItems.map((item) => ({
           partner_id: item.place.id,
           title: item.place.name,
@@ -92,14 +92,18 @@ export default function TravelCartDrawer({
   const content = (
     <View
       style={{
-        flex: 1,
         backgroundColor: '#FFFFFF',
-        padding: 20,
+        padding: 22,
         gap: 16,
-        maxWidth: 500,
-        alignSelf: 'center',
+        maxWidth: 480,
         width: '100%',
-        borderRadius: 20,
+        borderRadius: 24,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.25,
+        shadowRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(27,36,32,0.1)',
       }}
     >
       {/* Header */}
@@ -112,8 +116,8 @@ export default function TravelCartDrawer({
         </View>
 
         {onClose && (
-          <Pressable onPress={onClose} style={{ padding: 4 }}>
-            <X size={20} color="#6E7B70" />
+          <Pressable onPress={onClose} style={{ padding: 6, borderRadius: 100, backgroundColor: '#F3ECDC' }}>
+            <X size={18} color="#6E7B70" />
           </Pressable>
         )}
       </View>
@@ -122,10 +126,10 @@ export default function TravelCartDrawer({
       <LiveBudgetBar totalBudget={totalBudget} currentCartTotal={cartTotal} />
 
       {/* Cart Items List */}
-      <ScrollView contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
+      <ScrollView style={{ maxHeight: 300 }} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
         {cartItems.length === 0 ? (
-          <View style={{ padding: 32, alignItems: 'center', gap: 8 }}>
-            <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 13, color: '#6E7B70', textAlign: 'center' }}>
+          <View style={{ padding: 28, alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 13, color: '#6E7B70', textAlign: 'center', lineHeight: 18 }}>
               Giỏ hàng đang trống. Hãy chọn các địa điểm ngon - đẹp - chuẩn trên bản đồ để thêm vào chuyến đi!
             </Text>
           </View>
@@ -149,7 +153,7 @@ export default function TravelCartDrawer({
                   {item.place.name}
                 </Text>
                 <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 12, color: '#6E7B70' }}>
-                  {item.pricing_option === 'auto' ? 'Giá tự động' : 'Tự nhập'}: {formatCurrency(item.custom_cost)}
+                  {item.pricing_option === 'auto' ? 'Giá quán' : 'Tự nhập'}: {formatCurrency(item.custom_cost)}
                 </Text>
               </View>
 
@@ -164,7 +168,7 @@ export default function TravelCartDrawer({
         )}
       </ScrollView>
 
-      {/* Handoff Bottom Button */}
+      {/* Confirm Save Button at bottom of popup */}
       <View style={{ paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(27,36,32,0.08)' }}>
         <Pressable
           onPress={handleConfirmAndCreateItinerary}
@@ -197,15 +201,16 @@ export default function TravelCartDrawer({
     </View>
   );
 
-  if (visible && onClose) {
-    return (
-      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 16 }}>
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable
+        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 }}
+        onPress={onClose}
+      >
+        <Pressable onPress={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 480 }}>
           {content}
-        </View>
-      </Modal>
-    );
-  }
-
-  return content;
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
 }

@@ -1751,45 +1751,46 @@ export default function TripDetail() {
         </View>
       )}
 
-      {/* Floating Travel Cart Button */}
+      {/* Floating / Sticky Bottom Cart Button at end of page */}
       {cartItems.length > 0 && (
         <Pressable
           onPress={() => setShowCartDrawer(true)}
           style={({ pressed }) => [{
-            position: 'absolute',
+            position: 'fixed' as any,
             bottom: 24,
             right: 24,
             backgroundColor: '#E2703A',
-            paddingHorizontal: 18,
-            paddingVertical: 12,
+            paddingHorizontal: 20,
+            paddingVertical: 14,
             borderRadius: 100,
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
+            gap: 10,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 6 },
             shadowOpacity: 0.35,
             shadowRadius: 12,
             zIndex: 9999,
             opacity: pressed ? 0.9 : 1,
+            elevation: 8,
           }]}
         >
           <ShoppingBag size={20} color="#FFFFFF" />
-          <Text style={{ fontFamily: 'BeVietnamPro_700Bold', color: '#FFFFFF', fontSize: 13 }}>
-            Giỏ chuyến đi ({cartItems.length})
+          <Text style={{ fontFamily: 'BeVietnamPro_700Bold', color: '#FFFFFF', fontSize: 14 }}>
+            Giỏ chuyến đi ({cartItems.length}) — Bấm để lưu
           </Text>
         </Pressable>
       )}
 
-      {/* Travel Cart Drawer */}
+      {/* Travel Cart Drawer Modal */}
       <TravelCartDrawer
         visible={showCartDrawer}
         onClose={() => setShowCartDrawer(false)}
         cartItems={cartItems}
         totalBudget={trip?.budget_total || 5000000}
         tripId={trip?.id}
-        onRemoveItem={(id) => setCartItems(prev => prev.filter(i => i.id !== id))}
-        onUpdateItemCost={(id, cost) => setCartItems(prev => prev.map(i => i.id === id ? { ...i, custom_cost: cost } : i))}
+        onRemoveItem={(placeId) => setCartItems(prev => prev.filter(i => i.place.id !== placeId))}
+        onUpdateItemCost={(placeId, cost) => setCartItems(prev => prev.map(i => i.place.id === placeId ? { ...i, custom_cost: cost } : i))}
         onSavedSuccess={() => {
           setCartItems([]);
           refetch();
