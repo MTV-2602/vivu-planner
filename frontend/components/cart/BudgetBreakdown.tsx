@@ -153,7 +153,7 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <TextInput
-                  value={val > 0 ? val.toString() : ''}
+                  value={val > 0 ? new Intl.NumberFormat('vi-VN').format(val) : ''}
                   onChangeText={(text) => handleValueChange(cat.key, text)}
                   placeholder="0"
                   keyboardType="numeric"
@@ -167,7 +167,7 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
                     borderRadius: 8,
                     paddingHorizontal: 10,
                     paddingVertical: 6,
-                    minWidth: 90,
+                    minWidth: 110,
                     textAlign: 'right',
                   }}
                 />

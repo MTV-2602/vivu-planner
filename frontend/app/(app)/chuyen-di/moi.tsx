@@ -6,7 +6,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   Compass, Sparkles, ArrowLeft, ArrowRight,
-  MapPin, DollarSign, Heart, AlertTriangle, Crown, Zap, Lock,
+  MapPin, DollarSign, Heart, AlertTriangle, Crown, Zap, Lock, ChevronDown,
 } from 'lucide-react-native';
 import { api } from '../../../lib/api';
 import { clearCache } from '../../../lib/cache';
@@ -566,29 +566,47 @@ export default function TripWizard() {
                     Bạn muốn đi du lịch ở đâu?
                   </Text>
 
-                  {/* City picker */}
+                  {/* City Dropdown picker [Mục 2] */}
                   <View className="gap-2">
                     <View className="flex-row items-center gap-1.5">
                       <MapPin size={14} color={BRAND_COLORS.primary} />
-                      <Text className="text-sm font-bold text-brand-textSoft">Điểm đến (Chỉ Việt Nam)</Text>
+                      <Text className="text-sm font-bold text-brand-textSoft">Điểm đến (Dropdown Chọn Thành Phố)</Text>
                     </View>
-                    <View className="flex-row flex-wrap gap-2">
-                      {VIETNAMESE_CITIES.map(city => (
+                    {Platform.OS === 'web' ? (
+                      <select
+                        value={destinationCity}
+                        onChange={(e) => setDestinationCity(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '12px 16px',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(27,36,32,0.15)',
+                          backgroundColor: '#FBF5EA',
+                          fontSize: '14px',
+                          fontWeight: 'bold',
+                          color: '#1B2420',
+                          outline: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {VIETNAMESE_CITIES.map((city) => (
+                          <option key={city} value={city}>
+                            📍 {city}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <View style={{ borderWidth: 1, borderColor: 'rgba(27,36,32,0.15)', borderRadius: 12, overflow: 'hidden', backgroundColor: '#FBF5EA' }}>
                         <Pressable
-                          key={city}
-                          onPress={() => setDestinationCity(city)}
-                          className={`px-3.5 py-2 rounded-full border ${destinationCity === city
-                            ? 'bg-brand-primary border-brand-primary'
-                            : 'bg-brand-bg border-brand-line'}`}
+                          style={{ paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
                         >
-                          <Text
-                            className={`text-xs font-bold ${destinationCity === city ? 'text-white' : 'text-brand-textSoft'}`}
-                          >
-                            {city}
+                          <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 14, color: '#1B2420' }}>
+                            📍 {destinationCity}
                           </Text>
+                          <ChevronDown size={16} color="#1B2420" />
                         </Pressable>
-                      ))}
-                    </View>
+                      </View>
+                    )}
                   </View>
 
                   {/* Dates */}
@@ -682,8 +700,8 @@ export default function TripWizard() {
                     </View>
                     <View className="flex-row items-center gap-3">
                       <TextInput
-                        value={String(budgetTotal)}
-                        onChangeText={v => setBudgetTotal(parseInt(v) || 0)}
+                        value={budgetTotal > 0 ? new Intl.NumberFormat('vi-VN').format(budgetTotal) : ''}
+                        onChangeText={v => setBudgetTotal(parseInt(v.replace(/\D/g, ''), 10) || 0)}
                         keyboardType="numeric"
                         className="flex-1 px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text"
                         placeholderTextColor={BRAND_COLORS.textMuted}
