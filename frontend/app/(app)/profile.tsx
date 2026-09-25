@@ -26,7 +26,7 @@ interface TripItem {
 }
 
 export default function ProfileScreen() {
-  const router = Router();
+  const router = useRouter();
   const { session, user, profile, signOut, refreshProfile } = useAuth();
   const [trips, setTrips] = useState<TripItem[]>([]);
   const [loadingTrips, setLoadingTrips] = useState(true);
@@ -79,7 +79,7 @@ export default function ProfileScreen() {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          justify: 'space-between',
+          justifyContent: 'space-between',
           paddingHorizontal: 20,
           paddingTop: isWeb ? 20 : 48,
           paddingBottom: 16,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, Image, Linking, Platform } from 'react-native';
+import { View, Text, Pressable, Image, Linking, Platform, TextInput } from 'react-native';
 import { X, ExternalLink, Plus, MapPin, Clock, DollarSign, Sparkles } from 'lucide-react-native';
 
 export interface PlaceItem {

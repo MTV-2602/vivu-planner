@@ -135,7 +135,7 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                justify: 'space-between',
+                justifyContent: 'space-between',
                 paddingVertical: 6,
                 paddingHorizontal: 10,
                 borderRadius: 10,

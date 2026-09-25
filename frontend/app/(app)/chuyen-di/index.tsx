@@ -32,6 +32,7 @@ interface Trip {
   traveler_count: number;
   traveler_type: string;
   status: string;
+  preferences?: any;
 }
 
 function formatDate(dateStr: string) {

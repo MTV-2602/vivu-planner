@@ -109,7 +109,7 @@ export default function TravelCartDrawer({
               key={item.place.id}
               style={{
                 flexDirection: 'row',
-                justify: 'space-between',
+                justifyContent: 'space-between',
                 alignItems: 'center',
                 padding: 12,
                 borderRadius: 12,
