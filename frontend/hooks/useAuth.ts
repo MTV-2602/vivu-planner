@@ -13,6 +13,7 @@ export interface UserProfile {
   premium_until: string | null;
   quota_total:   number;
   quota_used:    number;
+  preferences?:  string[];
 }
 
 export interface AuthState {
