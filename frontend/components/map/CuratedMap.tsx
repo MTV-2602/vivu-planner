@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, Platform, Pressable, ScrollView } from 'react-native';
-import { Plus, MapPin, Sparkles } from 'lucide-react-native';
+import { Plus, Check, MapPin, Sparkles } from 'lucide-react-native';
 import PlaceFilter, { CategoryFilter } from './PlaceFilter';
 import PlacePopup, { PlaceItem } from './PlacePopup';
 
@@ -9,6 +9,7 @@ interface CuratedMapProps {
   centerLat?: number;
   centerLng?: number;
   cityName?: string;
+  addedPlaceIds?: string[];
   onAddToCart: (place: PlaceItem, option: 'auto' | 'manual', customCost?: number) => void;
 }
 
@@ -104,6 +105,7 @@ export default function CuratedMap({
   centerLat = 11.9404,
   centerLng = 108.4583,
   cityName = 'Đà Lạt',
+  addedPlaceIds = [],
   onAddToCart,
 }: CuratedMapProps) {
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('all');
@@ -181,6 +183,7 @@ export default function CuratedMap({
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingRight: 10 }}>
           {filteredPlaces.map((place) => {
             const costValue = place.estimated_cost || (place.price_level ? place.price_level * 50000 : 50000);
+            const isAdded = addedPlaceIds.includes(place.id);
             return (
               <View
                 key={place.id}
@@ -189,8 +192,8 @@ export default function CuratedMap({
                   backgroundColor: '#FFFFFF',
                   borderRadius: 16,
                   padding: 14,
-                  borderWidth: 1,
-                  borderColor: 'rgba(27,36,32,0.1)',
+                  borderWidth: isAdded ? 1.5 : 1,
+                  borderColor: isAdded ? '#1F6F54' : 'rgba(27,36,32,0.1)',
                   gap: 8,
                   justifyContent: 'space-between',
                 }}
@@ -223,7 +226,7 @@ export default function CuratedMap({
                   )}
                 </View>
 
-                {/* Add to Cart Button */}
+                {/* Add / Added to Cart Button */}
                 <Pressable
                   onPress={() => setActivePlace(place)}
                   style={({ pressed }) => [{
@@ -233,15 +236,26 @@ export default function CuratedMap({
                     gap: 6,
                     paddingVertical: 8,
                     borderRadius: 10,
-                    backgroundColor: '#E2703A',
+                    backgroundColor: isAdded ? '#1F6F54' : '#E2703A',
                     opacity: pressed ? 0.85 : 1,
                     marginTop: 4,
                   }]}
                 >
-                  <Plus size={14} color="#FFFFFF" />
-                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#FFFFFF' }}>
-                    Thêm vào giỏ chuyến đi
-                  </Text>
+                  {isAdded ? (
+                    <>
+                      <Check size={14} color="#FFFFFF" />
+                      <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#FFFFFF' }}>
+                        ✓ Đã thêm vào giỏ
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={14} color="#FFFFFF" />
+                      <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#FFFFFF' }}>
+                        Thêm vào giỏ chuyến đi
+                      </Text>
+                    </>
+                  )}
                 </Pressable>
               </View>
             );

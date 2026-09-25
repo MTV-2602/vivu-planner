@@ -1027,6 +1027,7 @@ export default function TripDetail() {
                   <CuratedMap
                     places={getCuratedPlacesForCity(trip.destination_city)}
                     cityName={trip.destination_city}
+                    addedPlaceIds={cartItems.map(i => i.place.id)}
                     onAddToCart={handleAddToCart}
                   />
                 </View>
@@ -1758,7 +1759,7 @@ export default function TripDetail() {
           style={({ pressed }) => [{
             position: 'fixed' as any,
             bottom: 24,
-            right: 24,
+            left: 24,
             backgroundColor: '#E2703A',
             paddingHorizontal: 20,
             paddingVertical: 14,
