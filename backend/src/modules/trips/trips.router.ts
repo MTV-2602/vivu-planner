@@ -1593,4 +1593,35 @@ router.post('/items/:itemId/ai-replace', requireAuth, async (req: any, res: Resp
   }
 });
 
+// POST /api/trips/:id/cart - Bulk save cart items to trip_cart_items table
+router.post('/:id/cart', requireAuth, async (req: any, res: Response) => {
+  const { id } = req.params;
+  const { items } = req.body;
+
+  if (!Array.isArray(items)) {
+    return res.status(400).json({ error: 'items must be an array' });
+  }
+
+  try {
+    const payload = items.map((item: any) => ({
+      trip_id: id,
+      partner_id: item.partner_id || item.place_id || item.id,
+      custom_cost: Number(item.custom_cost) || 0,
+      pricing_option: item.pricing_option === 'manual' ? 'manual' : 'auto',
+      notes: item.notes || item.name || '',
+    }));
+
+    const { data, error } = await supabaseAdmin
+      .from('trip_cart_items')
+      .upsert(payload);
+
+    if (error) throw error;
+
+    return res.json({ success: true, count: items.length });
+  } catch (err: any) {
+    console.error('[Trips Cart API] Error:', err.message);
+    return res.status(500).json({ error: 'Failed to save cart items', details: err.message });
+  }
+});
+
 export default router;
