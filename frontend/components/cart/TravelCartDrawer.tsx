@@ -1,31 +1,38 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Modal } from 'react-native';
 import { ShoppingBag, Trash2, ArrowRight, Sparkles, X } from 'lucide-react-native';
 import LiveBudgetBar from './LiveBudgetBar';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { PlaceItem } from '../map/PlacePopup';
+import { api } from '../../lib/api';
 
 export interface CartItem {
+  id?: string;
   place: PlaceItem;
   pricing_option: 'auto' | 'manual';
   custom_cost: number;
 }
 
-interface TravelCartDrawerProps {
-  tripId: string;
+export interface TravelCartDrawerProps {
+  visible?: boolean;
+  tripId?: string;
   totalBudget: number;
   cartItems: CartItem[];
   onRemoveItem: (placeId: string) => void;
+  onUpdateItemCost?: (placeId: string, cost: number) => void;
   onClose?: () => void;
+  onSavedSuccess?: () => void;
 }
 
 export default function TravelCartDrawer({
+  visible = true,
   tripId,
   totalBudget,
   cartItems,
   onRemoveItem,
   onClose,
+  onSavedSuccess,
 }: TravelCartDrawerProps) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
@@ -41,39 +48,58 @@ export default function TravelCartDrawer({
     setSubmitting(true);
 
     try {
-      // 1. Save cart items into trip_cart_items table in Supabase
       if (tripId && cartItems.length > 0) {
+        // Save cart items to API or Supabase
         const payload = cartItems.map((item) => ({
-          trip_id: tripId,
           partner_id: item.place.id,
+          title: item.place.name,
+          category: item.place.category,
           custom_cost: item.custom_cost,
           pricing_option: item.pricing_option,
-          notes: item.place.name,
+          notes: item.place.address,
         }));
 
-        await supabase.from('trip_cart_items').upsert(payload);
+        try {
+          await api.post(`/trips/${tripId}/cart`, { items: payload });
+        } catch (e) {
+          await supabase.from('trip_cart_items').upsert(
+            cartItems.map(item => ({
+              trip_id: tripId,
+              partner_id: item.place.id,
+              custom_cost: item.custom_cost,
+              pricing_option: item.pricing_option,
+              notes: item.place.name,
+            }))
+          );
+        }
       }
 
-      // 2. Handoff navigation: router.push('/(app)/chuyen-di/' + tripId)
-      router.push(`/(app)/chuyen-di/${tripId || 'new'}` as any);
+      if (onSavedSuccess) {
+        onSavedSuccess();
+      }
+
+      if (onClose) {
+        onClose();
+      }
     } catch (err) {
       console.error('Lỗi khi lưu giỏ chuyến đi:', err);
-      // Fallback router push
-      router.push(`/(app)/chuyen-di/${tripId || 'new'}` as any);
+      if (onClose) onClose();
     } finally {
       setSubmitting(false);
     }
   };
 
-  return (
+  const content = (
     <View
       style={{
         flex: 1,
         backgroundColor: '#FFFFFF',
-        borderLeftWidth: 1,
-        borderLeftColor: 'rgba(27,36,32,0.08)',
         padding: 20,
         gap: 16,
+        maxWidth: 500,
+        alignSelf: 'center',
+        width: '100%',
+        borderRadius: 20,
       }}
     >
       {/* Header */}
@@ -142,7 +168,7 @@ export default function TravelCartDrawer({
       <View style={{ paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(27,36,32,0.08)' }}>
         <Pressable
           onPress={handleConfirmAndCreateItinerary}
-          disabled={submitting}
+          disabled={submitting || cartItems.length === 0}
           style={({ pressed }) => [{
             flexDirection: 'row',
             alignItems: 'center',
@@ -151,12 +177,8 @@ export default function TravelCartDrawer({
             paddingVertical: 14,
             paddingHorizontal: 16,
             borderRadius: 100,
-            backgroundColor: '#1F6F54',
-            opacity: pressed || submitting ? 0.85 : 1,
-            shadowColor: '#1F6F54',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.25,
-            shadowRadius: 12,
+            backgroundColor: cartItems.length > 0 ? '#1F6F54' : '#CCCCCC',
+            opacity: pressed || submitting || cartItems.length === 0 ? 0.85 : 1,
           }]}
         >
           {submitting ? (
@@ -165,7 +187,7 @@ export default function TravelCartDrawer({
             <>
               <Sparkles size={18} color="#FFFFFF" />
               <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 14, color: '#FFFFFF', textAlign: 'center' }}>
-                XÁC NHẬN HOÀN TẤT & BẮT ĐẦU TẠO LỊCH TRÌNH
+                XÁC NHẬN LƯU VÀO LỊCH TRÌNH CHUYẾN ĐI
               </Text>
               <ArrowRight size={18} color="#FFFFFF" />
             </>
@@ -174,4 +196,16 @@ export default function TravelCartDrawer({
       </View>
     </View>
   );
+
+  if (visible && onClose) {
+    return (
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 16 }}>
+          {content}
+        </View>
+      </Modal>
+    );
+  }
+
+  return content;
 }

@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, Platform } from 'react-native';
+import React, { useState, useMemo, useEffect } from 'react';
+import { View, Text, Platform, Pressable, ScrollView } from 'react-native';
+import { Plus, MapPin, Sparkles } from 'lucide-react-native';
 import PlaceFilter, { CategoryFilter } from './PlaceFilter';
 import PlacePopup, { PlaceItem } from './PlacePopup';
 
@@ -109,6 +110,26 @@ export default function CuratedMap({
   const [maxPrice, setMaxPrice] = useState<number>(2000000);
   const [activePlace, setActivePlace] = useState<PlaceItem | null>(null);
 
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const handleMessage = (event: MessageEvent) => {
+        try {
+          const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+          if (data && data.type === 'PLACE_CLICK' && data.placeId) {
+            const found = places.find(p => p.id === data.placeId);
+            if (found) {
+              setActivePlace(found);
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      };
+      window.addEventListener('message', handleMessage);
+      return () => window.removeEventListener('message', handleMessage);
+    }
+  }, [places]);
+
   const filteredPlaces = useMemo(() => {
     return places.filter((p) => {
       const matchCat = selectedCategory === 'all' || p.category === selectedCategory;
@@ -123,31 +144,110 @@ export default function CuratedMap({
   }, [filteredPlaces, centerLat, centerLng, cityName]);
 
   return (
-    <View style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-      {/* Top Filter Bar */}
-      <View style={{ position: 'absolute', top: 16, left: 16, right: 16, zIndex: 500 }}>
-        <PlaceFilter
-          selectedCategory={selectedCategory}
-          onSelectCategory={setSelectedCategory}
-          maxPrice={maxPrice}
-          onChangeMaxPrice={setMaxPrice}
-        />
+    <View style={{ flex: 1, gap: 14 }}>
+      <View style={{ height: 360, position: 'relative', overflow: 'hidden', borderRadius: 16, borderWidth: 1, borderColor: '#f0ebe0' }}>
+        {/* Top Filter Bar */}
+        <View style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 500 }}>
+          <PlaceFilter
+            selectedCategory={selectedCategory}
+            onSelectCategory={setSelectedCategory}
+            maxPrice={maxPrice}
+            onChangeMaxPrice={setMaxPrice}
+          />
+        </View>
+
+        {/* Map Display */}
+        {Platform.OS === 'web' ? (
+          <iframe
+            srcDoc={htmlContent}
+            style={{ width: '100%', height: '100%', border: 'none' }}
+            title="Curated Map"
+          />
+        ) : (
+          <View style={{ flex: 1, backgroundColor: '#F3ECDC', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', color: '#1B2420' }}>
+              Bản đồ đang hiển thị {filteredPlaces.length} địa điểm tại {cityName}
+            </Text>
+          </View>
+        )}
       </View>
 
-      {/* Map Display */}
-      {Platform.OS === 'web' ? (
-        <iframe
-          srcDoc={htmlContent}
-          style={{ width: '100%', height: '100%', border: 'none' }}
-          title="Curated Map"
-        />
-      ) : (
-        <View style={{ flex: 1, backgroundColor: '#F3ECDC', alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', color: '#1B2420' }}>
-            Bản đồ đang hiển thị {filteredPlaces.length} địa điểm tại {cityName}
-          </Text>
-        </View>
-      )}
+      {/* Recommended Places Cards List with direct "➕ Thêm vào giỏ chuyến đi" Button */}
+      <View style={{ gap: 10 }}>
+        <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 14, color: '#1B2420' }}>
+          📍 Gợi ý địa điểm nổi bật tại {cityName} ({filteredPlaces.length} địa điểm)
+        </Text>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingRight: 10 }}>
+          {filteredPlaces.map((place) => {
+            const costValue = place.estimated_cost || (place.price_level ? place.price_level * 50000 : 50000);
+            return (
+              <View
+                key={place.id}
+                style={{
+                  width: 260,
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 16,
+                  padding: 14,
+                  borderWidth: 1,
+                  borderColor: 'rgba(27,36,32,0.1)',
+                  gap: 8,
+                  justifyContent: 'space-between',
+                }}
+              >
+                <View style={{ gap: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#1F6F54', backgroundColor: 'rgba(31,111,84,0.1)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                      {place.category === 'dining' ? '🔴 Ăn uống' : place.category === 'cafe' ? '🟡 Cafe' : place.category === 'hotel' ? '🔵 Khách sạn' : '🟣 Vui chơi'}
+                    </Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#E2703A' }}>
+                      {costValue.toLocaleString('vi-VN')} đ
+                    </Text>
+                  </View>
+
+                  <Text numberOfLines={1} style={{ fontFamily: 'Lora_700Bold', fontSize: 14, color: '#1B2420' }}>
+                    {place.name}
+                  </Text>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <MapPin size={12} color="#6E7B70" />
+                    <Text numberOfLines={1} style={{ fontSize: 11, color: '#6E7B70', flex: 1 }}>
+                      {place.address}
+                    </Text>
+                  </View>
+
+                  {place.social_review_quote && (
+                    <Text numberOfLines={2} style={{ fontSize: 11, fontStyle: 'italic', color: '#3F4F45', backgroundColor: '#FBF5EA', padding: 6, borderRadius: 8, marginTop: 2 }}>
+                      💬 "{place.social_review_quote}"
+                    </Text>
+                  )}
+                </View>
+
+                {/* Add to Cart Button */}
+                <Pressable
+                  onPress={() => setActivePlace(place)}
+                  style={({ pressed }) => [{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    backgroundColor: '#E2703A',
+                    opacity: pressed ? 0.85 : 1,
+                    marginTop: 4,
+                  }]}
+                >
+                  <Plus size={14} color="#FFFFFF" />
+                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#FFFFFF' }}>
+                    Thêm vào giỏ chuyến đi
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       {/* Place Active Popup */}
       {activePlace && (
