@@ -1,18 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  ActivityIndicator,
-  Image,
-  RefreshControl,
-  Platform,
-} from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Image, RefreshControl, Platform, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { User, MapPin, Calendar, Heart, ArrowLeft, LogOut, Sparkles, ChevronRight } from 'lucide-react-native';
+import { PREFERENCE_OPTIONS } from '../../constants';
 
 interface TripItem {
   id: string;
@@ -31,6 +22,57 @@ export default function ProfileScreen() {
   const [trips, setTrips] = useState<TripItem[]>([]);
   const [loadingTrips, setLoadingTrips] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const [userPrefs, setUserPrefs] = useState<string[]>([]);
+  const [customPrefInput, setCustomPrefInput] = useState('');
+  const [savingPrefs, setSavingPrefs] = useState(false);
+
+  useEffect(() => {
+    if (profile?.preferences && Array.isArray(profile.preferences)) {
+      setUserPrefs(profile.preferences);
+    } else {
+      setUserPrefs([
+        '🌿 Thiên nhiên & Sinh thái',
+        '☕ Cà phê view đẹp',
+        '🍜 Ẩm thực & Đặc sản',
+        '📸 Check-in sống ảo',
+      ]);
+    }
+  }, [profile?.preferences]);
+
+  const togglePreference = (prefLabel: string) => {
+    setUserPrefs((prev) =>
+      prev.includes(prefLabel)
+        ? prev.filter((p) => p !== prefLabel)
+        : [...prev, prefLabel]
+    );
+  };
+
+  const handleAddCustomPreference = () => {
+    if (!customPrefInput.trim()) return;
+    const cleanTag = customPrefInput.trim();
+    if (!userPrefs.includes(cleanTag)) {
+      setUserPrefs((prev) => [...prev, cleanTag]);
+    }
+    setCustomPrefInput('');
+  };
+
+  const handleSavePreferences = async () => {
+    if (!user?.id) return;
+    setSavingPrefs(true);
+    try {
+      await supabase
+        .from('profiles')
+        .update({ preferences: userPrefs })
+        .eq('id', user.id);
+
+      await refreshProfile();
+    } catch (err) {
+      console.error('Lỗi khi lưu sở thích:', err);
+    } finally {
+      setSavingPrefs(false);
+    }
+  };
 
   const isWeb = Platform.OS === 'web';
 
@@ -180,33 +222,127 @@ export default function ProfileScreen() {
             borderWidth: 1,
             borderColor: 'rgba(27,36,32,0.08)',
             marginBottom: 24,
+            gap: 14,
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-            <Heart size={18} color="#E2703A" />
-            <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 16, color: '#1B2420' }}>
-              Sở Thích Du Lịch
-            </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Heart size={18} color="#E2703A" />
+              <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 16, color: '#1B2420' }}>
+                Sở Thích Du Lịch ({userPrefs.length})
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={handleSavePreferences}
+              disabled={savingPrefs}
+              style={({ pressed }) => [{
+                paddingHorizontal: 14,
+                paddingVertical: 7,
+                borderRadius: 100,
+                backgroundColor: '#1F6F54',
+                opacity: pressed || savingPrefs ? 0.8 : 1,
+              }]}
+            >
+              <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#FFFFFF' }}>
+                {savingPrefs ? 'Đang lưu...' : 'Lưu sở thích'}
+              </Text>
+            </Pressable>
           </View>
 
+          <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 12, color: '#6E7B70' }}>
+            Chọn hoặc tự nhập thêm các sở thích cá nhân để Gemini AI cá nhân hóa chuyến đi cho bạn:
+          </Text>
+
+          {/* Preset 18 Tags Grid */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {preferencesList.map((pref, idx) => (
-              <View
-                key={idx}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderRadius: 100,
-                  backgroundColor: '#F3ECDC',
-                  borderWidth: 1,
-                  borderColor: 'rgba(27,36,32,0.08)',
-                }}
-              >
-                <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#1B2420' }}>
-                  {pref}
-                </Text>
-              </View>
-            ))}
+            {PREFERENCE_OPTIONS.map((opt) => {
+              const isSelected = userPrefs.includes(opt.label);
+              return (
+                <Pressable
+                  key={opt.id}
+                  onPress={() => togglePreference(opt.label)}
+                  style={({ pressed }) => [{
+                    paddingHorizontal: 13,
+                    paddingVertical: 7,
+                    borderRadius: 100,
+                    backgroundColor: isSelected ? '#1F6F54' : '#F3ECDC',
+                    borderWidth: 1,
+                    borderColor: isSelected ? '#1F6F54' : 'rgba(27,36,32,0.08)',
+                    opacity: pressed ? 0.8 : 1,
+                  }]}
+                >
+                  <Text
+                    style={{
+                      fontFamily: isSelected ? 'BeVietnamPro_700Bold' : 'BeVietnamPro_600SemiBold',
+                      fontSize: 12,
+                      color: isSelected ? '#FFFFFF' : '#1B2420',
+                    }}
+                  >
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+
+            {/* Custom User Added Tags */}
+            {userPrefs
+              .filter((p) => !PREFERENCE_OPTIONS.some((opt) => opt.label === p))
+              .map((customTag, idx) => (
+                <Pressable
+                  key={idx}
+                  onPress={() => togglePreference(customTag)}
+                  style={({ pressed }) => [{
+                    paddingHorizontal: 13,
+                    paddingVertical: 7,
+                    borderRadius: 100,
+                    backgroundColor: '#E2703A',
+                    opacity: pressed ? 0.8 : 1,
+                  }]}
+                >
+                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#FFFFFF' }}>
+                    ✨ {customTag} ✕
+                  </Text>
+                </Pressable>
+              ))}
+          </View>
+
+          {/* Custom Tag Input */}
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            <TextInput
+              value={customPrefInput}
+              onChangeText={setCustomPrefInput}
+              placeholder="Tự nhập sở thích riêng (VD: Bắn cung, Nông trại...)"
+              style={{
+                flex: 1,
+                backgroundColor: '#FBF5EA',
+                borderWidth: 1,
+                borderColor: 'rgba(27,36,32,0.12)',
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                fontFamily: 'BeVietnamPro_400Regular',
+                fontSize: 13,
+                color: '#1B2420',
+              }}
+            />
+            <Pressable
+              onPress={handleAddCustomPreference}
+              disabled={!customPrefInput.trim()}
+              style={({ pressed }) => [{
+                paddingHorizontal: 14,
+                paddingVertical: 7,
+                borderRadius: 10,
+                backgroundColor: '#E2703A',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed || !customPrefInput.trim() ? 0.7 : 1,
+              }]}
+            >
+              <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#FFFFFF' }}>
+                + Thêm
+              </Text>
+            </Pressable>
           </View>
         </View>
 

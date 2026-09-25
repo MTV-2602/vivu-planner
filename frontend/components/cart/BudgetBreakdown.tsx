@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Pressable, TextInput } from 'react-native';
-import { Truck, Home, Utensils, Coffee, Ticket } from 'lucide-react-native';
+import { Truck, Home, Utensils, Coffee, Ticket, Percent } from 'lucide-react-native';
 
 export interface BudgetBreakdownData {
   transport: number;
@@ -25,11 +25,42 @@ const CATEGORIES = [
 ];
 
 export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: BudgetBreakdownProps) {
+  const [percentages, setPercentages] = useState<{ [key: string]: number }>({
+    transport: 20,
+    accommodation: 30,
+    dining: 25,
+    cafe: 10,
+    entertainment: 15,
+  });
+
+  // Real-time recalculation when totalBudget changes
+  useEffect(() => {
+    if (totalBudget > 0) {
+      const recalculated: BudgetBreakdownData = {
+        transport: Math.round((totalBudget * (percentages.transport || 20) / 100) / 1000) * 1000,
+        accommodation: Math.round((totalBudget * (percentages.accommodation || 30) / 100) / 1000) * 1000,
+        dining: Math.round((totalBudget * (percentages.dining || 25) / 100) / 1000) * 1000,
+        cafe: Math.round((totalBudget * (percentages.cafe || 10) / 100) / 1000) * 1000,
+        entertainment: Math.round((totalBudget * (percentages.entertainment || 15) / 100) / 1000) * 1000,
+      };
+      onChange(recalculated);
+    }
+  }, [totalBudget]);
+
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('vi-VN').format(val) + ' đ';
   };
 
   const handleAutoDistribute = () => {
+    const defaultPct = {
+      transport: 20,
+      accommodation: 30,
+      dining: 25,
+      cafe: 10,
+      entertainment: 15,
+    };
+    setPercentages(defaultPct);
+
     const updated: BudgetBreakdownData = {
       transport: Math.round((totalBudget * 0.20) / 1000) * 1000,
       accommodation: Math.round((totalBudget * 0.30) / 1000) * 1000,
@@ -40,11 +71,26 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
     onChange(updated);
   };
 
-  const handleValueChange = (key: keyof BudgetBreakdownData, textVal: string) => {
-    const num = parseInt(textVal.replace(/\D/g, ''), 10) || 0;
+  const handlePercentChange = (key: keyof BudgetBreakdownData, textPct: string) => {
+    const pct = Math.min(100, Math.max(0, parseInt(textPct.replace(/\D/g, ''), 10) || 0));
+    const newPcts = { ...percentages, [key]: pct };
+    setPercentages(newPcts);
+
+    const newMoney = Math.round((totalBudget * pct / 100) / 1000) * 1000;
     onChange({
       ...breakdown,
-      [key]: num,
+      [key]: newMoney,
+    });
+  };
+
+  const handleMoneyChange = (key: keyof BudgetBreakdownData, textVal: string) => {
+    const money = parseInt(textVal.replace(/\D/g, ''), 10) || 0;
+    const calcPct = totalBudget > 0 ? parseFloat(((money / totalBudget) * 100).toFixed(1)) : 0;
+
+    setPercentages((prev) => ({ ...prev, [key]: calcPct }));
+    onChange({
+      ...breakdown,
+      [key]: money,
     });
   };
 
@@ -54,6 +100,8 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
     (breakdown.dining || 0) +
     (breakdown.cafe || 0) +
     (breakdown.entertainment || 0);
+
+  const totalPercentAllocated = Object.values(percentages).reduce((a, b) => a + b, 0);
 
   const isOverBudget = allocatedTotal > totalBudget;
 
@@ -75,7 +123,7 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
             Phân Bổ Ngân Sách Theo Tag
           </Text>
           <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 12, color: '#6E7B70', marginTop: 2 }}>
-            Phân chia hạn mức chi tiêu dự kiến cho 5 mục chính
+            Tự động chia theo Realtime & tùy chỉnh % theo ý muốn
           </Text>
         </View>
 
@@ -99,7 +147,7 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
       <View style={{ gap: 6 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: isOverBudget ? '#B23B3B' : '#1F6F54' }}>
-            Đã phân bổ: {formatCurrency(allocatedTotal)}
+            Đã phân bổ: {formatCurrency(allocatedTotal)} ({totalPercentAllocated.toFixed(0)}%)
           </Text>
           <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#6E7B70' }}>
             Tổng trần: {formatCurrency(totalBudget)}
@@ -124,11 +172,13 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
         </View>
       </View>
 
-      {/* Input list */}
+      {/* Input list with % and Money */}
       <View style={{ gap: 10 }}>
         {CATEGORIES.map((cat) => {
           const IconComp = cat.icon;
           const val = breakdown[cat.key] || 0;
+          const pct = percentages[cat.key] ?? cat.defaultPercent;
+
           return (
             <View
               key={cat.key}
@@ -136,42 +186,71 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                paddingVertical: 6,
+                paddingVertical: 8,
                 paddingHorizontal: 10,
-                borderRadius: 10,
+                borderRadius: 12,
                 backgroundColor: 'rgba(243,236,220,0.4)',
               }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: `${cat.color}15`, alignItems: 'center', justifyContent: 'center' }}>
-                  <IconComp size={16} color={cat.color} />
+              {/* Category Icon & Name */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: `${cat.color}15`, alignItems: 'center', justifyContent: 'center' }}>
+                  <IconComp size={15} color={cat.color} />
                 </View>
                 <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 13, color: '#1B2420' }}>
                   {cat.label}
                 </Text>
               </View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <TextInput
-                  value={val > 0 ? new Intl.NumberFormat('vi-VN').format(val) : ''}
-                  onChangeText={(text) => handleValueChange(cat.key, text)}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  style={{
-                    fontFamily: 'BeVietnamPro_700Bold',
-                    fontSize: 13,
-                    color: '#1B2420',
-                    backgroundColor: '#FFFFFF',
-                    borderWidth: 1,
-                    borderColor: 'rgba(27,36,32,0.12)',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    minWidth: 110,
-                    textAlign: 'right',
-                  }}
-                />
-                <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 12, color: '#6E7B70' }}>đ</Text>
+              {/* Custom Percent (%) & Money Inputs */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {/* Custom % Input */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                  <TextInput
+                    value={String(pct)}
+                    onChangeText={(text) => handlePercentChange(cat.key, text)}
+                    placeholder="0"
+                    keyboardType="numeric"
+                    style={{
+                      fontFamily: 'BeVietnamPro_700Bold',
+                      fontSize: 12,
+                      color: '#1F6F54',
+                      backgroundColor: '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: 'rgba(31,111,84,0.3)',
+                      borderRadius: 6,
+                      paddingHorizontal: 6,
+                      paddingVertical: 4,
+                      width: 42,
+                      textAlign: 'center',
+                    }}
+                  />
+                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#1F6F54' }}>%</Text>
+                </View>
+
+                {/* Money Input */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <TextInput
+                    value={val > 0 ? new Intl.NumberFormat('vi-VN').format(val) : ''}
+                    onChangeText={(text) => handleMoneyChange(cat.key, text)}
+                    placeholder="0"
+                    keyboardType="numeric"
+                    style={{
+                      fontFamily: 'BeVietnamPro_700Bold',
+                      fontSize: 13,
+                      color: '#1B2420',
+                      backgroundColor: '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: 'rgba(27,36,32,0.12)',
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      minWidth: 105,
+                      textAlign: 'right',
+                    }}
+                  />
+                  <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 12, color: '#6E7B70' }}>đ</Text>
+                </View>
               </View>
             </View>
           );

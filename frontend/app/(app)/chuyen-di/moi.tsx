@@ -271,6 +271,7 @@ export default function TripWizard() {
     entertainment: 750000,
   });
   const [selectedPrefs, setSelectedPrefs] = useState<string[]>([]);
+  const [customPrefInput, setCustomPrefInput] = useState('');
   const [healthConditions, setHealthConditions] = useState('');
   const [specialRequirements, setSpecialRequirements] = useState('');
   const [lodgingPreference, setLodgingPreference] = useState<'single' | 'multiple'>('single');
@@ -769,17 +770,16 @@ export default function TripWizard() {
 
                   <View className="gap-2">
                     <Text className="text-sm font-bold text-brand-textSoft">Chọn các sở thích (Chọn nhiều)</Text>
-                    <View className="flex-row flex-wrap gap-3">
+                    <View className="flex-row flex-wrap gap-2.5">
                       {PREFERENCE_OPTIONS.map(pref => {
                         const selected = selectedPrefs.includes(pref.id);
                         return (
                           <Pressable
                             key={pref.id}
                             onPress={() => handlePrefToggle(pref.id)}
-                            className={`px-4 py-3.5 rounded-xl border ${selected
+                            className={`px-4 py-3 rounded-xl border ${selected
                               ? 'bg-brand-primary border-brand-primary'
                               : 'bg-brand-bg border-brand-line/50'}`}
-                            style={{ minWidth: 130 }}
                           >
                             <Text
                               className={`text-sm font-semibold ${selected ? 'text-white' : 'text-brand-textSoft'}`}
@@ -789,6 +789,46 @@ export default function TripWizard() {
                           </Pressable>
                         );
                       })}
+
+                      {/* Display custom added tags in wizard */}
+                      {selectedPrefs
+                        .filter(p => !PREFERENCE_OPTIONS.some(opt => opt.id === p))
+                        .map((customTag, idx) => (
+                          <Pressable
+                            key={idx}
+                            onPress={() => handlePrefToggle(customTag)}
+                            className="px-4 py-3 rounded-xl bg-brand-accent border border-brand-accent"
+                          >
+                            <Text className="text-sm font-bold text-white">✨ {customTag} ✕</Text>
+                          </Pressable>
+                        ))}
+                    </View>
+                  </View>
+
+                  {/* Custom tag input in wizard */}
+                  <View className="gap-2 pt-2 border-t border-brand-line/30">
+                    <Text className="text-xs font-bold text-brand-textSoft">Hoặc tự nhập sở thích trải nghiệm riêng:</Text>
+                    <View className="flex-row gap-2">
+                      <TextInput
+                        value={customPrefInput}
+                        onChangeText={setCustomPrefInput}
+                        placeholder="VD: Bắn cung, Ngắm hoàng hôn..."
+                        className="flex-1 px-4 py-2.5 rounded-xl border border-brand-line text-sm bg-brand-bg text-brand-text"
+                        placeholderTextColor={BRAND_COLORS.textMuted}
+                      />
+                      <Pressable
+                        onPress={() => {
+                          if (customPrefInput.trim() && !selectedPrefs.includes(customPrefInput.trim())) {
+                            setSelectedPrefs(prev => [...prev, customPrefInput.trim()]);
+                            setCustomPrefInput('');
+                          }
+                        }}
+                        disabled={!customPrefInput.trim()}
+                        className="px-5 py-2.5 rounded-xl bg-brand-accent justify-center items-center"
+                        style={{ opacity: customPrefInput.trim() ? 1 : 0.6 }}
+                      >
+                        <Text className="text-xs font-bold text-white">+ Thêm</Text>
+                      </Pressable>
                     </View>
                   </View>
                 </View>
