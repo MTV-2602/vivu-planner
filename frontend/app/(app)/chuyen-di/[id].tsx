@@ -1028,6 +1028,7 @@ export default function TripDetail() {
                     places={getCuratedPlacesForCity(trip.destination_city)}
                     cityName={trip.destination_city}
                     addedPlaceIds={cartItems.map(i => i.place.id)}
+                    existingTripPlaceNames={trip.days.flatMap(d => (d.items || []).map(i => i.title))}
                     onAddToCart={handleAddToCart}
                   />
                 </View>

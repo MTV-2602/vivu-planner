@@ -10,6 +10,7 @@ interface CuratedMapProps {
   centerLng?: number;
   cityName?: string;
   addedPlaceIds?: string[];
+  existingTripPlaceNames?: string[];
   onAddToCart: (place: PlaceItem, option: 'auto' | 'manual', customCost?: number) => void;
 }
 
@@ -106,6 +107,7 @@ export default function CuratedMap({
   centerLng = 108.4583,
   cityName = 'Đà Lạt',
   addedPlaceIds = [],
+  existingTripPlaceNames = [],
   onAddToCart,
 }: CuratedMapProps) {
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('all');
@@ -174,7 +176,7 @@ export default function CuratedMap({
         )}
       </View>
 
-      {/* Recommended Places Cards List with direct "➕ Thêm vào giỏ chuyến đi" Button */}
+      {/* Recommended Places Cards List */}
       <View style={{ gap: 10 }}>
         <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 14, color: '#1B2420' }}>
           📍 Gợi ý địa điểm nổi bật tại {cityName} ({filteredPlaces.length} địa điểm)
@@ -183,7 +185,15 @@ export default function CuratedMap({
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingRight: 10 }}>
           {filteredPlaces.map((place) => {
             const costValue = place.estimated_cost || (place.price_level ? place.price_level * 50000 : 50000);
-            const isAdded = addedPlaceIds.includes(place.id);
+            const isAddedInCart = addedPlaceIds.includes(place.id);
+            const placeNameNorm = place.name.toLowerCase().trim();
+            const isAlreadyInTrip = (existingTripPlaceNames || []).some(
+              n => n && (n.toLowerCase().trim().includes(placeNameNorm) || placeNameNorm.includes(n.toLowerCase().trim()))
+            );
+
+            const isAdded = isAddedInCart || isAlreadyInTrip;
+            const addedLabel = isAlreadyInTrip ? '✓ Đã có trong lịch trình' : '✓ Đã thêm vào giỏ';
+
             return (
               <View
                 key={place.id}
@@ -193,7 +203,7 @@ export default function CuratedMap({
                   borderRadius: 16,
                   padding: 14,
                   borderWidth: isAdded ? 1.5 : 1,
-                  borderColor: isAdded ? '#1F6F54' : 'rgba(27,36,32,0.1)',
+                  borderColor: isAlreadyInTrip ? '#134A37' : (isAddedInCart ? '#1F6F54' : 'rgba(27,36,32,0.1)'),
                   gap: 8,
                   justifyContent: 'space-between',
                 }}
@@ -226,9 +236,13 @@ export default function CuratedMap({
                   )}
                 </View>
 
-                {/* Add / Added to Cart Button */}
+                {/* Add / Added Button */}
                 <Pressable
-                  onPress={() => setActivePlace(place)}
+                  onPress={() => {
+                    if (!isAlreadyInTrip) {
+                      setActivePlace(place);
+                    }
+                  }}
                   style={({ pressed }) => [{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -236,8 +250,8 @@ export default function CuratedMap({
                     gap: 6,
                     paddingVertical: 8,
                     borderRadius: 10,
-                    backgroundColor: isAdded ? '#1F6F54' : '#E2703A',
-                    opacity: pressed ? 0.85 : 1,
+                    backgroundColor: isAlreadyInTrip ? '#134A37' : (isAddedInCart ? '#1F6F54' : '#E2703A'),
+                    opacity: (pressed && !isAlreadyInTrip) ? 0.85 : 1,
                     marginTop: 4,
                   }]}
                 >
@@ -245,7 +259,7 @@ export default function CuratedMap({
                     <>
                       <Check size={14} color="#FFFFFF" />
                       <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#FFFFFF' }}>
-                        ✓ Đã thêm vào giỏ
+                        {addedLabel}
                       </Text>
                     </>
                   ) : (
