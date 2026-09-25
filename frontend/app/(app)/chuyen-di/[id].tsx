@@ -850,6 +850,38 @@ export default function TripDetail() {
                   </Text>
                 </Pressable>
                 <Pressable
+                  onPress={() => setShowCartDrawer(true)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    backgroundColor: '#E2703A',
+                    borderWidth: 1,
+                    borderColor: '#C75A29',
+                  }}
+                >
+                  <ShoppingBag size={16} color="#FFFFFF" />
+                  <Text style={{ fontWeight: '800', color: '#FFFFFF', fontSize: 13 }}>
+                    Giỏ chuyến đi {cartItems.length > 0 ? `(${cartItems.length})` : ''}
+                  </Text>
+                  {cartItems.length > 0 && (
+                    <View style={{
+                      backgroundColor: '#FFFFFF',
+                      borderRadius: 10,
+                      paddingHorizontal: 6,
+                      paddingVertical: 1,
+                      marginLeft: 2,
+                    }}>
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: '#E2703A' }}>
+                        {cartItems.length}
+                      </Text>
+                    </View>
+                  )}
+                </Pressable>
+                <Pressable
                   onPress={() => setShowShareModal(true)}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, backgroundColor: '#f0ebe0', borderWidth: 1, borderColor: '#e0dbd0' }}
                 >
