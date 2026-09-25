@@ -31,6 +31,7 @@ import ShareModal from '../../../components/ShareModal';
 import BookingModal, { BookableItem } from '../../../components/BookingModal';
 import PremiumModal from '../../../components/PremiumModal';
 import ConfirmModal from '../../../components/ConfirmModal';
+import AppToast, { AppToastMessage } from '../../../components/AppToast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ItineraryItem {
@@ -189,6 +190,9 @@ export default function TripDetail() {
   const [aiRequirement, setAiRequirement] = useState('');
   const [fetchingAlts, setFetchingAlts] = useState(false);
 
+  // App Toast state
+  const [appToast, setAppToast] = useState<AppToastMessage | null>(null);
+
   // Cart state
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
@@ -201,12 +205,11 @@ export default function TripDetail() {
       pricing_option: option,
       custom_cost: cost,
     };
-    setCartItems(prev => [...prev.filter(i => i.id !== place.id), newItem]);
-    if (Platform.OS === 'web') {
-      window.alert(`🛒 Đã thêm "${place.name}" vào giỏ chuyến đi!`);
-    } else {
-      Alert.alert('🛒 Đã thêm vào giỏ!', `Đã thêm "${place.name}" vào giỏ chuyến đi.`);
-    }
+    setCartItems(prev => [...prev.filter(i => i.place.id !== place.id), newItem]);
+    setAppToast({
+      text: `🛒 Đã thêm "${place.name}" vào giỏ chuyến đi!`,
+      type: 'cart',
+    });
   };
 
   // New features state
@@ -1796,13 +1799,15 @@ export default function TripDetail() {
         onSavedSuccess={() => {
           setCartItems([]);
           refetch();
-          if (Platform.OS === 'web') {
-            window.alert('🎉 Đã lưu tất cả địa điểm trong giỏ vào lịch trình chuyến đi!');
-          } else {
-            Alert.alert('🎉 Thành công', 'Đã lưu tất cả địa điểm trong giỏ vào lịch trình chuyến đi!');
-          }
+          setAppToast({
+            text: '🎉 Đã lưu tất cả địa điểm trong giỏ vào lịch trình chuyến đi!',
+            type: 'success',
+          });
         }}
       />
+
+      {/* Custom In-App Toast Banner */}
+      <AppToast toast={appToast} onClose={() => setAppToast(null)} />
     </View>
   );
 }
