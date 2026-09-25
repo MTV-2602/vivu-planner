@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { ShoppingBag, Trash2, ArrowRight, Sparkles, X } from 'lucide-react-native';
 import LiveBudgetBar from './LiveBudgetBar';
-import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { PlaceItem } from '../map/PlacePopup';
 import { api } from '../../lib/api';
@@ -89,21 +88,27 @@ export default function TravelCartDrawer({
     }
   };
 
-  const content = (
+  return (
     <View
       style={{
+        position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+        top: 85,
+        right: 20,
+        bottom: 90,
+        width: 420,
+        maxWidth: '90%',
         backgroundColor: '#FFFFFF',
-        padding: 22,
-        gap: 16,
-        maxWidth: 480,
-        width: '100%',
         borderRadius: 24,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.25,
-        shadowRadius: 20,
+        padding: 20,
+        gap: 14,
         borderWidth: 1,
-        borderColor: 'rgba(27,36,32,0.1)',
+        borderColor: 'rgba(27,36,32,0.12)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 24,
+        elevation: 12,
+        zIndex: 9998,
       }}
     >
       {/* Header */}
@@ -126,7 +131,7 @@ export default function TravelCartDrawer({
       <LiveBudgetBar totalBudget={totalBudget} currentCartTotal={cartTotal} />
 
       {/* Cart Items List */}
-      <ScrollView style={{ maxHeight: 300 }} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
         {cartItems.length === 0 ? (
           <View style={{ padding: 28, alignItems: 'center', gap: 8 }}>
             <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 13, color: '#6E7B70', textAlign: 'center', lineHeight: 18 }}>
@@ -168,7 +173,7 @@ export default function TravelCartDrawer({
         )}
       </ScrollView>
 
-      {/* Confirm Save Button at bottom of popup */}
+      {/* Confirm Save Button at bottom of side panel */}
       <View style={{ paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(27,36,32,0.08)' }}>
         <Pressable
           onPress={handleConfirmAndCreateItinerary}
@@ -199,18 +204,5 @@ export default function TravelCartDrawer({
         </Pressable>
       </View>
     </View>
-  );
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 }}
-        onPress={onClose}
-      >
-        <Pressable onPress={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 480 }}>
-          {content}
-        </Pressable>
-      </Pressable>
-    </Modal>
   );
 }
