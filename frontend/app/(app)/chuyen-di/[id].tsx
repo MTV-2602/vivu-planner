@@ -184,7 +184,7 @@ export default function TripDetail() {
   const [fetchingAlts, setFetchingAlts] = useState(false);
 
   // New features state
-  const [showMapView, setShowMapView] = useState(false);
+  const [showMapView, setShowMapView] = useState(true);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
@@ -949,10 +949,6 @@ export default function TripDetail() {
             <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: '#f0ebe0' }}>
               <Pressable
                 onPress={() => {
-                  if (isLocked) {
-                    setShowPremiumModal(true);
-                    return;
-                  }
                   setShowMapView(!showMapView);
                 }}
                 style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
@@ -962,11 +958,6 @@ export default function TripDetail() {
                   <View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Text style={{ fontWeight: '800', color: '#1B3A2D', fontSize: 15 }}>Bản đồ tương tác</Text>
-                      {isLocked && (
-                        <View style={{ backgroundColor: '#e8f5f0', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 0.5, borderColor: '#A7F3D0' }}>
-                          <Text style={{ fontSize: 8, fontWeight: '800', color: BRAND_COLORS.primary }}>PREMIUM 🔒</Text>
-                        </View>
-                      )}
                     </View>
                     <Text style={{ color: '#888', fontSize: 12 }}>Xem tất cả địa điểm trên bản đồ</Text>
                   </View>
