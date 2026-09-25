@@ -14,6 +14,7 @@ import { requestNotificationPermission, scheduleTripReminder } from '../../../li
 import { useAuth } from '../../../hooks/useAuth';
 import PremiumModal from '../../../components/PremiumModal';
 import Reveal from '../../../components/Reveal';
+import BudgetBreakdown, { BudgetBreakdownData } from '../../../components/cart/BudgetBreakdown';
 import {
   VIETNAMESE_CITIES, TRAVELER_TYPES, PREFERENCE_OPTIONS, BRAND_COLORS,
   BUDGET_ESTIMATION_CONFIG, APP_ROUTES, TravelerType,
@@ -262,6 +263,13 @@ export default function TripWizard() {
   const [travelerCount, setTravelerCount] = useState(1);
   const [travelerType, setTravelerType] = useState('solo');
   const [budgetTotal, setBudgetTotal] = useState(5000000);
+  const [budgetBreakdown, setBudgetBreakdown] = useState<BudgetBreakdownData>({
+    transport: 1000000,
+    accommodation: 1500000,
+    dining: 1250000,
+    cafe: 500000,
+    entertainment: 750000,
+  });
   const [selectedPrefs, setSelectedPrefs] = useState<string[]>([]);
   const [healthConditions, setHealthConditions] = useState('');
   const [specialRequirements, setSpecialRequirements] = useState('');
@@ -685,6 +693,13 @@ export default function TripWizard() {
                     <Text className="text-[10px] text-brand-textMuted">
                       Gợi ý: Tối thiểu ~1,500,000đ/ngày để có trải nghiệm tốt.
                     </Text>
+
+                    {/* Component Phân bổ ngân sách theo Tag với Nút Tự động chia */}
+                    <BudgetBreakdown
+                      totalBudget={budgetTotal}
+                      breakdown={budgetBreakdown}
+                      onChange={setBudgetBreakdown}
+                    />
                   </View>
 
                   {/* Lodging Preference */}
