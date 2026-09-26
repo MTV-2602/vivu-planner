@@ -18,7 +18,7 @@ export default function LiveBudgetBar({ totalBudget, currentCartTotal }: LiveBud
   if (percentage >= 100) {
     statusColor = '#B23B3B'; // 🔴 Red (Over Budget)
     statusBg = 'rgba(178,59,59,0.1)';
-    statusText = 'Bội chi (Vượt ngân sách trần)';
+    statusText = 'Đã vượt ngân sách dự kiến!';
     StatusIcon = AlertCircle;
   } else if (percentage >= 80) {
     statusColor = '#F0B255'; // 🟡 Yellow (Warning)
