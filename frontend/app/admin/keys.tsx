@@ -79,7 +79,7 @@ export default function AdminKeys() {
       setAiProvider(aiConfig.data.provider || 'gemini');
       setAiBaseUrl(aiConfig.data.baseUrl || '');
       setAiApiKey(aiConfig.data.apiKey || '');
-      setAiModel(aiConfig.data.model && !aiConfig.data.model.includes('3.8') ? aiConfig.data.model : 'ag/gemini-3-flash');
+      setAiModel(aiConfig.data.model || 'ag/gemini-3-flash');
       setCustomMaxTokens(String(aiConfig.data.maxTokens || 16384));
       setGeminiMaxTokens(String(aiConfig.data.geminiMaxTokens || 16384));
     }
@@ -447,6 +447,7 @@ export default function AdminKeys() {
                       {/* Chips chọn nhanh mô hình AI Gateway an toàn & ổn định */}
                       <View className="flex-row flex-wrap gap-1.5 pt-1">
                         {[
+                          { id: 'ag/gemini-3.8-flash-high', label: '🚀 ag/gemini-3.8-flash-high' },
                           { id: 'ag/gemini-3-flash', label: '⭐ ag/gemini-3-flash (Chuẩn ổn định 100%)' },
                           { id: 'ag/gemini-3.7-flash', label: '✨ ag/gemini-3.7-flash (Lý luận sâu)' },
                           { id: 'ag/gemini-3-flash-agent', label: '🤖 ag/gemini-3-flash-agent' },
