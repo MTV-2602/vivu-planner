@@ -244,6 +244,7 @@ export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupPr
 
       {/* Add To Cart Button */}
       <Pressable
+        testID="btn-confirm-add-popup"
         onPress={handleConfirmAdd}
         style={({ pressed }) => [{
           flexDirection: 'row',

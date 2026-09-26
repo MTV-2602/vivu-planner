@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, Platform, Pressable, ScrollView } from 'react-native';
-import { Plus, Check, MapPin, Sparkles } from 'lucide-react-native';
+import { Plus, Check, MapPin } from 'lucide-react-native';
 import PlaceFilter, { CategoryFilter } from './PlaceFilter';
 import PlacePopup, { PlaceItem } from './PlacePopup';
 
@@ -12,6 +12,8 @@ interface CuratedMapProps {
   addedPlaceIds?: string[];
   existingTripPlaceNames?: string[];
   onAddToCart: (place: PlaceItem, option: 'auto' | 'manual', customCost?: number) => void;
+  mapHeight?: number;
+  layout?: 'standard' | 'workspace';
 }
 
 function buildCuratedLeafletHTML(
@@ -131,6 +133,8 @@ export default function CuratedMap({
   addedPlaceIds = [],
   existingTripPlaceNames = [],
   onAddToCart,
+  mapHeight,
+  layout = 'standard',
 }: CuratedMapProps) {
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('all');
   const [maxPrice, setMaxPrice] = useState<number>(2000000);
@@ -169,9 +173,159 @@ export default function CuratedMap({
     return buildCuratedLeafletHTML(filteredPlaces, centerLat, centerLng, cityName);
   }, [filteredPlaces, centerLat, centerLng, cityName]);
 
+  // ─── CHẾ ĐỘ WORKSPACE CHO NGƯỜI DÙNG PRO ─────────────────────────────────
+  if (layout === 'workspace') {
+    return (
+      <View style={{ flex: 1, gap: 16 }}>
+        {/* Bộ lọc địa điểm & mức giá đặt phía trên bản đồ, thoáng đãng không che map */}
+        <PlaceFilter
+          selectedCategory={selectedCategory}
+          onSelectCategory={setSelectedCategory}
+          maxPrice={maxPrice}
+          onChangeMaxPrice={setMaxPrice}
+        />
+
+        {/* Khung bản đồ rộng lớn sắc nét */}
+        <View style={{ height: mapHeight || 480, position: 'relative', overflow: 'hidden', borderRadius: 20, borderWidth: 1.5, borderColor: '#E5DFD3', backgroundColor: '#F3ECDC' }}>
+          {Platform.OS === 'web' ? (
+            <iframe
+              srcDoc={htmlContent}
+              style={{ width: '100%', height: '100%', border: 'none' }}
+              title="Curated Map Workspace"
+            />
+          ) : (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', color: '#1B2420' }}>
+                Bản đồ đang hiển thị {filteredPlaces.length} địa điểm tại {cityName}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Danh sách địa điểm trình bày dạng lưới 2 cột rộng rãi */}
+        <View style={{ gap: 12, marginTop: 4 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 16, color: '#1B2420' }}>
+              📍 Gợi ý địa điểm nổi bật tại {cityName} ({filteredPlaces.length})
+            </Text>
+            <Text style={{ fontSize: 12, color: '#6E7B70' }}>
+              Bấm ghim trên map hoặc bấm nút để thêm vào giỏ
+            </Text>
+          </View>
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+            {filteredPlaces.map((place) => {
+              const costValue = place.estimated_cost || (place.price_level ? place.price_level * 50000 : 50000);
+              const isAddedInCart = addedPlaceIds.includes(place.id);
+              const placeNameNorm = place.name.toLowerCase().trim();
+              const isAlreadyInTrip = (existingTripPlaceNames || []).some(
+                n => n && (n.toLowerCase().trim().includes(placeNameNorm) || placeNameNorm.includes(n.toLowerCase().trim()))
+              );
+
+              const isAdded = isAddedInCart || isAlreadyInTrip;
+              const addedLabel = isAlreadyInTrip ? '✓ Đã có trong lịch trình' : '✓ Đã thêm vào giỏ';
+
+              return (
+                <View
+                  key={place.id}
+                  style={{
+                    width: Platform.OS === 'web' ? ('calc(50% - 6px)' as any) : '100%',
+                    minWidth: 260,
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: 16,
+                    padding: 16,
+                    borderWidth: isAdded ? 1.5 : 1,
+                    borderColor: isAlreadyInTrip ? '#134A37' : (isAddedInCart ? '#1F6F54' : 'rgba(27,36,32,0.1)'),
+                    gap: 10,
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <View style={{ gap: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#1F6F54', backgroundColor: 'rgba(31,111,84,0.1)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                        {place.category === 'dining' ? '🔴 Ăn uống' : place.category === 'cafe' ? '🟡 Cafe' : place.category === 'hotel' ? '🔵 Khách sạn' : '🟣 Vui chơi'}
+                      </Text>
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: '#E2703A' }}>
+                        {costValue.toLocaleString('vi-VN')} đ
+                      </Text>
+                    </View>
+
+                    <Text numberOfLines={1} style={{ fontFamily: 'Lora_700Bold', fontSize: 15, color: '#1B2420' }}>
+                      {place.name}
+                    </Text>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <MapPin size={13} color="#6E7B70" />
+                      <Text numberOfLines={1} style={{ fontSize: 12, color: '#6E7B70', flex: 1 }}>
+                        {place.address}
+                      </Text>
+                    </View>
+
+                    {place.social_review_quote && (
+                      <Text numberOfLines={2} style={{ fontSize: 12, fontStyle: 'italic', color: '#3F4F45', backgroundColor: '#FBF5EA', padding: 8, borderRadius: 10, marginTop: 2, lineHeight: 16 }}>
+                        💬 "{place.social_review_quote}"
+                      </Text>
+                    )}
+                  </View>
+
+                  <Pressable
+                    onPress={() => {
+                      if (!isAlreadyInTrip) {
+                        setActivePlace(place);
+                      }
+                    }}
+                    style={({ pressed }) => [{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      backgroundColor: isAlreadyInTrip ? '#134A37' : (isAddedInCart ? '#1F6F54' : '#E2703A'),
+                      opacity: (pressed && !isAlreadyInTrip) ? 0.85 : 1,
+                      marginTop: 4,
+                    }]}
+                  >
+                    {isAdded ? (
+                      <>
+                        <Check size={16} color="#FFFFFF" />
+                        <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>
+                          {addedLabel}
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Plus size={16} color="#FFFFFF" />
+                        <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>
+                          Thêm vào giỏ chuyến đi
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {activePlace && (
+          <PlacePopup
+            place={activePlace}
+            onClose={() => setActivePlace(null)}
+            onAddToCart={(p, opt, cost) => {
+              onAddToCart(p, opt, cost);
+              setActivePlace(null);
+            }}
+          />
+        )}
+      </View>
+    );
+  }
+
+  // ─── CHẾ ĐỘ TIÊU CHUẨN (COMPACT / DETAIL PAGE) ───────────────────────────
   return (
     <View style={{ flex: 1, gap: 14 }}>
-      <View style={{ height: 360, position: 'relative', overflow: 'hidden', borderRadius: 16, borderWidth: 1, borderColor: '#f0ebe0' }}>
+      <View style={{ height: mapHeight || 360, position: 'relative', overflow: 'hidden', borderRadius: 16, borderWidth: 1, borderColor: '#f0ebe0' }}>
         {/* Top Filter Bar */}
         <View style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 500 }}>
           <PlaceFilter

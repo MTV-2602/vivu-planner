@@ -677,7 +677,7 @@ export default function TripWizard() {
         contentContainerStyle={{ flexGrow: 1, padding: 24, paddingTop: 48, paddingBottom: 48 }}
         keyboardShouldPersistTaps="handled"
       >
-        <View className="max-w-xl w-full self-center gap-8">
+        <View className={`w-full self-center gap-8 ${useProWorkspace && step === 2 ? 'max-w-[1360px]' : 'max-w-xl'}`}>
           {/* Top bar: back + step dots */}
           <View className="flex-row justify-between items-center">
             <Pressable
@@ -986,20 +986,28 @@ export default function TripWizard() {
                       </View>
 
                       {/* 2-Column Responsive Layout */}
-                      <View style={{ flexDirection: isLargeScreen ? 'row' : 'column', gap: 20, alignItems: 'flex-start' }}>
+                      <View style={{ flexDirection: isLargeScreen ? 'row' : 'column', gap: 28, alignItems: 'flex-start' }}>
                         {/* Cột 1 (Bên trái / Trên): Bản đồ tương tác CuratedMap */}
-                        <View style={{ flex: isLargeScreen ? 1.4 : undefined, width: '100%' }}>
+                        <View style={{ flex: isLargeScreen ? 1.6 : undefined, width: '100%' }}>
                           <CuratedMap
                             places={getCuratedPlacesForCity(destinationCity)}
                             cityName={destinationCity}
                             addedPlaceIds={cartItems.map(item => item.place.id)}
                             existingTripPlaceNames={[]}
                             onAddToCart={handleAddToCart}
+                            layout="workspace"
+                            mapHeight={480}
                           />
                         </View>
 
                         {/* Cột 2 (Bên phải / Dưới): LiveBudgetBar + Giỏ hàng cartItems + Nút bấm to */}
-                        <View style={{ flex: isLargeScreen ? 1 : undefined, width: '100%', gap: 14 }}>
+                        <View style={{
+                          flex: isLargeScreen ? 1 : undefined,
+                          width: '100%',
+                          gap: 16,
+                          position: (isLargeScreen && Platform.OS === 'web') ? ('sticky' as any) : undefined,
+                          top: 24,
+                        }}>
                           {/* 1. LiveBudgetBar */}
                           <LiveBudgetBar
                             totalBudget={budgetTotal}
