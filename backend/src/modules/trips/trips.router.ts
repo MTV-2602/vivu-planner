@@ -323,7 +323,9 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
     traveler_type,
     preferences,
     health_conditions,
-    special_requirements
+    special_requirements,
+    cart_items,
+    creation_mode
   } = req.body;
 
   // Check trip creation quota: Free = 3 trips, custom_quota for purchased packs, Admin = unlimited
@@ -424,6 +426,226 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
     // 1. Resolve coordinates
     const { lat, lng } = getCityCoordinates(destination_city);
 
+    // Xử lý chế độ tạo thủ công: creation_mode === 'manual'
+    if (creation_mode === 'manual') {
+      const isAiPro = req.body.ai_provider === 'custom_openai' || (!req.body.ai_provider && Boolean(isUserPremium(profile)));
+      const enrichedPreferences = {
+        ...(preferences || {}),
+        is_ai_pro: isAiPro,
+        ai_tier: isAiPro ? 'pro' : 'standard',
+        creation_mode: 'manual'
+      };
+
+      // 1. Tạo bản ghi trips với status: TripStatus.DRAFT, preferences enriched
+      const { data: trip, error: tripError } = await supabaseAdmin
+        .from('trips')
+        .insert({
+          user_id: req.user!.id,
+          title: title || `Chuyến đi ${destination_city}`,
+          destination_city,
+          destination_province: destination_city,
+          start_date: correctedStartDate,
+          end_date: correctedEndDate,
+          budget_total: parseFloat(budget_total),
+          traveler_count: parseInt(traveler_count || '1'),
+          traveler_type: traveler_type || TravelerType.SOLO,
+          preferences: enrichedPreferences,
+          health_conditions: health_conditions || '',
+          special_requirements: special_requirements || '',
+          status: TripStatus.DRAFT
+        })
+        .select()
+        .single();
+
+      if (tripError || !trip) {
+        throw tripError || new Error('Failed to create trip record in manual mode');
+      }
+      createdTripId = trip.id;
+
+      // Liên kết toàn bộ tin nhắn chat chung cũ (với trip_id IS NULL) sang chuyến đi mới này
+      const { error: chatLinkErr } = await supabaseAdmin
+        .from('trip_chat_messages')
+        .update({ trip_id: trip.id })
+        .eq('user_id', req.user!.id)
+        .is('trip_id', null);
+
+      if (chatLinkErr) {
+        console.error('[CreateTripManual] Failed to associate chat history with new trip:', chatLinkErr.message);
+      }
+
+      // 2. Sinh các ngày itinerary_days từ start_date đến end_date
+      const manualDaysToInsert: any[] = [];
+      const currDate = new Date(correctedStartDate);
+      const lastDate = new Date(correctedEndDate);
+      let dayIdx = 1;
+      while (currDate <= lastDate) {
+        manualDaysToInsert.push({
+          id: crypto.randomUUID(),
+          trip_id: trip.id,
+          day_number: dayIdx,
+          date: currDate.toISOString().split('T')[0],
+          weather_summary: { note: 'Lịch trình tự chọn' }
+        });
+        currDate.setDate(currDate.getDate() + 1);
+        dayIdx++;
+      }
+
+      // Fallback nếu có lỗi vòng lặp ngày
+      if (manualDaysToInsert.length === 0) {
+        manualDaysToInsert.push({
+          id: crypto.randomUUID(),
+          trip_id: trip.id,
+          day_number: 1,
+          date: correctedStartDate,
+          weather_summary: { note: 'Lịch trình tự chọn' }
+        });
+      }
+
+      const daysResult = await supabaseAdmin.from('itinerary_days').insert(manualDaysToInsert);
+      if (daysResult.error) throw daysResult.error;
+
+      const firstDay = manualDaysToInsert[0];
+
+      // 3. Đưa các cart_items vào ngày đầu tiên (day_id: firstDay.id) làm các mục itinerary_items
+      // Khung giờ trải đều (08:30, 11:30, 14:00, 17:30, 20:00)
+      const defaultTimeSlots = [
+        { start: '08:30:00', end: '10:30:00' },
+        { start: '11:30:00', end: '13:30:00' },
+        { start: '14:00:00', end: '16:30:00' },
+        { start: '17:30:00', end: '19:30:00' },
+        { start: '20:00:00', end: '22:00:00' }
+      ];
+
+      const safeCartItems: any[] = Array.isArray(cart_items) ? cart_items : [];
+      const manualItemsToInsert: any[] = [];
+
+      safeCartItems.forEach((cItem, index) => {
+        const place = cItem.place || cItem;
+        const timeSlot = defaultTimeSlots[index % defaultTimeSlots.length];
+
+        const rawCost = cItem.custom_cost !== undefined && cItem.custom_cost !== null && cItem.custom_cost !== ''
+          ? cItem.custom_cost
+          : (place.estimated_cost !== undefined ? place.estimated_cost : (place.price_level ? place.price_level * 50000 : null));
+        const estimatedCost = parseOptionalCost(rawCost);
+
+        const rawCategory = String(place.category || '').toLowerCase();
+        let normalizedType: 'accommodation' | 'transport' | 'dining' | 'attraction' | 'rental' | 'experience' = 'attraction';
+        if (['accommodation', 'transport', 'dining', 'attraction', 'rental', 'experience'].includes(rawCategory)) {
+          normalizedType = rawCategory as any;
+        } else if (rawCategory === 'food' || rawCategory === 'restaurant' || rawCategory === 'cafe') {
+          normalizedType = 'dining';
+        } else if (rawCategory === 'hotel' || rawCategory === 'homestay' || rawCategory === 'resort') {
+          normalizedType = 'accommodation';
+        } else if (rawCategory === 'rental' || rawCategory === 'transport') {
+          normalizedType = 'rental';
+        }
+
+        const rawPlaceId = place.id || place.google_place_id || cItem.partner_id || null;
+        let itemPartnerId: string | null = null;
+        if (rawPlaceId) {
+          const cleanId = String(rawPlaceId).replace('partner_', '');
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          if (uuidRegex.test(cleanId)) {
+            itemPartnerId = cleanId;
+          }
+        }
+
+        manualItemsToInsert.push({
+          day_id: firstDay.id,
+          partner_id: itemPartnerId,
+          item_type: normalizedType,
+          title: place.name || place.title || cItem.title || 'Địa điểm đã chọn',
+          description: place.address || place.description || cItem.notes || '',
+          start_time: timeSlot.start,
+          end_time: timeSlot.end,
+          location_name: place.name || place.title || cItem.title || 'Địa điểm',
+          location_lat: Number(place.lat) || lat,
+          location_lng: Number(place.lng) || lng,
+          google_place_id: rawPlaceId ? String(rawPlaceId) : null,
+          estimated_cost: estimatedCost,
+          booking_url: place.booking_url || place.google_map_url || null,
+          order_index: index + 1,
+          status: 'planned'
+        });
+      });
+
+      if (manualItemsToInsert.length > 0) {
+        const itemsResult = await supabaseAdmin.from('itinerary_items').insert(manualItemsToInsert);
+        if (itemsResult.error) throw itemsResult.error;
+      }
+
+      // 4. Ghi vào bảng trip_cart_items để lưu vết
+      if (safeCartItems.length > 0) {
+        const cartPayload = safeCartItems.map((cItem: any) => {
+          const place = cItem.place || cItem;
+          const rawPlaceId = place.id || place.google_place_id || cItem.partner_id || null;
+          let partnerId: string | null = null;
+          if (rawPlaceId) {
+            const cleanId = String(rawPlaceId).replace('partner_', '');
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(cleanId)) {
+              partnerId = cleanId;
+            }
+          }
+
+          return {
+            trip_id: trip.id,
+            partner_id: partnerId,
+            custom_cost: Number(cItem.custom_cost) || Number(place.estimated_cost) || 0,
+            pricing_option: cItem.pricing_option === 'manual' ? 'manual' : 'auto',
+            notes: place.name || cItem.notes || place.address || '',
+          };
+        });
+
+        const { error: cartInsertErr } = await supabaseAdmin
+          .from('trip_cart_items')
+          .insert(cartPayload);
+        if (cartInsertErr) {
+          console.error('[CreateTripManual] Failed to save trip_cart_items:', cartInsertErr.message);
+        }
+      }
+
+      // 5. Cập nhật quota_used cho user nếu có profile
+      if (profile) {
+        const { error: updateV2Err } = await supabaseAdmin
+          .from('profiles')
+          .update({
+            quota_used: currentUsed + 1,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', userId);
+
+        if (updateV2Err) {
+          await supabaseAdmin
+            .from('profiles')
+            .update({
+              trips_used: currentUsed + 1
+            })
+            .eq('id', userId);
+        }
+      }
+
+      // 6. Trả về status 201 với dữ liệu trip và days kèm items đã tạo, KHÔNG gọi AI generateItinerary
+      const { data: fullTrip } = await supabaseAdmin
+        .from('trips')
+        .select('*')
+        .eq('id', trip.id)
+        .single();
+
+      const dbDaysWithItems = manualDaysToInsert
+        .sort((a, b) => a.day_number - b.day_number)
+        .map(day => ({
+          ...day,
+          items: manualItemsToInsert.filter(item => item.day_id === day.id)
+        }));
+
+      return res.status(201).json({
+        ...fullTrip,
+        is_ai_pro: Boolean(fullTrip?.preferences?.is_ai_pro || fullTrip?.preferences?.ai_tier === 'pro'),
+        days: dbDaysWithItems
+      });
+    }
+
     // 2. Fetch weather
     const weatherForecast = await getWeatherForecast(lat, lng, correctedStartDate, correctedEndDate);
 
@@ -449,11 +671,63 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       parseInt(traveler_count || '1')
     );
     const partnerCandidates = convertPartnersToPlaceCandidates(relevantPartners);
- 
-    const mergedAccommodations = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'accommodation'), ...batchPlaces.accommodation]);
-    const mergedDining = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'dining'), ...batchPlaces.dining]);
-    const mergedAttractions = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'attraction'), ...batchPlaces.attraction]);
-    const mergedRentals = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'rental'), ...batchPlaces.rental]);
+
+    // Chuyển đổi cart_items thành PlaceCandidate nếu có
+    const safeCartItems: any[] = Array.isArray(cart_items) ? cart_items : [];
+    const cartPlaceCandidates: PlaceCandidate[] = safeCartItems.map((cItem: any) => {
+      const p = cItem.place || cItem;
+      const rawPlaceId = p.id || p.google_place_id || cItem.partner_id || `cart_${crypto.randomUUID()}`;
+      const rawCategory = String(p.category || '').toLowerCase();
+      let candidateCategory: 'accommodation' | 'dining' | 'attraction' | 'rental' = 'attraction';
+      if (['hotel', 'homestay', 'resort', 'accommodation'].includes(rawCategory)) {
+        candidateCategory = 'accommodation';
+      } else if (['restaurant', 'cafe', 'food', 'dining'].includes(rawCategory)) {
+        candidateCategory = 'dining';
+      } else if (['transport', 'rental'].includes(rawCategory)) {
+        candidateCategory = 'rental';
+      }
+
+      const rating = Number(p.rating) || Number(p.admin_rating) || 4.8;
+      const priceLevel = Number(p.price_level) || 2;
+
+      return {
+        google_place_id: String(rawPlaceId),
+        name: p.name || p.title || cItem.title || 'Địa điểm đã chọn',
+        category: candidateCategory,
+        lat: Number(p.lat) || lat,
+        lng: Number(p.lng) || lng,
+        rating,
+        price_level: priceLevel,
+        address: p.address || p.description || cItem.notes || '',
+        booking_url: p.booking_url || p.google_map_url || undefined
+      };
+    });
+
+    const cartAccommodations = cartPlaceCandidates.filter(p => p.category === 'accommodation');
+    const cartDining = cartPlaceCandidates.filter(p => p.category === 'dining');
+    const cartAttractions = cartPlaceCandidates.filter(p => p.category === 'attraction');
+    const cartRentals = cartPlaceCandidates.filter(p => p.category === 'rental');
+
+    const mergedAccommodations = deduplicatePlaces([
+      ...cartAccommodations,
+      ...partnerCandidates.filter(p => p.category === 'accommodation'),
+      ...batchPlaces.accommodation
+    ]);
+    const mergedDining = deduplicatePlaces([
+      ...cartDining,
+      ...partnerCandidates.filter(p => p.category === 'dining'),
+      ...batchPlaces.dining
+    ]);
+    const mergedAttractions = deduplicatePlaces([
+      ...cartAttractions,
+      ...partnerCandidates.filter(p => p.category === 'attraction'),
+      ...batchPlaces.attraction
+    ]);
+    const mergedRentals = deduplicatePlaces([
+      ...cartRentals,
+      ...partnerCandidates.filter(p => p.category === 'rental'),
+      ...batchPlaces.rental
+    ]);
  
     const candidatePlaces = {
       accommodation: mergedAccommodations.slice(0, AI_CANDIDATE_LIMITS.ACCOMMODATION),
@@ -462,9 +736,28 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       rental: mergedRentals.slice(0, AI_CANDIDATE_LIMITS.RENTAL)
     };
 
+    // Bổ sung vào special_requirements đoạn nhắc bắt buộc nếu có cart_items
+    let effectiveSpecialRequirements = special_requirements || '';
+    if (safeCartItems.length > 0) {
+      const placeNames = safeCartItems.map((cItem: any) => {
+        const p = cItem.place || cItem;
+        return p.name || p.title || cItem.title;
+      }).filter(Boolean).join(', ');
+
+      const mandatoryNotice = `[ĐỊA ĐIỂM BẮT BUỘC TỪ GIỎ HÀNG DU KHÁCH]: Người dùng đã chọn trước các địa điểm: ${placeNames}. Hãy sắp xếp các địa điểm này vào lịch trình.`;
+      effectiveSpecialRequirements = effectiveSpecialRequirements
+        ? `${effectiveSpecialRequirements}\n\n${mandatoryNotice}`
+        : mandatoryNotice;
+    }
+
     // 4. Generate AI itinerary using Gemini
     const itinerary = await generateItinerary(
-      { ...req.body, start_date: correctedStartDate, end_date: correctedEndDate },
+      {
+        ...req.body,
+        special_requirements: effectiveSpecialRequirements,
+        start_date: correctedStartDate,
+        end_date: correctedEndDate
+      },
       weatherForecast,
       candidatePlaces
     );
@@ -491,7 +784,7 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
         traveler_type: traveler_type || TravelerType.SOLO,
         preferences: enrichedPreferences,
         health_conditions: health_conditions || '',
-        special_requirements: special_requirements || '',
+        special_requirements: effectiveSpecialRequirements,
         status: TripStatus.DRAFT
       })
       .select()
@@ -611,6 +904,37 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       ? await supabaseAdmin.from('itinerary_items').insert(itemsToInsert) 
       : { error: null };
     if (itemsResult.error) throw itemsResult.error;
+
+    // Lưu các cart_items vào bảng trip_cart_items sau khi tạo trip thành công
+    if (safeCartItems.length > 0) {
+      const cartPayload = safeCartItems.map((cItem: any) => {
+        const place = cItem.place || cItem;
+        const rawPlaceId = place.id || place.google_place_id || cItem.partner_id || null;
+        let partnerId: string | null = null;
+        if (rawPlaceId) {
+          const cleanId = String(rawPlaceId).replace('partner_', '');
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          if (uuidRegex.test(cleanId)) {
+            partnerId = cleanId;
+          }
+        }
+
+        return {
+          trip_id: trip.id,
+          partner_id: partnerId,
+          custom_cost: Number(cItem.custom_cost) || Number(place.estimated_cost) || 0,
+          pricing_option: cItem.pricing_option === 'manual' ? 'manual' : 'auto',
+          notes: place.name || cItem.notes || place.address || '',
+        };
+      });
+
+      const { error: cartInsertErr } = await supabaseAdmin
+        .from('trip_cart_items')
+        .insert(cartPayload);
+      if (cartInsertErr) {
+        console.error('[CreateTripAI] Failed to save trip_cart_items:', cartInsertErr.message);
+      }
+    }
 
     // Permanently increment quota_used on profiles safely only after all DB writes succeed
     if (profile) {

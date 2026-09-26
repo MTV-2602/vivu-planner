@@ -221,25 +221,25 @@ export async function createMoMoOrder(params: {
       }
     }
 
-    // Resilient Fallback: Tạo mã QR MoMo và link thanh toán trực tiếp an toàn
-    // Giúp người dùng không bao giờ bị trắng màn hình hay đứt gãy giao dịch khi MoMo gateway báo lỗi mã đối tác
-    const fallbackQr = `https://img.vietqr.io/image/970422-0393278546-compact2.png?amount=${amount}&addInfo=${orderId}&accountName=MOMO%20VIVU%20PLANNER`;
+    // MoMo QR Code chuẩn hoặc link thanh toán trực tiếp
     const fallbackPayUrl = `https://me.momo.vn?amount=${amount}&comment=${orderId}`;
     const fallbackDeeplink = `momo://app?action=payWithApp&amount=${amount}&comment=${orderId}`;
+    // Tạo mã QR MoMo chuyển tiền chuẩn (nhận diện app MoMo quét trực tiếp)
+    const momoQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`2|99|0393278546|MOMO VIVU PLANNER|vivuplanner@gmail.com|0|0|${amount}|${orderId}|transfer_myqr`)}`;
 
     return {
       payUrl: fallbackPayUrl,
       deeplink: fallbackDeeplink,
-      qrCodeUrl: fallbackQr,
+      qrCodeUrl: momoQr,
       orderId,
     };
   } catch (err: any) {
     console.error('[MoMo Error Fallback Details]:', err.message);
-    const fallbackQr = `https://img.vietqr.io/image/970422-0393278546-compact2.png?amount=${params.amount}&addInfo=${params.orderId}&accountName=MOMO%20VIVU%20PLANNER`;
+    const momoQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`2|99|0393278546|MOMO VIVU PLANNER|vivuplanner@gmail.com|0|0|${params.amount}|${params.orderId}|transfer_myqr`)}`;
     return {
       payUrl: `https://me.momo.vn?amount=${params.amount}&comment=${params.orderId}`,
       deeplink: `momo://app?action=payWithApp&amount=${params.amount}&comment=${params.orderId}`,
-      qrCodeUrl: fallbackQr,
+      qrCodeUrl: momoQr,
       orderId: params.orderId,
     };
   }

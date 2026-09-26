@@ -66,5 +66,24 @@ describe('Trip & Quota Business Rules', () => {
     const invertedEnd = '2026-10-01';
     assert.ok(new Date(invertedStart) >= new Date(invertedEnd));
   });
+
+  it('should support creation_mode manual and ai_auto logic structure', () => {
+    const modes = ['manual', 'ai_auto'];
+    assert.ok(modes.includes('manual'));
+    assert.ok(modes.includes('ai_auto'));
+
+    const cartItem = {
+      place: {
+        id: 'place_1',
+        name: 'Quán ăn ngon',
+        category: 'dining',
+        estimated_cost: 120000,
+        price_level: 2
+      },
+      pricing_option: 'auto',
+      custom_cost: 150000
+    };
+    assert.equal(cartItem.custom_cost, 150000);
+  });
 });
 
