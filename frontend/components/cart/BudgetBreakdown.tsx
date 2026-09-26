@@ -24,28 +24,40 @@ const CATEGORIES = [
   { key: 'entertainment' as const, label: 'Vui chơi & Vé', icon: Ticket, color: '#8B5CF6', defaultPercent: 15 },
 ];
 
-export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: BudgetBreakdownProps) {
-  const [percentages, setPercentages] = useState<{ [key: string]: number }>({
+const calcInitialPercentages = (b: BudgetBreakdownData, total: number) => {
+  if (total > 0 && b) {
+    const sum = (b.transport || 0) + (b.accommodation || 0) + (b.dining || 0) + (b.cafe || 0) + (b.entertainment || 0);
+    if (sum > 0) {
+      return {
+        transport: Number(((b.transport / total) * 100).toFixed(1)),
+        accommodation: Number(((b.accommodation / total) * 100).toFixed(1)),
+        dining: Number(((b.dining / total) * 100).toFixed(1)),
+        cafe: Number(((b.cafe / total) * 100).toFixed(1)),
+        entertainment: Number(((b.entertainment / total) * 100).toFixed(1)),
+      };
+    }
+  }
+  return {
     transport: 20,
     accommodation: 30,
     dining: 25,
     cafe: 10,
     entertainment: 15,
-  });
+  };
+};
 
-  // Real-time recalculation when totalBudget changes
+export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: BudgetBreakdownProps) {
+  const [percentages, setPercentages] = useState<{ [key: string]: number }>(() =>
+    calcInitialPercentages(breakdown, totalBudget)
+  );
+
+  // Sync internal percentages state when breakdown prop changes externally or upon remount
   useEffect(() => {
-    if (totalBudget > 0) {
-      const recalculated: BudgetBreakdownData = {
-        transport: Math.round((totalBudget * (percentages.transport || 20) / 100) / 1000) * 1000,
-        accommodation: Math.round((totalBudget * (percentages.accommodation || 30) / 100) / 1000) * 1000,
-        dining: Math.round((totalBudget * (percentages.dining || 25) / 100) / 1000) * 1000,
-        cafe: Math.round((totalBudget * (percentages.cafe || 10) / 100) / 1000) * 1000,
-        entertainment: Math.round((totalBudget * (percentages.entertainment || 15) / 100) / 1000) * 1000,
-      };
-      onChange(recalculated);
+    if (totalBudget > 0 && breakdown) {
+      const computed = calcInitialPercentages(breakdown, totalBudget);
+      setPercentages(computed);
     }
-  }, [totalBudget]);
+  }, [breakdown?.transport, breakdown?.accommodation, breakdown?.dining, breakdown?.cafe, breakdown?.entertainment, totalBudget]);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('vi-VN').format(val) + ' đ';

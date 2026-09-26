@@ -46,11 +46,12 @@ function buildCuratedLeafletHTML(
 <body>
   <div id="map"></div>
   <script>
-    const map = L.map('map').setView([${centerLat}, ${centerLng}], 13);
+    const map = L.map('map', { zoomControl: true }).setView([${centerLat}, ${centerLng}], 13);
     
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
+      subdomains: 'abcd',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
     }).addTo(map);
 
     const places = ${jsonPlaces};
@@ -100,9 +101,15 @@ function buildCuratedLeafletHTML(
       });
     });
 
-    if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
-    }
+    const initView = () => {
+      map.invalidateSize();
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+      }
+    };
+
+    setTimeout(initView, 250);
+    window.addEventListener('resize', () => map.invalidateSize());
   </script>
 </body>
 </html>
