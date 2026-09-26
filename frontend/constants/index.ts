@@ -13,12 +13,24 @@ export const VIETNAMESE_CITIES = [
 ];
 
 export const PREFERENCE_OPTIONS = [
-  { id: 'history', label: 'Lịch sử & Văn hóa' },
-  { id: 'nature', label: 'Thiên nhiên & Sinh thái' },
-  { id: 'food', label: 'Ẩm thực & Đặc sản' },
-  { id: 'relax', label: 'Nghỉ dưỡng & Chill' },
-  { id: 'adventure', label: 'Khám phá mạo hiểm' },
-  { id: 'shopping', label: 'Mua sắm & Giải trí' },
+  { id: 'history', label: '🏛️ Lịch sử & Văn hóa' },
+  { id: 'nature', label: '🌿 Thiên nhiên & Sinh thái' },
+  { id: 'food', label: '🍜 Ẩm thực & Đặc sản' },
+  { id: 'relax', label: '🛋️ Nghỉ dưỡng & Chill' },
+  { id: 'adventure', label: '🧗 Khám phá mạo hiểm' },
+  { id: 'shopping', label: '🛍️ Mua sắm & Giải trí' },
+  { id: 'coffee', label: '☕ Cà phê view đẹp' },
+  { id: 'healing', label: '🌱 Du lịch chữa lành' },
+  { id: 'photo', label: '📸 Check-in sống ảo' },
+  { id: 'spiritual', label: '🪷 Du lịch tâm linh' },
+  { id: 'camping', label: '⛺ Cắm trại & Dã ngoại' },
+  { id: 'biking', label: '🛵 Phượt xe máy' },
+  { id: 'art', label: '🎨 Nghệ thuật & Bảo tàng' },
+  { id: 'nightlife', label: '🍸 Cuộc sống về đêm' },
+  { id: 'watersports', label: '🏄 Thể thao dưới nước' },
+  { id: 'farm', label: '🍓 Nông trại & Trái cây' },
+  { id: 'wellness', label: '💆 Spa & Sức khỏe' },
+  { id: 'local_life', label: '🏡 Trải nghiệm bản địa' },
 ];
 
 export const BRAND_COLORS = {

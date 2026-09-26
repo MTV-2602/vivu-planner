@@ -1,0 +1,208 @@
+import React, { useState } from 'react';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
+import { ShoppingBag, Trash2, ArrowRight, Sparkles, X } from 'lucide-react-native';
+import LiveBudgetBar from './LiveBudgetBar';
+import { supabase } from '../../lib/supabase';
+import { PlaceItem } from '../map/PlacePopup';
+import { api } from '../../lib/api';
+
+export interface CartItem {
+  id?: string;
+  place: PlaceItem;
+  pricing_option: 'auto' | 'manual';
+  custom_cost: number;
+}
+
+export interface TravelCartDrawerProps {
+  visible?: boolean;
+  tripId?: string;
+  totalBudget: number;
+  cartItems: CartItem[];
+  onRemoveItem: (placeId: string) => void;
+  onUpdateItemCost?: (placeId: string, cost: number) => void;
+  onClose?: () => void;
+  onSavedSuccess?: () => void;
+}
+
+export default function TravelCartDrawer({
+  visible = false,
+  tripId,
+  totalBudget,
+  cartItems,
+  onRemoveItem,
+  onClose,
+  onSavedSuccess,
+}: TravelCartDrawerProps) {
+  const [submitting, setSubmitting] = useState(false);
+
+  if (!visible) return null;
+
+  const cartTotal = cartItems.reduce((acc, item) => acc + item.custom_cost, 0);
+
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('vi-VN').format(val) + ' đ';
+  };
+
+  const handleConfirmAndCreateItinerary = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+
+    try {
+      if (tripId && cartItems.length > 0) {
+        const payload = cartItems.map((item) => ({
+          partner_id: item.place.id,
+          title: item.place.name,
+          category: item.place.category,
+          custom_cost: item.custom_cost,
+          pricing_option: item.pricing_option,
+          notes: item.place.address,
+        }));
+
+        try {
+          await api.post(`/trips/${tripId}/cart`, { items: payload });
+        } catch (e) {
+          await supabase.from('trip_cart_items').upsert(
+            cartItems.map(item => ({
+              trip_id: tripId,
+              partner_id: item.place.id,
+              custom_cost: item.custom_cost,
+              pricing_option: item.pricing_option,
+              notes: item.place.name,
+            }))
+          );
+        }
+      }
+
+      if (onSavedSuccess) {
+        onSavedSuccess();
+      }
+
+      if (onClose) {
+        onClose();
+      }
+    } catch (err) {
+      console.error('Lỗi khi lưu giỏ chuyến đi:', err);
+      if (onClose) onClose();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <View
+      style={{
+        position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+        top: 85,
+        right: 20,
+        bottom: 90,
+        width: 420,
+        maxWidth: '90%',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
+        padding: 20,
+        gap: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(27,36,32,0.12)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 24,
+        elevation: 12,
+        zIndex: 9998,
+      }}
+    >
+      {/* Header */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <ShoppingBag size={20} color="#1F6F54" />
+          <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 17, color: '#1B2420' }}>
+            Giỏ Chuyến Đi ({cartItems.length})
+          </Text>
+        </View>
+
+        {onClose && (
+          <Pressable onPress={onClose} style={{ padding: 6, borderRadius: 100, backgroundColor: '#F3ECDC' }}>
+            <X size={18} color="#6E7B70" />
+          </Pressable>
+        )}
+      </View>
+
+      {/* Live Budget Progress Bar */}
+      <LiveBudgetBar totalBudget={totalBudget} currentCartTotal={cartTotal} />
+
+      {/* Cart Items List */}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
+        {cartItems.length === 0 ? (
+          <View style={{ padding: 28, alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 13, color: '#6E7B70', textAlign: 'center', lineHeight: 18 }}>
+              Giỏ hàng đang trống. Hãy chọn các địa điểm ngon - đẹp - chuẩn trên bản đồ để thêm vào chuyến đi!
+            </Text>
+          </View>
+        ) : (
+          cartItems.map((item) => (
+            <View
+              key={item.place.id}
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: 12,
+                borderRadius: 12,
+                backgroundColor: '#F3ECDC',
+                borderWidth: 1,
+                borderColor: 'rgba(27,36,32,0.06)',
+              }}
+            >
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 14, color: '#1B2420' }}>
+                  {item.place.name}
+                </Text>
+                <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 12, color: '#6E7B70' }}>
+                  {item.pricing_option === 'auto' ? 'Giá quán' : 'Tự nhập'}: {formatCurrency(item.custom_cost)}
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={() => onRemoveItem(item.place.id)}
+                style={({ pressed }) => [{ padding: 6, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Trash2 size={16} color="#B23B3B" />
+              </Pressable>
+            </View>
+          ))
+        )}
+      </ScrollView>
+
+      {/* Confirm Save Button at bottom of side panel */}
+      <View style={{ paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(27,36,32,0.08)' }}>
+        <Pressable
+          onPress={handleConfirmAndCreateItinerary}
+          disabled={submitting || cartItems.length === 0}
+          style={({ pressed }) => [{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            paddingVertical: 14,
+            paddingHorizontal: 16,
+            borderRadius: 100,
+            backgroundColor: cartItems.length > 0 ? '#1F6F54' : '#CCCCCC',
+            opacity: pressed || submitting || cartItems.length === 0 ? 0.85 : 1,
+          }]}
+        >
+          {submitting ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              <Sparkles size={18} color="#FFFFFF" />
+              <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 14, color: '#FFFFFF', textAlign: 'center' }}>
+                XÁC NHẬN LƯU VÀO LỊCH TRÌNH CHUYẾN ĐI
+              </Text>
+              <ArrowRight size={18} color="#FFFFFF" />
+            </>
+          )}
+        </Pressable>
+      </View>
+    </View>
+  );
+}

@@ -23,4 +23,36 @@ router.get('/search', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/places/suggest - Submit UGC place suggestion into place_suggestions table
+router.post('/suggest', async (req: Request, res: Response) => {
+  const { name, category, city, address, estimated_cost, opening_hours, user_review } = req.body;
+
+  if (!name || !city) {
+    return res.status(400).json({ error: 'name and city are required' });
+  }
+
+  try {
+    const { supabaseAdmin } = require('../../config/supabase');
+    const { data, error } = await supabaseAdmin
+      .from('place_suggestions')
+      .insert([{
+        name,
+        category: category || 'cafe',
+        city,
+        address: address || '',
+        estimated_cost: Number(estimated_cost) || 0,
+        opening_hours: opening_hours || '',
+        user_review: user_review || '',
+        status: 'pending',
+      }]);
+
+    if (error) throw error;
+
+    return res.json({ success: true, message: 'Gửi đóng góp địa điểm thành công! Đang chờ Admin duyệt.' });
+  } catch (err: any) {
+    console.error('[Places Suggest API] Error:', err.message);
+    return res.status(500).json({ error: 'Failed to submit place suggestion', details: err.message });
+  }
+});
+
 export default router;

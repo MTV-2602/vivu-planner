@@ -1,0 +1,323 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, Pressable, TextInput } from 'react-native';
+import { Truck, Home, Utensils, Coffee, Ticket, Percent } from 'lucide-react-native';
+
+export interface BudgetBreakdownData {
+  transport: number;
+  accommodation: number;
+  dining: number;
+  cafe: number;
+  entertainment: number;
+}
+
+interface BudgetBreakdownProps {
+  totalBudget: number;
+  breakdown: BudgetBreakdownData;
+  onChange: (newBreakdown: BudgetBreakdownData) => void;
+}
+
+const CATEGORIES = [
+  { key: 'transport' as const, label: 'Di chuyển', icon: Truck, color: '#3B82F6', defaultPercent: 20 },
+  { key: 'accommodation' as const, label: 'Khách sạn', icon: Home, color: '#2563EB', defaultPercent: 30 },
+  { key: 'dining' as const, label: 'Ăn uống', icon: Utensils, color: '#B23B3B', defaultPercent: 25 },
+  { key: 'cafe' as const, label: 'Cafe & View', icon: Coffee, color: '#F0B255', defaultPercent: 10 },
+  { key: 'entertainment' as const, label: 'Vui chơi & Vé', icon: Ticket, color: '#8B5CF6', defaultPercent: 15 },
+];
+
+const calcInitialPercentages = (b: BudgetBreakdownData, total: number) => {
+  if (total > 0 && b) {
+    const sum = (b.transport || 0) + (b.accommodation || 0) + (b.dining || 0) + (b.cafe || 0) + (b.entertainment || 0);
+    if (sum > 0) {
+      return {
+        transport: Number(((b.transport / total) * 100).toFixed(1)),
+        accommodation: Number(((b.accommodation / total) * 100).toFixed(1)),
+        dining: Number(((b.dining / total) * 100).toFixed(1)),
+        cafe: Number(((b.cafe / total) * 100).toFixed(1)),
+        entertainment: Number(((b.entertainment / total) * 100).toFixed(1)),
+      };
+    }
+  }
+  return {
+    transport: 20,
+    accommodation: 30,
+    dining: 25,
+    cafe: 10,
+    entertainment: 15,
+  };
+};
+
+export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: BudgetBreakdownProps) {
+  const [percentages, setPercentages] = useState<{ [key: string]: number }>(() =>
+    calcInitialPercentages(breakdown, totalBudget)
+  );
+
+  // Sync internal percentages state when breakdown prop changes externally or upon remount
+  useEffect(() => {
+    if (totalBudget > 0 && breakdown) {
+      const computed = calcInitialPercentages(breakdown, totalBudget);
+      setPercentages(computed);
+    }
+  }, [breakdown?.transport, breakdown?.accommodation, breakdown?.dining, breakdown?.cafe, breakdown?.entertainment, totalBudget]);
+
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('vi-VN').format(val) + ' đ';
+  };
+
+  const handleAutoDistribute = () => {
+    const defaultPct = {
+      transport: 20,
+      accommodation: 30,
+      dining: 25,
+      cafe: 10,
+      entertainment: 15,
+    };
+    setPercentages(defaultPct);
+
+    const updated: BudgetBreakdownData = {
+      transport: Math.round((totalBudget * 0.20) / 1000) * 1000,
+      accommodation: Math.round((totalBudget * 0.30) / 1000) * 1000,
+      dining: Math.round((totalBudget * 0.25) / 1000) * 1000,
+      cafe: Math.round((totalBudget * 0.10) / 1000) * 1000,
+      entertainment: Math.round((totalBudget * 0.15) / 1000) * 1000,
+    };
+    onChange(updated);
+  };
+
+  const handlePercentChange = (targetKey: keyof BudgetBreakdownData, textPct: string) => {
+    const rawVal = textPct.replace(/\D/g, '');
+    const targetPct = Math.min(100, Math.max(0, parseInt(rawVal, 10) || 0));
+    const remainingPct = Math.max(0, 100 - targetPct);
+
+    const otherKeys = CATEGORIES.map((c) => c.key).filter((k) => k !== targetKey);
+    const otherSumPct = otherKeys.reduce((sum, k) => sum + (percentages[k] || 0), 0);
+
+    const newPercentages: Record<string, number> = {
+      ...percentages,
+      [targetKey]: targetPct,
+    };
+
+    const targetMoney = Math.round((totalBudget * (targetPct / 100)) / 1000) * 1000;
+    const newBreakdown: BudgetBreakdownData = {
+      ...breakdown,
+      [targetKey]: targetMoney,
+    };
+
+    otherKeys.forEach((k) => {
+      let catPct = 0;
+      if (otherSumPct > 0) {
+        catPct = ((percentages[k] || 0) / otherSumPct) * remainingPct;
+      } else {
+        catPct = remainingPct / otherKeys.length;
+      }
+      newPercentages[k] = Number(catPct.toFixed(1));
+      newBreakdown[k] = Math.max(0, Math.round((totalBudget * (catPct / 100)) / 1000) * 1000);
+    });
+
+    setPercentages(newPercentages);
+    onChange(newBreakdown);
+  };
+
+  const handleMoneyChange = (targetKey: keyof BudgetBreakdownData, textVal: string) => {
+    const newMoney = parseInt(textVal.replace(/\D/g, ''), 10) || 0;
+
+    if (totalBudget <= 0) {
+      onChange({ ...breakdown, [targetKey]: newMoney });
+      return;
+    }
+
+    const targetPct = (newMoney / totalBudget) * 100;
+    const remainingPct = Math.max(0, 100 - targetPct);
+
+    const otherKeys = CATEGORIES.map((c) => c.key).filter((k) => k !== targetKey);
+    const otherSumPct = otherKeys.reduce((sum, k) => sum + (percentages[k] || 0), 0);
+
+    const newPercentages: Record<string, number> = {
+      ...percentages,
+      [targetKey]: Number(targetPct.toFixed(1)),
+    };
+
+    const newBreakdown: BudgetBreakdownData = {
+      ...breakdown,
+      [targetKey]: newMoney,
+    };
+
+    otherKeys.forEach((k) => {
+      let catPct = 0;
+      if (otherSumPct > 0) {
+        catPct = ((percentages[k] || 0) / otherSumPct) * remainingPct;
+      } else {
+        catPct = remainingPct / otherKeys.length;
+      }
+      newPercentages[k] = Number(catPct.toFixed(1));
+      newBreakdown[k] = Math.max(0, Math.round((totalBudget * (catPct / 100)) / 1000) * 1000);
+    });
+
+    setPercentages(newPercentages);
+    onChange(newBreakdown);
+  };
+
+  const allocatedTotal =
+    (breakdown.transport || 0) +
+    (breakdown.accommodation || 0) +
+    (breakdown.dining || 0) +
+    (breakdown.cafe || 0) +
+    (breakdown.entertainment || 0);
+
+  const totalPercentAllocated = Object.values(percentages).reduce((a, b) => a + b, 0);
+
+  const isOverBudget = allocatedTotal > totalBudget;
+
+  return (
+    <View
+      style={{
+        backgroundColor: '#FFFFFF',
+        borderRadius: 16,
+        padding: 18,
+        borderWidth: 1,
+        borderColor: 'rgba(27,36,32,0.08)',
+        gap: 16,
+        marginVertical: 12,
+      }}
+    >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View>
+          <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: '#1B2420' }}>
+            Phân Bổ Ngân Sách Theo Tag
+          </Text>
+          <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 12, color: '#6E7B70', marginTop: 2 }}>
+            Tự động chia theo Realtime & tùy chỉnh % theo ý muốn
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={handleAutoDistribute}
+          style={({ pressed }) => [{
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 100,
+            backgroundColor: 'rgba(31,111,84,0.1)',
+            opacity: pressed ? 0.8 : 1,
+          }]}
+        >
+          <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#1F6F54' }}>
+            ⚡ Tự động chia
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Allocated progress bar */}
+      <View style={{ gap: 6 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: isOverBudget ? '#B23B3B' : '#1F6F54' }}>
+            Đã phân bổ: {formatCurrency(allocatedTotal)} ({totalPercentAllocated.toFixed(0)}%)
+          </Text>
+          <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#6E7B70' }}>
+            Tổng trần: {formatCurrency(totalBudget)}
+          </Text>
+        </View>
+
+        <View style={{ height: 8, borderRadius: 4, backgroundColor: 'rgba(27,36,32,0.08)', overflow: 'hidden', flexDirection: 'row' }}>
+          {CATEGORIES.map((cat) => {
+            const val = breakdown[cat.key] || 0;
+            const pct = totalBudget > 0 ? (val / totalBudget) * 100 : 0;
+            return (
+              <View
+                key={cat.key}
+                style={{
+                  width: `${Math.min(pct, 100)}%`,
+                  height: '100%',
+                  backgroundColor: cat.color,
+                }}
+              />
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Input list with % and Money */}
+      <View style={{ gap: 10 }}>
+        {CATEGORIES.map((cat) => {
+          const IconComp = cat.icon;
+          const val = breakdown[cat.key] || 0;
+          const pct = percentages[cat.key] ?? cat.defaultPercent;
+
+          return (
+            <View
+              key={cat.key}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingVertical: 8,
+                paddingHorizontal: 10,
+                borderRadius: 12,
+                backgroundColor: 'rgba(243,236,220,0.4)',
+              }}
+            >
+              {/* Category Icon & Name */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: `${cat.color}15`, alignItems: 'center', justifyContent: 'center' }}>
+                  <IconComp size={15} color={cat.color} />
+                </View>
+                <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 13, color: '#1B2420' }}>
+                  {cat.label}
+                </Text>
+              </View>
+
+              {/* Custom Percent (%) & Money Inputs */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {/* Custom % Input */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                  <TextInput
+                    value={String(pct)}
+                    onChangeText={(text) => handlePercentChange(cat.key, text)}
+                    placeholder="0"
+                    keyboardType="numeric"
+                    style={{
+                      fontFamily: 'BeVietnamPro_700Bold',
+                      fontSize: 12,
+                      color: '#1F6F54',
+                      backgroundColor: '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: 'rgba(31,111,84,0.3)',
+                      borderRadius: 6,
+                      paddingHorizontal: 6,
+                      paddingVertical: 4,
+                      width: 42,
+                      textAlign: 'center',
+                    }}
+                  />
+                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#1F6F54' }}>%</Text>
+                </View>
+
+                {/* Money Input */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <TextInput
+                    value={val > 0 ? new Intl.NumberFormat('vi-VN').format(val) : ''}
+                    onChangeText={(text) => handleMoneyChange(cat.key, text)}
+                    placeholder="0"
+                    keyboardType="numeric"
+                    style={{
+                      fontFamily: 'BeVietnamPro_700Bold',
+                      fontSize: 13,
+                      color: '#1B2420',
+                      backgroundColor: '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: 'rgba(27,36,32,0.12)',
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      minWidth: 105,
+                      textAlign: 'right',
+                    }}
+                  />
+                  <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 12, color: '#6E7B70' }}>đ</Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}

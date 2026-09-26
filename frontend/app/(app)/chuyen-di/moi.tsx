@@ -6,7 +6,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   Compass, Sparkles, ArrowLeft, ArrowRight,
-  MapPin, DollarSign, Heart, AlertTriangle, Crown, Zap, Lock,
+  MapPin, DollarSign, Heart, AlertTriangle, Crown, Zap, Lock, ChevronDown,
 } from 'lucide-react-native';
 import { api } from '../../../lib/api';
 import { clearCache } from '../../../lib/cache';
@@ -14,6 +14,7 @@ import { requestNotificationPermission, scheduleTripReminder } from '../../../li
 import { useAuth } from '../../../hooks/useAuth';
 import PremiumModal from '../../../components/PremiumModal';
 import Reveal from '../../../components/Reveal';
+import BudgetBreakdown, { BudgetBreakdownData } from '../../../components/cart/BudgetBreakdown';
 import {
   VIETNAMESE_CITIES, TRAVELER_TYPES, PREFERENCE_OPTIONS, BRAND_COLORS,
   BUDGET_ESTIMATION_CONFIG, APP_ROUTES, TravelerType,
@@ -262,7 +263,15 @@ export default function TripWizard() {
   const [travelerCount, setTravelerCount] = useState(1);
   const [travelerType, setTravelerType] = useState('solo');
   const [budgetTotal, setBudgetTotal] = useState(5000000);
+  const [budgetBreakdown, setBudgetBreakdown] = useState<BudgetBreakdownData>({
+    transport: 1000000,
+    accommodation: 1500000,
+    dining: 1250000,
+    cafe: 500000,
+    entertainment: 750000,
+  });
   const [selectedPrefs, setSelectedPrefs] = useState<string[]>([]);
+  const [customPrefInput, setCustomPrefInput] = useState('');
   const [healthConditions, setHealthConditions] = useState('');
   const [specialRequirements, setSpecialRequirements] = useState('');
   const [lodgingPreference, setLodgingPreference] = useState<'single' | 'multiple'>('single');
@@ -558,29 +567,47 @@ export default function TripWizard() {
                     Bạn muốn đi du lịch ở đâu?
                   </Text>
 
-                  {/* City picker */}
+                  {/* City Dropdown picker [Mục 2] */}
                   <View className="gap-2">
                     <View className="flex-row items-center gap-1.5">
                       <MapPin size={14} color={BRAND_COLORS.primary} />
-                      <Text className="text-sm font-bold text-brand-textSoft">Điểm đến (Chỉ Việt Nam)</Text>
+                      <Text className="text-sm font-bold text-brand-textSoft">Điểm đến (Dropdown Chọn Thành Phố)</Text>
                     </View>
-                    <View className="flex-row flex-wrap gap-2">
-                      {VIETNAMESE_CITIES.map(city => (
+                    {Platform.OS === 'web' ? (
+                      <select
+                        value={destinationCity}
+                        onChange={(e) => setDestinationCity(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '12px 16px',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(27,36,32,0.15)',
+                          backgroundColor: '#FBF5EA',
+                          fontSize: '14px',
+                          fontWeight: 'bold',
+                          color: '#1B2420',
+                          outline: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {VIETNAMESE_CITIES.map((city) => (
+                          <option key={city} value={city}>
+                            📍 {city}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <View style={{ borderWidth: 1, borderColor: 'rgba(27,36,32,0.15)', borderRadius: 12, overflow: 'hidden', backgroundColor: '#FBF5EA' }}>
                         <Pressable
-                          key={city}
-                          onPress={() => setDestinationCity(city)}
-                          className={`px-3.5 py-2 rounded-full border ${destinationCity === city
-                            ? 'bg-brand-primary border-brand-primary'
-                            : 'bg-brand-bg border-brand-line'}`}
+                          style={{ paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
                         >
-                          <Text
-                            className={`text-xs font-bold ${destinationCity === city ? 'text-white' : 'text-brand-textSoft'}`}
-                          >
-                            {city}
+                          <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 14, color: '#1B2420' }}>
+                            📍 {destinationCity}
                           </Text>
+                          <ChevronDown size={16} color="#1B2420" />
                         </Pressable>
-                      ))}
-                    </View>
+                      </View>
+                    )}
                   </View>
 
                   {/* Dates */}
@@ -674,8 +701,8 @@ export default function TripWizard() {
                     </View>
                     <View className="flex-row items-center gap-3">
                       <TextInput
-                        value={String(budgetTotal)}
-                        onChangeText={v => setBudgetTotal(parseInt(v) || 0)}
+                        value={budgetTotal > 0 ? new Intl.NumberFormat('vi-VN').format(budgetTotal) : ''}
+                        onChangeText={v => setBudgetTotal(parseInt(v.replace(/\D/g, ''), 10) || 0)}
                         keyboardType="numeric"
                         className="flex-1 px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text"
                         placeholderTextColor={BRAND_COLORS.textMuted}
@@ -685,6 +712,13 @@ export default function TripWizard() {
                     <Text className="text-[10px] text-brand-textMuted">
                       Gợi ý: Tối thiểu ~1,500,000đ/ngày để có trải nghiệm tốt.
                     </Text>
+
+                    {/* Component Phân bổ ngân sách theo Tag với Nút Tự động chia */}
+                    <BudgetBreakdown
+                      totalBudget={budgetTotal}
+                      breakdown={budgetBreakdown}
+                      onChange={setBudgetBreakdown}
+                    />
                   </View>
 
                   {/* Lodging Preference */}
@@ -736,17 +770,16 @@ export default function TripWizard() {
 
                   <View className="gap-2">
                     <Text className="text-sm font-bold text-brand-textSoft">Chọn các sở thích (Chọn nhiều)</Text>
-                    <View className="flex-row flex-wrap gap-3">
+                    <View className="flex-row flex-wrap gap-2.5">
                       {PREFERENCE_OPTIONS.map(pref => {
                         const selected = selectedPrefs.includes(pref.id);
                         return (
                           <Pressable
                             key={pref.id}
                             onPress={() => handlePrefToggle(pref.id)}
-                            className={`px-4 py-3.5 rounded-xl border ${selected
+                            className={`px-4 py-3 rounded-xl border ${selected
                               ? 'bg-brand-primary border-brand-primary'
                               : 'bg-brand-bg border-brand-line/50'}`}
-                            style={{ minWidth: 130 }}
                           >
                             <Text
                               className={`text-sm font-semibold ${selected ? 'text-white' : 'text-brand-textSoft'}`}
@@ -756,6 +789,46 @@ export default function TripWizard() {
                           </Pressable>
                         );
                       })}
+
+                      {/* Display custom added tags in wizard */}
+                      {selectedPrefs
+                        .filter(p => !PREFERENCE_OPTIONS.some(opt => opt.id === p))
+                        .map((customTag, idx) => (
+                          <Pressable
+                            key={idx}
+                            onPress={() => handlePrefToggle(customTag)}
+                            className="px-4 py-3 rounded-xl bg-brand-accent border border-brand-accent"
+                          >
+                            <Text className="text-sm font-bold text-white">✨ {customTag} ✕</Text>
+                          </Pressable>
+                        ))}
+                    </View>
+                  </View>
+
+                  {/* Custom tag input in wizard */}
+                  <View className="gap-2 pt-2 border-t border-brand-line/30">
+                    <Text className="text-xs font-bold text-brand-textSoft">Hoặc tự nhập sở thích trải nghiệm riêng:</Text>
+                    <View className="flex-row gap-2">
+                      <TextInput
+                        value={customPrefInput}
+                        onChangeText={setCustomPrefInput}
+                        placeholder="VD: Bắn cung, Ngắm hoàng hôn..."
+                        className="flex-1 px-4 py-2.5 rounded-xl border border-brand-line text-sm bg-brand-bg text-brand-text"
+                        placeholderTextColor={BRAND_COLORS.textMuted}
+                      />
+                      <Pressable
+                        onPress={() => {
+                          if (customPrefInput.trim() && !selectedPrefs.includes(customPrefInput.trim())) {
+                            setSelectedPrefs(prev => [...prev, customPrefInput.trim()]);
+                            setCustomPrefInput('');
+                          }
+                        }}
+                        disabled={!customPrefInput.trim()}
+                        className="px-5 py-2.5 rounded-xl bg-brand-accent justify-center items-center"
+                        style={{ opacity: customPrefInput.trim() ? 1 : 0.6 }}
+                      >
+                        <Text className="text-xs font-bold text-white">+ Thêm</Text>
+                      </Pressable>
                     </View>
                   </View>
                 </View>

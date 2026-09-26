@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  View, Text, ScrollView, Pressable, Alert, Platform, ActivityIndicator,
+  View, Text, ScrollView, Pressable, Alert, Platform, ActivityIndicator, Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -32,6 +32,7 @@ interface Trip {
   traveler_count: number;
   traveler_type: string;
   status: string;
+  preferences?: any;
 }
 
 function formatDate(dateStr: string) {
@@ -82,7 +83,7 @@ function getTripStatusInfo(startDateStr: string, endDateStr: string, dbStatus: s
 
 export default function Dashboard() {
   const router = useRouter();
-  const { user, isAdmin, signOut } = useAuth();
+  const { user, profile, isAdmin, signOut } = useAuth();
   const { openChatbot } = useChatbot();
   const userEmail = user?.email || '';
 
@@ -340,13 +341,22 @@ export default function Dashboard() {
               </Pressable>
             )}
             <Pressable
-              onPress={() => setShowProfileModal(true)}
-              className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full border border-brand-line bg-brand-bgAlt/50 hover:border-brand-primary"
+              onPress={() => router.push('/(app)/profile' as any)}
+              className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-brand-line bg-brand-bgAlt/50 hover:border-brand-primary"
               style={{ cursor: 'pointer' as any }}
             >
-              <User size={13} color={BRAND_COLORS.primary} />
+              {profile?.avatar_url ? (
+                <Image
+                  source={{ uri: profile.avatar_url }}
+                  style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1, borderColor: BRAND_COLORS.primary }}
+                />
+              ) : (
+                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(31,111,84,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                  <User size={12} color={BRAND_COLORS.primary} />
+                </View>
+              )}
               <Text className="text-brand-textSoft text-xs font-semibold" numberOfLines={1}>
-                {userEmail}
+                {profile?.full_name || userEmail}
               </Text>
             </Pressable>
             <Pressable
