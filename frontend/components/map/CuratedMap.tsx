@@ -75,8 +75,12 @@ function buildCuratedLeafletHTML(
       }
     };
 
+    const bounds = L.latLngBounds([]);
+
     places.forEach((p) => {
       if (!p.lat || !p.lng) return;
+
+      bounds.extend([p.lat, p.lng]);
 
       const color = getColor(p.category);
       const emoji = getEmoji(p.category);
@@ -95,6 +99,10 @@ function buildCuratedLeafletHTML(
         }
       });
     });
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+    }
   </script>
 </body>
 </html>

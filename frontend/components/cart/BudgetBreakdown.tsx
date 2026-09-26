@@ -71,27 +71,77 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
     onChange(updated);
   };
 
-  const handlePercentChange = (key: keyof BudgetBreakdownData, textPct: string) => {
-    const pct = Math.min(100, Math.max(0, parseInt(textPct.replace(/\D/g, ''), 10) || 0));
-    const newPcts = { ...percentages, [key]: pct };
-    setPercentages(newPcts);
+  const handlePercentChange = (targetKey: keyof BudgetBreakdownData, textPct: string) => {
+    const rawVal = textPct.replace(/\D/g, '');
+    const targetPct = Math.min(100, Math.max(0, parseInt(rawVal, 10) || 0));
+    const remainingPct = Math.max(0, 100 - targetPct);
 
-    const newMoney = Math.round((totalBudget * pct / 100) / 1000) * 1000;
-    onChange({
+    const otherKeys = CATEGORIES.map((c) => c.key).filter((k) => k !== targetKey);
+    const otherSumPct = otherKeys.reduce((sum, k) => sum + (percentages[k] || 0), 0);
+
+    const newPercentages: Record<string, number> = {
+      ...percentages,
+      [targetKey]: targetPct,
+    };
+
+    const targetMoney = Math.round((totalBudget * (targetPct / 100)) / 1000) * 1000;
+    const newBreakdown: BudgetBreakdownData = {
       ...breakdown,
-      [key]: newMoney,
+      [targetKey]: targetMoney,
+    };
+
+    otherKeys.forEach((k) => {
+      let catPct = 0;
+      if (otherSumPct > 0) {
+        catPct = ((percentages[k] || 0) / otherSumPct) * remainingPct;
+      } else {
+        catPct = remainingPct / otherKeys.length;
+      }
+      newPercentages[k] = Number(catPct.toFixed(1));
+      newBreakdown[k] = Math.max(0, Math.round((totalBudget * (catPct / 100)) / 1000) * 1000);
     });
+
+    setPercentages(newPercentages);
+    onChange(newBreakdown);
   };
 
-  const handleMoneyChange = (key: keyof BudgetBreakdownData, textVal: string) => {
-    const money = parseInt(textVal.replace(/\D/g, ''), 10) || 0;
-    const calcPct = totalBudget > 0 ? parseFloat(((money / totalBudget) * 100).toFixed(1)) : 0;
+  const handleMoneyChange = (targetKey: keyof BudgetBreakdownData, textVal: string) => {
+    const newMoney = parseInt(textVal.replace(/\D/g, ''), 10) || 0;
 
-    setPercentages((prev) => ({ ...prev, [key]: calcPct }));
-    onChange({
+    if (totalBudget <= 0) {
+      onChange({ ...breakdown, [targetKey]: newMoney });
+      return;
+    }
+
+    const targetPct = (newMoney / totalBudget) * 100;
+    const remainingPct = Math.max(0, 100 - targetPct);
+
+    const otherKeys = CATEGORIES.map((c) => c.key).filter((k) => k !== targetKey);
+    const otherSumPct = otherKeys.reduce((sum, k) => sum + (percentages[k] || 0), 0);
+
+    const newPercentages: Record<string, number> = {
+      ...percentages,
+      [targetKey]: Number(targetPct.toFixed(1)),
+    };
+
+    const newBreakdown: BudgetBreakdownData = {
       ...breakdown,
-      [key]: money,
+      [targetKey]: newMoney,
+    };
+
+    otherKeys.forEach((k) => {
+      let catPct = 0;
+      if (otherSumPct > 0) {
+        catPct = ((percentages[k] || 0) / otherSumPct) * remainingPct;
+      } else {
+        catPct = remainingPct / otherKeys.length;
+      }
+      newPercentages[k] = Number(catPct.toFixed(1));
+      newBreakdown[k] = Math.max(0, Math.round((totalBudget * (catPct / 100)) / 1000) * 1000);
     });
+
+    setPercentages(newPercentages);
+    onChange(newBreakdown);
   };
 
   const allocatedTotal =
