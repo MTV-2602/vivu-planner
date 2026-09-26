@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { User, MapPin, Calendar, Heart, ArrowLeft, LogOut, Sparkles, ChevronRight } from 'lucide-react-native';
-import { PREFERENCE_OPTIONS } from '../../constants';
+import { PREFERENCE_OPTIONS, APP_ROUTES } from '../../constants';
 
 interface TripItem {
   id: string;
@@ -132,7 +132,13 @@ export default function ProfileScreen() {
         }}
       >
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace((APP_ROUTES.TRIPS || '/(app)/chuyen-di') as any);
+            }
+          }}
           style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
