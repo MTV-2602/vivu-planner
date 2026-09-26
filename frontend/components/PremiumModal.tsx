@@ -283,16 +283,22 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     const webUrl = orderData.checkoutUrl || orderData.payUrl;
     const momoDeeplink = orderData.deeplink;
 
-    if (directQr) {
+    if (orderData.method === 'momo') {
+      if (momoDeeplink || webUrl) {
+        const target = momoDeeplink || webUrl;
+        qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(target)}`;
+      } else if (directQr) {
+        const isImageUrl = directQr.startsWith('data:image/') || (directQr.startsWith('http') && (directQr.includes('.png') || directQr.includes('.jpg')));
+        if (isImageUrl) qrImage = directQr;
+        else qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(directQr)}`;
+      }
+    } else if (directQr) {
       const isImageUrl = directQr.startsWith('data:image/') || (directQr.startsWith('http') && (directQr.includes('vietqr.io') || directQr.includes('.png') || directQr.includes('.jpg')));
       if (isImageUrl) qrImage = directQr;
       else qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(directQr)}`;
     } else if (orderData.accountNumber && orderData.amount) {
       const bin = orderData.bin || 'MB';
       qrImage = `https://img.vietqr.io/image/${bin}-${orderData.accountNumber}-compact2.png?amount=${orderData.amount}&addInfo=VIVU${orderData.orderCode || ''}&accountName=${encodeURIComponent(orderData.accountName || 'VIVU PLANNER')}`;
-    } else if (orderData.method === 'momo' && (momoDeeplink || webUrl)) {
-      const target = momoDeeplink || webUrl;
-      qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(target)}`;
     } else if (webUrl) {
       qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(webUrl)}`;
     }

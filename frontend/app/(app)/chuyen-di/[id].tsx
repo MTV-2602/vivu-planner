@@ -186,6 +186,7 @@ export default function TripDetail() {
   // AI replace modal
   const [aiReplaceOpen, setAiReplaceOpen] = useState(false);
   const [aiReplaceItem, setAiReplaceItem] = useState<any>(null);
+  const [replaceTab, setReplaceTab] = useState<'ai' | 'manual'>('ai');
   const [aiAlternatives, setAiAlternatives] = useState<any[]>([]);
   const [aiRequirement, setAiRequirement] = useState('');
   const [fetchingAlts, setFetchingAlts] = useState(false);
@@ -1197,8 +1198,13 @@ export default function TripDetail() {
                               )}
                               {!isAdmin && (
                                 <View className="flex-row gap-2">
-                                  <Pressable onPress={() => { setAiReplaceItem(item); setAiAlternatives([]); setAiRequirement(''); setAiReplaceOpen(true); }} className="p-1.5 rounded bg-brand-accent/10">
-                                    <Sparkles size={14} color={BRAND_COLORS.accent} />
+                                  <Pressable
+                                    onPress={() => { setAiReplaceItem(item); setAiAlternatives([]); setAiRequirement(''); setAiReplaceOpen(true); }}
+                                    className="flex-row items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brand-accent/15 border border-brand-accent/30"
+                                    style={{ cursor: 'pointer' as any }}
+                                  >
+                                    <Sparkles size={13} color={BRAND_COLORS.accent} />
+                                    <Text className="text-[11px] font-bold text-brand-accent">Thay thế</Text>
                                   </Pressable>
                                   <Pressable testID={`btn-edit-item-${item.id}`} onPress={() => openEdit(item)} className="p-1.5 rounded bg-brand-primary/10">
                                     <PenLine size={14} color={BRAND_COLORS.primary} />
@@ -1547,67 +1553,136 @@ export default function TripDetail() {
                 </Pressable>
               </View>
 
-              <View className="flex-row gap-2">
-                <TextInput
-                  value={aiRequirement} onChangeText={setAiRequirement} placeholder="Yêu cầu đặc thù (tùy chọn)..."
-                  className="flex-1 px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text"
-                  placeholderTextColor={BRAND_COLORS.textMuted}
-                />
+              {/* Tab chuyển đổi: AI Gợi ý vs Chọn từ điểm đến */}
+              <View className="flex-row gap-2 border-b border-brand-line/20 pb-3">
                 <Pressable
-                  onPress={async () => {
-                    setFetchingAlts(true);
-                    try {
-                      const r = await api.post(`/trips/items/${aiReplaceItem.id}/ai-replace`, { user_requirement: aiRequirement });
-                      setAiAlternatives(r.data.alternatives || []);
-                    } catch (err: any) {
-                      Alert.alert('Lỗi', err.response?.data?.error || err.message);
-                    } finally { setFetchingAlts(false); }
-                  }}
-                  disabled={fetchingAlts}
-                  className="flex-row items-center gap-1.5 px-5 py-3 rounded-xl bg-brand-accent"
-                  style={fetchingAlts ? { opacity: 0.5 } : undefined}
+                  onPress={() => setReplaceTab('ai')}
+                  className={`flex-row items-center gap-1.5 px-3.5 py-2 rounded-xl ${replaceTab === 'ai' ? 'bg-brand-accent text-white' : 'bg-brand-bgAlt border border-brand-line/40'}`}
                 >
-                  {fetchingAlts ? <ActivityIndicator size="small" color="white" /> : <Sparkles size={16} color="white" />}
-                  <Text className="text-white text-xs font-bold">{fetchingAlts ? 'Đang quét...' : 'Gợi ý'}</Text>
+                  <Sparkles size={14} color={replaceTab === 'ai' ? '#fff' : BRAND_COLORS.accent} />
+                  <Text className={`text-xs font-bold ${replaceTab === 'ai' ? 'text-white' : 'text-brand-text'}`}>AI Gợi Ý Thay Thế</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setReplaceTab('manual')}
+                  className={`flex-row items-center gap-1.5 px-3.5 py-2 rounded-xl ${replaceTab === 'manual' ? 'bg-brand-primary text-white' : 'bg-brand-bgAlt border border-brand-line/40'}`}
+                >
+                  <MapPin size={14} color={replaceTab === 'manual' ? '#fff' : BRAND_COLORS.primary} />
+                  <Text className={`text-xs font-bold ${replaceTab === 'manual' ? 'text-white' : 'text-brand-text'}`}>Chọn Từ Điểm Đến {trip.destination_city}</Text>
                 </Pressable>
               </View>
 
-              {fetchingAlts ? (
-                <View className="py-12 items-center gap-3">
-                  <ActivityIndicator size="large" color={BRAND_COLORS.accent} />
-                  <Text className="text-xs text-brand-textSoft font-semibold">Gemini đang đề xuất các lựa chọn...</Text>
-                </View>
-              ) : aiAlternatives.length > 0 ? (
+              {replaceTab === 'manual' ? (
                 <View className="gap-3">
-                  <Text className="text-sm font-bold text-brand-textSoft">Chọn 1 trong 3 đề xuất từ AI:</Text>
-                  {aiAlternatives.map((alt, i) => (
-                    <View key={i} className="p-4 rounded-2xl border border-brand-line/50 bg-brand-bgAlt gap-3">
-                      <View className="flex-row justify-between items-start gap-2">
-                        <Text className="text-sm font-extrabold text-brand-text flex-1">{alt.title}</Text>
-                        <View className="bg-brand-accent/10 px-1.5 py-0.5 rounded">
-                          <Text className="text-[9px] font-bold text-brand-accent uppercase">{alt.item_type}</Text>
-                        </View>
-                      </View>
-                      <Text className="text-xs text-brand-textSoft font-serif">{alt.description}</Text>
-                      <Text className="text-[10px] font-semibold text-brand-textMuted">⏱️ {alt.start_time?.substring(0, 5)} - {alt.end_time?.substring(0, 5)} · 💰 {formatCost(alt.estimated_cost, alt.item_type)}</Text>
-                      <View className="p-2.5 rounded-lg bg-brand-accent/5 border border-brand-accent/20">
-                        <Text className="text-[10px] text-brand-accentStrong font-semibold">💡 {alt.reason}</Text>
-                      </View>
+                  <Text className="text-xs font-bold text-brand-textSoft">Chọn 1 địa điểm đặc sắc để thay thế ngay vào ô này:</Text>
+                  <View className="gap-2" style={{ maxHeight: 320, overflow: 'auto' as any }}>
+                    {getCuratedPlacesForCity(trip.destination_city).slice(0, 10).map((place) => (
                       <Pressable
-                        onPress={() => aiReplaceMutation.mutate({ itemId: aiReplaceItem.id, payload: { title: alt.title, description: alt.description, start_time: alt.start_time, end_time: alt.end_time, estimated_cost: alt.estimated_cost ?? null, item_type: alt.item_type, status: 'planned' } })}
-                        disabled={aiReplaceMutation.isPending}
-                        className="self-end flex-row items-center gap-1 px-4 py-2 rounded-xl bg-brand-primary"
-                        style={aiReplaceMutation.isPending ? { opacity: 0.5 } : undefined}
+                        key={place.id}
+                        onPress={() => {
+                          const cost = place.estimated_cost ?? (place.price_level ? place.price_level * 50000 : 0);
+                          let mappedType: 'accommodation' | 'transport' | 'dining' | 'attraction' | 'rental' | 'experience' = 'attraction';
+                          if (place.category === 'dining' || place.category === 'cafe') mappedType = 'dining';
+                          else if (place.category === 'accommodation') mappedType = 'accommodation';
+                          else if (place.category === 'rental') mappedType = 'rental';
+
+                          aiReplaceMutation.mutate({
+                            itemId: aiReplaceItem.id,
+                            payload: {
+                              title: place.name,
+                              description: place.address || place.social_review_quote || '',
+                              start_time: aiReplaceItem.start_time,
+                              end_time: aiReplaceItem.end_time,
+                              estimated_cost: cost,
+                              item_type: mappedType,
+                              status: 'planned'
+                            }
+                          });
+                        }}
+                        className="p-3 rounded-xl border border-brand-line/40 bg-white hover:bg-brand-bgAlt flex-row justify-between items-center"
+                        style={{ cursor: 'pointer' as any }}
                       >
-                        <Text className="text-white text-xs font-bold">{aiReplaceMutation.isPending ? 'Đang áp dụng...' : 'Áp dụng đề xuất này'}</Text>
+                        <View className="flex-1 mr-3">
+                          <Text className="text-sm font-bold text-brand-text">{place.name}</Text>
+                          <Text className="text-xs text-brand-textSoft" numberOfLines={1}>{place.address}</Text>
+                          <View className="flex-row items-center gap-2 mt-1">
+                            <Text className="text-[10px] font-bold uppercase text-brand-primary bg-brand-primary/10 px-1.5 py-0.5 rounded">{place.category}</Text>
+                            {place.estimated_cost ? (
+                              <Text className="text-[10px] font-semibold text-brand-textMuted">💰 {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(place.estimated_cost)}</Text>
+                            ) : null}
+                          </View>
+                        </View>
+                        <View className="px-3 py-1.5 rounded-lg bg-brand-primary">
+                          <Text className="text-white text-xs font-bold">Chọn thay</Text>
+                        </View>
                       </Pressable>
-                    </View>
-                  ))}
+                    ))}
+                  </View>
                 </View>
               ) : (
-                <View className="py-6 items-center border border-dashed border-brand-line rounded-2xl bg-brand-bgAlt/50">
-                  <Text className="text-xs text-brand-textSoft font-semibold">Bấm "Gợi ý" để AI đề xuất hoạt động thay thế</Text>
-                </View>
+                <>
+                  <View className="flex-row gap-2">
+                    <TextInput
+                      value={aiRequirement} onChangeText={setAiRequirement} placeholder="Yêu cầu đặc thù (tùy chọn)..."
+                      className="flex-1 px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text"
+                      placeholderTextColor={BRAND_COLORS.textMuted}
+                    />
+                    <Pressable
+                      onPress={async () => {
+                        setFetchingAlts(true);
+                        try {
+                          const r = await api.post(`/trips/items/${aiReplaceItem.id}/ai-replace`, { user_requirement: aiRequirement });
+                          setAiAlternatives(r.data.alternatives || []);
+                        } catch (err: any) {
+                          Alert.alert('Lỗi', err.response?.data?.error || err.message);
+                        } finally { setFetchingAlts(false); }
+                      }}
+                      disabled={fetchingAlts}
+                      className="flex-row items-center gap-1.5 px-5 py-3 rounded-xl bg-brand-accent"
+                      style={fetchingAlts ? { opacity: 0.5 } : undefined}
+                    >
+                      {fetchingAlts ? <ActivityIndicator size="small" color="white" /> : <Sparkles size={16} color="white" />}
+                      <Text className="text-white text-xs font-bold">{fetchingAlts ? 'Đang quét...' : 'Gợi ý'}</Text>
+                    </Pressable>
+                  </View>
+
+                  {fetchingAlts ? (
+                    <View className="py-12 items-center gap-3">
+                      <ActivityIndicator size="large" color={BRAND_COLORS.accent} />
+                      <Text className="text-xs text-brand-textSoft font-semibold">Gemini đang đề xuất các lựa chọn...</Text>
+                    </View>
+                  ) : aiAlternatives.length > 0 ? (
+                    <View className="gap-3">
+                      <Text className="text-sm font-bold text-brand-textSoft">Chọn 1 trong 3 đề xuất từ AI:</Text>
+                      {aiAlternatives.map((alt, i) => (
+                        <View key={i} className="p-4 rounded-2xl border border-brand-line/50 bg-brand-bgAlt gap-3">
+                          <View className="flex-row justify-between items-start gap-2">
+                            <Text className="text-sm font-extrabold text-brand-text flex-1">{alt.title}</Text>
+                            <View className="bg-brand-accent/10 px-1.5 py-0.5 rounded">
+                              <Text className="text-[9px] font-bold text-brand-accent uppercase">{alt.item_type}</Text>
+                            </View>
+                          </View>
+                          <Text className="text-xs text-brand-textSoft font-serif">{alt.description}</Text>
+                          <Text className="text-[10px] font-semibold text-brand-textMuted">⏱️ {alt.start_time?.substring(0, 5)} - {alt.end_time?.substring(0, 5)} · 💰 {formatCost(alt.estimated_cost, alt.item_type)}</Text>
+                          <View className="p-2.5 rounded-lg bg-brand-accent/5 border border-brand-accent/20">
+                            <Text className="text-[10px] text-brand-accentStrong font-semibold">💡 {alt.reason}</Text>
+                          </View>
+                          <Pressable
+                            onPress={() => aiReplaceMutation.mutate({ itemId: aiReplaceItem.id, payload: { title: alt.title, description: alt.description, start_time: alt.start_time, end_time: alt.end_time, estimated_cost: alt.estimated_cost ?? null, item_type: alt.item_type, status: 'planned' } })}
+                            disabled={aiReplaceMutation.isPending}
+                            className="self-end flex-row items-center gap-1 px-4 py-2 rounded-xl bg-brand-primary"
+                            style={aiReplaceMutation.isPending ? { opacity: 0.5 } : undefined}
+                          >
+                            <Text className="text-white text-xs font-bold">{aiReplaceMutation.isPending ? 'Đang áp dụng...' : 'Áp dụng đề xuất này'}</Text>
+                          </Pressable>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <View className="py-6 items-center border border-dashed border-brand-line rounded-2xl bg-brand-bgAlt/50">
+                      <Text className="text-xs text-brand-textSoft font-semibold">Bấm "Gợi ý" để AI đề xuất hoạt động thay thế</Text>
+                    </View>
+                  )}
+                </>
               )}
 
               <View className="flex-row justify-end pt-4 border-t border-brand-line/35">
