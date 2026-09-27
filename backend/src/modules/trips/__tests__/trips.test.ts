@@ -85,5 +85,67 @@ describe('Trip & Quota Business Rules', () => {
     };
     assert.equal(cartItem.custom_cost, 150000);
   });
+
+  it('should validate Candidate Places Pool structure and categories', () => {
+    const validCategories = ['dining', 'cafe', 'attraction', 'accommodation'];
+    const mockPlace = {
+      id: 'place_abc123',
+      name: 'Tiệm Cà Phê Cheo Veo',
+      category: 'cafe',
+      address: '116 Hùng Vương, Phường 11, TP. Đà Lạt',
+      lat: 11.9404,
+      lng: 108.4583,
+      estimated_cost: 45000,
+      rating: 4.8,
+      suggested_day: 1,
+      social_review_quote: 'View thung lũng đón hoàng hôn cực đỉnh tại Đà Lạt.'
+    };
+
+    assert.ok(mockPlace.id.startsWith('place_'));
+    assert.ok(validCategories.includes(mockPlace.category));
+    assert.equal(typeof mockPlace.name, 'string');
+    assert.equal(typeof mockPlace.address, 'string');
+    assert.ok(mockPlace.lat > 8.0 && mockPlace.lat < 24.0);
+    assert.ok(mockPlace.lng > 102.0 && mockPlace.lng < 110.0);
+    assert.ok(mockPlace.estimated_cost >= 0);
+    assert.ok(mockPlace.rating >= 4.0 && mockPlace.rating <= 5.0);
+    assert.equal(mockPlace.suggested_day, 1);
+  });
+
+  it('should correctly embed candidate_pool into trip preferences', () => {
+    const preferences = ['ẩm thực', 'sống ảo'];
+    const candidate_pool = [
+      {
+        id: 'place_01',
+        name: 'Quán Lẩu Gà Lá É Tao Ngộ',
+        category: 'dining',
+        address: '5 đường 3/4, TP. Đà Lạt',
+        lat: 11.93,
+        lng: 108.44,
+        estimated_cost: 250000,
+        rating: 4.7,
+        suggested_day: 1,
+        social_review_quote: 'Nước dùng ngọt thanh đậm đà.'
+      }
+    ];
+
+    let basePrefs: Record<string, any> = {};
+    if (Array.isArray(preferences)) {
+      basePrefs = { tags: preferences };
+    }
+    if (candidate_pool.length > 0) {
+      basePrefs.candidate_pool = candidate_pool;
+    }
+
+    const enriched: Record<string, any> = {
+      ...basePrefs,
+      is_ai_pro: false,
+      ai_tier: 'standard'
+    };
+
+    assert.deepEqual(enriched.tags, ['ẩm thực', 'sống ảo']);
+    assert.equal(enriched.candidate_pool.length, 1);
+    assert.equal(enriched.candidate_pool[0].name, 'Quán Lẩu Gà Lá É Tao Ngộ');
+  });
 });
 

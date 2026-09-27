@@ -1,10 +1,46 @@
+import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 import { WeatherForecast } from '../weather/weather.service';
-import { PlaceCandidate } from '../places/places.service';
+import { PlaceCandidate, getCityCoordinates } from '../places/places.service';
 import { getDefaultPlacesForCity } from '../places/defaultPlaces';
 import { executeWithApiKeyRotation } from '../../utils/keyManager';
 import { AI_CONFIG } from '../../constants';
 import { getEffectiveAiConfig, callOpenAiCompatibleGateway } from './aiGateway.service';
+
+export interface PregenPlacesParams {
+  destination_city: string;
+  days_count: number;
+  budget_total: number;
+  budget_breakdown?: {
+    transport?: number;
+    hotel?: number;
+    food?: number;
+    cafe?: number;
+    entertainment?: number;
+  };
+  traveler_count?: number;
+  traveler_type?: string;
+  preferences?: string[];
+  ai_provider?: string;
+}
+
+export interface CandidatePoolPlace {
+  id: string;
+  name: string;
+  category: 'dining' | 'cafe' | 'attraction' | 'accommodation';
+  address: string;
+  lat: number;
+  lng: number;
+  estimated_cost: number;
+  rating: number;
+  suggested_day: number;
+  social_review_quote: string;
+}
+
+export interface PregenPlacesResult {
+  destination_city: string;
+  candidate_pool: CandidatePoolPlace[];
+}
 
 export interface ItineraryItem {
   item_type: 'accommodation' | 'transport' | 'dining' | 'attraction' | 'rental' | 'experience';
@@ -96,6 +132,132 @@ const ITINERARY_JSON_SCHEMA = {
   },
   required: ['days', 'budget_summary']
 };
+
+export const CANDIDATE_POOL_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    destination_city: { type: 'string' },
+    candidate_pool: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          category: {
+            type: 'string',
+            enum: ['dining', 'cafe', 'attraction', 'accommodation']
+          },
+          address: { type: 'string' },
+          lat: { type: 'number' },
+          lng: { type: 'number' },
+          estimated_cost: { type: 'number' },
+          rating: { type: 'number' },
+          suggested_day: { type: 'integer' },
+          social_review_quote: { type: 'string' }
+        },
+        required: [
+          'id',
+          'name',
+          'category',
+          'address',
+          'lat',
+          'lng',
+          'estimated_cost',
+          'rating',
+          'suggested_day',
+          'social_review_quote'
+        ]
+      }
+    }
+  },
+  required: ['destination_city', 'candidate_pool']
+};
+
+export function safeParseJson(raw: string): any {
+  if (!raw || typeof raw !== 'string') {
+    throw new Error('Dữ liệu phản hồi AI rỗng hoặc không hợp lệ');
+  }
+
+  let cleaned = raw.trim();
+  // Loại bỏ các markdown code fences ```json hoặc ``` ở đầu/cuối
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+  const firstBrace = cleaned.indexOf('{');
+  const firstBracket = cleaned.indexOf('[');
+  let startIdx = -1;
+  if (firstBrace !== -1 && firstBracket !== -1) {
+    startIdx = Math.min(firstBrace, firstBracket);
+  } else if (firstBrace !== -1) {
+    startIdx = firstBrace;
+  } else if (firstBracket !== -1) {
+    startIdx = firstBracket;
+  }
+
+  if (startIdx !== -1) {
+    cleaned = cleaned.substring(startIdx);
+  }
+
+  // Cắt tới dấu đóng ngoặc hợp lệ cuối cùng để loại bỏ hoàn toàn các ký tự thừa
+  const lastBrace = cleaned.lastIndexOf('}');
+  const lastBracket = cleaned.lastIndexOf(']');
+  const endIdx = Math.max(lastBrace, lastBracket);
+  if (endIdx !== -1) {
+    cleaned = cleaned.substring(0, endIdx + 1);
+  }
+
+  // 1. Parse chuẩn
+  try {
+    return JSON.parse(cleaned);
+  } catch (err1) {
+    // 2. Xóa trailing commas (dấu phẩy thừa trước ] hoặc })
+    let fixed = cleaned.replace(/,\s*([\]}])/g, '$1');
+    try {
+      return JSON.parse(fixed);
+    } catch (err2) {
+      // 3. Tự động đóng các ngoặc chưa đóng nếu JSON bị cắt cụt
+      let openBrackets: string[] = [];
+      let inString = false;
+      let escape = false;
+
+      for (let i = 0; i < fixed.length; i++) {
+        const char = fixed[i];
+        if (escape) {
+          escape = false;
+          continue;
+        }
+        if (char === '\\') {
+          escape = true;
+          continue;
+        }
+        if (char === '"') {
+          inString = !inString;
+          continue;
+        }
+        if (!inString) {
+          if (char === '{') openBrackets.push('}');
+          else if (char === '[') openBrackets.push(']');
+          else if (char === '}' || char === ']') {
+            if (openBrackets.length > 0 && openBrackets[openBrackets.length - 1] === char) {
+              openBrackets.pop();
+            }
+          }
+        }
+      }
+
+      if (inString) fixed += '"';
+      while (openBrackets.length > 0) {
+        fixed += openBrackets.pop();
+      }
+
+      try {
+        return JSON.parse(fixed);
+      } catch (err3) {
+        throw err1;
+      }
+    }
+  }
+}
 
 function calculateEstimatedTotal(days: ItineraryDay[]): number {
   return days.reduce((sum, day) => {
@@ -331,92 +493,6 @@ Trả lời CHỈ bằng JSON hợp lệ tuân thủ schema được cung cấp.
     const requestedProvider = tripData?.ai_provider;
     const hasActiveGateway = Boolean(aiConfig.isActive && aiConfig.apiKey);
     const shouldUseGateway = requestedProvider === 'custom_openai' || (requestedProvider !== 'gemini' && hasActiveGateway);
-
-function safeParseJson(raw: string): any {
-  if (!raw || typeof raw !== 'string') {
-    throw new Error('Dữ liệu phản hồi AI rỗng hoặc không hợp lệ');
-  }
-
-  let cleaned = raw.trim();
-  // Loại bỏ các markdown code fences ```json hoặc ``` ở đầu/cuối
-  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-
-  const firstBrace = cleaned.indexOf('{');
-  const firstBracket = cleaned.indexOf('[');
-  let startIdx = -1;
-  if (firstBrace !== -1 && firstBracket !== -1) {
-    startIdx = Math.min(firstBrace, firstBracket);
-  } else if (firstBrace !== -1) {
-    startIdx = firstBrace;
-  } else if (firstBracket !== -1) {
-    startIdx = firstBracket;
-  }
-
-  if (startIdx !== -1) {
-    cleaned = cleaned.substring(startIdx);
-  }
-
-  // Cắt tới dấu đóng ngoặc hợp lệ cuối cùng để loại bỏ hoàn toàn các ký tự thừa
-  const lastBrace = cleaned.lastIndexOf('}');
-  const lastBracket = cleaned.lastIndexOf(']');
-  const endIdx = Math.max(lastBrace, lastBracket);
-  if (endIdx !== -1) {
-    cleaned = cleaned.substring(0, endIdx + 1);
-  }
-
-  // 1. Parse chuẩn
-  try {
-    return JSON.parse(cleaned);
-  } catch (err1) {
-    // 2. Xóa trailing commas (dấu phẩy thừa trước ] hoặc })
-    let fixed = cleaned.replace(/,\s*([\]}])/g, '$1');
-    try {
-      return JSON.parse(fixed);
-    } catch (err2) {
-      // 3. Tự động đóng các ngoặc chưa đóng nếu JSON bị cắt cụt
-      let openBrackets: string[] = [];
-      let inString = false;
-      let escape = false;
-
-      for (let i = 0; i < fixed.length; i++) {
-        const char = fixed[i];
-        if (escape) {
-          escape = false;
-          continue;
-        }
-        if (char === '\\') {
-          escape = true;
-          continue;
-        }
-        if (char === '"') {
-          inString = !inString;
-          continue;
-        }
-        if (!inString) {
-          if (char === '{') openBrackets.push('}');
-          else if (char === '[') openBrackets.push(']');
-          else if (char === '}' || char === ']') {
-            if (openBrackets.length > 0 && openBrackets[openBrackets.length - 1] === char) {
-              openBrackets.pop();
-            }
-          }
-        }
-      }
-
-      if (inString) fixed += '"';
-      while (openBrackets.length > 0) {
-        fixed += openBrackets.pop();
-      }
-
-      try {
-        return JSON.parse(fixed);
-      } catch (err3) {
-        throw err1;
-      }
-    }
-  }
-}
-
 
     if (shouldUseGateway) {
       try {
@@ -1511,4 +1587,237 @@ QUY TẮC PHẢN HỒI:
     console.error('Error in chatWithItinerary:', error.message);
     throw error;
   }
+}
+
+export async function generateCandidatePlacesPool(
+  params: PregenPlacesParams
+): Promise<PregenPlacesResult> {
+  const city = (params.destination_city || '').trim();
+  const cityCoords = getCityCoordinates(city);
+  const daysCount = Math.max(1, Number(params.days_count) || 1);
+  const travelers = Math.max(1, Number(params.traveler_count) || 1);
+  const budgetTotal = Number(params.budget_total) || 0;
+  const preferencesList = Array.isArray(params.preferences) ? params.preferences : [];
+
+  const minPlaces = daysCount * 6;
+  const maxPlaces = daysCount * 8;
+
+  const systemPrompt = `Bạn là Chuyên gia Khảo sát & Đề xuất Địa điểm Du lịch Địa phương tại Việt Nam (Senior Vietnam Travel Scout & Local Explorer).
+Nhiệm vụ của bạn là sinh BỂ ĐỊA ĐIỂM ĐỘNG (Candidate Places Pool) phong phú, chất lượng cao và chân thực 100% cho chuyến đi tại thành phố "${city}".
+
+RÀNG BUỘC NGHIÊM NGẶT BẮT BUỘC:
+1. TUYỆT ĐỐI KHÔNG DÙNG DỮ LIỆU FIX CỨNG HAY MOCK. Mọi địa điểm phải sinh động 100% dựa trên thành phố "${city}", các sở thích của người dùng và cơ cấu ngân sách được cung cấp.
+2. VỚI MỖI NGÀY TRONG ${daysCount} NGÀY, SINH TỪ 6 ĐẾN 8 ĐỊA ĐIỂM PHONG PHÚ:
+   - Ẩm thực (dining): Bữa sáng, bữa trưa, bữa tối, quán ăn vặt/đặc sản địa phương nổi tiếng.
+   - Cafe & View (cafe): Quán cà phê phong cảnh đẹp, không gian chill, check-in sống ảo cực chất.
+   - Tham quan & Trải nghiệm (attraction): Điểm di tích văn hóa, lịch sử, danh lam thắng cảnh thiên nhiên, khu giải trí đặc sắc.
+   - Khách sạn / Lưu trú (accommodation): Khách sạn, resort hoặc homestay thực tế phù hợp với mức ngân sách lưu trú.
+   Tổng số lượng địa điểm trong bể cho ${daysCount} ngày là từ ${minPlaces} đến ${maxPlaces} địa điểm.
+3. ĐẢM BẢO TỌA ĐỘ VÀ ĐỊA CHỈ THỰC TẾ CHÍNH XÁC 100%:
+   - Tên địa điểm: Tên thực tế đang hoạt động tại ${city} (ví dụ: các quán ăn, quán cafe, khách sạn, điểm tham quan nổi tiếng có thật).
+   - Địa chỉ: ĐẦY ĐỦ VÀ CHI TIẾT có số nhà, tên đường, phường/xã, quận/huyện tại ${city}.
+   - Tọa độ lat, lng: PHẢI NẰM CHÍNH XÁC trong phạm vi địa lý của ${city} (Tọa độ trung tâm: lat ${cityCoords.lat}, lng ${cityCoords.lng}). Độ lệch lat/lng tối đa không vượt quá 0.15 độ.
+   - TUYỆT ĐỐI KHÔNG TRÙNG LẶP bất kỳ địa điểm nào giữa các ngày trong toàn bộ bể candidate_pool.
+   - Chi phí estimated_cost: Phải là số tiền thực tế hợp lý bằng VND cho mỗi người hoặc cả đoàn (${travelers} người), tương thích với ngân sách và phân bổ budget_breakdown.
+   - Đánh giá rating: Từ 4.2 đến 4.9 sao dựa trên uy tín thực tế.
+   - suggested_day: Số nguyên chỉ định ngày gợi ý phù hợp (từ 1 đến ${daysCount}).
+   - social_review_quote: Câu trích dẫn review ngắn gọn, súc tích (1-2 câu) nêu bật nét độc đáo, món nên thử hoặc góc sống ảo từ cộng đồng du lịch/mạng xã hội.
+
+4. CẤU TRÚC JSON TRẢ VỀ:
+Bắt buộc trả về đúng định dạng JSON thuần túy (không kèm markdown code fence hay chữ giải thích):
+{
+  "destination_city": "${city}",
+  "candidate_pool": [
+    {
+      "id": "place_1",
+      "name": "Tên địa điểm thực tế",
+      "category": "dining",
+      "address": "Địa chỉ cụ thể tại ${city}",
+      "lat": ${cityCoords.lat},
+      "lng": ${cityCoords.lng},
+      "estimated_cost": 50000,
+      "rating": 4.6,
+      "suggested_day": 1,
+      "social_review_quote": "Review ngắn gọn..."
+    }
+  ]
+}`;
+
+  const userPrompt = JSON.stringify({
+    destination_city: city,
+    days_count: daysCount,
+    traveler_count: travelers,
+    traveler_type: params.traveler_type || 'tự do',
+    budget_total: budgetTotal,
+    budget_breakdown: params.budget_breakdown || {},
+    preferences: preferencesList,
+    center_coordinates: cityCoords
+  });
+
+  const aiConfig = await getEffectiveAiConfig();
+  const effectiveCustomTokens = aiConfig.maxTokens || 16384;
+  const effectiveGeminiTokens = aiConfig.geminiMaxTokens || 16384;
+  const requestedProvider = params.ai_provider;
+  const hasActiveGateway = Boolean(aiConfig.isActive && aiConfig.apiKey);
+  const shouldUseGateway = requestedProvider === 'custom_openai' || (requestedProvider !== 'gemini' && hasActiveGateway);
+
+  let rawJsonData: any = null;
+
+  if (shouldUseGateway) {
+    try {
+      const messages = [
+        { role: 'system' as const, content: systemPrompt },
+        { role: 'user' as const, content: userPrompt }
+      ];
+      const rawText = await callOpenAiCompatibleGateway({
+        messages,
+        jsonMode: true,
+        temperature: 0.6,
+        maxTokens: Math.max(effectiveCustomTokens, 16384)
+      });
+      rawJsonData = safeParseJson(rawText);
+    } catch (gatewayErr: any) {
+      console.warn(`[GeminiService] AI Gateway pregen places failed, falling back to direct Gemini: ${gatewayErr.message}`);
+    }
+  }
+
+  if (!rawJsonData) {
+    rawJsonData = await executeWithApiKeyRotation(async (apiKey) => {
+      const ai = new GoogleGenAI({ apiKey });
+      const generatePromise = ai.models.generateContent({
+        model: AI_CONFIG.DEFAULT_MODEL,
+        contents: `${systemPrompt}\n\nDữ liệu yêu cầu:\n${userPrompt}`,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: CANDIDATE_POOL_JSON_SCHEMA as any,
+          temperature: 0.6,
+          maxOutputTokens: effectiveGeminiTokens,
+          thinkingConfig: { thinkingBudget: 0 } as any
+        }
+      });
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('AI generation pregen places timed out after 35s')), 35000)
+      );
+
+      const response = (await Promise.race([generatePromise, timeoutPromise])) as any;
+      const text = response.text;
+      if (!text) throw new Error('AI returned empty response text');
+      return safeParseJson(text);
+    });
+  }
+
+  let rawPool: any[] = [];
+  if (Array.isArray(rawJsonData)) {
+    rawPool = rawJsonData;
+  } else if (Array.isArray(rawJsonData?.candidate_pool)) {
+    rawPool = rawJsonData.candidate_pool;
+  } else if (Array.isArray(rawJsonData?.places)) {
+    rawPool = rawJsonData.places;
+  } else if (Array.isArray(rawJsonData?.data)) {
+    rawPool = rawJsonData.data;
+  }
+
+  const seenNames = new Set<string>();
+  const normalizedPool: CandidatePoolPlace[] = [];
+
+  for (let i = 0; i < rawPool.length; i++) {
+    const item = rawPool[i];
+    if (!item || typeof item !== 'object') continue;
+
+    const rawName = String(item.name || '').trim();
+    if (!rawName) continue;
+
+    // Deduplicate by normalized name
+    const normKey = rawName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+    if (seenNames.has(normKey)) {
+      continue;
+    }
+    seenNames.add(normKey);
+
+    // Normalize category
+    const cat = String(item.category || '').toLowerCase().trim();
+    let category: 'dining' | 'cafe' | 'attraction' | 'accommodation' = 'attraction';
+    if (cat === 'cafe' || cat === 'coffee' || cat === 'ca phe' || cat === 'view') {
+      category = 'cafe';
+    } else if (cat === 'dining' || cat === 'food' || cat === 'restaurant' || cat === 'am thuc' || cat === 'an uong') {
+      category = 'dining';
+    } else if (cat === 'accommodation' || cat === 'hotel' || cat === 'resort' || cat === 'homestay' || cat === 'khach san') {
+      category = 'accommodation';
+    } else {
+      category = 'attraction';
+    }
+
+    // Validate coordinates
+    let lat = Number(item.lat);
+    let lng = Number(item.lng);
+    const isLatValid = !isNaN(lat) && lat >= 8.0 && lat <= 24.0 && Math.abs(lat - cityCoords.lat) <= 0.35;
+    const isLngValid = !isNaN(lng) && lng >= 102.0 && lng <= 110.0 && Math.abs(lng - cityCoords.lng) <= 0.35;
+
+    if (!isLatValid || !isLngValid) {
+      const offsetLat = (Math.random() - 0.5) * 0.04;
+      const offsetLng = (Math.random() - 0.5) * 0.04;
+      lat = Number((cityCoords.lat + offsetLat).toFixed(6));
+      lng = Number((cityCoords.lng + offsetLng).toFixed(6));
+    }
+
+    // Cost
+    let estimatedCost = Number(item.estimated_cost);
+    if (isNaN(estimatedCost) || estimatedCost < 0) {
+      estimatedCost = category === 'cafe' ? 45000 : (category === 'dining' ? 80000 : (category === 'accommodation' ? 500000 : 50000));
+    } else if (estimatedCost > 0 && estimatedCost < 1000) {
+      estimatedCost = estimatedCost * 1000;
+    }
+    estimatedCost = Math.round(estimatedCost);
+
+    // Rating
+    let rating = Number(item.rating);
+    if (isNaN(rating) || rating < 3.5 || rating > 5.0) {
+      rating = Number((4.3 + Math.random() * 0.5).toFixed(1));
+    } else {
+      rating = Number(rating.toFixed(1));
+    }
+
+    // Suggested day
+    let suggestedDay = parseInt(item.suggested_day, 10);
+    if (isNaN(suggestedDay) || suggestedDay < 1 || suggestedDay > daysCount) {
+      suggestedDay = (normalizedPool.length % daysCount) + 1;
+    }
+
+    // ID
+    let placeId = String(item.id || '').trim();
+    if (!placeId.startsWith('place_')) {
+      placeId = `place_${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`;
+    }
+
+    // Address
+    let address = String(item.address || '').trim();
+    if (!address || address.length < 5) {
+      address = `${rawName}, ${city}`;
+    }
+
+    // Social review quote
+    let socialQuote = String(item.social_review_quote || '').trim();
+    if (!socialQuote) {
+      socialQuote = `${rawName} là điểm đến được nhiều du khách đánh giá cao tại ${city}.`;
+    }
+
+    normalizedPool.push({
+      id: placeId,
+      name: rawName,
+      category,
+      address,
+      lat,
+      lng,
+      estimated_cost: estimatedCost,
+      rating,
+      suggested_day: suggestedDay,
+      social_review_quote: socialQuote
+    });
+  }
+
+  return {
+    destination_city: city,
+    candidate_pool: normalizedPool
+  };
 }
