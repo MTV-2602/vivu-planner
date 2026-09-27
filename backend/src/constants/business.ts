@@ -88,8 +88,6 @@ export const DEFAULT_PLANS_CONFIG = {
  */
 export function isUserPremium(profile?: { is_premium?: boolean | null; premium_until?: string | Date | null } | null): boolean {
   if (!profile) return false;
-  // Nếu quản trị viên đã chủ động tắt gói (hạ gói về false) -> Dứt khoát không phải Premium
-  if (profile.is_premium === false) return false;
   // Nếu có hạn dùng premium_until -> Bắt buộc ngày hết hạn phải lớn hơn thời điểm hiện tại
   if (profile.premium_until) {
     return new Date(profile.premium_until) > new Date();

@@ -5,7 +5,7 @@ import { createRateLimiter } from '../../middleware/rateLimiter';
 import { getSupabaseUserClient, supabaseAdmin } from '../../config/supabase';
 import { getCityCoordinates, searchPlaces, PlaceCandidate, fetchCandidatePlacesForCity } from '../places/places.service';
 import { getWeatherForecast } from '../weather/weather.service';
-import { generateItinerary, adaptItinerary, generateAlternatives, chatWithItinerary, generateCandidatePlacesPool } from '../ai/gemini.service';
+import { generateItinerary, adaptItinerary, generateAlternatives, chatWithItinerary, generateRichPlacesPool } from '../ai/gemini.service';
 import { getRelevantPartners, convertPartnersToPlaceCandidates, logPartnerEvent } from '../partners/partners.service';
 import {
   TripStatus,
@@ -124,60 +124,6 @@ router.get('/chat', requireAuth, async (req: any, res: Response) => {
   }
 });
 
-// POST /api/trips/pregen-places - Pregenerate candidate places pool dynamically via AI
-router.post('/pregen-places', aiGenerationLimiter, async (req: any, res: Response) => {
-  const {
-    destination_city,
-    days_count,
-    budget_total,
-    budget_breakdown,
-    traveler_count,
-    traveler_type,
-    preferences,
-    ai_provider
-  } = req.body;
-
-  if (!destination_city || typeof destination_city !== 'string' || !destination_city.trim()) {
-    return res.status(400).json({ error: 'destination_city là bắt buộc và phải là chuỗi hợp lệ' });
-  }
-
-  const parsedDays = parseInt(days_count, 10);
-  if (isNaN(parsedDays) || parsedDays < 1) {
-    return res.status(400).json({ error: 'days_count phải là số nguyên tối thiểu là 1' });
-  }
-
-  const parsedBudget = parseFloat(budget_total);
-  if (isNaN(parsedBudget) || parsedBudget <= 0) {
-    return res.status(400).json({ error: 'budget_total phải là số dương hợp lệ' });
-  }
-
-  try {
-    const result = await generateCandidatePlacesPool({
-      destination_city: destination_city.trim(),
-      days_count: parsedDays,
-      budget_total: parsedBudget,
-      budget_breakdown: budget_breakdown && typeof budget_breakdown === 'object' ? budget_breakdown : {},
-      traveler_count: parseInt(traveler_count, 10) || 1,
-      traveler_type: traveler_type || 'solo',
-      preferences: Array.isArray(preferences) ? preferences : [],
-      ai_provider
-    });
-
-    return res.json({
-      destination_city: result.destination_city,
-      candidate_pool: result.candidate_pool
-    });
-  } catch (error: any) {
-    console.error('[PregenPlaces] Error generating candidate places pool:', error);
-    const statusCode = error.status || (error.message?.includes('503') ? 503 : (error.message?.includes('429') ? 429 : 500));
-    return res.status(statusCode).json({
-      error: error.message || 'Không thể sinh bể địa điểm bằng AI lúc này. Vui lòng thử lại sau.',
-      code: error.code || 'AI_SERVICE_ERROR',
-      details: error.message
-    });
-  }
-});
-
 // GET /api/trips/:id - Get a specific trip detail with days and items
 // ─── GET /trips/:id/public ── Public view (no auth required, for share links) ──
 router.get('/:id/public', async (req, res: Response) => {
@@ -185,7 +131,7 @@ router.get('/:id/public', async (req, res: Response) => {
   try {
     const { data: trip, error: tripError } = await supabaseAdmin
       .from('trips')
-      .select('id,title,destination_city,start_date,end_date,budget_total,traveler_count,traveler_type,status,is_public,preferences')
+      .select('id,title,destination_city,start_date,end_date,budget_total,traveler_count,traveler_type,status,is_public')
       .eq('id', tripId)
       .eq('is_public', true)
       .single();
@@ -217,11 +163,7 @@ router.get('/:id/public', async (req, res: Response) => {
       }));
     }
 
-    return res.json({
-      ...trip,
-      candidate_pool: trip.preferences?.candidate_pool || [],
-      days: daysWithItems
-    });
+    return res.json({ ...trip, days: daysWithItems });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -357,7 +299,6 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
 
     return res.json({
       ...trip,
-      candidate_pool: trip.preferences?.candidate_pool || [],
       is_ai_pro: Boolean(trip.preferences?.is_ai_pro || trip.preferences?.ai_tier === 'pro'),
       days: daysWithItems,
       revisions: revisions || [],
@@ -365,6 +306,49 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
     });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to retrieve trip details', details: error.message });
+  }
+});
+
+// POST /api/trips/pregen-places - AI sinh động danh sách địa điểm phong phú kèm tọa độ chuẩn theo ngân sách và sở thích
+router.post('/pregen-places', requireAuth, async (req: any, res: Response) => {
+  try {
+    const {
+      destination_city,
+      days_count,
+      budget_total,
+      budget_breakdown,
+      preferences,
+      traveler_type,
+      special_requirements,
+      ai_provider
+    } = req.body;
+
+    if (!destination_city) {
+      return res.status(400).json({ error: 'Thiếu thông tin thành phố điểm đến' });
+    }
+
+    const pool = await generateRichPlacesPool({
+      destination_city,
+      days_count: Number(days_count) || 2,
+      budget_total: Number(budget_total) || 5000000,
+      budget_breakdown,
+      preferences: Array.isArray(preferences) ? preferences : (preferences ? [preferences] : []),
+      traveler_type,
+      special_requirements,
+      ai_provider
+    });
+
+    return res.json({
+      success: true,
+      places: pool.places,
+      city_center: pool.city_center
+    });
+  } catch (error: any) {
+    console.error('[pregen-places error]:', error.message);
+    return res.status(500).json({
+      error: 'Không thể sinh danh sách địa điểm gợi ý',
+      details: error.message
+    });
   }
 });
 
@@ -488,22 +472,8 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
     // Xử lý chế độ tạo thủ công: creation_mode === 'manual'
     if (creation_mode === 'manual') {
       const isAiPro = req.body.ai_provider === 'custom_openai' || (!req.body.ai_provider && Boolean(isUserPremium(profile)));
-      const candidatePool = Array.isArray(req.body.candidate_pool) ? req.body.candidate_pool : [];
-      let basePrefs: Record<string, any> = {};
-      if (Array.isArray(preferences)) {
-        basePrefs = { tags: preferences };
-      } else if (preferences && typeof preferences === 'object') {
-        basePrefs = { ...preferences };
-      }
-      if (candidatePool.length > 0) {
-        basePrefs.candidate_pool = candidatePool;
-        if (Array.isArray(preferences)) {
-          basePrefs.tags = preferences;
-        }
-      }
-
       const enrichedPreferences = {
-        ...basePrefs,
+        ...(preferences || {}),
         is_ai_pro: isAiPro,
         ai_tier: isAiPro ? 'pro' : 'standard',
         creation_mode: 'manual'
@@ -623,21 +593,26 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
           }
         }
 
+        const targetDayNum = Number(cItem.day_number || cItem.target_day || place.suggested_day) || 1;
+        const matchedDay = manualDaysToInsert.find(d => d.day_number === targetDayNum) || firstDay;
+        const currentCountInDay = manualItemsToInsert.filter(it => it.day_id === matchedDay.id).length;
+        const dayTimeSlot = defaultTimeSlots[currentCountInDay % defaultTimeSlots.length];
+
         manualItemsToInsert.push({
-          day_id: firstDay.id,
+          day_id: matchedDay.id,
           partner_id: itemPartnerId,
           item_type: normalizedType,
           title: place.name || place.title || cItem.title || 'Địa điểm đã chọn',
           description: place.address || place.description || cItem.notes || '',
-          start_time: timeSlot.start,
-          end_time: timeSlot.end,
+          start_time: cItem.start_time || dayTimeSlot.start,
+          end_time: cItem.end_time || dayTimeSlot.end,
           location_name: place.name || place.title || cItem.title || 'Địa điểm',
           location_lat: Number(place.lat) || lat,
           location_lng: Number(place.lng) || lng,
           google_place_id: rawPlaceId ? String(rawPlaceId) : null,
           estimated_cost: estimatedCost,
           booking_url: place.booking_url || place.google_map_url || null,
-          order_index: index + 1,
+          order_index: cItem.order_index !== undefined ? cItem.order_index : (currentCountInDay + 1),
           status: 'planned'
         });
       });
@@ -836,22 +811,8 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
     );
 
     const isAiPro = req.body.ai_provider === 'custom_openai' || (!req.body.ai_provider && Boolean(isUserPremium(profile)));
-    const candidatePool = Array.isArray(req.body.candidate_pool) ? req.body.candidate_pool : [];
-    let basePrefs: Record<string, any> = {};
-    if (Array.isArray(preferences)) {
-      basePrefs = { tags: preferences };
-    } else if (preferences && typeof preferences === 'object') {
-      basePrefs = { ...preferences };
-    }
-    if (candidatePool.length > 0) {
-      basePrefs.candidate_pool = candidatePool;
-      if (Array.isArray(preferences)) {
-        basePrefs.tags = preferences;
-      }
-    }
-
     const enrichedPreferences = {
-      ...basePrefs,
+      ...(preferences || {}),
       is_ai_pro: isAiPro,
       ai_tier: isAiPro ? 'pro' : 'standard',
     };
@@ -1989,28 +1950,7 @@ router.post('/items/:itemId/ai-replace', requireAuth, async (req: any, res: Resp
     const partnerCandidates = convertPartnersToPlaceCandidates(relevantPartners);
     const categoryPartners = partnerCandidates.filter(p => p.category === category);
 
-    // Nạp các địa điểm từ candidate_pool trong preferences nếu có
-    let poolCandidates: PlaceCandidate[] = [];
-    if (Array.isArray(trip.preferences?.candidate_pool) && trip.preferences.candidate_pool.length > 0) {
-      poolCandidates = trip.preferences.candidate_pool
-        .filter((p: any) => {
-          if (category === 'dining') return p.category === 'dining' || p.category === 'cafe';
-          if (category === 'accommodation') return p.category === 'accommodation';
-          return p.category === 'attraction';
-        })
-        .map((p: any) => ({
-          google_place_id: p.id || `pool_${p.name}`,
-          name: p.name,
-          category: p.category === 'cafe' ? 'dining' : p.category,
-          lat: Number(p.lat) || lat,
-          lng: Number(p.lng) || lng,
-          rating: Number(p.rating) || 4.7,
-          price_level: p.estimated_cost > 200000 ? 2 : 1,
-          address: p.address || '',
-        }));
-    }
-
-    const candidatePlaces = deduplicatePlaces([...poolCandidates, ...categoryPartners, ...customDiningResults, ...searchPlacesResults]);
+    const candidatePlaces = deduplicatePlaces([...categoryPartners, ...customDiningResults, ...searchPlacesResults]);
 
     // D. Gọi AI để tạo 3 phương án thay thế
     const alternatives = await generateAlternatives(trip, item, user_requirement, candidatePlaces);

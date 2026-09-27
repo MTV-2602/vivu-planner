@@ -246,6 +246,7 @@ export async function callOpenAiCompatibleGateway(options: {
   jsonMode?: boolean;
   temperature?: number;
   maxTokens?: number;
+  timeout?: number;
 }): Promise<string> {
   const config = await getEffectiveAiConfig();
   if (!config.baseUrl || !config.apiKey) {
@@ -256,13 +257,13 @@ export async function callOpenAiCompatibleGateway(options: {
   const url = `${cleanBaseUrl}/chat/completions`;
 
   const targetModel = config.model?.trim() || 'ag/gemini-3.8-flash';
-  const MAX_RETRIES = 2;
+  const MAX_RETRIES = 1;
   let lastError: any = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       if (attempt > 0) {
-        const delayMs = attempt * 2500;
+        const delayMs = attempt * 1500;
         console.log(`[AiGateway] Thử lại lần ${attempt}/${MAX_RETRIES} sau ${delayMs}ms cho model: ${targetModel}...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
@@ -287,7 +288,7 @@ export async function callOpenAiCompatibleGateway(options: {
           'Authorization': `Bearer ${config.apiKey.trim()}`,
           'Content-Type': 'application/json'
         },
-        timeout: 60000 // 60s
+        timeout: options.timeout || 25000
       });
 
       const content = extractContentFromGatewayResponse(response.data);
@@ -301,8 +302,8 @@ export async function callOpenAiCompatibleGateway(options: {
       const errDetail = err.response?.data?.error?.message || err.response?.data || err.message;
       console.warn(`[AiGateway] Model "${targetModel}" gặp lỗi (Lần ${attempt + 1}/${MAX_RETRIES + 1}): Status ${status || 'timeout'} - ${errDetail}`);
 
-      // Nếu lỗi 401/403/400 thì không retry vô ích
-      if (status === 401 || status === 403 || status === 400) {
+      // Nếu lỗi 401/403/400 hoặc timeout thì không retry mất thời gian
+      if (status === 401 || status === 403 || status === 400 || err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
         break;
       }
     }

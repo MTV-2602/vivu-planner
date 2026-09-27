@@ -10,6 +10,7 @@ interface CuratedMapProps {
   centerLng?: number;
   cityName?: string;
   addedPlaceIds?: string[];
+  selectedRoutePlaces?: PlaceItem[];
   existingTripPlaceNames?: string[];
   onAddToCart: (place: PlaceItem, option: 'auto' | 'manual', customCost?: number) => void;
   mapHeight?: number;
@@ -18,11 +19,13 @@ interface CuratedMapProps {
 
 function buildCuratedLeafletHTML(
   places: PlaceItem[],
+  routePlaces: PlaceItem[],
   centerLat: number,
   centerLng: number,
   cityName: string
 ): string {
   const jsonPlaces = JSON.stringify(places);
+  const jsonRoutePlaces = JSON.stringify(routePlaces);
 
   return `
 <!DOCTYPE html>
@@ -36,13 +39,12 @@ function buildCuratedLeafletHTML(
     html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
     .custom-pin {
       display: flex; align-items: center; justify-content: center;
-      width: 32px; height: 32px; border-radius: 50%;
-      color: #fff; font-size: 14px; font-weight: bold;
-      border: 2px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+      border-radius: 50%;
+      color: #fff; font-family: sans-serif;
       cursor: pointer; transition: transform 0.2s ease;
     }
     .custom-pin:hover { transform: scale(1.2); }
-    .leaflet-popup-content-wrapper { border-radius: 12px; font-family: sans-serif; }
+    .leaflet-popup-content-wrapper { border-radius: 14px; font-family: sans-serif; box-shadow: 0 6px 20px rgba(0,0,0,0.18); }
   </style>
 </head>
 <body>
@@ -64,6 +66,11 @@ function buildCuratedLeafletHTML(
     });
 
     const places = ${jsonPlaces};
+    const routePlaces = ${jsonRoutePlaces};
+    const routeMap = {};
+    routePlaces.forEach((rp, idx) => {
+      routeMap[rp.id] = idx + 1;
+    });
 
     const getColor = (cat) => {
       switch (cat) {
@@ -87,22 +94,69 @@ function buildCuratedLeafletHTML(
 
     const bounds = L.latLngBounds([]);
 
+    // 1. Vẽ Polyline nối các điểm đã chọn trong lịch trình theo thứ tự
+    if (routePlaces && routePlaces.length >= 2) {
+      const latlngs = routePlaces
+        .filter(p => p.lat && p.lng)
+        .map(p => [Number(p.lat), Number(p.lng)]);
+
+      if (latlngs.length >= 2) {
+        L.polyline(latlngs, {
+          color: '#1F6F54',
+          weight: 4.5,
+          opacity: 0.9,
+          dashArray: '8, 8',
+          lineJoin: 'round'
+        }).addTo(map);
+
+        let totalMeters = 0;
+        for (let i = 0; i < latlngs.length - 1; i++) {
+          totalMeters += L.latLng(latlngs[i]).distanceTo(L.latLng(latlngs[i + 1]));
+        }
+        const totalKm = (totalMeters / 1000).toFixed(1);
+        const estMinutes = Math.round((totalMeters / 1000 / 22) * 60) + (latlngs.length - 1) * 5;
+
+        const infoControl = L.control({ position: 'bottomleft' });
+        infoControl.onAdd = function() {
+          const div = L.DomUtil.create('div', 'route-badge');
+          div.style.cssText = 'background: rgba(19, 74, 55, 0.95); color: #fff; padding: 8px 14px; border-radius: 12px; font-family: sans-serif; font-size: 12px; font-weight: 800; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.25);';
+          div.innerHTML = '🚗 Tuyến đường: ' + latlngs.length + ' điểm · ~' + totalKm + ' km · ~' + estMinutes + ' phút di chuyển';
+          return div;
+        };
+        infoControl.addTo(map);
+      }
+    }
+
+    // 2. Cắm ghim cho tất cả các địa điểm (có đánh số #1, #2, #3 nếu nằm trong lộ trình)
     places.forEach((p) => {
       if (!p.lat || !p.lng) return;
 
       bounds.extend([p.lat, p.lng]);
 
-      const color = getColor(p.category);
-      const emoji = getEmoji(p.category);
+      const inRouteOrder = routeMap[p.id];
+      const color = inRouteOrder ? '#1F6F54' : getColor(p.category);
+      const content = inRouteOrder ? ('#' + inRouteOrder) : getEmoji(p.category);
+      const size = inRouteOrder ? 36 : 30;
 
       const icon = L.divIcon({
         className: '',
-        html: \`<div class="custom-pin" style="background-color: \${color}">\${emoji}</div>\`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 32]
+        html: \`<div class="custom-pin" style="background-color: \${color}; width: \${size}px; height: \${size}px; border-radius: 50%; font-size: \${inRouteOrder ? '13px' : '14px'}; font-weight: 800; border: 2.5px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white;">\${content}</div>\`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size]
       });
 
       const marker = L.marker([p.lat, p.lng], { icon }).addTo(map);
+      const costStr = (p.estimated_cost || 0).toLocaleString('vi-VN') + ' đ';
+
+      marker.bindPopup(\`
+        <div style="font-family: sans-serif; min-width: 180px; padding: 4px;">
+          <div style="font-weight: 800; font-size: 14px; color: #1B2420; margin-bottom: 4px;">\${p.name}</div>
+          <div style="font-size: 11px; color: #6E7B70; margin-bottom: 6px;">\${p.address || ''}</div>
+          <div style="font-size: 12px; font-weight: 700; color: #E2703A;">\${costStr}</div>
+          \${inRouteOrder ? \`<div style="margin-top: 6px; font-size: 11px; font-weight: bold; color: #1F6F54;">✓ Điểm thứ \${inRouteOrder} trong lộ trình</div>\` : ''}
+        </div>
+      \`);
+
       marker.on('click', () => {
         if (window.parent) {
           window.parent.postMessage(JSON.stringify({ type: 'PLACE_CLICK', placeId: p.id }), '*');
@@ -131,6 +185,7 @@ export default function CuratedMap({
   centerLng = 108.4583,
   cityName = 'Đà Lạt',
   addedPlaceIds = [],
+  selectedRoutePlaces = [],
   existingTripPlaceNames = [],
   onAddToCart,
   mapHeight,
@@ -170,8 +225,8 @@ export default function CuratedMap({
   }, [places, selectedCategory, maxPrice]);
 
   const htmlContent = useMemo(() => {
-    return buildCuratedLeafletHTML(filteredPlaces, centerLat, centerLng, cityName);
-  }, [filteredPlaces, centerLat, centerLng, cityName]);
+    return buildCuratedLeafletHTML(filteredPlaces, selectedRoutePlaces, centerLat, centerLng, cityName);
+  }, [filteredPlaces, selectedRoutePlaces, centerLat, centerLng, cityName]);
 
   // ─── CHẾ ĐỘ WORKSPACE CHO NGƯỜI DÙNG PRO ─────────────────────────────────
   if (layout === 'workspace') {
@@ -200,112 +255,6 @@ export default function CuratedMap({
               </Text>
             </View>
           )}
-        </View>
-
-        {/* Danh sách địa điểm trình bày dạng lưới 2 cột rộng rãi */}
-        <View style={{ gap: 12, marginTop: 4 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 16, color: '#1B2420' }}>
-              📍 Gợi ý địa điểm nổi bật tại {cityName} ({filteredPlaces.length})
-            </Text>
-            <Text style={{ fontSize: 12, color: '#6E7B70' }}>
-              Bấm ghim trên map hoặc bấm nút để thêm vào giỏ
-            </Text>
-          </View>
-
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            {filteredPlaces.map((place) => {
-              const costValue = place.estimated_cost || (place.price_level ? place.price_level * 50000 : 50000);
-              const isAddedInCart = addedPlaceIds.includes(place.id);
-              const placeNameNorm = place.name.toLowerCase().trim();
-              const isAlreadyInTrip = (existingTripPlaceNames || []).some(
-                n => n && (n.toLowerCase().trim().includes(placeNameNorm) || placeNameNorm.includes(n.toLowerCase().trim()))
-              );
-
-              const isAdded = isAddedInCart || isAlreadyInTrip;
-              const addedLabel = isAlreadyInTrip ? '✓ Đã có trong lịch trình' : '✓ Đã thêm vào giỏ';
-
-              return (
-                <View
-                  key={place.id}
-                  style={{
-                    width: Platform.OS === 'web' ? ('calc(50% - 6px)' as any) : '100%',
-                    minWidth: 260,
-                    backgroundColor: '#FFFFFF',
-                    borderRadius: 16,
-                    padding: 16,
-                    borderWidth: isAdded ? 1.5 : 1,
-                    borderColor: isAlreadyInTrip ? '#134A37' : (isAddedInCart ? '#1F6F54' : 'rgba(27,36,32,0.1)'),
-                    gap: 10,
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <View style={{ gap: 6 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#1F6F54', backgroundColor: 'rgba(31,111,84,0.1)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                        {place.category === 'dining' ? '🔴 Ăn uống' : place.category === 'cafe' ? '🟡 Cafe' : place.category === 'hotel' ? '🔵 Khách sạn' : '🟣 Vui chơi'}
-                      </Text>
-                      <Text style={{ fontSize: 14, fontWeight: '800', color: '#E2703A' }}>
-                        {costValue.toLocaleString('vi-VN')} đ
-                      </Text>
-                    </View>
-
-                    <Text numberOfLines={1} style={{ fontFamily: 'Lora_700Bold', fontSize: 15, color: '#1B2420' }}>
-                      {place.name}
-                    </Text>
-
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <MapPin size={13} color="#6E7B70" />
-                      <Text numberOfLines={1} style={{ fontSize: 12, color: '#6E7B70', flex: 1 }}>
-                        {place.address}
-                      </Text>
-                    </View>
-
-                    {place.social_review_quote && (
-                      <Text numberOfLines={2} style={{ fontSize: 12, fontStyle: 'italic', color: '#3F4F45', backgroundColor: '#FBF5EA', padding: 8, borderRadius: 10, marginTop: 2, lineHeight: 16 }}>
-                        💬 "{place.social_review_quote}"
-                      </Text>
-                    )}
-                  </View>
-
-                  <Pressable
-                    onPress={() => {
-                      if (!isAlreadyInTrip) {
-                        setActivePlace(place);
-                      }
-                    }}
-                    style={({ pressed }) => [{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      paddingVertical: 10,
-                      borderRadius: 12,
-                      backgroundColor: isAlreadyInTrip ? '#134A37' : (isAddedInCart ? '#1F6F54' : '#E2703A'),
-                      opacity: (pressed && !isAlreadyInTrip) ? 0.85 : 1,
-                      marginTop: 4,
-                    }]}
-                  >
-                    {isAdded ? (
-                      <>
-                        <Check size={16} color="#FFFFFF" />
-                        <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>
-                          {addedLabel}
-                        </Text>
-                      </>
-                    ) : (
-                      <>
-                        <Plus size={16} color="#FFFFFF" />
-                        <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>
-                          Thêm vào giỏ chuyến đi
-                        </Text>
-                      </>
-                    )}
-                  </Pressable>
-                </View>
-              );
-            })}
-          </View>
         </View>
 
         {activePlace && (

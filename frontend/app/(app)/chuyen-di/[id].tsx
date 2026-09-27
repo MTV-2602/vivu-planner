@@ -182,6 +182,10 @@ export default function TripDetail() {
   const [aiReplaceOpen, setAiReplaceOpen] = useState(false);
   const [aiReplaceItem, setAiReplaceItem] = useState<any>(null);
   const [replaceTab, setReplaceTab] = useState<'ai' | 'manual'>('ai');
+  const [replaceCategory, setReplaceCategory] = useState<string>('all');
+  const [replaceSearchQuery, setReplaceSearchQuery] = useState<string>('');
+  const [poolPlaces, setPoolPlaces] = useState<any[]>([]);
+  const [loadingPool, setLoadingPool] = useState<boolean>(false);
   const [aiAlternatives, setAiAlternatives] = useState<any[]>([]);
   const [aiRequirement, setAiRequirement] = useState('');
   const [fetchingAlts, setFetchingAlts] = useState(false);
@@ -239,6 +243,26 @@ export default function TripDetail() {
     }
     return () => setTripId(null);
   }, [id, setTripId]);
+
+  useEffect(() => {
+    if (aiReplaceOpen && trip?.destination_city && poolPlaces.length === 0) {
+      setLoadingPool(true);
+      api.post('/trips/pregen-places', {
+        destination_city: trip.destination_city,
+        days_count: trip.days?.length || 2,
+        budget_total: trip.budget_total || 5000000,
+        preferences: trip.preferences ? Object.keys(trip.preferences).filter(k => (trip.preferences as any)[k] === true) : ['Ẩm thực', 'Khám phá'],
+      }).then(r => {
+        if (r.data?.places && Array.isArray(r.data.places)) {
+          setPoolPlaces(r.data.places);
+        }
+      }).catch(err => {
+        console.warn('Could not fetch rich pool for replace:', err);
+      }).finally(() => {
+        setLoadingPool(false);
+      });
+    }
+  }, [aiReplaceOpen, trip?.destination_city, poolPlaces.length]);
 
   useEffect(() => {
     registerPreviewTrigger((adaptedItinerary, diff, previousSnapshot) => {
@@ -1524,50 +1548,109 @@ export default function TripDetail() {
 
               {replaceTab === 'manual' ? (
                 <View className="gap-3">
-                  <Text className="text-xs font-bold text-brand-textSoft">Chọn 1 địa điểm đặc sắc để thay thế ngay vào ô này:</Text>
-                  <View className="gap-2" style={{ maxHeight: 320, overflow: 'auto' as any }}>
-                    {getCuratedPlacesForCity(trip.destination_city).slice(0, 10).map((place) => (
-                      <Pressable
-                        key={place.id}
-                        onPress={() => {
-                          const cost = place.estimated_cost ?? (place.price_level ? place.price_level * 50000 : 0);
-                          let mappedType: 'accommodation' | 'transport' | 'dining' | 'attraction' | 'rental' | 'experience' = 'attraction';
-                          if (place.category === 'dining' || place.category === 'cafe') mappedType = 'dining';
-                          else if (place.category === 'accommodation') mappedType = 'accommodation';
-                          else if (place.category === 'rental') mappedType = 'rental';
+                  <Text className="text-xs font-bold text-brand-textSoft">
+                    Chọn 1 địa điểm thực tế tại {trip.destination_city} để thay thế ngay vào ô này:
+                  </Text>
 
-                          aiReplaceMutation.mutate({
-                            itemId: aiReplaceItem.id,
-                            payload: {
-                              title: place.name,
-                              description: place.address || place.social_review_quote || '',
-                              start_time: aiReplaceItem.start_time,
-                              end_time: aiReplaceItem.end_time,
-                              estimated_cost: cost,
-                              item_type: mappedType,
-                              status: 'planned'
-                            }
-                          });
-                        }}
-                        className="p-3 rounded-xl border border-brand-line/40 bg-white hover:bg-brand-bgAlt flex-row justify-between items-center"
-                        style={{ cursor: 'pointer' as any }}
-                      >
-                        <View className="flex-1 mr-3">
-                          <Text className="text-sm font-bold text-brand-text">{place.name}</Text>
-                          <Text className="text-xs text-brand-textSoft" numberOfLines={1}>{place.address}</Text>
-                          <View className="flex-row items-center gap-2 mt-1">
-                            <Text className="text-[10px] font-bold uppercase text-brand-primary bg-brand-primary/10 px-1.5 py-0.5 rounded">{place.category}</Text>
-                            {place.estimated_cost ? (
-                              <Text className="text-[10px] font-semibold text-brand-textMuted">💰 {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(place.estimated_cost)}</Text>
-                            ) : null}
-                          </View>
-                        </View>
-                        <View className="px-3 py-1.5 rounded-lg bg-brand-primary">
-                          <Text className="text-white text-xs font-bold">Chọn thay</Text>
-                        </View>
-                      </Pressable>
-                    ))}
+                  {/* Filter chips & Search */}
+                  <View className="gap-2">
+                    <TextInput
+                      value={replaceSearchQuery}
+                      onChangeText={setReplaceSearchQuery}
+                      placeholder="Tìm theo tên địa điểm hoặc tên đường..."
+                      className="px-3.5 py-2 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                      placeholderTextColor={BRAND_COLORS.textMuted}
+                    />
+
+                    <View className="flex-row gap-1.5 flex-wrap">
+                      {[
+                        { id: 'all', label: 'Tất cả' },
+                        { id: 'dining', label: '🔴 Ăn uống' },
+                        { id: 'cafe', label: '🟡 Cafe' },
+                        { id: 'hotel', label: '🔵 Khách sạn' },
+                        { id: 'attraction', label: '🟣 Vui chơi' },
+                      ].map(cat => (
+                        <Pressable
+                          key={cat.id}
+                          onPress={() => setReplaceCategory(cat.id)}
+                          className={`px-2.5 py-1 rounded-lg border ${replaceCategory === cat.id ? 'bg-brand-primary border-brand-primary' : 'bg-brand-bgAlt border-brand-line/40'}`}
+                        >
+                          <Text className={`text-[10px] font-bold ${replaceCategory === cat.id ? 'text-white' : 'text-brand-textSoft'}`}>
+                            {cat.label}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
                   </View>
+
+                  {loadingPool ? (
+                    <View className="py-8 items-center gap-2">
+                      <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
+                      <Text className="text-xs text-brand-textSoft font-semibold">Đang tải kho địa điểm thực tế...</Text>
+                    </View>
+                  ) : (
+                    <View className="gap-2" style={{ maxHeight: 340, overflow: 'auto' as any }}>
+                      {(() => {
+                        const rawPool = poolPlaces.length > 0 ? poolPlaces : getCuratedPlacesForCity(trip.destination_city);
+                        const filtered = rawPool.filter(p => {
+                          const matchCat = replaceCategory === 'all' || p.category === replaceCategory;
+                          const q = replaceSearchQuery.toLowerCase().trim();
+                          const matchQuery = !q || p.name.toLowerCase().includes(q) || (p.address && p.address.toLowerCase().includes(q));
+                          return matchCat && matchQuery;
+                        });
+
+                        if (filtered.length === 0) {
+                          return (
+                            <View className="py-6 items-center">
+                              <Text className="text-xs text-brand-textMuted italic">Không tìm thấy địa điểm phù hợp bộ lọc.</Text>
+                            </View>
+                          );
+                        }
+
+                        return filtered.map((place: any) => (
+                          <Pressable
+                            key={place.id}
+                            onPress={() => {
+                              const cost = place.estimated_cost ?? (place.price_level ? place.price_level * 50000 : 0);
+                              let mappedType: 'accommodation' | 'transport' | 'dining' | 'attraction' | 'rental' | 'experience' = 'attraction';
+                              if (place.category === 'dining' || place.category === 'cafe') mappedType = 'dining';
+                              else if (place.category === 'hotel' || place.category === 'accommodation') mappedType = 'accommodation';
+                              else if (place.category === 'rental') mappedType = 'rental';
+
+                              aiReplaceMutation.mutate({
+                                itemId: aiReplaceItem.id,
+                                payload: {
+                                  title: place.name,
+                                  description: place.address || place.social_review_quote || place.description || '',
+                                  start_time: aiReplaceItem.start_time,
+                                  end_time: aiReplaceItem.end_time,
+                                  estimated_cost: cost,
+                                  item_type: mappedType,
+                                  status: 'planned'
+                                }
+                              });
+                            }}
+                            className="p-3 rounded-xl border border-brand-line/40 bg-white hover:bg-brand-bgAlt flex-row justify-between items-center"
+                            style={{ cursor: 'pointer' as any }}
+                          >
+                            <View className="flex-1 mr-3 gap-0.5">
+                              <Text className="text-sm font-bold text-brand-text">{place.name}</Text>
+                              <Text className="text-xs text-brand-textSoft" numberOfLines={1}>{place.address}</Text>
+                              <View className="flex-row items-center gap-2 mt-1">
+                                <Text className="text-[10px] font-bold uppercase text-brand-primary bg-brand-primary/10 px-1.5 py-0.5 rounded">{place.category}</Text>
+                                {place.estimated_cost ? (
+                                  <Text className="text-[10px] font-semibold text-brand-textMuted">💰 {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(place.estimated_cost)}</Text>
+                                ) : null}
+                              </View>
+                            </View>
+                            <View className="px-3 py-1.5 rounded-lg bg-brand-primary">
+                              <Text className="text-white text-xs font-bold">Chọn thay</Text>
+                            </View>
+                          </Pressable>
+                        ));
+                      })()}
+                    </View>
+                  )}
                 </View>
               ) : (
                 <>

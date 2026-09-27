@@ -18,7 +18,8 @@ export interface PlaceCandidate {
 const VIETNAM_PROVINCES: Record<string, { lat: number; lng: number }> = {
   'hanoi': { lat: 21.0285, lng: 105.8542 },
   'da nang': { lat: 16.0544, lng: 108.2022 },
-  'ho chi minh': { lat: 10.8231, lng: 106.6297 },
+  'ho chi minh': { lat: 10.7769, lng: 106.7009 },
+  'sai gon': { lat: 10.7769, lng: 106.7009 },
   'hoi an': { lat: 15.8801, lng: 108.3380 },
   'hue': { lat: 16.4637, lng: 107.5908 },
   'nha trang': { lat: 12.2388, lng: 109.1967 },
@@ -26,7 +27,13 @@ const VIETNAM_PROVINCES: Record<string, { lat: number; lng: number }> = {
   'phu quoc': { lat: 10.2899, lng: 103.9840 },
   'sapa': { lat: 22.3364, lng: 103.8438 },
   'ninh binh': { lat: 20.2506, lng: 105.9745 },
-  'vung tau': { lat: 10.3460, lng: 107.0843 }
+  'vung tau': { lat: 10.3460, lng: 107.0843 },
+  'quy nhon': { lat: 13.7820, lng: 109.2190 },
+  'phan thiet': { lat: 10.9288, lng: 108.1021 },
+  'mui ne': { lat: 10.9333, lng: 108.2833 },
+  'ha long': { lat: 20.9505, lng: 107.0734 },
+  'can tho': { lat: 10.0452, lng: 105.7469 },
+  'hai phong': { lat: 20.8449, lng: 106.6881 }
 };
 
 export function getCityCoordinates(city: string): { lat: number; lng: number } {
