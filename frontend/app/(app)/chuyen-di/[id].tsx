@@ -21,12 +21,7 @@ import SystemClock from '../../../components/SystemClock';
 import BackToTop from '../../../components/BackToTop';
 import { BRAND_COLORS, ItineraryItemType, APP_ROUTES } from '../../../constants';
 import InteractiveMap, { MapItem } from '../../../components/InteractiveMap';
-import CuratedMap from '../../../components/map/CuratedMap';
-import { PlaceItem } from '../../../components/map/PlacePopup';
-import TravelCartDrawer, { CartItem } from '../../../components/cart/TravelCartDrawer';
-import LiveBudgetBar from '../../../components/cart/LiveBudgetBar';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
-import { ShoppingBag } from 'lucide-react-native';
 import ShareModal from '../../../components/ShareModal';
 import BookingModal, { BookableItem } from '../../../components/BookingModal';
 import PremiumModal from '../../../components/PremiumModal';
@@ -193,25 +188,6 @@ export default function TripDetail() {
 
   // App Toast state
   const [appToast, setAppToast] = useState<AppToastMessage | null>(null);
-
-  // Cart state
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [showCartDrawer, setShowCartDrawer] = useState(false);
-
-  const handleAddToCart = (place: PlaceItem, option: 'auto' | 'manual', customCost?: number) => {
-    const cost = customCost || place.estimated_cost || (place.price_level ? place.price_level * 50000 : 50000);
-    const newItem: CartItem = {
-      id: place.id,
-      place: place,
-      pricing_option: option,
-      custom_cost: cost,
-    };
-    setCartItems(prev => [...prev.filter(i => i.place.id !== place.id), newItem]);
-    setAppToast({
-      text: `🛒 Đã thêm "${place.name}" vào giỏ chuyến đi!`,
-      type: 'cart',
-    });
-  };
 
   // New features state
   const [showMapView, setShowMapView] = useState(true);
@@ -854,38 +830,6 @@ export default function TripDetail() {
                   </Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => setShowCartDrawer(true)}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    paddingHorizontal: 16,
-                    paddingVertical: 12,
-                    borderRadius: 12,
-                    backgroundColor: '#E2703A',
-                    borderWidth: 1,
-                    borderColor: '#C75A29',
-                  }}
-                >
-                  <ShoppingBag size={16} color="#FFFFFF" />
-                  <Text style={{ fontWeight: '800', color: '#FFFFFF', fontSize: 13 }}>
-                    Giỏ chuyến đi {cartItems.length > 0 ? `(${cartItems.length})` : ''}
-                  </Text>
-                  {cartItems.length > 0 && (
-                    <View style={{
-                      backgroundColor: '#FFFFFF',
-                      borderRadius: 10,
-                      paddingHorizontal: 6,
-                      paddingVertical: 1,
-                      marginLeft: 2,
-                    }}>
-                      <Text style={{ fontSize: 10, fontWeight: '900', color: '#E2703A' }}>
-                        {cartItems.length}
-                      </Text>
-                    </View>
-                  )}
-                </Pressable>
-                <Pressable
                   onPress={() => setShowShareModal(true)}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, backgroundColor: '#f0ebe0', borderWidth: 1, borderColor: '#e0dbd0' }}
                 >
@@ -1007,7 +951,7 @@ export default function TripDetail() {
               </View>
             </View>
 
-            {/* Interactive Map & Curated Places */}
+            {/* Interactive Route Map */}
             <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: '#f0ebe0' }}>
               <Pressable
                 onPress={() => {
@@ -1019,21 +963,28 @@ export default function TripDetail() {
                   <Text style={{ fontSize: 20 }}>🗺️</Text>
                   <View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={{ fontWeight: '800', color: '#1B3A2D', fontSize: 15 }}>Bản đồ tương tác & Gợi ý địa điểm du lịch</Text>
+                      <Text style={{ fontWeight: '800', color: '#1B3A2D', fontSize: 15 }}>Bản đồ lộ trình chuyến đi</Text>
                     </View>
-                    <Text style={{ color: '#888', fontSize: 12 }}>Bấm vào pin địa điểm hoặc chọn trong danh sách để thêm vào giỏ chuyến đi</Text>
+                    <Text style={{ color: '#888', fontSize: 12 }}>Các điểm dừng chân và hoạt động trong chuyến đi tại {trip.destination_city}</Text>
                   </View>
                 </View>
                 <Text style={{ fontSize: 18, color: '#888' }}>{showMapView ? '▲' : '▼'}</Text>
               </Pressable>
               {showMapView && (
                 <View style={{ marginTop: 16 }}>
-                  <CuratedMap
-                    places={getCuratedPlacesForCity(trip.destination_city)}
+                  <InteractiveMap
+                    items={trip.days.flatMap(day => (day.items || []).map(item => ({
+                      id: item.id,
+                      title: item.title,
+                      item_type: item.item_type,
+                      start_time: item.start_time,
+                      estimated_cost: item.estimated_cost,
+                      location_lat: (item as any).location_lat,
+                      location_lng: (item as any).location_lng,
+                      day_number: day.day_number,
+                      google_place_id: item.google_place_id,
+                    })) as MapItem[])}
                     cityName={trip.destination_city}
-                    addedPlaceIds={cartItems.map(i => i.place.id)}
-                    existingTripPlaceNames={trip.days.flatMap(d => (d.items || []).map(i => i.title))}
-                    onAddToCart={handleAddToCart}
                   />
                 </View>
               )}
@@ -1830,56 +1781,6 @@ export default function TripDetail() {
           })}
         </View>
       )}
-
-      {/* Floating / Sticky Bottom Cart Button at end of page */}
-      {cartItems.length > 0 && (
-        <Pressable
-          onPress={() => setShowCartDrawer(true)}
-          style={({ pressed }) => [{
-            position: 'fixed' as any,
-            bottom: 24,
-            left: 24,
-            backgroundColor: '#E2703A',
-            paddingHorizontal: 20,
-            paddingVertical: 14,
-            borderRadius: 100,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.35,
-            shadowRadius: 12,
-            zIndex: 9999,
-            opacity: pressed ? 0.9 : 1,
-            elevation: 8,
-          }]}
-        >
-          <ShoppingBag size={20} color="#FFFFFF" />
-          <Text style={{ fontFamily: 'BeVietnamPro_700Bold', color: '#FFFFFF', fontSize: 14 }}>
-            Giỏ chuyến đi ({cartItems.length}) — Bấm để lưu
-          </Text>
-        </Pressable>
-      )}
-
-      {/* Travel Cart Drawer Modal */}
-      <TravelCartDrawer
-        visible={showCartDrawer}
-        onClose={() => setShowCartDrawer(false)}
-        cartItems={cartItems}
-        totalBudget={trip?.budget_total || 5000000}
-        tripId={trip?.id}
-        onRemoveItem={(placeId) => setCartItems(prev => prev.filter(i => i.place.id !== placeId))}
-        onUpdateItemCost={(placeId, cost) => setCartItems(prev => prev.map(i => i.place.id === placeId ? { ...i, custom_cost: cost } : i))}
-        onSavedSuccess={() => {
-          setCartItems([]);
-          refetch();
-          setAppToast({
-            text: '🎉 Đã lưu tất cả địa điểm trong giỏ vào lịch trình chuyến đi!',
-            type: 'success',
-          });
-        }}
-      />
 
       {/* Custom In-App Toast Banner */}
       <AppToast toast={appToast} onClose={() => setAppToast(null)} />
