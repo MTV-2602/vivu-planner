@@ -1,7 +1,23 @@
 import { Router, Request, Response } from 'express';
 import { searchPlaces } from './places.service';
+import { geocodeOnline } from './geocoding.service';
 
 const router = Router();
+
+// GET /api/places/geocode - Tra cứu tọa độ địa lý trực tuyến chuẩn xác theo tên và thành phố
+router.get('/geocode', async (req: Request, res: Response) => {
+  const { name, address, city } = req.query;
+  if (!name && !address) {
+    return res.status(400).json({ error: 'name hoặc address là bắt buộc' });
+  }
+
+  try {
+    const result = await geocodeOnline(String(name || ''), String(address || ''), String(city || ''));
+    return res.json({ success: true, ...result });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Geocode failed', details: err.message });
+  }
+});
 
 // GET /api/places/search
 router.get('/search', async (req: Request, res: Response) => {

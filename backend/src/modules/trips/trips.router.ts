@@ -4,7 +4,7 @@ import { requireAuth } from '../../middleware/requireAuth';
 import { createRateLimiter } from '../../middleware/rateLimiter';
 import { getSupabaseUserClient, supabaseAdmin } from '../../config/supabase';
 import { getCityCoordinates, searchPlaces, PlaceCandidate, fetchCandidatePlacesForCity } from '../places/places.service';
-import { matchVerifiedLandmark } from '../places/verifiedLandmarks';
+import { geocodeOnline } from '../places/geocoding.service';
 import { getWeatherForecast } from '../weather/weather.service';
 import { generateItinerary, adaptItinerary, generateAlternatives, chatWithItinerary, generateRichPlacesPool } from '../ai/gemini.service';
 import { getRelevantPartners, convertPartnersToPlaceCandidates, logPartnerEvent } from '../partners/partners.service';
@@ -606,20 +606,19 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
         const dayTimeSlot = computeSmartTimeSlot(normalizedType, currentCountInDay);
 
         const placeTitle = place.name || place.title || cItem.title || 'Địa điểm đã chọn';
-        const verified = matchVerifiedLandmark(placeTitle, destination_city);
-        const finalLat = verified ? verified.lat : (Number(place.lat) || lat);
-        const finalLng = verified ? verified.lng : (Number(place.lng) || lng);
-        const finalAddress = verified?.address || place.address || place.description || cItem.notes || '';
+        const finalLat = Number(place.lat) || lat;
+        const finalLng = Number(place.lng) || lng;
+        const finalAddress = place.address || place.description || cItem.notes || '';
 
         manualItemsToInsert.push({
           day_id: matchedDay.id,
           partner_id: itemPartnerId,
           item_type: normalizedType,
-          title: verified ? verified.name : placeTitle,
+          title: placeTitle,
           description: finalAddress,
           start_time: cItem.start_time || dayTimeSlot.start,
           end_time: cItem.end_time || dayTimeSlot.end,
-          location_name: verified ? verified.name : placeTitle,
+          location_name: placeTitle,
           location_lat: finalLat,
           location_lng: finalLng,
           google_place_id: rawPlaceId ? String(rawPlaceId) : null,

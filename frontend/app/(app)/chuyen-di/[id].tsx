@@ -22,7 +22,6 @@ import BackToTop from '../../../components/BackToTop';
 import { BRAND_COLORS, ItineraryItemType, APP_ROUTES } from '../../../constants';
 import InteractiveMap, { MapItem } from '../../../components/InteractiveMap';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
-import { matchVerifiedLandmark } from '../../../constants/verifiedLandmarks';
 import ShareModal from '../../../components/ShareModal';
 import BookingModal, { BookableItem } from '../../../components/BookingModal';
 import PremiumModal from '../../../components/PremiumModal';
@@ -1579,19 +1578,33 @@ export default function TripDetail() {
                           </Text>
                         </View>
                         <Pressable
-                          onPress={() => {
-                            const verified = matchVerifiedLandmark(replaceSearchQuery, trip.destination_city);
+                          onPress={async () => {
+                            let lat = aiReplaceItem.location_lat;
+                            let lng = aiReplaceItem.location_lng;
+                            let address = `${replaceSearchQuery.trim()}, ${trip.destination_city}`;
+
+                            try {
+                              const res = await api.get(`/places/geocode?name=${encodeURIComponent(replaceSearchQuery.trim())}&city=${encodeURIComponent(trip.destination_city)}`);
+                              if (res.data?.found && res.data.lat && res.data.lng) {
+                                lat = res.data.lat;
+                                lng = res.data.lng;
+                                if (res.data.address) address = res.data.address;
+                              }
+                            } catch (e) {
+                              // ignore
+                            }
+
                             aiReplaceMutation.mutate({
                               itemId: aiReplaceItem.id,
                               payload: {
-                                title: verified ? verified.name : replaceSearchQuery.trim(),
-                                description: verified?.address || `${replaceSearchQuery.trim()}, ${trip.destination_city}`,
+                                title: replaceSearchQuery.trim(),
+                                description: address,
                                 start_time: aiReplaceItem.start_time,
                                 end_time: aiReplaceItem.end_time,
-                                estimated_cost: verified?.estimated_cost || 50000,
-                                item_type: verified?.category || aiReplaceItem.item_type || 'dining',
-                                location_lat: verified?.lat,
-                                location_lng: verified?.lng,
+                                estimated_cost: 50000,
+                                item_type: aiReplaceItem.item_type || 'dining',
+                                location_lat: lat,
+                                location_lng: lng,
                                 status: 'planned'
                               }
                             });
@@ -1649,10 +1662,9 @@ export default function TripDetail() {
                         }
 
                         return filtered.map((place: any) => {
-                          const verified = matchVerifiedLandmark(place.name, trip.destination_city);
-                          const finalLat = verified ? verified.lat : place.lat;
-                          const finalLng = verified ? verified.lng : place.lng;
-                          const finalAddress = verified?.address || place.address || place.social_review_quote || place.description || '';
+                          const finalLat = place.lat;
+                          const finalLng = place.lng;
+                          const finalAddress = place.address || place.social_review_quote || place.description || '';
 
                           return (
                             <Pressable
@@ -1667,7 +1679,7 @@ export default function TripDetail() {
                                 aiReplaceMutation.mutate({
                                   itemId: aiReplaceItem.id,
                                   payload: {
-                                    title: verified ? verified.name : place.name,
+                                    title: place.name,
                                     description: finalAddress,
                                     start_time: aiReplaceItem.start_time,
                                     end_time: aiReplaceItem.end_time,

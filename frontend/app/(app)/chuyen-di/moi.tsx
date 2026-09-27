@@ -20,7 +20,6 @@ import LiveBudgetBar from '../../../components/cart/LiveBudgetBar';
 import CuratedMap from '../../../components/map/CuratedMap';
 import { PlaceItem } from '../../../components/map/PlacePopup';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
-import { matchVerifiedLandmark } from '../../../constants/verifiedLandmarks';
 import {
   VIETNAMESE_CITIES, TRAVELER_TYPES, PREFERENCE_OPTIONS, BRAND_COLORS,
   BUDGET_ESTIMATION_CONFIG, APP_ROUTES, TravelerType,
@@ -299,6 +298,7 @@ export default function TripWizard() {
     custom_cost: number;
     day_number: number;
     order_index: number;
+    nights?: number;
   }[]>([]);
   const [showScheduleOptionModal, setShowScheduleOptionModal] = useState(false);
   const [editingCostPlaceId, setEditingCostPlaceId] = useState<string | null>(null);
@@ -311,8 +311,17 @@ export default function TripWizard() {
   }, [startDate, endDate, travelerCount]);
 
   const currentCartTotal = useMemo(() => {
-    return cartItems.reduce((acc, item) => acc + (Number(item.custom_cost) || 0), 0);
-  }, [cartItems]);
+    const hotelItems = cartItems.filter(it =>
+      ['hotel', 'accommodation', 'homestay', 'resort'].includes(String(it.place.category || '').toLowerCase())
+    );
+    const isSingleHotel = hotelItems.length === 1;
+
+    return cartItems.reduce((acc, item) => {
+      const isHotel = ['hotel', 'accommodation', 'homestay', 'resort'].includes(String(item.place.category || '').toLowerCase());
+      const nights = isHotel ? (item.nights || (isSingleHotel ? Math.max(1, nightsCount) : 1)) : 1;
+      return acc + (Number(item.custom_cost) || 0) * nights;
+    }, 0);
+  }, [cartItems, nightsCount]);
 
   const deduplicatedPool = useMemo(() => {
     const rawPool = pregenPlaces.length > 0 ? pregenPlaces : getCuratedPlacesForCity(destinationCity);
@@ -461,20 +470,45 @@ export default function TripWizard() {
     });
   };
 
-  const handleAddCustomPlace = () => {
+  const handleUpdateItemNights = (placeId: string, delta: number) => {
+    setCartItems(prev => prev.map(item => {
+      if (item.place.id === placeId) {
+        const currentNights = item.nights || 1;
+        const newNights = Math.max(1, Math.min(currentNights + delta, Math.max(1, nightsCount)));
+        return { ...item, nights: newNights };
+      }
+      return item;
+    }));
+  };
+
+  const handleAddCustomPlace = async () => {
     if (!placeSearchQuery.trim()) return;
     const name = placeSearchQuery.trim();
-    const verified = matchVerifiedLandmark(name, destinationCity);
+    let lat = pregenPlaces[0]?.lat || 21.0285;
+    let lng = pregenPlaces[0]?.lng || 105.8542;
+    let address = `${name}, ${destinationCity}`;
+
+    try {
+      const res = await api.get(`/places/geocode?name=${encodeURIComponent(name)}&city=${encodeURIComponent(destinationCity)}`);
+      if (res.data?.found && res.data.lat && res.data.lng) {
+        lat = res.data.lat;
+        lng = res.data.lng;
+        if (res.data.address) address = res.data.address;
+      }
+    } catch (e) {
+      // fallback
+    }
+
     const customPlace: PlaceItem = {
       id: `custom_${Date.now()}`,
-      name: verified ? verified.name : name,
-      category: (verified ? verified.category : 'dining') as any,
+      name,
+      category: 'dining' as any,
       city: destinationCity,
-      address: verified ? verified.address : `${name}, ${destinationCity}`,
-      lat: verified ? verified.lat : (pregenPlaces[0]?.lat || 21.0285),
-      lng: verified ? verified.lng : (pregenPlaces[0]?.lng || 105.8542),
+      address,
+      lat,
+      lng,
       price_level: 2,
-      estimated_cost: verified?.estimated_cost || 50000,
+      estimated_cost: 50000,
       rating: 4.8,
       social_review_quote: 'Địa điểm theo yêu cầu của du khách',
     };
@@ -1960,9 +1994,26 @@ export default function TripWizard() {
                                                 <Text numberOfLines={1} className="font-bold text-xs text-brand-text flex-1">
                                                   {item.place.name}
                                                 </Text>
-                                                <Text className="text-[11px] font-extrabold text-brand-accent">
-                                                  {new Intl.NumberFormat('vi-VN').format(item.custom_cost)} đ
-                                                </Text>
+                                                {['hotel', 'accommodation', 'homestay', 'resort'].includes(String(item.place.category || '').toLowerCase()) ? (
+                                                  <View className="flex-row items-center gap-1 bg-brand-accent/10 px-1.5 py-0.5 rounded">
+                                                    <Pressable onPress={() => handleUpdateItemNights(item.place.id, -1)} className="px-1 bg-white rounded">
+                                                      <Text className="text-[10px] font-bold text-brand-accent">-</Text>
+                                                    </Pressable>
+                                                    <Text className="text-[10px] font-bold text-brand-accent">
+                                                      {item.nights || (cartItems.filter(it => ['hotel', 'accommodation', 'homestay', 'resort'].includes(String(it.place.category || '').toLowerCase())).length === 1 ? Math.max(1, nightsCount) : 1)} đêm
+                                                    </Text>
+                                                    <Pressable onPress={() => handleUpdateItemNights(item.place.id, 1)} className="px-1 bg-white rounded">
+                                                      <Text className="text-[10px] font-bold text-brand-accent">+</Text>
+                                                    </Pressable>
+                                                    <Text className="text-[11px] font-extrabold text-brand-accent ml-1">
+                                                      {new Intl.NumberFormat('vi-VN').format(item.custom_cost * (item.nights || (cartItems.filter(it => ['hotel', 'accommodation', 'homestay', 'resort'].includes(String(it.place.category || '').toLowerCase())).length === 1 ? Math.max(1, nightsCount) : 1)))} đ
+                                                    </Text>
+                                                  </View>
+                                                ) : (
+                                                  <Text className="text-[11px] font-extrabold text-brand-accent">
+                                                    {new Intl.NumberFormat('vi-VN').format(item.custom_cost)} đ
+                                                  </Text>
+                                                )}
                                               </View>
 
                                               <Text numberOfLines={1} className="text-[10px] text-brand-textSoft pl-6">

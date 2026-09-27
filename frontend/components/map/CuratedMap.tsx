@@ -3,7 +3,6 @@ import { View, Text, Platform, Pressable, ScrollView } from 'react-native';
 import { Plus, Check, MapPin } from 'lucide-react-native';
 import PlaceFilter, { CategoryFilter } from './PlaceFilter';
 import PlacePopup, { PlaceItem } from './PlacePopup';
-import { matchVerifiedLandmark } from '../../constants/verifiedLandmarks';
 
 interface CuratedMapProps {
   places: PlaceItem[];
@@ -281,48 +280,18 @@ export default function CuratedMap({
     }
   }, [places]);
 
-  const sanitizedPlaces = useMemo(() => {
-    return places.map(p => {
-      const verified = matchVerifiedLandmark(p.name, cityName);
-      if (verified) {
-        return {
-          ...p,
-          lat: verified.lat,
-          lng: verified.lng,
-          address: verified.address || p.address,
-        };
-      }
-      return p;
-    });
-  }, [places, cityName]);
-
-  const sanitizedRoutePlaces = useMemo(() => {
-    return selectedRoutePlaces.map(p => {
-      const verified = matchVerifiedLandmark(p.name, cityName);
-      if (verified) {
-        return {
-          ...p,
-          lat: verified.lat,
-          lng: verified.lng,
-          address: verified.address || p.address,
-        };
-      }
-      return p;
-    });
-  }, [selectedRoutePlaces, cityName]);
-
   const filteredPlaces = useMemo(() => {
-    return sanitizedPlaces.filter((p) => {
+    return places.filter((p) => {
       const matchCat = selectedCategory === 'all' || p.category === selectedCategory;
       const cost = p.estimated_cost || (p.price_level ? p.price_level * 50000 : 50000);
       const matchPrice = cost <= maxPrice;
       return matchCat && matchPrice;
     });
-  }, [sanitizedPlaces, selectedCategory, maxPrice]);
+  }, [places, selectedCategory, maxPrice]);
 
   const htmlContent = useMemo(() => {
-    return buildCuratedLeafletHTML(filteredPlaces, sanitizedRoutePlaces, resolvedCenterLat, resolvedCenterLng, cityName);
-  }, [filteredPlaces, sanitizedRoutePlaces, resolvedCenterLat, resolvedCenterLng, cityName]);
+    return buildCuratedLeafletHTML(filteredPlaces, selectedRoutePlaces, resolvedCenterLat, resolvedCenterLng, cityName);
+  }, [filteredPlaces, selectedRoutePlaces, resolvedCenterLat, resolvedCenterLng, cityName]);
 
   // ─── CHẾ ĐỘ WORKSPACE CHO NGƯỜI DÙNG PRO ─────────────────────────────────
   if (layout === 'workspace') {

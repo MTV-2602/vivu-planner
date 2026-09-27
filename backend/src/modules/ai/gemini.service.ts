@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { WeatherForecast } from '../weather/weather.service';
 import { PlaceCandidate, getCityCoordinates } from '../places/places.service';
-import { matchVerifiedLandmark, VERIFIED_LANDMARKS } from '../places/verifiedLandmarks';
+import { geocodeOnline } from '../places/geocoding.service';
 import { getDefaultPlacesForCity } from '../places/defaultPlaces';
 import { executeWithApiKeyRotation } from '../../utils/keyManager';
 import { AI_CONFIG } from '../../constants';
@@ -1713,71 +1713,42 @@ QUY TẮC BẮT BUỘC ĐỂ ĐẢM BẢO CHẤT LƯỢNG TUYỆT ĐỐI (KHÔNG
       });
     }
 
-    // Format & validate coordinates using Verified Landmark Geocoder
-    const formattedPlaces: GeneratedRichPlaceItem[] = rawPlaces.map((p, idx) => {
-      let lat = Number(p.lat);
-      let lng = Number(p.lng);
-      let address = p.address || `${p.name}, ${params.destination_city}`;
+    // Format & chuẩn hóa tọa độ bằng Live Geocoding Service động 100% (không hard-code)
+    const formattedPlaces: GeneratedRichPlaceItem[] = await Promise.all(
+      rawPlaces.map(async (p, idx) => {
+        let lat = Number(p.lat);
+        let lng = Number(p.lng);
+        let address = p.address || `${p.name}, ${params.destination_city}`;
+        let matchedName = p.name || 'Địa điểm đề xuất';
 
-      // Ưu tiên đối chiếu từ điển tọa độ địa danh chính xác 100%
-      const verified = matchVerifiedLandmark(p.name, params.destination_city);
-      if (verified) {
-        lat = verified.lat;
-        lng = verified.lng;
-        address = verified.address || address;
-      } else {
-        // Validate bounds: if coordinates deviate wildly (> 0.2 degrees from city center), snap close to center
-        if (!lat || !lng || Math.abs(lat - cityCoords.lat) > 0.2 || Math.abs(lng - cityCoords.lng) > 0.2) {
-          const angle = (idx * (2 * Math.PI)) / Math.max(1, rawPlaces.length);
-          const radius = 0.008 + (idx % 6) * 0.004;
-          lat = Number((cityCoords.lat + radius * Math.cos(angle)).toFixed(6));
-          lng = Number((cityCoords.lng + radius * Math.sin(angle)).toFixed(6));
+        try {
+          const geo = await geocodeOnline(p.name, p.address, params.destination_city);
+          if (geo.found && geo.lat && geo.lng) {
+            lat = geo.lat;
+            lng = geo.lng;
+            if (geo.address) address = geo.address;
+          }
+        } catch (e) {
+          // ignore
         }
-      }
 
-      return {
-        id: `place_gen_${idx}_${Date.now()}`,
-        name: verified ? verified.name : (p.name || 'Địa điểm đề xuất'),
-        category: (verified ? verified.category : p.category) || 'attraction',
-        suggested_day: Math.max(1, Math.min(Number(p.suggested_day) || 1, daysCount)),
-        lat,
-        lng,
-        address,
-        estimated_cost: Number(p.estimated_cost) || (verified?.estimated_cost || 50000),
-        rating: Number(p.rating) || (verified?.rating || 4.7),
-        time_slot_suggestion: p.time_slot_suggestion || '08:30 - 10:30',
-        description: p.description || '',
-        social_review_quote: p.social_review_quote || verified?.social_review_quote || '',
-        why_recommended: p.why_recommended || ''
-      };
-    });
-
-    // Bổ sung thêm các địa danh xác minh nổi tiếng của thành phố
-    const normCity = params.destination_city.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-    const cityVerified = VERIFIED_LANDMARKS.filter(item => {
-      const itemCity = item.city.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-      return normCity.includes(itemCity) || itemCity.includes(normCity);
-    });
-
-    let extraIdx = formattedPlaces.length;
-    for (const vItem of cityVerified) {
-      formattedPlaces.push({
-        id: `place_verified_${extraIdx}_${Date.now()}`,
-        name: vItem.name,
-        category: vItem.category,
-        suggested_day: (extraIdx % daysCount) + 1,
-        lat: vItem.lat,
-        lng: vItem.lng,
-        address: vItem.address,
-        estimated_cost: vItem.estimated_cost || 50000,
-        rating: vItem.rating || 4.8,
-        time_slot_suggestion: '09:00 - 11:00',
-        description: vItem.social_review_quote || '',
-        social_review_quote: vItem.social_review_quote || '',
-        why_recommended: 'Địa danh biểu tượng đặc sắc hàng đầu'
-      });
-      extraIdx++;
-    }
+        return {
+          id: `place_gen_${idx}_${Date.now()}`,
+          name: matchedName,
+          category: (p.category as any) || 'attraction',
+          suggested_day: Math.max(1, Math.min(Number(p.suggested_day) || 1, daysCount)),
+          lat,
+          lng,
+          address,
+          estimated_cost: Number(p.estimated_cost) || 50000,
+          rating: Number(p.rating) || 4.7,
+          time_slot_suggestion: p.time_slot_suggestion || '08:30 - 10:30',
+          description: p.description || '',
+          social_review_quote: p.social_review_quote || '',
+          why_recommended: p.why_recommended || ''
+        };
+      })
+    );
 
     // Khử trùng lặp triệt để 100%
     const uniquePlaces = deduplicateRichPlaces(formattedPlaces);

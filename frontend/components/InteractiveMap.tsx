@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, Linking } from 'react-native';
 import { Map, MapPin } from 'lucide-react-native';
 import { BRAND_COLORS } from '../constants';
-import { matchVerifiedLandmark } from '../constants/verifiedLandmarks';
 
 export interface MapItem {
   id: string;
@@ -58,19 +57,7 @@ function formatCost(cost?: number | null): string {
 
 // Leaflet Map with Google Maps Roadmap Tiles
 function buildLeafletHTML(items: MapItem[], centerLat: number, centerLng: number, cityName: string): string {
-  const sanitizedItems = items.map(item => {
-    const verified = matchVerifiedLandmark(item.title, cityName);
-    if (verified) {
-      return {
-        ...item,
-        location_lat: verified.lat,
-        location_lng: verified.lng,
-      };
-    }
-    return item;
-  });
-
-  const markers = sanitizedItems
+  const markers = items
     .filter(item => item.location_lat && item.location_lng)
     .map(item => {
       const color = TYPE_COLORS[item.item_type] || '#1F6F54';
