@@ -18,6 +18,43 @@ interface CuratedMapProps {
   layout?: 'standard' | 'workspace';
 }
 
+export const VIETNAM_CITY_COORDINATES: Record<string, { lat: number; lng: number }> = {
+  'ha noi': { lat: 21.0285, lng: 105.8542 },
+  'hanoi': { lat: 21.0285, lng: 105.8542 },
+  'da nang': { lat: 16.0544, lng: 108.2022 },
+  'danang': { lat: 16.0544, lng: 108.2022 },
+  'ho chi minh': { lat: 10.7769, lng: 106.7009 },
+  'tp. ho chi minh': { lat: 10.7769, lng: 106.7009 },
+  'sai gon': { lat: 10.7769, lng: 106.7009 },
+  'hoi an': { lat: 15.8801, lng: 108.3380 },
+  'hue': { lat: 16.4637, lng: 107.5908 },
+  'nha trang': { lat: 12.2388, lng: 109.1967 },
+  'da lat': { lat: 11.9404, lng: 108.4583 },
+  'dalat': { lat: 11.9404, lng: 108.4583 },
+  'phu quoc': { lat: 10.2899, lng: 103.9840 },
+  'sa pa': { lat: 22.3364, lng: 103.8438 },
+  'sapa': { lat: 22.3364, lng: 103.8438 },
+  'ninh binh': { lat: 20.2506, lng: 105.9745 },
+  'vung tau': { lat: 10.3460, lng: 107.0843 },
+  'quy nhon': { lat: 13.7820, lng: 109.2190 },
+  'phan thiet': { lat: 10.9288, lng: 108.1021 },
+  'mui ne': { lat: 10.9333, lng: 108.2833 },
+  'ha long': { lat: 20.9505, lng: 107.0734 },
+  'can tho': { lat: 10.0452, lng: 105.7469 },
+  'hai phong': { lat: 20.8449, lng: 106.6881 }
+};
+
+export function getCityCenterCoords(cityName?: string): { lat: number; lng: number } {
+  if (!cityName) return { lat: 21.0285, lng: 105.8542 };
+  const clean = cityName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  for (const [key, coords] of Object.entries(VIETNAM_CITY_COORDINATES)) {
+    if (clean.includes(key) || key.includes(clean)) {
+      return coords;
+    }
+  }
+  return { lat: 21.0285, lng: 105.8542 };
+}
+
 function buildCuratedLeafletHTML(
   places: PlaceItem[],
   routePlaces: PlaceItem[],
@@ -132,11 +169,7 @@ function buildCuratedLeafletHTML(
     places.forEach((p) => {
       if (!p.lat || !p.lng) return;
 
-      // Chỉ mở rộng bounds đối với các điểm trong bán kính đô thị chính (<= ~8km) để tránh bản đồ bị zoom out ra các huyện xa
-      const distFromCenter = Math.sqrt(Math.pow(p.lat - centerLat, 2) + Math.pow(p.lng - centerLng, 2));
-      if (distFromCenter <= 0.075) {
-        bounds.extend([p.lat, p.lng]);
-      }
+      bounds.extend([Number(p.lat), Number(p.lng)]);
 
       const inRouteOrder = routeMap[p.id];
       const color = inRouteOrder ? '#1F6F54' : getColor(p.category);
@@ -184,9 +217,9 @@ function buildCuratedLeafletHTML(
       }
 
       if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
       } else {
-        map.setView([centerLat, centerLng], 13);
+        map.setView([${centerLat}, ${centerLng}], 13);
       }
     };
 
@@ -200,9 +233,9 @@ function buildCuratedLeafletHTML(
 
 export default function CuratedMap({
   places,
-  centerLat = 11.9404,
-  centerLng = 108.4583,
-  cityName = 'Đà Lạt',
+  centerLat,
+  centerLng,
+  cityName = 'Hà Nội',
   addedPlaceIds = [],
   selectedRoutePlaces = [],
   existingTripPlaceNames = [],
@@ -213,6 +246,20 @@ export default function CuratedMap({
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('all');
   const [maxPrice, setMaxPrice] = useState<number>(2000000);
   const [activePlace, setActivePlace] = useState<PlaceItem | null>(null);
+
+  const { resolvedCenterLat, resolvedCenterLng } = useMemo(() => {
+    if (centerLat && centerLng) {
+      return { resolvedCenterLat: centerLat, resolvedCenterLng: centerLng };
+    }
+    const valid = places.filter(p => p.lat && p.lng);
+    if (valid.length > 0) {
+      const avgLat = valid.reduce((acc, p) => acc + Number(p.lat), 0) / valid.length;
+      const avgLng = valid.reduce((acc, p) => acc + Number(p.lng), 0) / valid.length;
+      return { resolvedCenterLat: avgLat, resolvedCenterLng: avgLng };
+    }
+    const fallback = getCityCenterCoords(cityName);
+    return { resolvedCenterLat: fallback.lat, resolvedCenterLng: fallback.lng };
+  }, [centerLat, centerLng, places, cityName]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -274,8 +321,8 @@ export default function CuratedMap({
   }, [sanitizedPlaces, selectedCategory, maxPrice]);
 
   const htmlContent = useMemo(() => {
-    return buildCuratedLeafletHTML(filteredPlaces, sanitizedRoutePlaces, centerLat, centerLng, cityName);
-  }, [filteredPlaces, sanitizedRoutePlaces, centerLat, centerLng, cityName]);
+    return buildCuratedLeafletHTML(filteredPlaces, sanitizedRoutePlaces, resolvedCenterLat, resolvedCenterLng, cityName);
+  }, [filteredPlaces, sanitizedRoutePlaces, resolvedCenterLat, resolvedCenterLng, cityName]);
 
   // ─── CHẾ ĐỘ WORKSPACE CHO NGƯỜI DÙNG PRO ─────────────────────────────────
   if (layout === 'workspace') {

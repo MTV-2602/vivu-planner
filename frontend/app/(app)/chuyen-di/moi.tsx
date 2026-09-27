@@ -7,7 +7,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   Compass, Sparkles, ArrowLeft, ArrowRight,
   MapPin, DollarSign, Heart, AlertTriangle, Crown, Zap, Lock, ChevronDown,
-  Trash2, Edit3, Check, Calendar, Plus, ShoppingBag, X, GripVertical,
+  Trash2, Edit3, Check, Calendar, Plus, ShoppingBag, X, GripVertical, Clock,
 } from 'lucide-react-native';
 import { api } from '../../../lib/api';
 import { clearCache } from '../../../lib/cache';
@@ -290,6 +290,7 @@ export default function TripWizard() {
   const [placeSearchQuery, setPlaceSearchQuery] = useState('');
   const [placeCategoryFilter, setPlaceCategoryFilter] = useState<string>('all');
   const [activeScheduleDay, setActiveScheduleDay] = useState<number>(1);
+  const [schedulingViewMode, setSchedulingViewMode] = useState<'board' | 'timeline'>('board');
   const [draggedPlaceId, setDraggedPlaceId] = useState<string | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<number | 'unassigned' | null>(null);
   const [cartItems, setCartItems] = useState<{
@@ -1578,13 +1579,37 @@ export default function TripWizard() {
                       <View className="gap-6">
                         {/* Header & Back Button */}
                         <View className="flex-row justify-between items-center flex-wrap gap-2">
-                          <Pressable
-                            onPress={() => setWorkspaceStage('collecting')}
-                            className="flex-row items-center gap-2 px-3.5 py-2 rounded-xl bg-brand-bgAlt border border-brand-line/40 hover:bg-white"
-                          >
-                            <ArrowLeft size={16} color={BRAND_COLORS.primary} />
-                            <Text className="text-xs font-bold text-brand-primary">← Chọn thêm địa điểm</Text>
-                          </Pressable>
+                          <View className="flex-row items-center gap-2">
+                            <Pressable
+                              onPress={() => setWorkspaceStage('collecting')}
+                              className="flex-row items-center gap-2 px-3.5 py-2 rounded-xl bg-brand-bgAlt border border-brand-line/40 hover:bg-white"
+                            >
+                              <ArrowLeft size={16} color={BRAND_COLORS.primary} />
+                              <Text className="text-xs font-bold text-brand-primary">← Chọn thêm địa điểm</Text>
+                            </Pressable>
+
+                            {/* View mode toggle */}
+                            <View className="flex-row items-center gap-1 p-1 bg-brand-bgAlt rounded-xl border border-brand-line/40">
+                              <Pressable
+                                onPress={() => setSchedulingViewMode('board')}
+                                className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 ${schedulingViewMode === 'board' ? 'bg-white shadow-sm border border-brand-line/40' : ''}`}
+                              >
+                                <GripVertical size={13} color={schedulingViewMode === 'board' ? BRAND_COLORS.primary : BRAND_COLORS.textSoft} />
+                                <Text className={`text-xs font-bold ${schedulingViewMode === 'board' ? 'text-brand-primary' : 'text-brand-textSoft'}`}>
+                                  Kéo thả & Xếp ngày
+                                </Text>
+                              </Pressable>
+                              <Pressable
+                                onPress={() => setSchedulingViewMode('timeline')}
+                                className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 ${schedulingViewMode === 'timeline' ? 'bg-white shadow-sm border border-brand-line/40' : ''}`}
+                              >
+                                <Clock size={13} color={schedulingViewMode === 'timeline' ? BRAND_COLORS.primary : BRAND_COLORS.textSoft} />
+                                <Text className={`text-xs font-bold ${schedulingViewMode === 'timeline' ? 'text-brand-primary' : 'text-brand-textSoft'}`}>
+                                  Xem trước Timeline
+                                </Text>
+                              </Pressable>
+                            </View>
+                          </View>
 
                           <View className="flex-row items-center gap-2">
                             <Text className="text-xs text-brand-textSoft">
@@ -1601,6 +1626,116 @@ export default function TripWizard() {
                         </View>
 
                         {/* Side-by-Side Responsive Layout */}
+                        {schedulingViewMode === 'timeline' ? (
+                          /* ── CHẾ ĐỘ XEM TRƯỚC LỊCH TRÌNH CHI TIẾT THEO KHUNG GIỜ TẠI WORKSPACE ── */
+                          <View className="gap-4 w-full">
+                            <View className="p-4 rounded-2xl bg-white border border-brand-line/40 gap-3 shadow-sm">
+                              <View className="flex-row justify-between items-center">
+                                <View className="gap-0.5">
+                                  <Text className="font-extrabold text-base text-brand-text">
+                                    Xem Trước Toàn Bộ Lịch Trình Chi Tiết
+                                  </Text>
+                                  <Text className="text-xs text-brand-textSoft">
+                                    Kiểm tra các khung giờ, điểm đến và lộ trình hoàn chỉnh trước khi lưu vào hệ thống
+                                  </Text>
+                                </View>
+
+                                <Pressable
+                                  testID="btn-pro-option-manual-timeline"
+                                  onPress={() => handleProScheduleSubmit('manual')}
+                                  className="px-5 py-3 rounded-xl bg-brand-primary flex-row items-center gap-2 active:opacity-90 shadow-sm"
+                                >
+                                  <Check size={16} color="#FFFFFF" />
+                                  <Text className="text-white text-xs font-extrabold">
+                                    ✓ Hoàn tất & Lưu chuyến đi ngay
+                                  </Text>
+                                </Pressable>
+                              </View>
+                            </View>
+
+                            <View className="gap-4">
+                              {Array.from({ length: daysCount }, (_, i) => i + 1).map(dNum => {
+                                const dayItems = cartItems.filter(it => it.day_number === dNum).sort((a, b) => a.order_index - b.order_index);
+                                const dayCost = dayItems.reduce((acc, it) => acc + (Number(it.custom_cost) || 0), 0);
+                                const warning = dayValidationWarnings[dNum];
+
+                                return (
+                                  <View key={dNum} className="p-4 rounded-2xl bg-white border border-brand-line/40 gap-3 shadow-sm">
+                                    <View className="flex-row justify-between items-center border-b border-brand-line/20 pb-2">
+                                      <View className="flex-row items-center gap-2">
+                                        <Calendar size={16} color={BRAND_COLORS.primary} />
+                                        <Text className="font-extrabold text-sm text-brand-text">
+                                          Ngày {dNum} ({dayItems.length} hoạt động)
+                                        </Text>
+                                      </View>
+                                      <Text className="text-xs font-extrabold text-brand-primary">
+                                        {new Intl.NumberFormat('vi-VN').format(dayCost)} đ
+                                      </Text>
+                                    </View>
+
+                                    {/* Warnings if any */}
+                                    {warning?.hotelCount >= 2 && (
+                                      <View className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex-row items-center gap-2">
+                                        <AlertTriangle size={15} color="#D97706" />
+                                        <Text className="text-xs font-bold text-amber-900">
+                                          ⚠️ Trùng chỗ nghỉ: Ngày {dNum} có {warning.hotelCount} khách sạn ({warning.hotels.join(' & ')}). Khuyên bạn chuyển sang tab "Kéo thả & Xếp ngày" để trả giỏ bớt 1 nơi!
+                                        </Text>
+                                      </View>
+                                    )}
+
+                                    {dayItems.length === 0 ? (
+                                      <Text className="text-xs text-brand-textMuted italic py-3 text-center">
+                                        Chưa có hoạt động nào trong Ngày {dNum}. Chuyển sang tab "Kéo thả & Xếp ngày" để xếp thêm!
+                                      </Text>
+                                    ) : (
+                                      <View className="gap-2.5">
+                                        {dayItems.map((item, idx) => {
+                                          const timeline = [
+                                            '07:30 - 08:45',
+                                            '09:00 - 10:30',
+                                            '10:45 - 12:00',
+                                            '12:15 - 13:30',
+                                            '14:00 - 15:00',
+                                            '15:30 - 17:30',
+                                            '18:30 - 20:00',
+                                            '20:15 - 22:00',
+                                          ];
+                                          const isHotel = ['hotel', 'accommodation', 'homestay', 'resort'].includes(String(item.place.category || '').toLowerCase());
+                                          const timeSlot = isHotel ? '14:00 - 15:00 (Nhận phòng)' : timeline[idx % timeline.length];
+
+                                          return (
+                                            <View key={item.place.id} className="p-3 rounded-xl bg-brand-bgAlt border border-brand-line/30 flex-row justify-between items-center">
+                                              <View className="flex-1 mr-3 gap-1">
+                                                <View className="flex-row items-center gap-2">
+                                                  <Text className="text-[11px] font-extrabold text-brand-primary bg-brand-primary/10 px-2 py-0.5 rounded">
+                                                    ⏰ {timeSlot}
+                                                  </Text>
+                                                  <Text className="text-[10px] font-bold uppercase text-brand-accent">
+                                                    {item.place.category}
+                                                  </Text>
+                                                </View>
+                                                <Text className="text-sm font-bold text-brand-text">
+                                                  #{idx + 1}. {item.place.name}
+                                                </Text>
+                                                <Text className="text-xs text-brand-textSoft" numberOfLines={1}>
+                                                  {item.place.address}
+                                                </Text>
+                                              </View>
+
+                                              <Text className="text-xs font-extrabold text-brand-accent">
+                                                {new Intl.NumberFormat('vi-VN').format(item.custom_cost)} đ
+                                              </Text>
+                                            </View>
+                                          );
+                                        })}
+                                      </View>
+                                    )}
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        ) : (
                         <View style={{ flexDirection: isLargeScreen ? 'row' : 'column', gap: 24, alignItems: 'flex-start' }}>
                           {/* ── CỘT 1 (BÊN TRÁI): KHAY GIỎ HÀNG CHỜ & CÁC CỘT NGÀY NHẬN THẢ ── */}
                           <View style={{ flex: isLargeScreen ? 1.1 : undefined, width: '100%', gap: 16 }}>
@@ -1961,6 +2096,7 @@ export default function TripWizard() {
                             </View>
                           </View>
                         </View>
+                        )}
                       </View>
                     )
                   ) : (
