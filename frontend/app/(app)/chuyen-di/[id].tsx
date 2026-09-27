@@ -22,6 +22,7 @@ import BackToTop from '../../../components/BackToTop';
 import { BRAND_COLORS, ItineraryItemType, APP_ROUTES } from '../../../constants';
 import InteractiveMap, { MapItem } from '../../../components/InteractiveMap';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
+import { matchVerifiedLandmark } from '../../../constants/verifiedLandmarks';
 import ShareModal from '../../../components/ShareModal';
 import BookingModal, { BookableItem } from '../../../components/BookingModal';
 import PremiumModal from '../../../components/PremiumModal';
@@ -181,7 +182,7 @@ export default function TripDetail() {
   // AI replace modal
   const [aiReplaceOpen, setAiReplaceOpen] = useState(false);
   const [aiReplaceItem, setAiReplaceItem] = useState<any>(null);
-  const [replaceTab, setReplaceTab] = useState<'ai' | 'manual'>('ai');
+  const [replaceTab, setReplaceTab] = useState<'manual' | 'ai'>('manual');
   const [replaceCategory, setReplaceCategory] = useState<string>('all');
   const [replaceSearchQuery, setReplaceSearchQuery] = useState<string>('');
   const [poolPlaces, setPoolPlaces] = useState<any[]>([]);
@@ -1528,28 +1529,32 @@ export default function TripDetail() {
                 </Pressable>
               </View>
 
-              {/* Tab chuyển đổi: AI Gợi ý vs Chọn từ điểm đến */}
+              {/* Tab chuyển đổi: Chọn từ điểm đến / Tìm kiếm (Mặc định) vs AI Gợi ý */}
               <View className="flex-row gap-2 border-b border-brand-line/20 pb-3">
-                <Pressable
-                  onPress={() => setReplaceTab('ai')}
-                  className={`flex-row items-center gap-1.5 px-3.5 py-2 rounded-xl ${replaceTab === 'ai' ? 'bg-brand-accent text-white' : 'bg-brand-bgAlt border border-brand-line/40'}`}
-                >
-                  <Sparkles size={14} color={replaceTab === 'ai' ? '#fff' : BRAND_COLORS.accent} />
-                  <Text className={`text-xs font-bold ${replaceTab === 'ai' ? 'text-white' : 'text-brand-text'}`}>AI Gợi Ý Thay Thế</Text>
-                </Pressable>
                 <Pressable
                   onPress={() => setReplaceTab('manual')}
                   className={`flex-row items-center gap-1.5 px-3.5 py-2 rounded-xl ${replaceTab === 'manual' ? 'bg-brand-primary text-white' : 'bg-brand-bgAlt border border-brand-line/40'}`}
                 >
                   <MapPin size={14} color={replaceTab === 'manual' ? '#fff' : BRAND_COLORS.primary} />
-                  <Text className={`text-xs font-bold ${replaceTab === 'manual' ? 'text-white' : 'text-brand-text'}`}>Chọn Từ Điểm Đến {trip.destination_city}</Text>
+                  <Text className={`text-xs font-bold ${replaceTab === 'manual' ? 'text-white' : 'text-brand-text'}`}>
+                    📍 Tìm kiếm & Chọn từ {trip.destination_city}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setReplaceTab('ai')}
+                  className={`flex-row items-center gap-1.5 px-3.5 py-2 rounded-xl ${replaceTab === 'ai' ? 'bg-brand-accent text-white' : 'bg-brand-bgAlt border border-brand-line/40'}`}
+                >
+                  <Sparkles size={14} color={replaceTab === 'ai' ? '#fff' : BRAND_COLORS.accent} />
+                  <Text className={`text-xs font-bold ${replaceTab === 'ai' ? 'text-white' : 'text-brand-text'}`}>
+                    ✨ AI Gợi Ý Tự Động
+                  </Text>
                 </Pressable>
               </View>
 
               {replaceTab === 'manual' ? (
                 <View className="gap-3">
                   <Text className="text-xs font-bold text-brand-textSoft">
-                    Chọn 1 địa điểm thực tế tại {trip.destination_city} để thay thế ngay vào ô này:
+                    Chọn 1 địa điểm thực tế tại {trip.destination_city} hoặc tự gõ tên quán ăn bạn muốn đến:
                   </Text>
 
                   {/* Filter chips & Search */}
@@ -1557,10 +1562,46 @@ export default function TripDetail() {
                     <TextInput
                       value={replaceSearchQuery}
                       onChangeText={setReplaceSearchQuery}
-                      placeholder="Tìm theo tên địa điểm hoặc tên đường..."
-                      className="px-3.5 py-2 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+                      placeholder="🔎 Gõ tên quán ăn, cà phê, điểm đến bất kỳ..."
+                      className="px-3.5 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
                       placeholderTextColor={BRAND_COLORS.textMuted}
                     />
+
+                    {/* Quick custom replace option if user typed query */}
+                    {replaceSearchQuery.trim().length > 0 && (
+                      <View className="p-3 rounded-xl bg-brand-accent/10 border border-brand-accent/30 flex-row justify-between items-center">
+                        <View className="flex-1 mr-2">
+                          <Text className="text-xs font-bold text-brand-text">
+                            ✨ Đổi thành: "{replaceSearchQuery.trim()}"
+                          </Text>
+                          <Text className="text-[10px] text-brand-textSoft">
+                            Áp dụng địa điểm tự nhập này ngay lập tức vào ô hoạt động
+                          </Text>
+                        </View>
+                        <Pressable
+                          onPress={() => {
+                            const verified = matchVerifiedLandmark(replaceSearchQuery, trip.destination_city);
+                            aiReplaceMutation.mutate({
+                              itemId: aiReplaceItem.id,
+                              payload: {
+                                title: verified ? verified.name : replaceSearchQuery.trim(),
+                                description: verified?.address || `${replaceSearchQuery.trim()}, ${trip.destination_city}`,
+                                start_time: aiReplaceItem.start_time,
+                                end_time: aiReplaceItem.end_time,
+                                estimated_cost: verified?.estimated_cost || 50000,
+                                item_type: verified?.category || aiReplaceItem.item_type || 'dining',
+                                location_lat: verified?.lat,
+                                location_lng: verified?.lng,
+                                status: 'planned'
+                              }
+                            });
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-brand-accent"
+                        >
+                          <Text className="text-white text-xs font-bold">Thay thế ngay</Text>
+                        </Pressable>
+                      </View>
+                    )}
 
                     <View className="flex-row gap-1.5 flex-wrap">
                       {[
@@ -1607,47 +1648,56 @@ export default function TripDetail() {
                           );
                         }
 
-                        return filtered.map((place: any) => (
-                          <Pressable
-                            key={place.id}
-                            onPress={() => {
-                              const cost = place.estimated_cost ?? (place.price_level ? place.price_level * 50000 : 0);
-                              let mappedType: 'accommodation' | 'transport' | 'dining' | 'attraction' | 'rental' | 'experience' = 'attraction';
-                              if (place.category === 'dining' || place.category === 'cafe') mappedType = 'dining';
-                              else if (place.category === 'hotel' || place.category === 'accommodation') mappedType = 'accommodation';
-                              else if (place.category === 'rental') mappedType = 'rental';
+                        return filtered.map((place: any) => {
+                          const verified = matchVerifiedLandmark(place.name, trip.destination_city);
+                          const finalLat = verified ? verified.lat : place.lat;
+                          const finalLng = verified ? verified.lng : place.lng;
+                          const finalAddress = verified?.address || place.address || place.social_review_quote || place.description || '';
 
-                              aiReplaceMutation.mutate({
-                                itemId: aiReplaceItem.id,
-                                payload: {
-                                  title: place.name,
-                                  description: place.address || place.social_review_quote || place.description || '',
-                                  start_time: aiReplaceItem.start_time,
-                                  end_time: aiReplaceItem.end_time,
-                                  estimated_cost: cost,
-                                  item_type: mappedType,
-                                  status: 'planned'
-                                }
-                              });
-                            }}
-                            className="p-3 rounded-xl border border-brand-line/40 bg-white hover:bg-brand-bgAlt flex-row justify-between items-center"
-                            style={{ cursor: 'pointer' as any }}
-                          >
-                            <View className="flex-1 mr-3 gap-0.5">
-                              <Text className="text-sm font-bold text-brand-text">{place.name}</Text>
-                              <Text className="text-xs text-brand-textSoft" numberOfLines={1}>{place.address}</Text>
-                              <View className="flex-row items-center gap-2 mt-1">
-                                <Text className="text-[10px] font-bold uppercase text-brand-primary bg-brand-primary/10 px-1.5 py-0.5 rounded">{place.category}</Text>
-                                {place.estimated_cost ? (
-                                  <Text className="text-[10px] font-semibold text-brand-textMuted">💰 {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(place.estimated_cost)}</Text>
-                                ) : null}
+                          return (
+                            <Pressable
+                              key={place.id}
+                              onPress={() => {
+                                const cost = place.estimated_cost ?? (place.price_level ? place.price_level * 50000 : 0);
+                                let mappedType: 'accommodation' | 'transport' | 'dining' | 'attraction' | 'rental' | 'experience' = 'attraction';
+                                if (place.category === 'dining' || place.category === 'cafe') mappedType = 'dining';
+                                else if (place.category === 'hotel' || place.category === 'accommodation') mappedType = 'accommodation';
+                                else if (place.category === 'rental') mappedType = 'rental';
+
+                                aiReplaceMutation.mutate({
+                                  itemId: aiReplaceItem.id,
+                                  payload: {
+                                    title: verified ? verified.name : place.name,
+                                    description: finalAddress,
+                                    start_time: aiReplaceItem.start_time,
+                                    end_time: aiReplaceItem.end_time,
+                                    estimated_cost: cost,
+                                    item_type: mappedType,
+                                    location_lat: finalLat,
+                                    location_lng: finalLng,
+                                    status: 'planned'
+                                  }
+                                });
+                              }}
+                              className="p-3 rounded-xl border border-brand-line/40 bg-white hover:bg-brand-bgAlt flex-row justify-between items-center"
+                              style={{ cursor: 'pointer' as any }}
+                            >
+                              <View className="flex-1 mr-3 gap-0.5">
+                                <Text className="text-sm font-bold text-brand-text">{place.name}</Text>
+                                <Text className="text-xs text-brand-textSoft" numberOfLines={1}>{finalAddress}</Text>
+                                <View className="flex-row items-center gap-2 mt-1">
+                                  <Text className="text-[10px] font-bold uppercase text-brand-primary bg-brand-primary/10 px-1.5 py-0.5 rounded">{place.category}</Text>
+                                  {place.estimated_cost ? (
+                                    <Text className="text-[10px] font-semibold text-brand-textMuted">💰 {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(place.estimated_cost)}</Text>
+                                  ) : null}
+                                </View>
                               </View>
-                            </View>
-                            <View className="px-3 py-1.5 rounded-lg bg-brand-primary">
-                              <Text className="text-white text-xs font-bold">Chọn thay</Text>
-                            </View>
-                          </Pressable>
-                        ));
+                              <View className="px-3 py-1.5 rounded-lg bg-brand-primary">
+                                <Text className="text-white text-xs font-bold">Chọn thay</Text>
+                              </View>
+                            </Pressable>
+                          );
+                        });
                       })()}
                     </View>
                   )}

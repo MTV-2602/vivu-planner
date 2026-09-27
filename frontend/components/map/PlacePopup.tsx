@@ -16,6 +16,7 @@ export interface PlaceItem {
   social_review_quote?: string;
   social_review_url?: string;
   google_map_url?: string;
+  rating?: number;
   image_url?: string;
 }
 

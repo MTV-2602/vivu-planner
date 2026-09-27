@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { WeatherForecast } from '../weather/weather.service';
 import { PlaceCandidate, getCityCoordinates } from '../places/places.service';
+import { matchVerifiedLandmark, VERIFIED_LANDMARKS } from '../places/verifiedLandmarks';
 import { getDefaultPlacesForCity } from '../places/defaultPlaces';
 import { executeWithApiKeyRotation } from '../../utils/keyManager';
 import { AI_CONFIG } from '../../constants';
@@ -1556,13 +1557,14 @@ export async function generateRichPlacesPool(params: GenerateRichPlacesPoolParam
   const preferencesList = Array.isArray(params.preferences) ? params.preferences.join(', ') : (params.preferences || 'Khám phá, Ẩm thực');
 
   const systemPrompt = `Bạn là Chuyên gia Thổ địa và Hướng dẫn viên Du lịch cao cấp tại Việt Nam.
-Nhiệm vụ của bạn là sinh ra một kho danh sách địa điểm du lịch THỰC TẾ, ĐỘC ĐÁO, ĐA DẠNG và PHONG PHÚ cho chuyến đi ${daysCount} ngày tại "${params.destination_city}".
+Nhiệm vụ của bạn là sinh ra một BỂ KHO ĐỊA ĐIỂM GỢI Ý (Place Buffet) THỰC TẾ, CỰC KỲ ĐA DẠNG VÀ PHONG PHÚ tại "${params.destination_city}".
 
-THÔNG TIN CHUYẾN ĐI CỦA KHÁCH:
+MỤC ĐÍCH:
+- Đây là một "Bể kho địa điểm đa dạng" để du khách tự do khám phá và nhặt vào giỏ hàng theo ý thích riêng của họ.
+- QUAN TRỌNG: Tổng chi phí của toàn bộ kho địa điểm KHÔNG BỊ GIỚI HẠN bởi ngân sách của chuyến đi! Hãy sinh ra nhiều địa điểm ở đa dạng phân khúc giá (từ quán ăn đường phố bình dân, cà phê cóc, quán ăn đặc sản bản địa cho đến nhà hàng view đẹp, điểm check-in nổi tiếng) để du khách có vô số lựa chọn. Ngân sách thực tế sẽ do du khách tự cân đối khi họ chọn món vào giỏ hàng.
+
+THÔNG TIN THAM CHIẾU CỦA KHÁCH:
 - Thành phố: "${params.destination_city}" (Tâm tọa độ tham chiếu: lat ${cityCoords.lat}, lng ${cityCoords.lng})
-- Thời lượng: ${daysCount} ngày
-- Tổng ngân sách: ${totalBudget.toLocaleString('vi-VN')} VND
-- Phân bổ ngân sách theo danh mục: ${params.budget_breakdown ? JSON.stringify(params.budget_breakdown) : 'Tự cân đối hợp lý'}
 - Phong cách & Sở thích của khách: ${preferencesList}
 - Kiểu đoàn đi: ${params.traveler_type || 'Nhóm bạn / Cá nhân'}
 - Yêu cầu đặc thù: ${params.special_requirements || 'Không có'}
@@ -1575,19 +1577,19 @@ QUY TẮC BẮT BUỘC ĐỂ ĐẢM BẢO CHẤT LƯỢNG TUYỆT ĐỐI (KHÔNG
    - Địa chỉ (address) phải đầy đủ rõ ràng: số nhà, tên đường, phường/xã, quận/huyện tại "${params.destination_city}" để du khách định vị chính xác và không bị đi lạc.
 
 2. SỐ LƯỢNG & TÍNH ĐA DẠNG (KHÔNG TRÙNG NHAU):
-   - Sinh từ 16 đến 22 địa điểm phong phú để du khách thoải mái lựa chọn và nhặt vào giỏ.
-   - Gợi ý phân bổ trải đều theo từng ngày ("suggested_day": 1 đến ${daysCount}), nhưng đảm bảo mỗi ngày có đủ các danh mục:
-     * Ăn uống ("dining"): món đặc sản địa phương ngon nức tiếng, bữa sáng, bữa trưa, bữa tối.
-     * Cà phê / Trà ("cafe"): quán có view đẹp, không gian chill hoặc check-in sống ảo cực đỉnh.
-     * Chỗ nghỉ ("hotel"): khách sạn / homestay / resort chất lượng tương xứng với ngân sách.
-     * Vui chơi & Tham quan ("attraction"): di tích lịch sử, danh thắng, bảo tàng, điểm ngắm cảnh.
-     * Trải nghiệm ("experience"): chợ đêm, workshop, ngắm hoàng hôn, tắm suối khoáng...
+   - Sinh từ 26 đến 32 địa điểm phong phú để du khách tha hồ lựa chọn và nhặt vào giỏ.
+   - Bao gồm đa dạng các danh mục:
+     * Ăn uống ("dining"): đặc sản địa phương nức tiếng, quán ăn vỉa hè nổi tiếng, bún phở chả truyền thống, ẩm thực đêm.
+     * Cà phê / Trà ("cafe"): quán có view đẹp, không gian chill, check-in sống ảo, cà phê trứng/cà phê muối/cà phê vợt đặc trưng.
+     * Chỗ nghỉ ("hotel"): khách sạn boutique, homestay phố cổ, resort view đẹp.
+     * Vui chơi & Tham quan ("attraction"): di tích lịch sử, bảo tàng, danh thắng, phố đi bộ, chợ truyền thống.
+     * Trải nghiệm ("experience"): chợ đêm, food tour, ngắm hoàng hôn, workshop, ngắm phố xá.
    - TUYỆT ĐỐI KHÔNG TRÙNG LẶP bất kỳ địa điểm nào trong toàn bộ danh sách!
 
 3. CHI PHÍ THỰC TẾ ("estimated_cost"):
-   - Giá trị bằng số tiền Việt Nam Đồng (VND) thực tế, phù hợp với mức giá trung bình của từng dịch vụ và khớp với ngân sách của khách.
+   - Giá trị bằng số tiền Việt Nam Đồng (VND) thực tế của từng món/dịch vụ tại quán (ví dụ 35.000đ - 80.000đ cho quán ăn bình dân, 30.000đ - 60.000đ cho cà phê, vé tham quan 30.000đ - 100.000đ...).
    - Bổ sung trích dẫn đánh giá thực tế ("social_review_quote") ngắn gọn, súc tích từ cộng đồng du lịch hoặc review ẩm thực.
-   - Ghi rõ lý do gợi ý ("why_recommended") làm nổi bật sự phù hợp với sở thích của khách.`;
+   - Ghi rõ lý do gợi ý ("why_recommended") làm nổi bật nét độc đáo của địa điểm.`;
 
   const responseSchema = {
     type: 'object',
@@ -1621,7 +1623,7 @@ QUY TẮC BẮT BUỘC ĐỂ ĐẢM BẢO CHẤT LƯỢNG TUYỆT ĐỐI (KHÔNG
     required: ['places']
   };
 
-  const userPrompt = `Hãy sinh kho danh sách 16-22 địa điểm du lịch thực tế, chính xác tuyệt đối về tọa độ và địa chỉ tại ${params.destination_city} cho chuyến đi ${daysCount} ngày, phù hợp với ngân sách ${totalBudget}đ và sở thích: "${preferencesList}".`;
+  const userPrompt = `Hãy sinh kho danh sách 26-32 địa điểm du lịch thực tế phong phú, tọa độ và địa chỉ chuẩn xác tuyệt đối tại ${params.destination_city}, đa dạng mọi mức giá từ bình dân đến cao cấp, phù hợp sở thích: "${preferencesList}".`;
 
   try {
     const aiConfig = await getEffectiveAiConfig();
@@ -1677,34 +1679,75 @@ QUY TẮC BẮT BUỘC ĐỂ ĐẢM BẢO CHẤT LƯỢNG TUYỆT ĐỐI (KHÔNG
       });
     }
 
-    // Format & validate coordinates
+    // Format & validate coordinates using Verified Landmark Geocoder
     const formattedPlaces: GeneratedRichPlaceItem[] = rawPlaces.map((p, idx) => {
       let lat = Number(p.lat);
       let lng = Number(p.lng);
-      // Validate bounds: if coordinates deviate wildly (> 0.4 degrees), snap close to center with small offset
-      if (!lat || !lng || Math.abs(lat - cityCoords.lat) > 0.4 || Math.abs(lng - cityCoords.lng) > 0.4) {
-        const angle = (idx * (2 * Math.PI)) / Math.max(1, rawPlaces.length);
-        const radius = 0.01 + (idx % 5) * 0.006;
-        lat = Number((cityCoords.lat + radius * Math.cos(angle)).toFixed(6));
-        lng = Number((cityCoords.lng + radius * Math.sin(angle)).toFixed(6));
+      let address = p.address || `${p.name}, ${params.destination_city}`;
+
+      // Ưu tiên đối chiếu từ điển tọa độ địa danh chính xác 100%
+      const verified = matchVerifiedLandmark(p.name, params.destination_city);
+      if (verified) {
+        lat = verified.lat;
+        lng = verified.lng;
+        address = verified.address || address;
+      } else {
+        // Validate bounds: if coordinates deviate wildly (> 0.2 degrees from city center), snap close to center
+        if (!lat || !lng || Math.abs(lat - cityCoords.lat) > 0.2 || Math.abs(lng - cityCoords.lng) > 0.2) {
+          const angle = (idx * (2 * Math.PI)) / Math.max(1, rawPlaces.length);
+          const radius = 0.008 + (idx % 6) * 0.004;
+          lat = Number((cityCoords.lat + radius * Math.cos(angle)).toFixed(6));
+          lng = Number((cityCoords.lng + radius * Math.sin(angle)).toFixed(6));
+        }
       }
 
       return {
         id: `place_gen_${idx}_${Date.now()}`,
-        name: p.name || 'Địa điểm đề xuất',
-        category: p.category || 'attraction',
+        name: verified ? verified.name : (p.name || 'Địa điểm đề xuất'),
+        category: (verified ? verified.category : p.category) || 'attraction',
         suggested_day: Math.max(1, Math.min(Number(p.suggested_day) || 1, daysCount)),
         lat,
         lng,
-        address: p.address || `${p.name}, ${params.destination_city}`,
-        estimated_cost: Number(p.estimated_cost) || 50000,
-        rating: Number(p.rating) || 4.7,
+        address,
+        estimated_cost: Number(p.estimated_cost) || (verified?.estimated_cost || 50000),
+        rating: Number(p.rating) || (verified?.rating || 4.7),
         time_slot_suggestion: p.time_slot_suggestion || '08:30 - 10:30',
         description: p.description || '',
-        social_review_quote: p.social_review_quote || '',
+        social_review_quote: p.social_review_quote || verified?.social_review_quote || '',
         why_recommended: p.why_recommended || ''
       };
     });
+
+    // Bổ sung thêm các địa danh xác minh nổi tiếng của thành phố nếu chưa có trong danh sách
+    const existingNames = new Set(formattedPlaces.map(p => p.name.toLowerCase()));
+    const normCity = params.destination_city.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const cityVerified = VERIFIED_LANDMARKS.filter(item => {
+      const itemCity = item.city.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      return normCity.includes(itemCity) || itemCity.includes(normCity);
+    });
+
+    let extraIdx = formattedPlaces.length;
+    for (const vItem of cityVerified) {
+      if (!existingNames.has(vItem.name.toLowerCase())) {
+        formattedPlaces.push({
+          id: `place_verified_${extraIdx}_${Date.now()}`,
+          name: vItem.name,
+          category: vItem.category,
+          suggested_day: (extraIdx % daysCount) + 1,
+          lat: vItem.lat,
+          lng: vItem.lng,
+          address: vItem.address,
+          estimated_cost: vItem.estimated_cost || 50000,
+          rating: vItem.rating || 4.8,
+          time_slot_suggestion: '09:00 - 11:00',
+          description: vItem.social_review_quote || '',
+          social_review_quote: vItem.social_review_quote || '',
+          why_recommended: 'Địa danh biểu tượng đặc sắc hàng đầu'
+        });
+        existingNames.add(vItem.name.toLowerCase());
+        extraIdx++;
+      }
+    }
 
     return {
       places: formattedPlaces,
