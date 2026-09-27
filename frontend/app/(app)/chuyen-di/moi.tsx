@@ -313,15 +313,65 @@ export default function TripWizard() {
     return cartItems.reduce((acc, item) => acc + (Number(item.custom_cost) || 0), 0);
   }, [cartItems]);
 
-  const filteredPoolPlaces = useMemo(() => {
+  const deduplicatedPool = useMemo(() => {
     const rawPool = pregenPlaces.length > 0 ? pregenPlaces : getCuratedPlacesForCity(destinationCity);
-    return rawPool.filter((p: any) => {
+    const result: any[] = [];
+    const seenKeys: string[] = [];
+
+    rawPool.forEach((p: any) => {
+      const key = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+      if (!key) return;
+
+      let isDup = false;
+      for (const sk of seenKeys) {
+        if (key === sk || (key.length >= 8 && sk.length >= 8 && (key.includes(sk) || sk.includes(key)))) {
+          isDup = true;
+          break;
+        }
+      }
+      if (!isDup) {
+        seenKeys.push(key);
+        result.push(p);
+      }
+    });
+
+    return result;
+  }, [pregenPlaces, destinationCity]);
+
+  const filteredPoolPlaces = useMemo(() => {
+    return deduplicatedPool.filter((p: any) => {
       const matchCat = placeCategoryFilter === 'all' || p.category === placeCategoryFilter;
       const q = placeSearchQuery.toLowerCase().trim();
       const matchQuery = !q || p.name.toLowerCase().includes(q) || (p.address && p.address.toLowerCase().includes(q));
       return matchCat && matchQuery;
     });
-  }, [pregenPlaces, destinationCity, placeCategoryFilter, placeSearchQuery]);
+  }, [deduplicatedPool, placeCategoryFilter, placeSearchQuery]);
+
+  const dayValidationWarnings = useMemo(() => {
+    const warnings: Record<number, { hotelCount: number; hotels: string[]; isOverloaded: boolean; missingDining: boolean }> = {};
+
+    for (let d = 1; d <= daysCount; d++) {
+      const dayItems = cartItems.filter(it => it.day_number === d);
+      const hotels = dayItems.filter(it => {
+        const cat = String(it.place.category || '').toLowerCase();
+        return cat === 'hotel' || cat === 'accommodation' || cat === 'homestay' || cat === 'resort';
+      }).map(it => it.place.name);
+
+      const hasDining = dayItems.some(it => {
+        const cat = String(it.place.category || '').toLowerCase();
+        return cat === 'dining' || cat === 'cafe' || cat === 'food' || cat === 'restaurant';
+      });
+
+      warnings[d] = {
+        hotelCount: hotels.length,
+        hotels,
+        isOverloaded: dayItems.length > 5,
+        missingDining: dayItems.length >= 2 && !hasDining
+      };
+    }
+
+    return warnings;
+  }, [cartItems, daysCount]);
 
   const scheduleRoutePlaces = useMemo(() => {
     const items = cartItems.filter(it => Number(it.day_number) === Number(activeScheduleDay));
@@ -1540,337 +1590,374 @@ export default function TripWizard() {
                             <Text className="text-xs text-brand-textSoft">
                               Tổng cộng: <Text className="font-bold text-brand-text">{cartItems.length} địa điểm</Text> · Chi phí: <Text className="font-bold text-brand-primary">{new Intl.NumberFormat('vi-VN').format(currentCartTotal)} đ</Text>
                             </Text>
-                          </View>
-                        </View>
-
-                        {/* Top 2 Choice Cards & Quick Helpers */}
-                        <View className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {/* Option 1: AI Tự Động Phân Bổ */}
-                          <View className="p-4 rounded-2xl bg-white border border-brand-primary/40 gap-3 shadow-sm justify-between">
-                            <View className="gap-1.5">
-                              <View className="flex-row items-center justify-between">
-                                <View className="flex-row items-center gap-2">
-                                  <Sparkles size={18} color={BRAND_COLORS.primary} />
-                                  <Text className="font-bold text-sm text-brand-primary">Lựa chọn 1: AI Tự Động Sắp Xếp</Text>
-                                </View>
-                                <View className="px-2 py-0.5 rounded bg-brand-primary text-white">
-                                  <Text className="text-[10px] font-extrabold text-white">AI PRO</Text>
-                                </View>
-                              </View>
-                              <Text className="text-xs text-brand-textSoft leading-relaxed">
-                                AI nhận toàn bộ {cartItems.length} địa điểm trong giỏ, tự động gom các quán gần nhau và tính lộ trình di chuyển tối ưu nhất cho từng ngày.
-                              </Text>
-                            </View>
                             <Pressable
-                              testID="btn-pro-option-ai"
-                              onPress={() => handleProScheduleSubmit('ai_auto')}
-                              className="w-full py-2.5 rounded-xl bg-brand-primary flex-row items-center justify-center gap-1.5 active:opacity-90"
+                              onPress={handleAutoDistributeDays}
+                              className="px-3 py-1.5 rounded-xl bg-white border border-brand-line/40 hover:bg-brand-bgAlt flex-row items-center gap-1.5 shadow-sm"
                             >
-                              <Sparkles size={14} color="#FFFFFF" />
-                              <Text className="text-white text-xs font-bold">Bấm để AI sắp xếp tự động ↗</Text>
+                              <Sparkles size={13} color={BRAND_COLORS.primary} />
+                              <Text className="text-xs font-bold text-brand-primary">⚡ Tự động chia đều cho các ngày</Text>
                             </Pressable>
                           </View>
-
-                          {/* Option 2: Tự Tay Kéo Thả Trực Quan */}
-                          <View className="p-4 rounded-2xl bg-brand-primary/5 border border-brand-primary/20 gap-3 shadow-sm justify-between">
-                            <View className="gap-1.5">
-                              <View className="flex-row items-center justify-between">
-                                <View className="flex-row items-center gap-2">
-                                  <Calendar size={18} color={BRAND_COLORS.accent} />
-                                  <Text className="font-bold text-sm text-brand-accent">Lựa chọn 2: Tự Tay Kéo Thả Trực Quan</Text>
-                                </View>
-                                <Pressable
-                                  onPress={handleAutoDistributeDays}
-                                  className="px-2.5 py-1 rounded-lg bg-white border border-brand-line/40 hover:bg-brand-bgAlt"
-                                >
-                                  <Text className="text-[10px] font-bold text-brand-primary">⚡ Chia đều nhanh</Text>
-                                </Pressable>
-                              </View>
-                              <Text className="text-xs text-brand-textSoft leading-relaxed">
-                                Dùng chuột cầm kéo thẻ địa điểm thả vào Ngày 1, Ngày 2... hoặc đổi thứ tự. Tuyến đường thực tế bên dưới tự động vẽ và tính km real-time!
-                              </Text>
-                            </View>
-                            <View className="px-3 py-1 rounded-lg bg-brand-accent/10 self-start">
-                              <Text className="text-[11px] font-bold text-brand-accent">👇 Kéo - Thả các thẻ bên dưới</Text>
-                            </View>
-                          </View>
                         </View>
 
-                        {/* ── KHU VỰC GIỎ HÀNG CHỜ KÉO THẢ (NẾU CÓ ĐỊA ĐIỂM CHƯA PHÂN NGÀY) ── */}
-                        {(() => {
-                          const unassigned = cartItems.filter(it => !it.day_number || it.day_number === 0);
-                          if (unassigned.length === 0) return null;
-
-                          return (
-                            <View
-                              className={`p-4 rounded-2xl bg-white border-2 border-dashed ${dragOverTarget === 'unassigned' ? 'border-brand-accent bg-brand-accent/5' : 'border-brand-line'} gap-3 shadow-sm`}
-                              // @ts-ignore
-                              onDragOver={(e: any) => { if (Platform.OS === 'web') e.preventDefault(); setDragOverTarget('unassigned'); }}
-                              // @ts-ignore
-                              onDrop={handleDropOnUnassigned}
-                            >
-                              <View className="flex-row justify-between items-center">
-                                <View className="flex-row items-center gap-2">
-                                  <ShoppingBag size={16} color={BRAND_COLORS.accent} />
-                                  <Text className="font-extrabold text-sm text-brand-text">
-                                    📦 Giỏ địa điểm chờ xếp lịch ({unassigned.length} địa điểm)
-                                  </Text>
-                                </View>
-                                <Text className="text-xs text-brand-textSoft">
-                                  Cầm chuột kéo thẻ hoặc bấm nút gán nhanh vào ngày
-                                </Text>
-                              </View>
-
-                              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                                {unassigned.map(item => (
-                                  <View
-                                    key={item.place.id}
-                                    style={{
-                                      width: Platform.OS === 'web' ? ('calc(33.333% - 7px)' as any) : '100%',
-                                      minWidth: 240,
-                                      backgroundColor: '#FBF8F2',
-                                      borderRadius: 14,
-                                      padding: 12,
-                                      borderWidth: 1,
-                                      borderColor: 'rgba(27,36,32,0.15)',
-                                      cursor: 'grab' as any,
-                                      gap: 8,
-                                    }}
-                                    // @ts-ignore
-                                    draggable={true}
-                                    // @ts-ignore
-                                    onDragStart={(e: any) => handleDragStart(item.place.id, e)}
-                                    // @ts-ignore
-                                    onDragEnd={handleDragEnd}
-                                  >
-                                    <View className="flex-row items-center gap-1.5">
-                                      <GripVertical size={14} color="#888" />
-                                      <Text numberOfLines={1} className="font-bold text-xs text-brand-text flex-1">
-                                        {item.place.name}
-                                      </Text>
-                                      <Text className="text-[11px] font-bold text-brand-accent">
-                                        {new Intl.NumberFormat('vi-VN').format(item.custom_cost)} đ
+                        {/* Side-by-Side Responsive Layout */}
+                        <View style={{ flexDirection: isLargeScreen ? 'row' : 'column', gap: 24, alignItems: 'flex-start' }}>
+                          {/* ── CỘT 1 (BÊN TRÁI): KHAY GIỎ HÀNG CHỜ & CÁC CỘT NGÀY NHẬN THẢ ── */}
+                          <View style={{ flex: isLargeScreen ? 1.1 : undefined, width: '100%', gap: 16 }}>
+                            {/* 1. KHAY GIỎ HÀNG CHỜ XẾP LỊCH (NẾU CÓ ĐỊA ĐIỂM CHƯA PHÂN NGÀY) */}
+                            {(() => {
+                              const unassigned = cartItems.filter(it => !it.day_number || it.day_number === 0);
+                              return (
+                                <View
+                                  style={{
+                                    backgroundColor: '#FFFFFF',
+                                    borderRadius: 16,
+                                    padding: 14,
+                                    borderWidth: 2,
+                                    borderStyle: 'dashed',
+                                    borderColor: dragOverTarget === 'unassigned' ? '#1F6F54' : (unassigned.length > 0 ? '#E2703A' : 'rgba(27,36,32,0.15)'),
+                                    gap: 10,
+                                  }}
+                                  // @ts-ignore
+                                  onDragOver={(e: any) => { if (Platform.OS === 'web') e.preventDefault(); setDragOverTarget('unassigned'); }}
+                                  // @ts-ignore
+                                  onDrop={handleDropOnUnassigned}
+                                >
+                                  <View className="flex-row justify-between items-center">
+                                    <View className="flex-row items-center gap-2">
+                                      <ShoppingBag size={16} color={unassigned.length > 0 ? BRAND_COLORS.accent : BRAND_COLORS.primary} />
+                                      <Text className="font-extrabold text-xs text-brand-text">
+                                        📦 Giỏ địa điểm chờ xếp lịch ({unassigned.length} điểm)
                                       </Text>
                                     </View>
-                                    <Text numberOfLines={1} className="text-[10px] text-brand-textSoft">
-                                      {item.place.address}
+                                    <Text className="text-[10px] text-brand-textMuted">
+                                      Kéo thả hoặc bấm nút gán ngày
                                     </Text>
-
-                                    {/* Quick assignment buttons for touch / convenience */}
-                                    <View className="flex-row items-center gap-1.5 pt-1 border-t border-brand-line/20 flex-wrap">
-                                      <Text className="text-[10px] text-brand-textMuted font-semibold">Gán nhanh:</Text>
-                                      {Array.from({ length: daysCount }, (_, d) => d + 1).map(targetD => (
-                                        <Pressable
-                                          key={targetD}
-                                          onPress={() => handleMoveItemDay(item.place.id, targetD)}
-                                          className="px-2 py-0.5 rounded bg-brand-primary/10 border border-brand-primary/30 active:bg-brand-primary"
-                                        >
-                                          <Text className="text-[10px] font-bold text-brand-primary">+ Ngày {targetD}</Text>
-                                        </Pressable>
-                                      ))}
-                                    </View>
                                   </View>
-                                ))}
+
+                                  {unassigned.length === 0 ? (
+                                    <View className="py-3 items-center justify-center bg-brand-bgAlt/50 rounded-xl">
+                                      <Text className="text-xs text-brand-primary font-bold">
+                                        ✓ Toàn bộ địa điểm đã được xếp vào các ngày!
+                                      </Text>
+                                    </View>
+                                  ) : (
+                                    <ScrollView style={{ maxHeight: 260 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                                      <View className="gap-2">
+                                        {unassigned.map(item => (
+                                          <View
+                                            key={item.place.id}
+                                            style={{
+                                              backgroundColor: '#FAF8F4',
+                                              borderRadius: 12,
+                                              padding: 10,
+                                              borderWidth: 1,
+                                              borderColor: 'rgba(27,36,32,0.12)',
+                                              cursor: 'grab' as any,
+                                              gap: 6,
+                                            }}
+                                            // @ts-ignore
+                                            draggable={true}
+                                            // @ts-ignore
+                                            onDragStart={(e: any) => handleDragStart(item.place.id, e)}
+                                            // @ts-ignore
+                                            onDragEnd={handleDragEnd}
+                                          >
+                                            <View className="flex-row items-center gap-1.5">
+                                              <GripVertical size={14} color="#888" />
+                                              <Text numberOfLines={1} className="font-bold text-xs text-brand-text flex-1">
+                                                {item.place.name}
+                                              </Text>
+                                              <Text className="text-[11px] font-extrabold text-brand-accent">
+                                                {new Intl.NumberFormat('vi-VN').format(item.custom_cost)} đ
+                                              </Text>
+                                            </View>
+                                            <Text numberOfLines={1} className="text-[10px] text-brand-textSoft pl-5">
+                                              {item.place.address}
+                                            </Text>
+
+                                            {/* Quick assignment buttons */}
+                                            <View className="flex-row items-center gap-1 pt-1 border-t border-brand-line/20 pl-5 flex-wrap">
+                                              <Text className="text-[10px] text-brand-textMuted font-semibold">Gán nhanh:</Text>
+                                              {Array.from({ length: daysCount }, (_, d) => d + 1).map(targetD => (
+                                                <Pressable
+                                                  key={targetD}
+                                                  onPress={() => handleMoveItemDay(item.place.id, targetD)}
+                                                  className="px-2 py-0.5 rounded bg-brand-primary/10 border border-brand-primary/30 active:bg-brand-primary"
+                                                >
+                                                  <Text className="text-[10px] font-bold text-brand-primary">+ N{targetD}</Text>
+                                                </Pressable>
+                                              ))}
+                                            </View>
+                                          </View>
+                                        ))}
+                                      </View>
+                                    </ScrollView>
+                                  )}
+                                </View>
+                              );
+                            })()}
+
+                            {/* 2. CÁC CỘT NGÀY NHẬN THẢ (DROP ZONES) KÈM CẢNH BÁO THÔNG MINH */}
+                            <View className="bg-white rounded-2xl p-4 border border-brand-line/40 gap-3 shadow-sm">
+                              <Text className="font-bold text-xs text-brand-textSoft uppercase tracking-wider">
+                                Lịch trình từng ngày (Kéo thẻ thả vào từng ngày):
+                              </Text>
+
+                              <View className="gap-3">
+                                {Array.from({ length: daysCount }, (_, i) => i + 1).map(dNum => {
+                                  const dayItems = cartItems.filter(it => it.day_number === dNum).sort((a, b) => a.order_index - b.order_index);
+                                  const dayTotalCost = dayItems.reduce((acc, it) => acc + (Number(it.custom_cost) || 0), 0);
+                                  const isSelected = activeScheduleDay === dNum;
+                                  const isDragOver = dragOverTarget === dNum;
+                                  const warning = dayValidationWarnings[dNum];
+
+                                  return (
+                                    <View
+                                      key={dNum}
+                                      style={{
+                                        padding: 12,
+                                        borderRadius: 16,
+                                        borderWidth: isSelected ? 2 : 1,
+                                        borderColor: isDragOver ? '#1F6F54' : (isSelected ? '#1F6F54' : 'rgba(27,36,32,0.15)'),
+                                        backgroundColor: isDragOver ? 'rgba(31,111,84,0.08)' : (isSelected ? '#FFFFFF' : '#FAF8F4'),
+                                        gap: 10,
+                                      }}
+                                      // @ts-ignore
+                                      onDragOver={(e: any) => { if (Platform.OS === 'web') e.preventDefault(); setDragOverTarget(dNum); }}
+                                      // @ts-ignore
+                                      onDrop={(e: any) => handleDropOnDay(dNum, e)}
+                                    >
+                                      {/* Day Header */}
+                                      <Pressable
+                                        onPress={() => setActiveScheduleDay(dNum)}
+                                        className="flex-row justify-between items-center"
+                                      >
+                                        <View className="flex-row items-center gap-2">
+                                          <View className={`w-6 h-6 rounded-full items-center justify-center ${isSelected ? 'bg-brand-primary' : 'bg-brand-line/40'}`}>
+                                            <Text className={`text-xs font-extrabold ${isSelected ? 'text-white' : 'text-brand-text'}`}>{dNum}</Text>
+                                          </View>
+                                          <Text className="text-xs font-bold text-brand-text">
+                                            Ngày {dNum} ({dayItems.length} địa điểm)
+                                          </Text>
+                                          {isSelected && (
+                                            <View className="px-1.5 py-0.5 rounded bg-brand-primary/10">
+                                              <Text className="text-[9px] font-extrabold text-brand-primary">Đang xem trên Map</Text>
+                                            </View>
+                                          )}
+                                        </View>
+                                        <Text className="text-xs font-extrabold text-brand-accent">
+                                          {new Intl.NumberFormat('vi-VN').format(dayTotalCost)} đ
+                                        </Text>
+                                      </Pressable>
+
+                                      {/* CẢNH BÁO THÔNG MINH CHO TỪNG NGÀY */}
+                                      {warning?.hotelCount >= 2 && (
+                                        <View className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex-row items-start gap-2">
+                                          <AlertTriangle size={15} color="#D97706" style={{ marginTop: 2 }} />
+                                          <View className="flex-1">
+                                            <Text className="text-xs font-bold text-amber-900">
+                                              ⚠️ Trùng chỗ nghỉ ({warning.hotelCount} khách sạn trong Ngày {dNum})
+                                            </Text>
+                                            <Text className="text-[10px] text-amber-800 leading-tight mt-0.5">
+                                              Bạn đang có: {warning.hotels.join(' & ')}. Hãy bấm "Trả giỏ" bớt 1 nơi để tránh lãng phí!
+                                            </Text>
+                                          </View>
+                                        </View>
+                                      )}
+
+                                      {warning?.isOverloaded && (
+                                        <View className="p-2 rounded-lg bg-orange-500/10 border border-orange-500/20 flex-row items-center gap-1.5">
+                                          <AlertTriangle size={13} color="#EA580C" />
+                                          <Text className="text-[10px] font-semibold text-orange-800">
+                                            Lịch trình Ngày {dNum} khá dày ({dayItems.length} điểm). Có thể di chuyển gấp gáp.
+                                          </Text>
+                                        </View>
+                                      )}
+
+                                      {warning?.missingDining && (
+                                        <View className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 flex-row items-center gap-1.5">
+                                          <Text className="text-[10px] font-semibold text-blue-800">
+                                            💡 Gợi ý: Ngày này chưa có địa điểm ăn uống đặc sản nào.
+                                          </Text>
+                                        </View>
+                                      )}
+
+                                      {/* Items in this Day */}
+                                      {dayItems.length === 0 ? (
+                                        <View
+                                          className="py-4 items-center justify-center border border-dashed border-brand-line/60 rounded-xl bg-white/60"
+                                          // @ts-ignore
+                                          onDragOver={(e: any) => { if (Platform.OS === 'web') e.preventDefault(); setDragOverTarget(dNum); }}
+                                          // @ts-ignore
+                                          onDrop={(e: any) => handleDropOnDay(dNum, e)}
+                                        >
+                                          <Text className="text-[11px] text-brand-textMuted italic">
+                                            Kéo thả địa điểm vào đây để xếp vào Ngày {dNum}
+                                          </Text>
+                                        </View>
+                                      ) : (
+                                        <View className="gap-2">
+                                          {dayItems.map((item, idx) => (
+                                            <View
+                                              key={item.place.id}
+                                              style={{
+                                                padding: 10,
+                                                borderRadius: 12,
+                                                backgroundColor: '#FFFFFF',
+                                                borderWidth: 1,
+                                                borderColor: 'rgba(27,36,32,0.1)',
+                                                gap: 6,
+                                                cursor: 'grab' as any,
+                                              }}
+                                              // @ts-ignore
+                                              draggable={true}
+                                              // @ts-ignore
+                                              onDragStart={(e: any) => handleDragStart(item.place.id, e)}
+                                              // @ts-ignore
+                                              onDragEnd={handleDragEnd}
+                                            >
+                                              <View className="flex-row items-center gap-1.5">
+                                                <GripVertical size={13} color="#999" />
+                                                <View className="w-5 h-5 rounded-full bg-brand-primary items-center justify-center">
+                                                  <Text className="text-[10px] font-bold text-white">#{idx + 1}</Text>
+                                                </View>
+                                                <Text numberOfLines={1} className="font-bold text-xs text-brand-text flex-1">
+                                                  {item.place.name}
+                                                </Text>
+                                                <Text className="text-[11px] font-extrabold text-brand-accent">
+                                                  {new Intl.NumberFormat('vi-VN').format(item.custom_cost)} đ
+                                                </Text>
+                                              </View>
+
+                                              <Text numberOfLines={1} className="text-[10px] text-brand-textSoft pl-6">
+                                                {item.place.address}
+                                              </Text>
+
+                                              {/* Reorder & Shift controls */}
+                                              <View className="flex-row justify-between items-center pt-1 border-t border-brand-line/20 pl-6">
+                                                <View className="flex-row items-center gap-1">
+                                                  <Pressable onPress={() => handleReorderItem(item.place.id, 'up')} className="px-1.5 py-0.5 rounded bg-brand-bgAlt border border-brand-line/40">
+                                                    <Text className="text-[9px] font-bold text-brand-text">▲ Lên</Text>
+                                                  </Pressable>
+                                                  <Pressable onPress={() => handleReorderItem(item.place.id, 'down')} className="px-1.5 py-0.5 rounded bg-brand-bgAlt border border-brand-line/40">
+                                                    <Text className="text-[9px] font-bold text-brand-text">▼ Xuống</Text>
+                                                  </Pressable>
+                                                </View>
+
+                                                <View className="flex-row items-center gap-1">
+                                                  <Pressable
+                                                    onPress={() => handleMoveItemDay(item.place.id, 0)}
+                                                    className="px-1.5 py-0.5 rounded bg-brand-line/20"
+                                                  >
+                                                    <Text className="text-[9px] font-semibold text-brand-textSoft">Trả giỏ</Text>
+                                                  </Pressable>
+
+                                                  {daysCount > 1 && (
+                                                    Array.from({ length: daysCount }, (_, j) => j + 1).filter(d => d !== dNum).map(targetD => (
+                                                      <Pressable
+                                                        key={targetD}
+                                                        onPress={() => handleMoveItemDay(item.place.id, targetD)}
+                                                        className="px-1.5 py-0.5 rounded bg-brand-primary/10 border border-brand-primary/30"
+                                                      >
+                                                        <Text className="text-[9px] font-bold text-brand-primary">→ N{targetD}</Text>
+                                                      </Pressable>
+                                                    ))
+                                                  )}
+                                                </View>
+                                              </View>
+                                            </View>
+                                          ))}
+                                        </View>
+                                      )}
+                                    </View>
+                                  );
+                                })}
                               </View>
                             </View>
-                          );
-                        })()}
-
-                        {/* Interactive Manual Schedule Workspace */}
-                        <View style={{ flexDirection: isLargeScreen ? 'row' : 'column', gap: 28, alignItems: 'flex-start' }}>
-                          {/* Cột 1 (Bên trái): Bản đồ lộ trình Realtime của Ngày đang chọn */}
-                          <View style={{ flex: isLargeScreen ? 1.5 : undefined, width: '100%', gap: 12 }}>
-                            <View className="flex-row justify-between items-center">
-                              <Text className="font-bold text-sm text-brand-text">
-                                🗺️ Tuyến đường & Thứ tự Ngày {activeScheduleDay} ({scheduleRoutePlaces.length} điểm)
-                              </Text>
-                              <Text className="text-xs text-brand-textSoft">
-                                Tự động nối #1 → #2 → #3 theo thời gian thực
-                              </Text>
-                            </View>
-
-                            <CuratedMap
-                              places={cartItems.map(it => it.place)}
-                              cityName={destinationCity}
-                              addedPlaceIds={cartItems.map(item => item.place.id)}
-                              selectedRoutePlaces={scheduleRoutePlaces}
-                              existingTripPlaceNames={[]}
-                              onAddToCart={() => {}}
-                              layout="workspace"
-                              mapHeight={480}
-                            />
                           </View>
 
-                          {/* Cột 2 (Bên phải): Các Cột Ngày Nhận Kéo - Thả (Drop Zones) */}
+                          {/* ── CỘT 2 (BÊN PHẢI - STICKY): BẢN ĐỒ TUYẾN ĐƯỜNG & CHỐT LỊCH TRÌNH ── */}
                           <View style={{
-                            flex: isLargeScreen ? 1.1 : undefined,
+                            flex: isLargeScreen ? 1.5 : undefined,
                             width: '100%',
                             gap: 16,
                             position: (isLargeScreen && Platform.OS === 'web') ? ('sticky' as any) : undefined,
                             top: 24,
                           }}>
-                            <View className="bg-white rounded-2xl p-4 border border-brand-line/40 gap-3 shadow-sm">
-                              <View className="flex-row justify-between items-center pb-2 border-b border-brand-line/20">
-                                <Text className="font-bold text-xs text-brand-textSoft uppercase tracking-wider">
-                                  Kéo thả giữa các Ngày:
-                                </Text>
-                                <Text className="text-[11px] text-brand-primary font-bold">
-                                  Bấm chọn Ngày để xem lộ trình map
-                                </Text>
+                            {/* Option 1 & Complete action bar */}
+                            <View className="p-4 rounded-2xl bg-white border border-brand-line/40 gap-3 shadow-sm">
+                              <View className="flex-row justify-between items-center">
+                                <View className="gap-0.5">
+                                  <Text className="font-extrabold text-sm text-brand-text">
+                                    Hoàn Tất & Lên Lịch Trình
+                                  </Text>
+                                  <Text className="text-xs text-brand-textSoft">
+                                    Đã chọn {cartItems.length} địa điểm · {new Intl.NumberFormat('vi-VN').format(currentCartTotal)} đ
+                                  </Text>
+                                </View>
+
+                                <Pressable
+                                  testID="btn-pro-option-ai"
+                                  onPress={() => handleProScheduleSubmit('ai_auto')}
+                                  className="px-3.5 py-2 rounded-xl bg-brand-primary/10 border border-brand-primary/30 flex-row items-center gap-1.5 active:bg-brand-primary"
+                                >
+                                  <Sparkles size={14} color={BRAND_COLORS.primary} />
+                                  <Text className="text-xs font-bold text-brand-primary">Để AI tối ưu giờ ↗</Text>
+                                </Pressable>
                               </View>
 
-                              {/* Danh sách các Cột Ngày */}
-                              <ScrollView style={{ maxHeight: 420 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                                <View className="gap-3">
-                                  {Array.from({ length: daysCount }, (_, i) => i + 1).map(dNum => {
-                                    const dayItems = cartItems.filter(it => it.day_number === dNum).sort((a, b) => a.order_index - b.order_index);
-                                    const dayTotalCost = dayItems.reduce((acc, it) => acc + (Number(it.custom_cost) || 0), 0);
-                                    const isSelected = activeScheduleDay === dNum;
-                                    const isDragOver = dragOverTarget === dNum;
-
-                                    return (
-                                      <View
-                                        key={dNum}
-                                        style={{
-                                          padding: 12,
-                                          borderRadius: 16,
-                                          borderWidth: isSelected ? 2 : 1,
-                                          borderColor: isDragOver ? '#1F6F54' : (isSelected ? '#1F6F54' : 'rgba(27,36,32,0.15)'),
-                                          backgroundColor: isDragOver ? 'rgba(31,111,84,0.08)' : (isSelected ? '#FFFFFF' : '#FAF8F4'),
-                                          gap: 10,
-                                        }}
-                                        // @ts-ignore
-                                        onDragOver={(e: any) => { if (Platform.OS === 'web') e.preventDefault(); setDragOverTarget(dNum); }}
-                                        // @ts-ignore
-                                        onDrop={(e: any) => handleDropOnDay(dNum, e)}
-                                      >
-                                        {/* Day Header */}
-                                        <Pressable
-                                          onPress={() => setActiveScheduleDay(dNum)}
-                                          className="flex-row justify-between items-center"
-                                        >
-                                          <View className="flex-row items-center gap-2">
-                                            <View className={`w-6 h-6 rounded-full items-center justify-center ${isSelected ? 'bg-brand-primary' : 'bg-brand-line/40'}`}>
-                                              <Text className={`text-xs font-extrabold ${isSelected ? 'text-white' : 'text-brand-text'}`}>{dNum}</Text>
-                                            </View>
-                                            <Text className="text-xs font-bold text-brand-text">
-                                              Ngày {dNum} ({dayItems.length} địa điểm)
-                                            </Text>
-                                            {isSelected && (
-                                              <View className="px-1.5 py-0.5 rounded bg-brand-primary/10">
-                                                <Text className="text-[9px] font-extrabold text-brand-primary">Đang xem trên Map</Text>
-                                              </View>
-                                            )}
-                                          </View>
-                                          <Text className="text-xs font-extrabold text-brand-accent">
-                                            {new Intl.NumberFormat('vi-VN').format(dayTotalCost)} đ
-                                          </Text>
-                                        </Pressable>
-
-                                        {/* Items in this Day */}
-                                        {dayItems.length === 0 ? (
-                                          <View
-                                            className="py-4 items-center justify-center border border-dashed border-brand-line/60 rounded-xl bg-white/60"
-                                            // @ts-ignore
-                                            onDragOver={(e: any) => { if (Platform.OS === 'web') e.preventDefault(); setDragOverTarget(dNum); }}
-                                            // @ts-ignore
-                                            onDrop={(e: any) => handleDropOnDay(dNum, e)}
-                                          >
-                                            <Text className="text-[11px] text-brand-textMuted italic">
-                                              Kéo thả địa điểm vào đây để xếp vào Ngày {dNum}
-                                            </Text>
-                                          </View>
-                                        ) : (
-                                          <View className="gap-2">
-                                            {dayItems.map((item, idx) => (
-                                              <View
-                                                key={item.place.id}
-                                                style={{
-                                                  padding: 10,
-                                                  borderRadius: 12,
-                                                  backgroundColor: '#FFFFFF',
-                                                  borderWidth: 1,
-                                                  borderColor: 'rgba(27,36,32,0.1)',
-                                                  gap: 6,
-                                                  cursor: 'grab' as any,
-                                                }}
-                                                // @ts-ignore
-                                                draggable={true}
-                                                // @ts-ignore
-                                                onDragStart={(e: any) => handleDragStart(item.place.id, e)}
-                                                // @ts-ignore
-                                                onDragEnd={handleDragEnd}
-                                              >
-                                                <View className="flex-row items-center gap-1.5">
-                                                  <GripVertical size={13} color="#999" />
-                                                  <View className="w-5 h-5 rounded-full bg-brand-primary items-center justify-center">
-                                                    <Text className="text-[10px] font-bold text-white">#{idx + 1}</Text>
-                                                  </View>
-                                                  <Text numberOfLines={1} className="font-bold text-xs text-brand-text flex-1">
-                                                    {item.place.name}
-                                                  </Text>
-                                                  <Text className="text-[11px] font-extrabold text-brand-accent">
-                                                    {new Intl.NumberFormat('vi-VN').format(item.custom_cost)} đ
-                                                  </Text>
-                                                </View>
-
-                                                <Text numberOfLines={1} className="text-[10px] text-brand-textSoft pl-6">
-                                                  {item.place.address}
-                                                </Text>
-
-                                                {/* Reorder & Shift controls */}
-                                                <View className="flex-row justify-between items-center pt-1 border-t border-brand-line/20 pl-6">
-                                                  <View className="flex-row items-center gap-1">
-                                                    <Pressable onPress={() => handleReorderItem(item.place.id, 'up')} className="px-1.5 py-0.5 rounded bg-brand-bgAlt border border-brand-line/40">
-                                                      <Text className="text-[9px] font-bold text-brand-text">▲ Lên</Text>
-                                                    </Pressable>
-                                                    <Pressable onPress={() => handleReorderItem(item.place.id, 'down')} className="px-1.5 py-0.5 rounded bg-brand-bgAlt border border-brand-line/40">
-                                                      <Text className="text-[9px] font-bold text-brand-text">▼ Xuống</Text>
-                                                    </Pressable>
-                                                  </View>
-
-                                                  <View className="flex-row items-center gap-1">
-                                                    <Pressable
-                                                      onPress={() => handleMoveItemDay(item.place.id, 0)}
-                                                      className="px-1.5 py-0.5 rounded bg-brand-line/20"
-                                                    >
-                                                      <Text className="text-[9px] font-semibold text-brand-textSoft">Trả giỏ</Text>
-                                                    </Pressable>
-
-                                                    {daysCount > 1 && (
-                                                      Array.from({ length: daysCount }, (_, j) => j + 1).filter(d => d !== dNum).map(targetD => (
-                                                        <Pressable
-                                                          key={targetD}
-                                                          onPress={() => handleMoveItemDay(item.place.id, targetD)}
-                                                          className="px-1.5 py-0.5 rounded bg-brand-primary/10 border border-brand-primary/30"
-                                                        >
-                                                          <Text className="text-[9px] font-bold text-brand-primary">→ N{targetD}</Text>
-                                                        </Pressable>
-                                                      ))
-                                                    )}
-                                                  </View>
-                                                </View>
-                                              </View>
-                                            ))}
-                                          </View>
-                                        )}
-                                      </View>
-                                    );
-                                  })}
-                                </View>
-                              </ScrollView>
-
-                              {/* Hoàn tất & Khởi tạo chuyến đi */}
                               <Pressable
                                 testID="btn-pro-option-manual"
                                 onPress={() => handleProScheduleSubmit('manual')}
-                                className="w-full py-4 px-4 rounded-2xl bg-brand-primary flex-row items-center justify-center gap-2 mt-2 active:opacity-90 shadow-sm"
+                                className="w-full py-4 px-4 rounded-2xl bg-brand-primary flex-row items-center justify-center gap-2 active:opacity-90 shadow-sm"
                               >
                                 <Check size={18} color="#FFFFFF" />
                                 <Text className="text-white text-sm font-extrabold text-center">
                                   ✓ Hoàn tất & Tạo chuyến đi ngay ({cartItems.length} địa điểm)
                                 </Text>
                               </Pressable>
+                            </View>
+
+                            {/* Bản đồ Lộ trình Tuyến đường Ngày đang chọn */}
+                            <View className="p-4 rounded-2xl bg-white border border-brand-line/40 gap-3 shadow-sm">
+                              <View className="flex-row justify-between items-center">
+                                <View className="flex-row items-center gap-1.5">
+                                  <Calendar size={15} color={BRAND_COLORS.primary} />
+                                  <Text className="font-bold text-sm text-brand-text">
+                                    Bản đồ Tuyến đường Ngày {activeScheduleDay} ({scheduleRoutePlaces.length} điểm)
+                                  </Text>
+                                </View>
+                                <Text className="text-[11px] text-brand-textSoft font-semibold">
+                                  Nối #1 → #2 → #3 theo thứ tự
+                                </Text>
+                              </View>
+
+                              {/* Day Selector Buttons for Map */}
+                              <View className="flex-row items-center gap-1.5 flex-wrap">
+                                {Array.from({ length: daysCount }, (_, i) => i + 1).map(dNum => (
+                                  <Pressable
+                                    key={dNum}
+                                    onPress={() => setActiveScheduleDay(dNum)}
+                                    className={`px-3 py-1 rounded-lg border ${activeScheduleDay === dNum ? 'bg-brand-primary border-brand-primary' : 'bg-brand-bgAlt border-brand-line/40'}`}
+                                  >
+                                    <Text className={`text-xs font-bold ${activeScheduleDay === dNum ? 'text-white' : 'text-brand-text'}`}>
+                                      Xem Ngày {dNum}
+                                    </Text>
+                                  </Pressable>
+                                ))}
+                              </View>
+
+                              <CuratedMap
+                                places={cartItems.map(it => it.place)}
+                                cityName={destinationCity}
+                                addedPlaceIds={cartItems.map(item => item.place.id)}
+                                selectedRoutePlaces={scheduleRoutePlaces}
+                                existingTripPlaceNames={[]}
+                                onAddToCart={() => {}}
+                                layout="workspace"
+                                mapHeight={460}
+                              />
                             </View>
                           </View>
                         </View>

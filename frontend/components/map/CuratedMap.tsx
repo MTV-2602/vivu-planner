@@ -132,7 +132,11 @@ function buildCuratedLeafletHTML(
     places.forEach((p) => {
       if (!p.lat || !p.lng) return;
 
-      bounds.extend([p.lat, p.lng]);
+      // Chỉ mở rộng bounds đối với các điểm trong bán kính đô thị chính (<= ~8km) để tránh bản đồ bị zoom out ra các huyện xa
+      const distFromCenter = Math.sqrt(Math.pow(p.lat - centerLat, 2) + Math.pow(p.lng - centerLng, 2));
+      if (distFromCenter <= 0.075) {
+        bounds.extend([p.lat, p.lng]);
+      }
 
       const inRouteOrder = routeMap[p.id];
       const color = inRouteOrder ? '#1F6F54' : getColor(p.category);
@@ -167,8 +171,22 @@ function buildCuratedLeafletHTML(
 
     const initView = () => {
       map.invalidateSize();
+      // Nếu đang xem lộ trình của một ngày cụ thể, ưu tiên fitBounds theo các điểm của ngày đó
+      if (routePlaces && routePlaces.length > 0) {
+        const routeBounds = L.latLngBounds([]);
+        routePlaces.forEach(p => {
+          if (p.lat && p.lng) routeBounds.extend([Number(p.lat), Number(p.lng)]);
+        });
+        if (routeBounds.isValid()) {
+          map.fitBounds(routeBounds, { padding: [50, 50], maxZoom: 15 });
+          return;
+        }
+      }
+
       if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+      } else {
+        map.setView([centerLat, centerLng], 13);
       }
     };
 

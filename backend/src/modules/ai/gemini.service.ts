@@ -1547,6 +1547,40 @@ export interface GenerateRichPlacesPoolParams {
   ai_provider?: string;
 }
 
+function normalizePlaceKey(str: string): string {
+  return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+}
+
+function deduplicateRichPlaces(list: GeneratedRichPlaceItem[]): GeneratedRichPlaceItem[] {
+  const result: GeneratedRichPlaceItem[] = [];
+  const seenKeys: string[] = [];
+
+  for (const item of list) {
+    const key = normalizePlaceKey(item.name);
+    if (!key || key.length < 2) continue;
+
+    let isDuplicate = false;
+    for (const existingKey of seenKeys) {
+      if (key === existingKey) {
+        isDuplicate = true;
+        break;
+      }
+      // Trùng lặp bao hàm (ví dụ: 'thienvientruclamhotuyenlam' vs 'thienvientruclam')
+      if (key.length >= 8 && existingKey.length >= 8 && (key.includes(existingKey) || existingKey.includes(key))) {
+        isDuplicate = true;
+        break;
+      }
+    }
+
+    if (!isDuplicate) {
+      seenKeys.push(key);
+      result.push(item);
+    }
+  }
+
+  return result;
+}
+
 export async function generateRichPlacesPool(params: GenerateRichPlacesPoolParams): Promise<{
   places: GeneratedRichPlaceItem[];
   city_center: { lat: number; lng: number };
@@ -1718,8 +1752,7 @@ QUY TẮC BẮT BUỘC ĐỂ ĐẢM BẢO CHẤT LƯỢNG TUYỆT ĐỐI (KHÔNG
       };
     });
 
-    // Bổ sung thêm các địa danh xác minh nổi tiếng của thành phố nếu chưa có trong danh sách
-    const existingNames = new Set(formattedPlaces.map(p => p.name.toLowerCase()));
+    // Bổ sung thêm các địa danh xác minh nổi tiếng của thành phố
     const normCity = params.destination_city.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
     const cityVerified = VERIFIED_LANDMARKS.filter(item => {
       const itemCity = item.city.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
@@ -1728,29 +1761,29 @@ QUY TẮC BẮT BUỘC ĐỂ ĐẢM BẢO CHẤT LƯỢNG TUYỆT ĐỐI (KHÔNG
 
     let extraIdx = formattedPlaces.length;
     for (const vItem of cityVerified) {
-      if (!existingNames.has(vItem.name.toLowerCase())) {
-        formattedPlaces.push({
-          id: `place_verified_${extraIdx}_${Date.now()}`,
-          name: vItem.name,
-          category: vItem.category,
-          suggested_day: (extraIdx % daysCount) + 1,
-          lat: vItem.lat,
-          lng: vItem.lng,
-          address: vItem.address,
-          estimated_cost: vItem.estimated_cost || 50000,
-          rating: vItem.rating || 4.8,
-          time_slot_suggestion: '09:00 - 11:00',
-          description: vItem.social_review_quote || '',
-          social_review_quote: vItem.social_review_quote || '',
-          why_recommended: 'Địa danh biểu tượng đặc sắc hàng đầu'
-        });
-        existingNames.add(vItem.name.toLowerCase());
-        extraIdx++;
-      }
+      formattedPlaces.push({
+        id: `place_verified_${extraIdx}_${Date.now()}`,
+        name: vItem.name,
+        category: vItem.category,
+        suggested_day: (extraIdx % daysCount) + 1,
+        lat: vItem.lat,
+        lng: vItem.lng,
+        address: vItem.address,
+        estimated_cost: vItem.estimated_cost || 50000,
+        rating: vItem.rating || 4.8,
+        time_slot_suggestion: '09:00 - 11:00',
+        description: vItem.social_review_quote || '',
+        social_review_quote: vItem.social_review_quote || '',
+        why_recommended: 'Địa danh biểu tượng đặc sắc hàng đầu'
+      });
+      extraIdx++;
     }
 
+    // Khử trùng lặp triệt để 100%
+    const uniquePlaces = deduplicateRichPlaces(formattedPlaces);
+
     return {
-      places: formattedPlaces,
+      places: uniquePlaces,
       city_center: cityCoords
     };
   } catch (error: any) {

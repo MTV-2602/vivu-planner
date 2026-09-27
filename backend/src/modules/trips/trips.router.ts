@@ -4,6 +4,7 @@ import { requireAuth } from '../../middleware/requireAuth';
 import { createRateLimiter } from '../../middleware/rateLimiter';
 import { getSupabaseUserClient, supabaseAdmin } from '../../config/supabase';
 import { getCityCoordinates, searchPlaces, PlaceCandidate, fetchCandidatePlacesForCity } from '../places/places.service';
+import { matchVerifiedLandmark } from '../places/verifiedLandmarks';
 import { getWeatherForecast } from '../weather/weather.service';
 import { generateItinerary, adaptItinerary, generateAlternatives, chatWithItinerary, generateRichPlacesPool } from '../ai/gemini.service';
 import { getRelevantPartners, convertPartnersToPlaceCandidates, logPartnerEvent } from '../partners/partners.service';
@@ -549,23 +550,29 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
 
       const firstDay = manualDaysToInsert[0];
 
-      // 3. Đưa các cart_items vào ngày đầu tiên (day_id: firstDay.id) làm các mục itinerary_items
-      // Khung giờ trải đều (08:30, 11:30, 14:00, 17:30, 20:00)
-      const defaultTimeSlots = [
-        { start: '08:30:00', end: '10:30:00' },
-        { start: '11:30:00', end: '13:30:00' },
-        { start: '14:00:00', end: '16:30:00' },
-        { start: '17:30:00', end: '19:30:00' },
-        { start: '20:00:00', end: '22:00:00' }
-      ];
-
+      // 3. Đưa các cart_items vào từng ngày theo cấu hình của người dùng
+      // Phân bổ khung giờ thông minh khoa học theo loại dịch vụ
       const safeCartItems: any[] = Array.isArray(cart_items) ? cart_items : [];
       const manualItemsToInsert: any[] = [];
 
+      const computeSmartTimeSlot = (category: string, orderInDay: number) => {
+        if (category === 'accommodation') {
+          return { start: '14:00:00', end: '15:00:00' };
+        }
+        const timeline = [
+          { start: '07:30:00', end: '08:45:00' },
+          { start: '09:00:00', end: '10:30:00' },
+          { start: '10:45:00', end: '12:00:00' },
+          { start: '12:15:00', end: '13:30:00' },
+          { start: '15:30:00', end: '17:30:00' },
+          { start: '18:30:00', end: '20:00:00' },
+          { start: '20:15:00', end: '22:00:00' },
+        ];
+        return timeline[orderInDay % timeline.length];
+      };
+
       safeCartItems.forEach((cItem, index) => {
         const place = cItem.place || cItem;
-        const timeSlot = defaultTimeSlots[index % defaultTimeSlots.length];
-
         const rawCost = cItem.custom_cost !== undefined && cItem.custom_cost !== null && cItem.custom_cost !== ''
           ? cItem.custom_cost
           : (place.estimated_cost !== undefined ? place.estimated_cost : (place.price_level ? place.price_level * 50000 : null));
@@ -596,19 +603,25 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
         const targetDayNum = Number(cItem.day_number || cItem.target_day || place.suggested_day) || 1;
         const matchedDay = manualDaysToInsert.find(d => d.day_number === targetDayNum) || firstDay;
         const currentCountInDay = manualItemsToInsert.filter(it => it.day_id === matchedDay.id).length;
-        const dayTimeSlot = defaultTimeSlots[currentCountInDay % defaultTimeSlots.length];
+        const dayTimeSlot = computeSmartTimeSlot(normalizedType, currentCountInDay);
+
+        const placeTitle = place.name || place.title || cItem.title || 'Địa điểm đã chọn';
+        const verified = matchVerifiedLandmark(placeTitle, destination_city);
+        const finalLat = verified ? verified.lat : (Number(place.lat) || lat);
+        const finalLng = verified ? verified.lng : (Number(place.lng) || lng);
+        const finalAddress = verified?.address || place.address || place.description || cItem.notes || '';
 
         manualItemsToInsert.push({
           day_id: matchedDay.id,
           partner_id: itemPartnerId,
           item_type: normalizedType,
-          title: place.name || place.title || cItem.title || 'Địa điểm đã chọn',
-          description: place.address || place.description || cItem.notes || '',
+          title: verified ? verified.name : placeTitle,
+          description: finalAddress,
           start_time: cItem.start_time || dayTimeSlot.start,
           end_time: cItem.end_time || dayTimeSlot.end,
-          location_name: place.name || place.title || cItem.title || 'Địa điểm',
-          location_lat: Number(place.lat) || lat,
-          location_lng: Number(place.lng) || lng,
+          location_name: verified ? verified.name : placeTitle,
+          location_lat: finalLat,
+          location_lng: finalLng,
           google_place_id: rawPlaceId ? String(rawPlaceId) : null,
           estimated_cost: estimatedCost,
           booking_url: place.booking_url || place.google_map_url || null,
