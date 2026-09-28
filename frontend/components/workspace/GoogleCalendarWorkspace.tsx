@@ -92,9 +92,9 @@ export default function GoogleCalendarWorkspace({
   const [activeDay, setActiveDay] = useState(1);
   const [daysCount, setDaysCount] = useState(propDaysCount);
 
-  // Lấy dữ liệu thực tế từ props hoặc curated places của chính thành phố đó (KHÔNG HARD-CODE)
+  // Lấy dữ liệu thực tế: Toàn bộ địa điểm đưa vào Giỏ hàng chờ xếp lịch (standbyList), Lịch trình Google Calendar ban đầu TRỐNG!
   const initialData = useMemo(() => {
-    // 1. Nếu có initialEvents từ props
+    // 1. Nếu có initialEvents từ props (đã được lưu/sắp xếp từ trước)
     if (initialEvents && initialEvents.length > 0) {
       return {
         evs: initialEvents,
@@ -102,93 +102,50 @@ export default function GoogleCalendarWorkspace({
       };
     }
 
-    // 2. Nếu có propStandbyPlaces từ props
+    // 2. MỚI VÀO CHƯA SẮP XẾP GÌ:
+    // Toàn bộ địa điểm phải nằm ở Giỏ hàng (standbyList), evs là RỖNG ([])
+    let stb: StandbyPlaceItem[] = [];
+
     if (propStandbyPlaces && propStandbyPlaces.length > 0) {
-      // Phân bổ thông minh các điểm vào các ngày theo thứ tự
-      const generatedEvs: CalendarEventItem[] = [];
-      const remainingStb: StandbyPlaceItem[] = [];
-
-      propStandbyPlaces.forEach((p, idx) => {
-        const assignedDay = (idx % propDaysCount) + 1;
-        const hour = 8 + (Math.floor(idx / propDaysCount) % 6) * 2;
-
-        if (idx < propDaysCount * 3) {
-          generatedEvs.push({
-            id: `ev-${p.id}`,
-            placeId: p.id,
-            title: p.name,
-            category: p.category,
-            address: p.address,
-            lat: p.lat,
-            lng: p.lng,
-            cost: p.cost,
-            dayNumber: assignedDay,
-            startHour: Math.min(20, hour),
-            startMinute: 0,
-            durationMinutes: p.suggestedDuration || 90,
-          });
-        } else {
-          remainingStb.push(p);
-        }
-      });
-
-      return { evs: generatedEvs, stb: remainingStb };
+      stb = propStandbyPlaces;
+    } else {
+      const cityPlaces = getCuratedPlacesForCity(cityName);
+      stb = cityPlaces.map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        address: p.address,
+        lat: p.lat,
+        lng: p.lng,
+        cost: p.estimated_cost || 50000,
+        suggestedDuration: 90,
+      }));
     }
 
-    // 3. Fallback lấy danh sách thật từ Curated Places của CHÍNH THÀNH PHỐ ĐÓ
-    const cityPlaces = getCuratedPlacesForCity(cityName);
-    const evs: CalendarEventItem[] = [];
-    const stb: StandbyPlaceItem[] = [];
-
-    cityPlaces.forEach((p, idx) => {
-      const assignedDay = (idx % propDaysCount) + 1;
-      const hour = 8 + (Math.floor(idx / propDaysCount) % 6) * 2;
-
-      if (idx < propDaysCount * 2) {
-        evs.push({
-          id: `ev-${p.id}`,
-          placeId: p.id,
-          title: p.name,
-          category: p.category,
-          address: p.address,
-          lat: p.lat,
-          lng: p.lng,
-          cost: p.estimated_cost || 50000,
-          dayNumber: assignedDay,
-          startHour: Math.min(20, hour),
-          startMinute: 0,
-          durationMinutes: 90,
-        });
-      } else {
-        stb.push({
-          id: p.id,
-          name: p.name,
-          category: p.category,
-          address: p.address,
-          lat: p.lat,
-          lng: p.lng,
-          cost: p.estimated_cost || 50000,
-          suggestedDuration: 90,
-        });
-      }
-    });
-
-    return { evs, stb };
+    return { evs: [], stb };
   }, [cityName, propDaysCount, initialEvents, propStandbyPlaces]);
 
   // State sự kiện và giỏ chờ
   const [events, setEvents] = useState<CalendarEventItem[]>(initialData.evs);
   const [standbyList, setStandbyList] = useState<StandbyPlaceItem[]>(initialData.stb);
+  const isInitializedRef = useRef(false);
 
-  // Đồng bộ khi props thay đổi
+  // Đồng bộ khi props thay đổi từ component cha (chỉ chạy khởi tạo một lần, không ghi đè khi người dùng đang xếp lịch)
   useEffect(() => {
     setDaysCount(propDaysCount);
   }, [propDaysCount]);
 
   useEffect(() => {
-    setEvents(initialData.evs);
-    setStandbyList(initialData.stb);
-  }, [initialData]);
+    if (!isInitializedRef.current) {
+      if (initialEvents && initialEvents.length > 0) {
+        setEvents(initialEvents);
+      }
+      if (propStandbyPlaces && propStandbyPlaces.length > 0) {
+        setStandbyList(propStandbyPlaces);
+      }
+      isInitializedRef.current = true;
+    }
+  }, [initialEvents, propStandbyPlaces]);
 
   // Báo thay đổi ra ngoài component cha
   const notifyChanges = (newEvents: CalendarEventItem[], newStandby: StandbyPlaceItem[]) => {
@@ -215,34 +172,62 @@ export default function GoogleCalendarWorkspace({
       .sort((a, b) => a.startHour * 60 + a.startMinute - (b.startHour * 60 + b.startMinute));
   }, [events, activeDay]);
 
-  // Tính toán ngân sách
+  // Kế hoạch ngân sách phân bổ theo từng danh mục (Dự định)
+  const plannedBudget = useMemo(() => {
+    const total = Number(totalBudget) || 5000000;
+    return {
+      dining: Math.round(total * 0.35),
+      cafe: Math.round(total * 0.15),
+      attraction: Math.round(total * 0.25),
+      other: Math.round(total * 0.25),
+      total: total,
+    };
+  }, [totalBudget]);
+
+  // Tính toán ngân sách Đã dùng và Còn lại theo ma trận Excel (Image 5)
   const budgetStats = useMemo(() => {
     const totalScheduled = events.reduce((sum, ev) => sum + (Number(ev.cost) || 0), 0);
     const dayScheduled = currentDayEvents.reduce((sum, ev) => sum + (Number(ev.cost) || 0), 0);
-    const remaining = totalBudget - totalScheduled;
+    const remaining = (Number(totalBudget) || 0) - totalScheduled;
 
-    const byCategory: Record<string, number> = {
+    const used = {
       dining: 0,
-      accommodation: 0,
-      attraction: 0,
-      rental: 0,
       cafe: 0,
+      attraction: 0,
       other: 0,
+      total: totalScheduled,
     };
 
     events.forEach((ev) => {
-      const cat = ev.category in byCategory ? ev.category : 'other';
-      byCategory[cat] += Number(ev.cost) || 0;
+      const c = (ev.category || "").toLowerCase();
+      if (c === "dining" || c.includes("ăn") || c.includes("food")) {
+        used.dining += Number(ev.cost) || 0;
+      } else if (c === "cafe" || c.includes("cà phê") || c.includes("coffee")) {
+        used.cafe += Number(ev.cost) || 0;
+      } else if (c === "attraction" || c.includes("chơi") || c.includes("tham quan")) {
+        used.attraction += Number(ev.cost) || 0;
+      } else {
+        used.other += Number(ev.cost) || 0;
+      }
     });
+
+    const remainingByCategory = {
+      dining: plannedBudget.dining - used.dining,
+      cafe: plannedBudget.cafe - used.cafe,
+      attraction: plannedBudget.attraction - used.attraction,
+      other: plannedBudget.other - used.other,
+      total: remaining,
+    };
 
     return {
       totalScheduled,
       dayScheduled,
       remaining,
-      percentUsed: Math.min(100, Math.round((totalScheduled / (totalBudget || 1)) * 100)),
-      byCategory,
+      percentUsed: Math.min(100, Math.round((totalScheduled / (Number(totalBudget) || 1)) * 100)),
+      used,
+      remainingByCategory,
     };
-  }, [events, currentDayEvents, totalBudget]);
+  }, [events, currentDayEvents, totalBudget, plannedBudget]);
 
   // Tọa độ trung tâm thành phố thực tế
   const { centerLat, centerLng } = useMemo(() => {
@@ -261,11 +246,17 @@ export default function GoogleCalendarWorkspace({
 
   // Thêm một địa điểm vào lịch
   const addPlaceToCalendar = (place: StandbyPlaceItem, targetHour?: number) => {
-    const hour =
-      targetHour ||
-      (currentDayEvents.length > 0
-        ? Math.min(21, currentDayEvents[currentDayEvents.length - 1].startHour + 2)
-        : 8);
+    let hour = targetHour;
+    if (hour === undefined) {
+      const usedHours = new Set(currentDayEvents.map((e) => e.startHour));
+      for (let h = 8; h <= 21; h++) {
+        if (!usedHours.has(h)) {
+          hour = h;
+          break;
+        }
+      }
+      if (hour === undefined) hour = 8;
+    }
 
     const newEvent: CalendarEventItem = {
       id: `ev-${place.id}-${Date.now()}`,
@@ -277,7 +268,7 @@ export default function GoogleCalendarWorkspace({
       lng: place.lng,
       cost: place.cost,
       dayNumber: activeDay,
-      startHour: hour,
+      startHour: Number(hour),
       startMinute: 0,
       durationMinutes: place.suggestedDuration || 90,
     };
@@ -1091,217 +1082,323 @@ export default function GoogleCalendarWorkspace({
               gap: 12,
             }}
           >
-            {/* Tiêu đề Budget Tool */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <DollarSign size={16} color="#137333" />
-                <Text style={{ fontSize: 13, fontWeight: '800', color: '#202124' }}>
-                  Công cụ Ngân sách & Giỏ chờ (Budget Tool)
-                </Text>
-              </View>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: budgetStats.remaining >= 0 ? '#137333' : '#D93025' }}>
-                {budgetStats.remaining >= 0
-                  ? `Khả dụng: ${Number(budgetStats.remaining).toLocaleString('vi-VN')} đ`
-                  : `⚠️ Vượt: ${Number(Math.abs(budgetStats.remaining)).toLocaleString('vi-VN')} đ`}
-              </Text>
-            </View>
-
-            {/* BỐ CỤC 3 CỘT CHUẨN CỦA BUDGET TOOL */}
+            {/* ══════════════════════════════════════════════════════════ */}
+            {/* 1. KHAY GIỎ HÀNG ĐỊA ĐIỂM CHỜ XẾP LỊCH (STANDBY CART TRAY) */}
+            {/* ══════════════════════════════════════════════════════════ */}
             <View
+              testID="calendar-standby-cart-zone"
               style={{
-                flexDirection: isDesktop ? 'row' : 'column',
-                gap: 12,
+                backgroundColor: hoveredCartZone ? "#E8F0FE" : "#FFFFFF",
+                borderRadius: 16,
+                padding: 14,
+                borderWidth: 1.5,
+                borderStyle: "dashed",
+                borderColor: hoveredCartZone ? "#1A73E8" : "rgba(27,36,32,0.15)",
+                gap: 10,
               }}
+              // @ts-ignore
+              onDragOver={(e: any) => { if (Platform.OS === "web") e.preventDefault(); setHoveredCartZone(true); }}
+              // @ts-ignore
+              onDragLeave={() => setHoveredCartZone(false)}
+              // @ts-ignore
+              onDrop={handleDropOnCart}
             >
-              {/* CỘT 1: PHÂN BỔ HẠNG MỤC CHI TIÊU */}
-              <View
-                style={{
-                  flex: 1,
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: 14,
-                  padding: 12,
-                  borderWidth: 1,
-                  borderColor: 'rgba(27,36,32,0.08)',
-                  gap: 8,
-                }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: '800', color: '#5F6368', textTransform: 'uppercase' }}>
-                  1. Phân bổ hạng mục
-                </Text>
-
-                <View style={{ gap: 6 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 11, color: '#3C4043' }}>🍽️ Ẩm thực:</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#202124' }}>
-                      {Number(budgetStats.byCategory.dining).toLocaleString('vi-VN')} đ
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 11, color: '#3C4043' }}>🏨 Lưu trú:</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#202124' }}>
-                      {Number(budgetStats.byCategory.accommodation).toLocaleString('vi-VN')} đ
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 11, color: '#3C4043' }}>🏔️ Tham quan:</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#202124' }}>
-                      {Number(budgetStats.byCategory.attraction).toLocaleString('vi-VN')} đ
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 11, color: '#3C4043' }}>🛵 Đi lại & Khác:</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#202124' }}>
-                      {Number(budgetStats.byCategory.rental + budgetStats.byCategory.cafe + budgetStats.byCategory.other).toLocaleString('vi-VN')} đ
-                    </Text>
+              {/* Header Giỏ Hàng */}
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <ShoppingBag size={16} color="#1A73E8" />
+                  <Text style={{ fontSize: 13, fontWeight: "800", color: "#1B2420" }}>
+                    Giỏ địa điểm chờ xếp lịch ({standbyList.length} địa điểm)
+                  </Text>
+                  <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: "#E8F0FE" }}>
+                    <Text style={{ fontSize: 10, fontWeight: "700", color: "#1A73E8" }}>Kéo thẻ lên Lịch ⬆</Text>
                   </View>
                 </View>
+                <Text style={{ fontSize: 11, color: "#5F6368" }}>
+                  Kéo thả vào ô giờ hoặc bấm thẻ để đặt nhanh
+                </Text>
               </View>
 
-              {/* CỘT 2: GIỎ ĐỊA ĐIỂM CHỜ XẾP LỊCH (KÉO THẢ HOẶC BẤM ĐỂ ĐẶT VÀO LỊCH) */}
-              <View
-                testID="calendar-standby-cart-zone"
-                style={{
-                  flex: 1.25,
-                  backgroundColor: hoveredCartZone ? '#E8F0FE' : '#FFFFFF',
-                  borderRadius: 14,
-                  padding: 12,
-                  borderWidth: 1.5,
-                  borderStyle: 'dashed',
-                  borderColor: hoveredCartZone ? '#1A73E8' : 'rgba(27,36,32,0.14)',
-                  gap: 8,
-                }}
-                // @ts-ignore
-                onDragOver={(e: any) => { if (Platform.OS === 'web') e.preventDefault(); setHoveredCartZone(true); }}
-                // @ts-ignore
-                onDragLeave={() => setHoveredCartZone(false)}
-                // @ts-ignore
-                onDrop={handleDropOnCart}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <ShoppingBag size={13} color="#1A73E8" />
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8', textTransform: 'uppercase' }}>
-                      2. Giỏ chờ ({standbyList.length} điểm)
-                    </Text>
-                  </View>
-                  <Text style={{ fontSize: 10, color: '#5F6368' }}>Kéo thẻ lên Lịch ⬆</Text>
+              {/* Danh sách thẻ trong giỏ */}
+              {standbyList.length === 0 ? (
+                <View style={{ paddingVertical: 16, alignItems: "center", justifyContent: "center", backgroundColor: "#F8F9FA", borderRadius: 10 }}>
+                  <Text style={{ fontSize: 12, color: "#137333", fontWeight: "700" }}>
+                    ✓ Tất cả địa điểm đã được xếp vào lịch trình! Kéo thả từ lịch về đây nếu muốn đổi.
+                  </Text>
                 </View>
+              ) : (
+                <ScrollView
+                  horizontal={true}
+                  showsHorizontalScrollIndicator={true}
+                  style={{ maxHeight: 115 }}
+                  contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+                >
+                  {standbyList.map((item) => {
+                    const isSelected = selectedPlaceToPlace?.id === item.id;
+                    const catLower = (item.category || "").toLowerCase();
+                    const catLabel =
+                      catLower === "dining" || catLower.includes("ăn")
+                        ? "🔴 Ăn"
+                        : catLower === "cafe" || catLower.includes("cà phê")
+                        ? "🟡 CF"
+                        : catLower === "attraction" || catLower.includes("chơi")
+                        ? "🟣 Chơi"
+                        : "🔵 Khách sạn";
 
-                {standbyList.length === 0 ? (
-                  <View style={{ paddingVertical: 18, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 11, color: '#137333', fontWeight: '700' }}>
-                      ✓ Toàn bộ địa điểm đã vào lịch!
-                    </Text>
-                  </View>
-                ) : (
-                  <ScrollView style={{ maxHeight: 110 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                    <View style={{ gap: 5 }}>
-                      {standbyList.map((item) => {
-                        const isSelected = selectedPlaceToPlace?.id === item.id;
-                        return (
-                          <View
-                            key={item.id}
-                            testID={`standby-chip-${item.id}`}
-                            style={{
-                              backgroundColor: isSelected ? '#E8F0FE' : '#F8F9FA',
-                              borderRadius: 8,
-                              paddingHorizontal: 8,
-                              paddingVertical: 5,
-                              borderWidth: 1,
-                              borderColor: isSelected ? '#1A73E8' : 'rgba(27,36,32,0.08)',
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              cursor: readOnly ? 'default' : 'grab' as any,
-                            }}
-                            // @ts-ignore
-                            draggable={!readOnly}
-                            // @ts-ignore
-                            onDragStart={(e: any) => handleDragStartStandby(item, e)}
-                          >
+                    return (
+                      <View
+                        key={item.id}
+                        testID={`standby-chip-${item.id}`}
+                        style={{
+                          width: 190,
+                          backgroundColor: isSelected ? "#E8F0FE" : "#FFFFFF",
+                          borderRadius: 12,
+                          padding: 10,
+                          borderWidth: isSelected ? 1.5 : 1,
+                          borderColor: isSelected ? "#1A73E8" : "rgba(27,36,32,0.12)",
+                          gap: 6,
+                          justifyContent: "space-between",
+                          boxShadow: "0 1px 4px rgba(0,0,0,0.06)" as any,
+                          cursor: readOnly ? "default" : ("grab" as any),
+                        }}
+                        // @ts-ignore
+                        draggable={!readOnly}
+                        // @ts-ignore
+                        onDragStart={(e: any) => handleDragStartStandby(item, e)}
+                      >
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                          <Text style={{ fontSize: 10, fontWeight: "800", color: "#5F6368" }}>
+                            {catLabel}
+                          </Text>
+                          <Text style={{ fontSize: 11, fontWeight: "800", color: "#E2703A" }}>
+                            {item.cost ? `${Number(item.cost).toLocaleString("vi-VN")} đ` : "0 đ"}
+                          </Text>
+                        </View>
+
+                        <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "700", color: "#1B2420" }}>
+                          {item.name}
+                        </Text>
+
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "rgba(27,36,32,0.06)", paddingTop: 4 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                            <GripVertical size={11} color="#9AA0A6" />
+                            <Text style={{ fontSize: 9, color: "#9AA0A6" }}>Kéo thẻ</Text>
+                          </View>
+
+                          {!readOnly && (
                             <Pressable
+                              testID={`btn-add-standby-${item.id}`}
                               onPress={() => setSelectedPlaceToPlace(isSelected ? null : item)}
-                              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, paddingRight: 4, cursor: 'pointer' as any }}
+                              style={{
+                                paddingHorizontal: 6,
+                                paddingVertical: 2,
+                                borderRadius: 6,
+                                backgroundColor: isSelected ? "#1A73E8" : "#F1F3F4",
+                              }}
                             >
-                              <GripVertical size={12} color="#9AA0A6" />
-                              <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#1A73E8' : '#202124' }}>
-                                {item.name}
+                              <Text style={{ fontSize: 10, fontWeight: "700", color: isSelected ? "#FFFFFF" : "#1A73E8" }}>
+                                {isSelected ? "Đang chọn" : "+ Đặt giờ"}
                               </Text>
                             </Pressable>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
 
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <Text style={{ fontSize: 10, fontWeight: '700', color: '#137333' }}>
-                                {item.cost ? `${Number(item.cost).toLocaleString('vi-VN')} đ` : '0 đ'}
-                              </Text>
-                              {!readOnly && (
-                                <Pressable
-                                  testID={`btn-add-standby-${item.id}`}
-                                  onPress={() => addPlaceToCalendar(item)}
-                                  style={{ padding: 2, cursor: 'pointer' as any }}
-                                >
-                                  <Plus size={13} color="#1A73E8" />
-                                </Pressable>
-                              )}
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  </ScrollView>
-                )}
-              </View>
+            {/* ══════════════════════════════════════════════════════════ */}
+            {/* 2. BẢNG NGÂN SÁCH MA TRẬN (BUDGET MATRIX - CHUẨN EXCEL)  */}
+            {/* ══════════════════════════════════════════════════════════ */}
+            <View
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: 16,
+                padding: 14,
+                borderWidth: 1,
+                borderColor: "rgba(27,36,32,0.12)",
+                gap: 10,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)" as any,
+              }}
+            >
+              {/* Header Bảng Ngân Sách */}
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <DollarSign size={16} color="#137333" />
+                  <Text style={{ fontSize: 13, fontWeight: "800", color: "#1B2420" }}>
+                    Công cụ Ngân sách Ma trận (Budget Matrix Tool)
+                  </Text>
+                </View>
 
-              {/* CỘT 3: TỔNG QUAN TÀI CHÍNH & THANH TIẾN ĐỘ */}
-              <View
-                style={{
-                  flex: 1,
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: 14,
-                  padding: 12,
-                  borderWidth: 1,
-                  borderColor: 'rgba(27,36,32,0.08)',
-                  gap: 8,
-                }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: '800', color: '#5F6368', textTransform: 'uppercase' }}>
-                  3. Cân đối tài chính
-                </Text>
-
-                <View style={{ gap: 4 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 10, color: '#5F6368' }}>Tổng hạn mức:</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#202124' }}>
-                      {Number(totalBudget).toLocaleString('vi-VN')} đ
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 10, color: '#5F6368' }}>Đã lên lịch ({events.length}):</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>
-                      {Number(budgetStats.totalScheduled).toLocaleString('vi-VN')} đ
-                    </Text>
-                  </View>
-
-                  {/* Thanh tiến độ */}
-                  <View style={{ marginTop: 4, height: 6, borderRadius: 3, backgroundColor: 'rgba(27,36,32,0.08)', overflow: 'hidden' }}>
-                    <View
-                      style={{
-                        height: '100%',
-                        width: `${budgetStats.percentUsed}%`,
-                        backgroundColor: budgetStats.percentUsed > 100 ? '#D93025' : '#1A73E8',
-                      }}
-                    />
-                  </View>
-                  <Text style={{ fontSize: 9, color: '#5F6368', textAlign: 'right', marginTop: 2 }}>
-                    Đã dùng {budgetStats.percentUsed}% ngân sách
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Text style={{ fontSize: 11, color: "#5F6368" }}>
+                    Tổng hạn mức: <Text style={{ fontWeight: "800", color: "#1B2420" }}>{Number(totalBudget).toLocaleString("vi-VN")} đ</Text>
+                  </Text>
+                  <Text style={{ fontSize: 11, fontWeight: "800", color: budgetStats.remaining >= 0 ? "#137333" : "#D93025" }}>
+                    {budgetStats.remaining >= 0
+                      ? `Còn lại: ${Number(budgetStats.remaining).toLocaleString("vi-VN")} đ`
+                      : `⚠️ Vượt: ${Number(Math.abs(budgetStats.remaining)).toLocaleString("vi-VN")} đ`}
                   </Text>
                 </View>
               </View>
+
+              {/* Bảng Excel Ma Trận: ăn | cf | chơi | khác | tổng */}
+              <View
+                style={{
+                  borderWidth: 1.5,
+                  borderColor: "#1B2420",
+                  borderRadius: 8,
+                  overflow: "hidden",
+                }}
+              >
+                {/* Hàng 0: Header Cột (Màu vàng chuẩn bản vẽ Excel của user) */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    backgroundColor: "#FFF275",
+                    borderBottomWidth: 1.5,
+                    borderBottomColor: "#1B2420",
+                  }}
+                >
+                  <View style={{ width: 85, paddingVertical: 7, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1B2420", textAlign: "center" }}>Chỉ số</Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 7, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1B2420", textAlign: "center" }}>ăn</Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 7, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1B2420", textAlign: "center" }}>cf</Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 7, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1B2420", textAlign: "center" }}>chơi</Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 7, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1B2420", textAlign: "center" }}>khác</Text>
+                  </View>
+                  <View style={{ flex: 1.15, paddingVertical: 7, paddingHorizontal: 4, justifyContent: "center", backgroundColor: "#FFE600" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "900", color: "#1B2420", textAlign: "center" }}>tổng</Text>
+                  </View>
+                </View>
+
+                {/* Hàng 1: DỰ ĐỊNH */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    backgroundColor: "#FFFFFF",
+                    borderBottomWidth: 1,
+                    borderBottomColor: "#1B2420",
+                  }}
+                >
+                  <View style={{ width: 85, paddingVertical: 8, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: "#1B2420", backgroundColor: "#F8F9FA", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#1B2420" }}>dự định</Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: "#1B2420" }}>
+                      {Number(plannedBudget.dining).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: "#1B2420" }}>
+                      {Number(plannedBudget.cafe).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: "#1B2420" }}>
+                      {Number(plannedBudget.attraction).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: "#1B2420" }}>
+                      {Number(plannedBudget.other).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1.15, paddingVertical: 8, paddingHorizontal: 4, justifyContent: "center", alignItems: "center", backgroundColor: "#FFFDE7" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1B2420" }}>
+                      {Number(plannedBudget.total).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Hàng 2: ĐÃ DÙNG */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    backgroundColor: "#FFFFFF",
+                    borderBottomWidth: 1,
+                    borderBottomColor: "#1B2420",
+                  }}
+                >
+                  <View style={{ width: 85, paddingVertical: 8, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: "#1B2420", backgroundColor: "#F8F9FA", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#1A73E8" }}>đã dùng</Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.used.dining > 0 ? "#1A73E8" : "#5F6368" }}>
+                      {Number(budgetStats.used.dining).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.used.cafe > 0 ? "#1A73E8" : "#5F6368" }}>
+                      {Number(budgetStats.used.cafe).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.used.attraction > 0 ? "#1A73E8" : "#5F6368" }}>
+                      {Number(budgetStats.used.attraction).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.used.other > 0 ? "#1A73E8" : "#5F6368" }}>
+                      {Number(budgetStats.used.other).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1.15, paddingVertical: 8, paddingHorizontal: 4, justifyContent: "center", alignItems: "center", backgroundColor: "#E8F0FE" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1A73E8" }}>
+                      {Number(budgetStats.used.total).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Hàng 3: CÒN LẠI */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    backgroundColor: "#FFFFFF",
+                  }}
+                >
+                  <View style={{ width: 85, paddingVertical: 8, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: "#1B2420", backgroundColor: "#F8F9FA", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.remaining >= 0 ? "#137333" : "#D93025" }}>còn lại</Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.remainingByCategory.dining >= 0 ? "#137333" : "#D93025" }}>
+                      {Number(budgetStats.remainingByCategory.dining).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.remainingByCategory.cafe >= 0 ? "#137333" : "#D93025" }}>
+                      {Number(budgetStats.remainingByCategory.cafe).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.remainingByCategory.attraction >= 0 ? "#137333" : "#D93025" }}>
+                      {Number(budgetStats.remainingByCategory.attraction).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.remainingByCategory.other >= 0 ? "#137333" : "#D93025" }}>
+                      {Number(budgetStats.remainingByCategory.other).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1.15, paddingVertical: 8, paddingHorizontal: 4, justifyContent: "center", alignItems: "center", backgroundColor: budgetStats.remaining >= 0 ? "#E6F4EA" : "#FCE8E6" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "900", color: budgetStats.remaining >= 0 ? "#137333" : "#D93025" }}>
+                      {Number(budgetStats.remaining).toLocaleString("vi-VN")}
+                    </Text>
+                  </View>
+                </View>
+              </View>
             </View>
-          </View>
+</View>
         </View>
       </View>
     </View>

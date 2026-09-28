@@ -309,6 +309,9 @@ export default function TripWizard() {
     day_number: number;
     order_index: number;
     nights?: number;
+    startHour?: number;
+    startMinute?: number;
+    durationMinutes?: number;
   }[]>([]);
   const [showScheduleOptionModal, setShowScheduleOptionModal] = useState(false);
   const [editingCostPlaceId, setEditingCostPlaceId] = useState<string | null>(null);
@@ -411,12 +414,12 @@ export default function TripWizard() {
         traveler_type: travelerType,
         special_requirements: specialRequirements,
         ai_provider: selectedAiProvider
-      });
+      }, { timeout: 6000 });
       if (res.data?.places && Array.isArray(res.data.places)) {
         setPregenPlaces(res.data.places);
       }
     } catch (err: any) {
-      console.error('Failed to pre-generate places pool:', err);
+      console.warn('Fallback to curated places for city:', destinationCity);
       const fallback = getCuratedPlacesForCity(destinationCity);
       setPregenPlaces(fallback.map((p, idx) => ({ ...p, suggested_day: (idx % daysCount) + 1 })));
     } finally {
@@ -594,7 +597,7 @@ export default function TripWizard() {
   const calendarInitialEvents: CalendarEventItem[] = useMemo(() => {
     const assigned = cartItems.filter(it => it.day_number && it.day_number > 0);
     if (assigned.length > 0) {
-      return assigned.map((it, idx) => ({
+      return assigned.map((it) => ({
         id: `ev-${it.place.id}`,
         placeId: it.place.id,
         title: it.place.name,
@@ -604,33 +607,20 @@ export default function TripWizard() {
         lng: it.place.lng,
         cost: it.custom_cost,
         dayNumber: it.day_number,
-        startHour: Math.min(20, 8 + (idx % 6) * 2),
-        startMinute: 0,
-        durationMinutes: 90,
+        startHour: it.startHour !== undefined ? it.startHour : 8,
+        startMinute: it.startMinute || 0,
+        durationMinutes: it.durationMinutes || 90,
       }));
     }
-    // Nếu chưa có điểm nào gán ngày, tự động phân bổ vào các ngày để hiển thị ngay trên Google Maps và Lịch
-    return cartItems.map((it, idx) => ({
-      id: `ev-${it.place.id}`,
-      placeId: it.place.id,
-      title: it.place.name,
-      category: it.place.category,
-      address: it.place.address,
-      lat: it.place.lat,
-      lng: it.place.lng,
-      cost: it.custom_cost,
-      dayNumber: (idx % daysCount) + 1,
-      startHour: Math.min(20, 8 + (Math.floor(idx / daysCount) % 6) * 2),
-      startMinute: 0,
-      durationMinutes: 90,
-    }));
-  }, [cartItems, daysCount]);
+    // MỚI VÀO CHƯA SẮP XẾP GÌ: Lịch trình ban đầu PHẢI HOÀN TOÀN TRỐNG!
+    return [];
+  }, [cartItems]);
 
   const calendarStandbyPlaces: StandbyPlaceItem[] = useMemo(() => {
     const inCartIds = new Set(cartItems.map(it => it.place.id));
-    return pregenPlaces
+    const pool = pregenPlaces.length > 0 ? pregenPlaces : getCuratedPlacesForCity(destinationCity);
+    return pool
       .filter(p => !inCartIds.has(p.id))
-      .slice(0, 12)
       .map(p => ({
         id: p.id,
         name: p.name,
@@ -641,7 +631,7 @@ export default function TripWizard() {
         cost: p.estimated_cost || 50000,
         suggestedDuration: 90,
       }));
-  }, [cartItems, pregenPlaces]);
+  }, [cartItems, pregenPlaces, destinationCity]);
 
   const handleCalendarEventsChange = (updatedEvents: CalendarEventItem[]) => {
     setCartItems(prev => {
@@ -652,6 +642,9 @@ export default function TripWizard() {
             ...item,
             day_number: found.dayNumber,
             custom_cost: found.cost,
+            startHour: found.startHour,
+            startMinute: found.startMinute,
+            durationMinutes: found.durationMinutes,
           };
         }
         return {
@@ -661,16 +654,20 @@ export default function TripWizard() {
       });
 
       // Nếu có điểm từ Standby thêm vào
+      const pool = pregenPlaces.length > 0 ? pregenPlaces : getCuratedPlacesForCity(destinationCity);
       updatedEvents.forEach(ev => {
         const already = updated.some(it => it.place.id === ev.placeId || `ev-${it.place.id}` === ev.id);
         if (!already) {
-          const p = pregenPlaces.find(place => place.id === ev.placeId);
+          const p = pool.find(place => place.id === ev.placeId);
           if (p) {
             updated.push({
               place: p,
               pricing_option: 'auto',
               custom_cost: ev.cost,
               day_number: ev.dayNumber,
+              startHour: ev.startHour,
+              startMinute: ev.startMinute,
+              durationMinutes: ev.durationMinutes,
               order_index: updated.length + 1,
             });
           }
@@ -1414,360 +1411,22 @@ export default function TripWizard() {
                           Đang phân tích ngân sách {new Intl.NumberFormat('vi-VN').format(budgetTotal)} đ và sở thích "{selectedPrefs.join(', ') || 'ẩm thực, trải nghiệm'}" tại {destinationCity} để gợi ý các địa điểm chất lượng cao, tọa độ chuẩn xác.
                         </Text>
                       </View>
-                    ) : workspaceStage === 'collecting' ? (
-                      /* ── GIAI ĐOẠN 1: CHỌN ĐỊA ĐIỂM VÀO GIỎ HÀNG CHUNG ── */
-                      <View className="gap-6">
-                        {/* Header của Workspace */}
-                        <View className="flex-row justify-between items-start flex-wrap gap-2">
-                          <View>
-                            <View className="flex-row items-center gap-2">
-                              <Text className="font-display font-extrabold text-2xl text-brand-text">
-                                Kho Địa Điểm Đề Xuất
-                              </Text>
-                              <View className="px-2 py-0.5 rounded-md bg-[#FFF2E0] border border-brand-accent/30">
-                                <Text className="text-[10px] font-extrabold text-brand-accent">PRO WORKSPACE</Text>
-                              </View>
-                            </View>
-                            <Text className="text-xs text-brand-textSoft mt-0.5">
-                              Khám phá và bấm <Text className="font-bold text-brand-accent">"+ Thêm vào giỏ"</Text> các địa điểm bạn ưng ý tại <Text className="font-bold text-brand-text">{destinationCity}</Text>. Sau đó sang bước tiếp theo để tự tay sắp xếp thứ tự hoặc để AI phân bổ.
-                            </Text>
-                          </View>
-
-                          <Pressable
-                            onPress={fetchPregenPlaces}
-                            className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-bgAlt border border-brand-line/40 hover:bg-white"
-                          >
-                            <Sparkles size={13} color={BRAND_COLORS.primary} />
-                            <Text className="text-xs font-bold text-brand-primary">🔄 AI Tạo lại kho mới</Text>
-                          </Pressable>
-                        </View>
-
-                        {/* Ô Tìm kiếm & Bộ lọc nhanh */}
-                        <View className="p-4 rounded-2xl bg-white border border-brand-line/40 gap-3 shadow-sm">
-                          <View className="flex-row items-center gap-2">
-                            <TextInput
-                              value={placeSearchQuery}
-                              onChangeText={setPlaceSearchQuery}
-                              placeholder={`🔎 Tìm kiếm quán ăn, cà phê, khách sạn hoặc địa điểm bất kỳ tại ${destinationCity}...`}
-                              className="flex-1 px-4 py-3 rounded-xl border border-brand-line text-sm bg-brand-bg text-brand-text"
-                              placeholderTextColor={BRAND_COLORS.textMuted}
-                            />
-                            {placeSearchQuery.trim().length > 0 && (
-                              <Pressable
-                                onPress={handleAddCustomPlace}
-                                className="px-4 py-3 rounded-xl bg-brand-accent flex-row items-center gap-1.5"
-                              >
-                                <Plus size={15} color="#FFFFFF" />
-                                <Text className="text-white text-xs font-bold">Thêm vào giỏ</Text>
-                              </Pressable>
-                            )}
-                          </View>
-
-                          {/* Bộ lọc danh mục */}
-                          <View className="flex-row items-center gap-1.5 flex-wrap">
-                            {[
-                              { id: 'all', label: `Tất cả (${filteredPoolPlaces.length})` },
-                              { id: 'dining', label: '🔴 Ăn uống' },
-                              { id: 'cafe', label: '🟡 Cà phê' },
-                              { id: 'hotel', label: '🔵 Khách sạn' },
-                              { id: 'attraction', label: '🟣 Vui chơi / Tham quan' },
-                            ].map(cat => (
-                              <Pressable
-                                key={cat.id}
-                                onPress={() => setPlaceCategoryFilter(cat.id)}
-                                className={`px-3 py-1.5 rounded-xl border ${placeCategoryFilter === cat.id ? 'bg-brand-primary border-brand-primary' : 'bg-brand-bgAlt border-brand-line/40'}`}
-                              >
-                                <Text className={`text-xs font-bold ${placeCategoryFilter === cat.id ? 'text-white' : 'text-brand-textSoft'}`}>
-                                  {cat.label}
-                                </Text>
-                              </Pressable>
-                            ))}
-                          </View>
-                        </View>
-
-                        {/* 2-Column Responsive Layout */}
-                        <View style={{ flexDirection: isLargeScreen ? 'row' : 'column', gap: 28, alignItems: 'flex-start' }}>
-                          {/* Cột 1 (Bên trái / Trên): Bản đồ tương tác CuratedMap + Kho địa điểm */}
-                          <View style={{ flex: isLargeScreen ? 1.6 : undefined, width: '100%', gap: 16 }}>
-                            <CuratedMap
-                              places={filteredPoolPlaces}
-                              cityName={destinationCity}
-                              addedPlaceIds={cartItems.map(item => item.place.id)}
-                              selectedRoutePlaces={[]}
-                              existingTripPlaceNames={[]}
-                              onAddToCart={(p, opt, cost) => handleAddToCart(p, opt, cost)}
-                              layout="workspace"
-                              mapHeight={480}
-                            />
-
-                            {/* Danh sách thẻ địa điểm gợi ý phong phú */}
-                            <View className="gap-3 mt-2">
-                              <View className="flex-row justify-between items-center">
-                                <Text className="font-bold text-base text-brand-text">
-                                  📍 Danh sách địa điểm ({filteredPoolPlaces.length} gợi ý)
-                                </Text>
-                                <Text className="text-xs text-brand-textSoft">
-                                  Bấm vào thẻ để thêm / bỏ khỏi giỏ
-                                </Text>
-                              </View>
-
-                              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                                {filteredPoolPlaces.map((place: any) => {
-                                  const costValue = place.estimated_cost || (place.price_level ? place.price_level * 50000 : 50000);
-                                  const isAdded = cartItems.some(it => it.place.id === place.id);
-
-                                  return (
-                                    <View
-                                      key={place.id}
-                                      style={{
-                                        width: Platform.OS === 'web' ? ('calc(50% - 6px)' as any) : '100%',
-                                        minWidth: 260,
-                                        backgroundColor: '#FFFFFF',
-                                        borderRadius: 16,
-                                        padding: 16,
-                                        borderWidth: isAdded ? 1.5 : 1,
-                                        borderColor: isAdded ? '#1F6F54' : 'rgba(27,36,32,0.1)',
-                                        gap: 10,
-                                        justifyContent: 'space-between',
-                                      }}
-                                    >
-                                      <View style={{ gap: 6 }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                          <Text style={{ fontSize: 11, fontWeight: '800', color: '#1F6F54', backgroundColor: 'rgba(31,111,84,0.1)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                                            {place.category === 'dining' ? '🔴 Ăn uống' : place.category === 'cafe' ? '🟡 Cafe' : place.category === 'hotel' ? '🔵 Khách sạn' : '🟣 Vui chơi'}
-                                          </Text>
-                                          <Text style={{ fontSize: 14, fontWeight: '800', color: '#E2703A' }}>
-                                            {costValue.toLocaleString('vi-VN')} đ
-                                          </Text>
-                                        </View>
-
-                                        <Text numberOfLines={1} style={{ fontFamily: 'Lora_700Bold', fontSize: 15, color: '#1B2420' }}>
-                                          {place.name}
-                                        </Text>
-
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                          <MapPin size={13} color="#6E7B70" />
-                                          <Text numberOfLines={1} style={{ fontSize: 12, color: '#6E7B70', flex: 1 }}>
-                                            {place.address}
-                                          </Text>
-                                        </View>
-
-                                        {place.social_review_quote && (
-                                          <Text numberOfLines={2} style={{ fontSize: 12, fontStyle: 'italic', color: '#3F4F45', backgroundColor: '#FBF5EA', padding: 8, borderRadius: 10, marginTop: 2, lineHeight: 16 }}>
-                                            💬 "{place.social_review_quote}"
-                                          </Text>
-                                        )}
-                                      </View>
-
-                                      {/* One simple Add/Remove Button */}
-                                      <Pressable
-                                        testID={`btn-add-place-${place.id}`}
-                                        onPress={() => handleAddToCart(place, 'auto')}
-                                        style={({ pressed }) => [{
-                                          flexDirection: 'row',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          gap: 6,
-                                          paddingVertical: 10,
-                                          borderRadius: 12,
-                                          backgroundColor: isAdded ? '#134A37' : '#E2703A',
-                                          opacity: pressed ? 0.85 : 1,
-                                          marginTop: 4,
-                                        }]}
-                                      >
-                                        {isAdded ? (
-                                          <>
-                                            <Check size={16} color="#FFFFFF" />
-                                            <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>
-                                              ✓ Đã trong giỏ chuyến đi
-                                            </Text>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Plus size={16} color="#FFFFFF" />
-                                            <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>
-                                              + Thêm vào giỏ
-                                            </Text>
-                                          </>
-                                        )}
-                                      </Pressable>
-                                    </View>
-                                  );
-                                })}
-                              </View>
-                            </View>
-                          </View>
-
-                          {/* Cột 2 (Bên phải / Dưới - Sticky): LiveBudgetBar + Giỏ hàng chung */}
-                          <View style={{
-                            flex: isLargeScreen ? 1 : undefined,
-                            width: '100%',
-                            gap: 16,
-                            position: (isLargeScreen && Platform.OS === 'web') ? ('sticky' as any) : undefined,
-                            top: 24,
-                          }}>
-                            {/* 1. LiveBudgetBar */}
-                            <LiveBudgetBar
-                              totalBudget={budgetTotal}
-                              currentCartTotal={currentCartTotal}
-                            />
-
-                            {/* 2. Danh sách giỏ hàng chung */}
-                            <View className="bg-white rounded-2xl p-4 border border-brand-line/40 gap-3 shadow-sm">
-                              <View className="flex-row justify-between items-center pb-2 border-b border-brand-line/20">
-                                <View className="flex-row items-center gap-2">
-                                  <ShoppingBag size={16} color={BRAND_COLORS.primary} />
-                                  <Text className="font-extrabold text-sm text-brand-text">
-                                    Giỏ chuyến đi ({cartItems.length} địa điểm)
-                                  </Text>
-                                </View>
-                                {cartItems.length > 0 && (
-                                  <Pressable
-                                    onPress={() => setCartItems([])}
-                                    className="px-2 py-1 rounded bg-brand-danger/10"
-                                  >
-                                    <Text className="text-[10px] font-bold text-brand-danger">Xóa tất cả</Text>
-                                  </Pressable>
-                                )}
-                              </View>
-
-                              {cartItems.length === 0 ? (
-                                <View className="py-8 items-center justify-center gap-2">
-                                  <Text className="text-xs text-brand-textMuted text-center px-4 leading-relaxed">
-                                    Giỏ đang trống. Bạn hãy bấm chọn các địa điểm yêu thích trên bản đồ hoặc nhập tên quán ăn bất kỳ để thêm vào!
-                                  </Text>
-                                </View>
-                              ) : (
-                                <ScrollView style={{ maxHeight: 360 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                                  <View className="gap-2.5">
-                                    {cartItems.map((item, idx) => {
-                                      const isEditing = editingCostPlaceId === item.place.id;
-                                      return (
-                                        <View key={item.place.id} className="p-3 rounded-xl bg-brand-bgAlt border border-brand-line/30 gap-1.5">
-                                          <View className="flex-row justify-between items-start gap-2">
-                                            <View className="flex-1">
-                                              <Text numberOfLines={1} className="font-bold text-xs text-brand-text">
-                                                {idx + 1}. {item.place.name}
-                                              </Text>
-                                              <Text numberOfLines={1} className="text-[10px] text-brand-textSoft">
-                                                {item.place.address}
-                                              </Text>
-                                            </View>
-                                            <Pressable onPress={() => handleRemoveFromCart(item.place.id)} className="p-1">
-                                              <Trash2 size={13} color={BRAND_COLORS.danger} />
-                                            </Pressable>
-                                          </View>
-
-                                          <View className="flex-row justify-between items-center pt-1 border-t border-brand-line/20">
-                                            {isEditing ? (
-                                              <View className="flex-row items-center gap-1.5 flex-1 mr-2">
-                                                <TextInput
-                                                  value={editCostInput}
-                                                  onChangeText={setEditCostInput}
-                                                  keyboardType="numeric"
-                                                  className="px-2 py-0.5 rounded border border-brand-primary text-xs bg-white text-brand-text flex-1"
-                                                  autoFocus
-                                                />
-                                                <Pressable
-                                                  onPress={() => {
-                                                    const num = parseInt(editCostInput.replace(/\D/g, ''), 10) || 0;
-                                                    handleUpdateItemCost(item.place.id, num);
-                                                  }}
-                                                  className="px-2 py-1 rounded bg-brand-primary"
-                                                >
-                                                  <Text className="text-[10px] text-white font-bold">Lưu</Text>
-                                                </Pressable>
-                                                <Pressable onPress={() => setEditingCostPlaceId(null)} className="px-2 py-1 rounded bg-brand-line">
-                                                  <Text className="text-[10px] text-brand-textSoft">Hủy</Text>
-                                                </Pressable>
-                                              </View>
-                                            ) : (
-                                              <View className="flex-row items-center gap-1.5">
-                                                <Text className="text-xs font-extrabold text-brand-accent">
-                                                  {new Intl.NumberFormat('vi-VN').format(item.custom_cost)} đ
-                                                </Text>
-                                                <Pressable onPress={() => handleStartEditCost(item.place.id, item.custom_cost)} className="p-0.5">
-                                                  <Edit3 size={10} color={BRAND_COLORS.textSoft} />
-                                                </Pressable>
-                                              </View>
-                                            )}
-                                          </View>
-                                        </View>
-                                      );
-                                    })}
-                                  </View>
-                                </ScrollView>
-                              )}
-
-                              {/* Proceed to scheduling step */}
-                              <Pressable
-                                testID="btn-proceed-scheduling"
-                                onPress={() => {
-                                  if (cartItems.length === 0) {
-                                    setErrorMsg('Vui lòng thêm ít nhất 1 địa điểm từ bản đồ vào giỏ');
-                                    return;
-                                  }
-                                  setErrorMsg('');
-                                  setWorkspaceStage('scheduling');
-                                }}
-                                disabled={cartItems.length === 0}
-                                className={`w-full py-4 px-4 rounded-2xl flex-row items-center justify-center gap-2 mt-2 shadow-sm ${cartItems.length > 0 ? 'bg-brand-primary active:opacity-90' : 'bg-brand-line/60 opacity-60'}`}
-                              >
-                                <ArrowRight size={18} color="#FFFFFF" />
-                                <Text className="text-white text-sm font-extrabold text-center">
-                                  Tiến hành sắp xếp lịch trình ({cartItems.length} địa điểm) →
-                                </Text>
-                              </Pressable>
-                            </View>
-                          </View>
-                        </View>
-                      </View>
                     ) : (
-                      /* ── GIAI ĐOẠN 2: SẮP XẾP LỊCH TRÌNH & ĐƯỜNG ĐI REAL-TIME ── */
-                      <View className="gap-6">
-                        {/* Header & Back Button */}
-                        <View className="flex-row justify-between items-center flex-wrap gap-2">
-                          <View className="flex-row items-center gap-2">
-                            <Pressable
-                              onPress={() => setWorkspaceStage('collecting')}
-                              className="flex-row items-center gap-2 px-3.5 py-2 rounded-xl bg-brand-bgAlt border border-brand-line/40 hover:bg-white"
-                            >
-                              <ArrowLeft size={16} color={BRAND_COLORS.primary} />
-                              <Text className="text-xs font-bold text-brand-primary">← Chọn thêm địa điểm</Text>
-                            </Pressable>
-
-                          </View>
-
-                          <View className="flex-row items-center gap-2">
-                            <Text className="text-xs text-brand-textSoft">
-                              Tổng cộng: <Text className="font-bold text-brand-text">{cartItems.length} địa điểm</Text> · Chi phí: <Text className="font-bold text-brand-primary">{new Intl.NumberFormat('vi-VN').format(currentCartTotal)} đ</Text>
-                            </Text>
-                            <Pressable
-                              onPress={handleAutoDistributeDays}
-                              className="px-3 py-1.5 rounded-xl bg-white border border-brand-line/40 hover:bg-brand-bgAlt flex-row items-center gap-1.5 shadow-sm"
-                            >
-                              <Sparkles size={13} color={BRAND_COLORS.primary} />
-                              <Text className="text-xs font-bold text-brand-primary">⚡ Tự động chia đều cho các ngày</Text>
-                            </Pressable>
-                          </View>
-                        </View>
-
-                        {/* Side-by-Side Responsive Layout */}
-                        <View className="w-full">
-                          <GoogleCalendarWorkspace
-                            cityName={destinationCity}
-                            totalBudget={budgetTotal}
-                            daysCount={daysCount}
-                            initialEvents={calendarInitialEvents}
-                            standbyPlaces={calendarStandbyPlaces}
-                            onEventsChange={handleCalendarEventsChange}
-                            onSave={handleSaveCalendarWorkspace}
-                          />
-                        </View>
+                      /* KHÔNG GIAN LẬP LỊCH GOOGLE CALENDAR & GOOGLE MAPS DUY NHẤT */
+                      <View className="w-full">
+                        <GoogleCalendarWorkspace
+                          cityName={destinationCity}
+                          totalBudget={budgetTotal}
+                          daysCount={daysCount}
+                          initialEvents={calendarInitialEvents}
+                          standbyPlaces={calendarStandbyPlaces}
+                          onEventsChange={handleCalendarEventsChange}
+                          onSave={handleSaveCalendarWorkspace}
+                        />
                       </View>
                     )
                   ) : (
-                                        /* STANDARD 1-CLICK AI CONFIG */
+                    /* STANDARD 1-CLICK AI CONFIG */
                     <View className="gap-6">
                       <Text className="font-display font-extrabold text-2xl text-brand-text">
                         Yêu cầu đặc biệt & Xác nhận
@@ -1897,75 +1556,6 @@ export default function TripWizard() {
                           </Text>
                         </View>
                       </View>
-
-                      {/* ── LỰA CHỌN PHƯƠNG THỨC KHỞI TẠO HÀNH TRÌNH ── */}
-                      <View className="gap-2.5">
-                        <Text className="text-sm font-bold text-brand-textSoft">Phương thức khởi tạo lịch trình</Text>
-                        
-                        <View className="flex-row gap-3 flex-col sm:flex-row">
-                          {/* Option 1: Tự động 1-chạm (Miễn phí & Pro) */}
-                          <Pressable
-                            onPress={() => setUseProWorkspace(false)}
-                            className="flex-1 p-3.5 rounded-xl border border-brand-primary bg-brand-primary/5 flex-col justify-between gap-2"
-                          >
-                            <View className="flex-row items-center justify-between">
-                              <View className="flex-row items-center gap-1.5">
-                                <Sparkles size={14} color={BRAND_COLORS.primary} />
-                                <Text className="text-xs font-bold text-brand-primary">
-                                  Tạo tự động 1-chạm
-                                </Text>
-                              </View>
-                              <View className="px-1.5 py-0.5 rounded bg-brand-primary/10">
-                                <Text className="text-[9px] font-bold text-brand-primary">Tất cả tài khoản</Text>
-                              </View>
-                            </View>
-                            <Text className="text-[10px] text-brand-textSoft leading-tight">
-                              AI tự động phân tích và tối ưu hóa lộ trình, thời gian và dự toán chi phí trọn vẹn trong vài giây.
-                            </Text>
-                          </Pressable>
-
-                          {/* Option 2: Map Live & Tự xếp lịch (Dành riêng cho PRO) */}
-                          <Pressable
-                            onPress={() => {
-                              if (isPremium || isAdmin) {
-                                setUseProWorkspace(true);
-                                if (pregenPlaces.length === 0) {
-                                  fetchPregenPlaces();
-                                }
-                              } else {
-                                setShowPremiumModal(true);
-                              }
-                            }}
-                            className={`flex-1 p-3.5 rounded-xl border flex-col justify-between gap-2 ${
-                              (isPremium || isAdmin)
-                                ? 'border-brand-accent/40 bg-brand-accent/5'
-                                : 'border-[#F5D599] bg-[#FFFBF0]'
-                            }`}
-                          >
-                            <View className="flex-row items-center justify-between">
-                              <View className="flex-row items-center gap-1.5">
-                                <Crown size={14} color={BRAND_COLORS.accent} />
-                                <Text className="text-xs font-bold text-brand-accent">
-                                  Map Live & Tự xếp lịch
-                                </Text>
-                              </View>
-                              {(isPremium || isAdmin) ? (
-                                <View className="px-1.5 py-0.5 rounded bg-brand-accent/20">
-                                  <Text className="text-[9px] font-extrabold text-brand-accent">PRO UNLOCKED</Text>
-                                </View>
-                              ) : (
-                                <View className="flex-row items-center gap-0.5 px-1.5 py-0.5 rounded bg-[#D4A017]">
-                                  <Lock size={9} color="#FFFFFF" />
-                                  <Text className="text-[9px] font-black text-white">PRO 🔒</Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text className="text-[10px] text-[#7A5210] leading-tight">
-                              Tự tay nhặt địa điểm trên Google Maps, kéo thả vào Calendar & chỉnh sửa trực tiếp lộ trình.
-                            </Text>
-                          </Pressable>
-                        </View>
-                      </View>
                     </View>
                   )}
                 </View>
@@ -1996,70 +1586,17 @@ export default function TripWizard() {
                   <ArrowRight size={16} color="white" />
                 </Pressable>
               ) : !useProWorkspace ? (
-                <View className="flex-row items-center gap-3">
-                  {/* Nếu là Pro / Admin: mở khóa Map Live */}
-                  {(isPremium || isAdmin) ? (
-                    <>
-                      <Pressable
-                        testID="btn-choose-workspace-live"
-                        onPress={() => {
-                          setUseProWorkspace(true);
-                          if (pregenPlaces.length === 0) {
-                            fetchPregenPlaces();
-                          }
-                        }}
-                        className="flex-row items-center gap-2 px-4 py-3 rounded-xl bg-brand-primary active:opacity-90 shadow-sm"
-                      >
-                        <Crown size={15} color="#FFFFFF" />
-                        <Text className="text-white text-xs font-bold">
-                          🗺️ Vào Map Live & Lập lịch
-                        </Text>
-                        <View className="px-1.5 py-0.5 rounded bg-white/20">
-                          <Text className="text-[9px] font-black text-white">PRO</Text>
-                        </View>
-                      </Pressable>
-
-                      <Pressable
-                        testID="btn-submit-trip"
-                        onPress={handleSubmit}
-                        className="flex-row items-center gap-2 px-5 py-3 rounded-xl bg-brand-accent active:opacity-80 shadow-sm"
-                      >
-                        <Sparkles size={15} color="white" />
-                        <Text className="text-white text-xs font-bold">
-                          ⚡ Tạo nhanh 1-chạm
-                        </Text>
-                      </Pressable>
-                    </>
-                  ) : (
-                    /* Nếu là User Thường: Khóa Map Live, nút chính là Tạo tự động */
-                    <>
-                      {/* Nút KHÓA Map Live cho user thường: Bấm vào mở modal Pro */}
-                      <Pressable
-                        testID="btn-choose-workspace-live-locked"
-                        onPress={() => setShowPremiumModal(true)}
-                        className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#FFFBF0] border border-[#F5D599] active:opacity-80 shadow-xs"
-                      >
-                        <Lock size={13} color="#D4A017" />
-                        <Text className="text-[#9A5B00] text-xs font-bold">
-                          Map Live (Gói Pro)
-                        </Text>
-                        <Crown size={11} color="#D4A017" />
-                      </Pressable>
-
-                      {/* Nút chính duy nhất để tạo chuyến đi cho user thường */}
-                      <Pressable
-                        testID="btn-submit-trip"
-                        onPress={handleSubmit}
-                        className="flex-row items-center gap-2 px-6 py-3 rounded-xl bg-brand-accent active:opacity-80 shadow-sm"
-                      >
-                        <Sparkles size={16} color="white" />
-                        <Text className="text-white text-sm font-bold">
-                          ⚡ Tạo lịch trình AI (1-chạm)
-                        </Text>
-                      </Pressable>
-                    </>
-                  )}
-                </View>
+                <Pressable
+                  testID="btn-open-create-modal"
+                  onPress={() => setShowScheduleOptionModal(true)}
+                  className="flex-row items-center gap-2 px-6 py-3.5 rounded-xl bg-brand-primary active:opacity-90 shadow-sm"
+                >
+                  <Sparkles size={16} color="white" />
+                  <Text className="text-white text-sm font-bold">
+                    🚀 Tạo lịch trình
+                  </Text>
+                  <ArrowRight size={16} color="white" />
+                </Pressable>
               ) : null}
             </View>
           </View>
@@ -2089,13 +1626,13 @@ export default function TripWizard() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <View style={{ gap: 4, flex: 1, paddingRight: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Crown size={18} color={BRAND_COLORS.accent} />
+                  <Sparkles size={18} color={BRAND_COLORS.primary} />
                   <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 18, color: '#1B2420' }}>
-                    Chọn phương thức lập lịch trình
+                    Khởi tạo hành trình {destinationCity}
                   </Text>
                 </View>
                 <Text style={{ fontSize: 13, color: '#6E7B70', lineHeight: 18 }}>
-                  Bạn đã chọn <Text style={{ fontWeight: 'bold', color: '#1B2420' }}>{cartItems.length} địa điểm</Text> với tổng chi phí dự kiến <Text style={{ fontWeight: 'bold', color: BRAND_COLORS.primary }}>{new Intl.NumberFormat('vi-VN').format(currentCartTotal)} đ</Text>. Vui lòng chọn cách khởi tạo hành trình:
+                  Vui lòng chọn phương thức khởi tạo lịch trình phù hợp với nhu cầu của bạn:
                 </Text>
               </View>
 
@@ -2109,77 +1646,97 @@ export default function TripWizard() {
 
             {/* 2 Options */}
             <View style={{ gap: 12 }}>
-              {/* Lựa chọn A: Dùng AI sắp xếp lịch trình thông minh */}
+              {/* Lựa chọn 1: Tạo nhanh tự động (1-chạm) - Cho tất cả tài khoản */}
               <Pressable
-                testID="btn-pro-option-ai"
-                onPress={() => handleProScheduleSubmit('ai_auto')}
+                testID="btn-choose-quick-ai"
+                onPress={() => {
+                  setShowScheduleOptionModal(false);
+                  handleSubmit();
+                }}
                 style={({ pressed }) => [{
                   padding: 16,
                   borderRadius: 16,
                   borderWidth: 1.5,
-                  borderColor: BRAND_COLORS.primary,
-                  backgroundColor: pressed ? 'rgba(31,111,84,0.08)' : 'rgba(31,111,84,0.03)',
+                  borderColor: BRAND_COLORS.accent,
+                  backgroundColor: pressed ? 'rgba(226,112,58,0.08)' : 'rgba(226,112,58,0.03)',
                   gap: 8,
                 }]}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(31,111,84,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-                      <Sparkles size={20} color={BRAND_COLORS.primary} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(226,112,58,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                      <Sparkles size={20} color={BRAND_COLORS.accent} />
                     </View>
                     <View>
-                      <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: BRAND_COLORS.primary }}>
-                        Lựa chọn A: AI Sắp Xếp Thông Minh
+                      <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: BRAND_COLORS.accent }}>
+                        ⚡ Tạo nhanh tự động (1-chạm)
                       </Text>
-                      <Text style={{ fontSize: 11, color: '#1F6F54', fontWeight: '600' }}>
-                        AI Itinerary Engine (Khuyên dùng)
+                      <Text style={{ fontSize: 11, color: '#6E7B70', fontWeight: '500' }}>
+                        Miễn phí cho mọi tài khoản
                       </Text>
                     </View>
                   </View>
-                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: BRAND_COLORS.primary }}>
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>AI PRO</Text>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: BRAND_COLORS.accent }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>NHANH 5S</Text>
                   </View>
                 </View>
 
-                <Text style={{ fontSize: 12, color: '#3F4F45', lineHeight: 17, paddingLeft: 44 }}>
-                  Gemini AI tự động phân bổ {cartItems.length} địa điểm đã chọn vào từng ngày hợp lý theo cung đường di chuyển tối ưu nhất, thêm gợi ý thời gian chi tiết.
+                <Text style={{ fontSize: 12, color: '#3F4F45', lineHeight: 17, paddingLeft: 50 }}>
+                  AI tự động phân tích sở thích, ngân sách và tạo lịch trình hoàn chỉnh từ A-Z trong vài giây, tối ưu đường đi và thời gian hợp lý.
                 </Text>
               </Pressable>
 
-              {/* Lựa chọn B: Tự sắp xếp thủ công (Self-Schedule) */}
+              {/* Lựa chọn 2: Map Live & Tự xếp lịch (Dành riêng cho Pro) */}
               <Pressable
-                testID="btn-pro-option-manual"
-                onPress={() => handleProScheduleSubmit('manual')}
+                testID="btn-choose-workspace-live-modal"
+                onPress={() => {
+                  setShowScheduleOptionModal(false);
+                  if (isPremium || isAdmin) {
+                    setUseProWorkspace(true);
+                    if (pregenPlaces.length === 0) {
+                      fetchPregenPlaces();
+                    }
+                  } else {
+                    setShowPremiumModal(true);
+                  }
+                }}
                 style={({ pressed }) => [{
                   padding: 16,
                   borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: 'rgba(27,36,32,0.15)',
-                  backgroundColor: pressed ? '#F5F0E6' : '#FFFFFF',
+                  borderWidth: 1.5,
+                  borderColor: (isPremium || isAdmin) ? BRAND_COLORS.primary : '#F5D599',
+                  backgroundColor: (isPremium || isAdmin)
+                    ? (pressed ? 'rgba(31,111,84,0.08)' : 'rgba(31,111,84,0.03)')
+                    : '#FFFBF0',
                   gap: 8,
                 }]}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(27,36,32,0.06)', alignItems: 'center', justifyContent: 'center' }}>
-                      <Calendar size={18} color="#1B2420" />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: (isPremium || isAdmin) ? 'rgba(31,111,84,0.12)' : 'rgba(212,160,23,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                      <Crown size={20} color={(isPremium || isAdmin) ? BRAND_COLORS.primary : '#D4A017'} />
                     </View>
                     <View>
-                      <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: '#1B2420' }}>
-                        Lựa chọn B: Tự Sắp Xếp Thủ Công
+                      <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: (isPremium || isAdmin) ? BRAND_COLORS.primary : '#9A5B00' }}>
+                        🗺️ Không gian Map Live & Lập lịch
                       </Text>
-                      <Text style={{ fontSize: 11, color: '#6E7B70', fontWeight: '500' }}>
-                        Self-Schedule (Tự do tùy biến)
+                      <Text style={{ fontSize: 11, color: (isPremium || isAdmin) ? '#1F6F54' : '#7A5210', fontWeight: '500' }}>
+                        Google Maps Live & Google Calendar
                       </Text>
                     </View>
                   </View>
-                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: 'rgba(27,36,32,0.08)' }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#6E7B70' }}>THỦ CÔNG</Text>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: (isPremium || isAdmin) ? BRAND_COLORS.primary : '#D4A017', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    {!(isPremium || isAdmin) && <Lock size={10} color="#FFFFFF" />}
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>
+                      {(isPremium || isAdmin) ? 'PRO UNLOCKED' : 'PRO 🔒'}
+                    </Text>
                   </View>
                 </View>
 
-                <Text style={{ fontSize: 12, color: '#6E7B70', lineHeight: 17, paddingLeft: 44 }}>
-                  Không qua phân tích AI. Tạo ngay chuyến đi và lưu sẵn {cartItems.length} địa điểm vào ngày 1 để bạn tự tay kéo thả, chia ngày theo sở thích riêng.
+                <Text style={{ fontSize: 12, color: (isPremium || isAdmin) ? '#3F4F45' : '#7A5210', lineHeight: 17, paddingLeft: 50 }}>
+                  {(isPremium || isAdmin)
+                    ? 'Tự do kéo thả địa điểm từ Giỏ hàng vào Google Calendar, xem đường xe chạy OSRM và cân đối Bảng ngân sách ma trận.'
+                    : 'Đặc quyền thành viên ViVu Pro. Mở khóa Không gian Map Live & Google Calendar để tự tay sắp xếp lịch trình trên bản đồ.'}
                 </Text>
               </Pressable>
             </View>
@@ -2189,7 +1746,7 @@ export default function TripWizard() {
               onPress={() => setShowScheduleOptionModal(false)}
               style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#F3ECDC' }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#1B2420' }}>Quay lại bản đồ</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#1B2420' }}>Đóng</Text>
             </Pressable>
           </View>
         </View>
