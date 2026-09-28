@@ -268,7 +268,14 @@ Bạn là một chuyên gia lập kế hoạch du lịch (Travel Expert) chuyên
 Nhiệm vụ của bạn là xây dựng lịch trình du lịch tối ưu, an toàn và cá nhân hóa sâu sắc dựa trên thông tin yêu cầu của khách hàng.
 
 QUY TẮC CỐT LÕI:
-1. Bạn CHỈ được chọn địa điểm trong danh sách "candidate_places" được cung cấp — tuyệt đối không tự tạo thêm địa điểm nào ngoài danh sách này (ngoại trừ loại di chuyển "transport" hoặc trải nghiệm "experience" tự do).
+1. NGUỒN ĐỊA ĐIỂM & ĐA DẠNG HÓA BẢN ĐỊA:
+   - ƯU TIÊN SỐ 1: Sử dụng các địa điểm và đối tác có trong danh sách "candidate_places" được cung cấp.
+   - NỚI LỎNG TỰ DO BỔ SUNG ĐỊA ĐIỂM ĐẶC SẮC (LOCAL GEMS): Để lịch trình đạt độ phong phú tối đa, cá nhân hóa sâu sắc theo sở thích của khách (đặc biệt cho các chuyến đi nhiều ngày), bạn ĐƯỢC PHÉP và KHUYẾN KHÍCH tự do bổ sung thêm các điểm tham quan, danh thắng, quán ăn đặc sản bản địa nức tiếng, quán cafe view đẹp THỰC TẾ CÓ THẬT tại thành phố đó.
+   - YÊU CẦU CHUẨN XÁC KHI TỰ BỔ SUNG:
+     * Địa điểm bắt buộc phải là nơi THỰC TẾ ĐANG HOẠT ĐỘNG tại thành phố đó.
+     * Cung cấp tọa độ ('lat', 'lng') và địa chỉ cụ thể ('address') chính xác tại thành phố, không bịa đặt, không để tọa độ giả lập.
+     * Thuộc tính 'google_place_id' để null (hoặc không điền) đối với địa điểm tự bổ sung.
+     * Ước lượng chi phí thực tế ('estimated_cost') phù hợp túi tiền của khách, không để null.
 2. ƯU TIÊN ĐỐI TÁC XÁC MINH (VERIFIED PARTNERS): Trong danh sách "candidate_places", các địa điểm có "google_place_id" bắt đầu bằng tiền tố "partner_" là đối tác đã được xác minh. Hãy ưu tiên lựa chọn và đưa các đối tác này vào lịch trình nếu họ phù hợp với sở thích, vị trí địa lý và ngân sách của khách. Tuy nhiên, tuyệt đối KHÔNG cưỡng ép chọn đối tác nếu không phù hợp — chất lượng lịch trình du lịch luôn là ưu tiên hàng đầu. Khi chọn một đối tác, hãy giữ nguyên thuộc tính google_place_id có tiền tố "partner_" trong kết quả JSON trả về.
 3. Hãy phân tích kỹ sở thích, ngân sách, và đặc biệt là tình trạng sức khỏe, giới hạn thể lực của khách để chọn hoạt động phù hợp nhất.
 4. ĐẢM BẢO TÍNH ĐA DẠNG & GỢI Ý CÁC ĐỊA ĐIỂM ĐỘC ĐÁO (HIDDEN GEMS):
@@ -292,7 +299,7 @@ QUY TẮC CỐT LÕI:
 
 CONCISE DESCRIPTIONS FOR SPEED: Write the "description" for each activity in the itinerary extremely short, concise and brief (maximum 15-20 words). Do not write verbose or filler text. hoạt động miễn phí (như đi dạo công viên, bãi biển, chùa Linh Ứng, hoạt động tự do) hoặc các dịch vụ đã bao gồm trong chi phí khác (như ăn sáng tại khách sạn đã tính vào tiền phòng, thủ tục check-out), bạn PHẢI điền "estimated_cost" = 0 để hệ thống hiển thị là "Miễn phí".
       * TUYỆT ĐỐI KHÔNG để trống "estimated_cost" hoặc trả về null/undefined cho các hoạt động ăn uống, đi lại cơ bản hoặc hoạt động miễn phí, vì hệ thống sẽ hiển thị là "Cần xác nhận giá" và tạo ra câu hỏi bắt người dùng phải xác nhận giá cực kỳ phiền toái. Chỉ để trống/để null khi thật sự cần người dùng xác nhận một dịch vụ trả phí lớn chưa rõ giá.
-   - KHÔNG DÙNG PLACEHOLDER CHUNG CHUNG: Tất cả khách sạn, quán ăn, điểm tham quan đều phải chọn địa điểm cụ thể trong danh sách "candidate_places". Tuyệt đối không ghi chung chung "Ăn tối tự do", "Khách sạn tự chọn".
+   - KHÔNG DÙNG PLACEHOLDER CHUNG CHUNG: Tất cả khách sạn, quán ăn, điểm tham quan đều phải là địa danh cụ thể có thật (từ danh sách "candidate_places" hoặc từ kiến thức thực tế bản địa của bạn). Tuyệt đối không ghi chung chung "Ăn tối tự do", "Khách sạn tự chọn".
    - CẢNH BÁO: Nếu ngân sách tổng quá thấp (dưới 400.000đ/ngày/người) hoặc yêu cầu của khách mâu thuẫn (muốn ở resort sang trọng nhưng ngân sách thấp), hãy cảnh báo nguy cơ thiếu hụt ngân sách tại "warning_notes" và đưa ra câu hỏi làm rõ đề xuất nâng ngân sách tại "missing_info_questions".
 6. Trong kết quả JSON, hãy cung cấp:
    - "expert_advice": Lời khuyên/tư vấn chi tiết từ góc nhìn chuyên gia du lịch, giải thích rõ lý do tại sao lịch trình này được thiết kế như vậy để phù hợp nhất với sở thích/sức khỏe/ngân sách của khách.
@@ -1713,7 +1720,7 @@ QUY TẮC BẮT BUỘC ĐỂ ĐẢM BẢO CHẤT LƯỢNG TUYỆT ĐỐI (KHÔNG
       });
     }
 
-    // Format & chuẩn hóa tọa độ bằng Live Geocoding Service động 100% (không hard-code)
+    // Format & chuẩn hóa tọa độ: Tận dụng trực tiếp tọa độ chuẩn do AI sinh ra, chỉ gọi geocodeOnline khi tọa độ rỗng/lệch xa
     const formattedPlaces: GeneratedRichPlaceItem[] = await Promise.all(
       rawPlaces.map(async (p, idx) => {
         let lat = Number(p.lat);
@@ -1721,15 +1728,22 @@ QUY TẮC BẮT BUỘC ĐỂ ĐẢM BẢO CHẤT LƯỢNG TUYỆT ĐỐI (KHÔNG
         let address = p.address || `${p.name}, ${params.destination_city}`;
         let matchedName = p.name || 'Địa điểm đề xuất';
 
-        try {
-          const geo = await geocodeOnline(p.name, p.address, params.destination_city);
-          if (geo.found && geo.lat && geo.lng) {
-            lat = geo.lat;
-            lng = geo.lng;
-            if (geo.address) address = geo.address;
+        // Kiểm tra xem tọa độ AI trả về đã chuẩn xác trong bán kính khu vực thành phố chưa
+        const isValidCoords = !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0 &&
+          Math.sqrt(Math.pow(lat - cityCoords.lat, 2) + Math.pow(lng - cityCoords.lng, 2)) <= 0.45;
+
+        // Chỉ khi thiếu tọa độ hoặc tọa độ bất thường mới cần chạy geocodeOnline
+        if (!isValidCoords) {
+          try {
+            const geo = await geocodeOnline(p.name, p.address, params.destination_city);
+            if (geo.found && geo.lat && geo.lng) {
+              lat = geo.lat;
+              lng = geo.lng;
+              if (geo.address) address = geo.address;
+            }
+          } catch (e) {
+            // ignore
           }
-        } catch (e) {
-          // ignore
         }
 
         return {

@@ -18,6 +18,7 @@ import Reveal from '../../../components/Reveal';
 import BudgetBreakdown, { BudgetBreakdownData } from '../../../components/cart/BudgetBreakdown';
 import LiveBudgetBar from '../../../components/cart/LiveBudgetBar';
 import CuratedMap from '../../../components/map/CuratedMap';
+import GoogleMapsRoutePlanner, { RouteWaypoint } from '../../../components/map/GoogleMapsRoutePlanner';
 import { PlaceItem } from '../../../components/map/PlacePopup';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
 import {
@@ -289,6 +290,7 @@ export default function TripWizard() {
   const [placeSearchQuery, setPlaceSearchQuery] = useState('');
   const [placeCategoryFilter, setPlaceCategoryFilter] = useState<string>('all');
   const [activeScheduleDay, setActiveScheduleDay] = useState<number>(1);
+  const [scheduleMapMode, setScheduleMapMode] = useState<'gmaps' | 'curated'>('gmaps');
   const [schedulingViewMode, setSchedulingViewMode] = useState<'board' | 'timeline'>('board');
   const [draggedPlaceId, setDraggedPlaceId] = useState<string | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<number | 'unassigned' | null>(null);
@@ -467,6 +469,24 @@ export default function TripWizard() {
         day_number: (idx % daysCount) + 1,
         order_index: Math.floor(idx / daysCount) + 1
       }));
+    });
+  };
+
+  const handleReorderScheduleDayPlaces = (newWaypoints: RouteWaypoint[]) => {
+    setCartItems(prev => {
+      const updated = [...prev];
+      newWaypoints.forEach((wp, newIdx) => {
+        const foundIdx = updated.findIndex(
+          it => it.place.id === wp.id && Number(it.day_number) === Number(activeScheduleDay)
+        );
+        if (foundIdx !== -1) {
+          updated[foundIdx] = {
+            ...updated[foundIdx],
+            order_index: newIdx + 1
+          };
+        }
+      });
+      return updated;
     });
   };
 
@@ -1813,53 +1833,55 @@ export default function TripWizard() {
                                   ) : (
                                     <ScrollView style={{ maxHeight: 260 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                                       <View className="gap-2">
-                                        {unassigned.map(item => (
-                                          <View
-                                            key={item.place.id}
-                                            style={{
-                                              backgroundColor: '#FAF8F4',
-                                              borderRadius: 12,
-                                              padding: 10,
-                                              borderWidth: 1,
-                                              borderColor: 'rgba(27,36,32,0.12)',
-                                              cursor: 'grab' as any,
-                                              gap: 6,
-                                            }}
-                                            // @ts-ignore
-                                            draggable={true}
-                                            // @ts-ignore
-                                            onDragStart={(e: any) => handleDragStart(item.place.id, e)}
-                                            // @ts-ignore
-                                            onDragEnd={handleDragEnd}
-                                          >
-                                            <View className="flex-row items-center gap-1.5">
-                                              <GripVertical size={14} color="#888" />
-                                              <Text numberOfLines={1} className="font-bold text-xs text-brand-text flex-1">
-                                                {item.place.name}
-                                              </Text>
-                                              <Text className="text-[11px] font-extrabold text-brand-accent">
-                                                {new Intl.NumberFormat('vi-VN').format(item.custom_cost)} đ
-                                              </Text>
-                                            </View>
-                                            <Text numberOfLines={1} className="text-[10px] text-brand-textSoft pl-5">
-                                              {item.place.address}
-                                            </Text>
+                                         {unassigned.map(item => (
+                                           <View
+                                             key={item.place.id}
+                                             testID={`unassigned-item-${item.place.id}`}
+                                             style={{
+                                               backgroundColor: '#FAF8F4',
+                                               borderRadius: 12,
+                                               padding: 10,
+                                               borderWidth: 1,
+                                               borderColor: 'rgba(27,36,32,0.12)',
+                                               cursor: 'grab' as any,
+                                               gap: 6,
+                                             }}
+                                             // @ts-ignore
+                                             draggable={true}
+                                             // @ts-ignore
+                                             onDragStart={(e: any) => handleDragStart(item.place.id, e)}
+                                             // @ts-ignore
+                                             onDragEnd={handleDragEnd}
+                                           >
+                                             <View className="flex-row items-center gap-1.5">
+                                               <GripVertical size={14} color="#888" />
+                                               <Text numberOfLines={1} className="font-bold text-xs text-brand-text flex-1">
+                                                 {item.place.name}
+                                               </Text>
+                                               <Text className="text-[11px] font-extrabold text-brand-accent">
+                                                 {new Intl.NumberFormat('vi-VN').format(item.custom_cost)} đ
+                                               </Text>
+                                             </View>
+                                             <Text numberOfLines={1} className="text-[10px] text-brand-textSoft pl-5">
+                                               {item.place.address}
+                                             </Text>
 
-                                            {/* Quick assignment buttons */}
-                                            <View className="flex-row items-center gap-1 pt-1 border-t border-brand-line/20 pl-5 flex-wrap">
-                                              <Text className="text-[10px] text-brand-textMuted font-semibold">Gán nhanh:</Text>
-                                              {Array.from({ length: daysCount }, (_, d) => d + 1).map(targetD => (
-                                                <Pressable
-                                                  key={targetD}
-                                                  onPress={() => handleMoveItemDay(item.place.id, targetD)}
-                                                  className="px-2 py-0.5 rounded bg-brand-primary/10 border border-brand-primary/30 active:bg-brand-primary"
-                                                >
-                                                  <Text className="text-[10px] font-bold text-brand-primary">+ N{targetD}</Text>
-                                                </Pressable>
-                                              ))}
-                                            </View>
-                                          </View>
-                                        ))}
+                                             {/* Quick assignment buttons */}
+                                             <View className="flex-row items-center gap-1 pt-1 border-t border-brand-line/20 pl-5 flex-wrap">
+                                               <Text className="text-[10px] text-brand-textMuted font-semibold">Gán nhanh:</Text>
+                                               {Array.from({ length: daysCount }, (_, d) => d + 1).map(targetD => (
+                                                 <Pressable
+                                                   key={targetD}
+                                                   testID={`btn-quick-assign-${item.place.id}-day-${targetD}`}
+                                                   onPress={() => handleMoveItemDay(item.place.id, targetD)}
+                                                   className="px-2 py-0.5 rounded bg-brand-primary/10 border border-brand-primary/30 active:bg-brand-primary"
+                                                 >
+                                                   <Text className="text-[10px] font-bold text-brand-primary">+ N{targetD}</Text>
+                                                 </Pressable>
+                                               ))}
+                                             </View>
+                                           </View>
+                                         ))}
                                       </View>
                                     </ScrollView>
                                   )}
@@ -1881,22 +1903,23 @@ export default function TripWizard() {
                                   const isDragOver = dragOverTarget === dNum;
                                   const warning = dayValidationWarnings[dNum];
 
-                                  return (
-                                    <View
-                                      key={dNum}
-                                      style={{
-                                        padding: 12,
-                                        borderRadius: 16,
-                                        borderWidth: isSelected ? 2 : 1,
-                                        borderColor: isDragOver ? '#1F6F54' : (isSelected ? '#1F6F54' : 'rgba(27,36,32,0.15)'),
-                                        backgroundColor: isDragOver ? 'rgba(31,111,84,0.08)' : (isSelected ? '#FFFFFF' : '#FAF8F4'),
-                                        gap: 10,
-                                      }}
-                                      // @ts-ignore
-                                      onDragOver={(e: any) => { if (Platform.OS === 'web') e.preventDefault(); setDragOverTarget(dNum); }}
-                                      // @ts-ignore
-                                      onDrop={(e: any) => handleDropOnDay(dNum, e)}
-                                    >
+                                      return (
+                                     <View
+                                       key={dNum}
+                                       testID={`day-card-${dNum}`}
+                                       style={{
+                                         padding: 12,
+                                         borderRadius: 16,
+                                         borderWidth: isSelected ? 2 : 1,
+                                         borderColor: isDragOver ? '#1F6F54' : (isSelected ? '#1F6F54' : 'rgba(27,36,32,0.15)'),
+                                         backgroundColor: isDragOver ? 'rgba(31,111,84,0.08)' : (isSelected ? '#FFFFFF' : '#FAF8F4'),
+                                         gap: 10,
+                                       }}
+                                       // @ts-ignore
+                                       onDragOver={(e: any) => { if (Platform.OS === 'web') e.preventDefault(); setDragOverTarget(dNum); }}
+                                       // @ts-ignore
+                                       onDrop={(e: any) => handleDropOnDay(dNum, e)}
+                                     >
                                       {/* Day Header */}
                                       <Pressable
                                         onPress={() => setActiveScheduleDay(dNum)}
@@ -1952,40 +1975,42 @@ export default function TripWizard() {
                                         </View>
                                       )}
 
-                                      {/* Items in this Day */}
-                                      {dayItems.length === 0 ? (
-                                        <View
-                                          className="py-4 items-center justify-center border border-dashed border-brand-line/60 rounded-xl bg-white/60"
-                                          // @ts-ignore
-                                          onDragOver={(e: any) => { if (Platform.OS === 'web') e.preventDefault(); setDragOverTarget(dNum); }}
-                                          // @ts-ignore
-                                          onDrop={(e: any) => handleDropOnDay(dNum, e)}
-                                        >
-                                          <Text className="text-[11px] text-brand-textMuted italic">
-                                            Kéo thả địa điểm vào đây để xếp vào Ngày {dNum}
-                                          </Text>
-                                        </View>
-                                      ) : (
-                                        <View className="gap-2">
-                                          {dayItems.map((item, idx) => (
-                                            <View
-                                              key={item.place.id}
-                                              style={{
-                                                padding: 10,
-                                                borderRadius: 12,
-                                                backgroundColor: '#FFFFFF',
-                                                borderWidth: 1,
-                                                borderColor: 'rgba(27,36,32,0.1)',
-                                                gap: 6,
-                                                cursor: 'grab' as any,
-                                              }}
-                                              // @ts-ignore
-                                              draggable={true}
-                                              // @ts-ignore
-                                              onDragStart={(e: any) => handleDragStart(item.place.id, e)}
-                                              // @ts-ignore
-                                              onDragEnd={handleDragEnd}
-                                            >
+                                       {/* Items in this Day */}
+                                       {dayItems.length === 0 ? (
+                                         <View
+                                           testID={`day-drop-zone-${dNum}`}
+                                           className="py-4 items-center justify-center border border-dashed border-brand-line/60 rounded-xl bg-white/60"
+                                           // @ts-ignore
+                                           onDragOver={(e: any) => { if (Platform.OS === 'web') e.preventDefault(); setDragOverTarget(dNum); }}
+                                           // @ts-ignore
+                                           onDrop={(e: any) => handleDropOnDay(dNum, e)}
+                                         >
+                                           <Text className="text-[11px] text-brand-textMuted italic">
+                                             Kéo thả địa điểm vào đây để xếp vào Ngày {dNum}
+                                           </Text>
+                                         </View>
+                                       ) : (
+                                         <View testID={`day-drop-zone-${dNum}`} className="gap-2">
+                                           {dayItems.map((item, idx) => (
+                                             <View
+                                               key={item.place.id}
+                                               testID={`day-item-${item.place.id}`}
+                                               style={{
+                                                 padding: 10,
+                                                 borderRadius: 12,
+                                                 backgroundColor: '#FFFFFF',
+                                                 borderWidth: 1,
+                                                 borderColor: 'rgba(27,36,32,0.1)',
+                                                 gap: 6,
+                                                 cursor: 'grab' as any,
+                                               }}
+                                               // @ts-ignore
+                                               draggable={true}
+                                               // @ts-ignore
+                                               onDragStart={(e: any) => handleDragStart(item.place.id, e)}
+                                               // @ts-ignore
+                                               onDragEnd={handleDragEnd}
+                                             >
                                               <View className="flex-row items-center gap-1.5">
                                                 <GripVertical size={13} color="#999" />
                                                 <View className="w-5 h-5 rounded-full bg-brand-primary items-center justify-center">
@@ -2107,16 +2132,33 @@ export default function TripWizard() {
 
                             {/* Bản đồ Lộ trình Tuyến đường Ngày đang chọn */}
                             <View className="p-4 rounded-2xl bg-white border border-brand-line/40 gap-3 shadow-sm">
-                              <View className="flex-row justify-between items-center">
+                              <View className="flex-row justify-between items-center flex-wrap gap-2">
                                 <View className="flex-row items-center gap-1.5">
                                   <Calendar size={15} color={BRAND_COLORS.primary} />
                                   <Text className="font-bold text-sm text-brand-text">
-                                    Bản đồ Tuyến đường Ngày {activeScheduleDay} ({scheduleRoutePlaces.length} điểm)
+                                    Lộ trình Ngày {activeScheduleDay} ({scheduleRoutePlaces.length} điểm)
                                   </Text>
                                 </View>
-                                <Text className="text-[11px] text-brand-textSoft font-semibold">
-                                  Nối #1 → #2 → #3 theo thứ tự
-                                </Text>
+
+                                {/* Switcher Mode */}
+                                <View className="flex-row items-center gap-1.5 bg-brand-bgAlt p-1 rounded-xl border border-brand-line/30">
+                                  <Pressable
+                                    onPress={() => setScheduleMapMode('gmaps')}
+                                    className={`px-2.5 py-1 rounded-lg ${scheduleMapMode === 'gmaps' ? 'bg-[#1A73E8]' : 'bg-transparent'}`}
+                                  >
+                                    <Text className={`text-[11px] font-bold ${scheduleMapMode === 'gmaps' ? 'text-white' : 'text-brand-text'}`}>
+                                      🚗 Google Maps
+                                    </Text>
+                                  </Pressable>
+                                  <Pressable
+                                    onPress={() => setScheduleMapMode('curated')}
+                                    className={`px-2.5 py-1 rounded-lg ${scheduleMapMode === 'curated' ? 'bg-[#134A37]' : 'bg-transparent'}`}
+                                  >
+                                    <Text className={`text-[11px] font-bold ${scheduleMapMode === 'curated' ? 'text-white' : 'text-brand-text'}`}>
+                                      🌐 Toàn cảnh kho
+                                    </Text>
+                                  </Pressable>
+                                </View>
                               </View>
 
                               {/* Day Selector Buttons for Map */}
@@ -2134,16 +2176,36 @@ export default function TripWizard() {
                                 ))}
                               </View>
 
-                              <CuratedMap
-                                places={cartItems.map(it => it.place)}
-                                cityName={destinationCity}
-                                addedPlaceIds={cartItems.map(item => item.place.id)}
-                                selectedRoutePlaces={scheduleRoutePlaces}
-                                existingTripPlaceNames={[]}
-                                onAddToCart={() => {}}
-                                layout="workspace"
-                                mapHeight={460}
-                              />
+                              {scheduleMapMode === 'gmaps' ? (
+                                <GoogleMapsRoutePlanner
+                                  waypoints={scheduleRoutePlaces.map(p => ({
+                                    id: p.id,
+                                    title: p.name,
+                                    address: p.address,
+                                    lat: p.lat,
+                                    lng: p.lng,
+                                    estimated_cost: p.estimated_cost,
+                                    item_type: p.category,
+                                    day_number: activeScheduleDay
+                                  }))}
+                                  cityName={destinationCity}
+                                  dayNumber={activeScheduleDay}
+                                  onReorder={handleReorderScheduleDayPlaces}
+                                  onRemoveWaypoint={(placeId) => handleRemoveFromCart(placeId)}
+                                  mapHeight={460}
+                                />
+                              ) : (
+                                <CuratedMap
+                                  places={cartItems.map(it => it.place)}
+                                  cityName={destinationCity}
+                                  addedPlaceIds={cartItems.map(item => item.place.id)}
+                                  selectedRoutePlaces={scheduleRoutePlaces}
+                                  existingTripPlaceNames={[]}
+                                  onAddToCart={() => {}}
+                                  layout="workspace"
+                                  mapHeight={460}
+                                />
+                              )}
                             </View>
                           </View>
                         </View>

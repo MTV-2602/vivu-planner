@@ -38,10 +38,10 @@ export const KEY_COOLDOWN_CONFIG = {
 };
 
 export const AI_CANDIDATE_LIMITS = {
-  ACCOMMODATION: 4,
-  DINING: 8,
-  ATTRACTION: 8,
-  RENTAL: 3,
+  ACCOMMODATION: 8,
+  DINING: 24,
+  ATTRACTION: 24,
+  RENTAL: 6,
 };
 
 export const PARTNER_MATCH_WEIGHTS = {

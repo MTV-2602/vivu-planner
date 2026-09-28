@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { api } from '../../../lib/api';
 import InteractiveMap, { MapItem } from '../../../components/InteractiveMap';
+import GoogleMapsRoutePlanner from '../../../components/map/GoogleMapsRoutePlanner';
 import { BRAND_COLORS } from '../../../constants';
 
 interface ItineraryItem {
@@ -42,6 +43,8 @@ export default function ShareTripPage() {
   const [trip, setTrip] = useState<TripData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [shareMapMode, setShareMapMode] = useState<'gmaps' | 'overview'>('gmaps');
+  const [selectedShareDay, setSelectedShareDay] = useState<number>(1);
 
   useEffect(() => {
     if (!id) return;
@@ -120,12 +123,98 @@ export default function ShareTripPage() {
 
       <View style={{ padding: 20, gap: 20 }}>
         {/* Interactive Map */}
-        <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 }}>
-          <Text style={{ fontSize: 17, fontWeight: '800', color: '#1B3A2D', marginBottom: 16 }}>🗺️ Bản đồ lịch trình</Text>
-          <InteractiveMap
-            items={allMapItems}
-            cityName={trip.destination_city}
-          />
+        <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, gap: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+            <Text style={{ fontSize: 17, fontWeight: '800', color: '#1B3A2D' }}>🗺️ Bản đồ & Lộ trình Google Maps</Text>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Pressable
+                onPress={() => setShareMapMode('gmaps')}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                  backgroundColor: shareMapMode === 'gmaps' ? '#1A73E8' : '#F1F3F4',
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: shareMapMode === 'gmaps' ? '#FFF' : '#3C4043' }}>
+                  🚗 Lộ trình Google Maps
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setShareMapMode('overview')}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                  backgroundColor: shareMapMode === 'overview' ? '#134A37' : '#F1F3F4',
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: shareMapMode === 'overview' ? '#FFF' : '#3C4043' }}>
+                  🌐 Toàn cảnh
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {shareMapMode === 'gmaps' ? (
+            <View style={{ gap: 12 }}>
+              {/* Day selection */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                {trip.days.map(d => (
+                  <Pressable
+                    key={d.id}
+                    onPress={() => setSelectedShareDay(d.day_number)}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      backgroundColor: selectedShareDay === d.day_number ? '#1A73E8' : '#F8F9FA',
+                      borderWidth: 1,
+                      borderColor: selectedShareDay === d.day_number ? '#1A73E8' : 'rgba(27,36,32,0.12)',
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: selectedShareDay === d.day_number ? '#FFF' : '#202124' }}>
+                      Ngày {d.day_number}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              {(() => {
+                const currentDay = trip.days.find(d => d.day_number === selectedShareDay) || trip.days[0];
+                const wps = (currentDay?.items || []).map(it => ({
+                  id: it.id,
+                  title: it.title,
+                  address: it.description,
+                  lat: it.location_lat,
+                  lng: it.location_lng,
+                  item_type: it.item_type,
+                  start_time: it.start_time,
+                  end_time: it.end_time,
+                  estimated_cost: it.estimated_cost,
+                  day_number: currentDay?.day_number,
+                  google_place_id: it.google_place_id,
+                }));
+
+                return (
+                  <GoogleMapsRoutePlanner
+                    waypoints={wps}
+                    cityName={trip.destination_city}
+                    dayNumber={currentDay?.day_number}
+                    dayTitle={`Lộ trình ngày ${currentDay?.day_number} tại ${trip.destination_city}`}
+                    readOnly={true}
+                    mapHeight={480}
+                  />
+                );
+              })()}
+            </View>
+          ) : (
+            <InteractiveMap
+              items={allMapItems}
+              cityName={trip.destination_city}
+            />
+          )}
         </View>
 
         {/* Itinerary Days */}

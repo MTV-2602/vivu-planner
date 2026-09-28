@@ -21,6 +21,7 @@ import SystemClock from '../../../components/SystemClock';
 import BackToTop from '../../../components/BackToTop';
 import { BRAND_COLORS, ItineraryItemType, APP_ROUTES } from '../../../constants';
 import InteractiveMap, { MapItem } from '../../../components/InteractiveMap';
+import GoogleMapsRoutePlanner, { RouteWaypoint } from '../../../components/map/GoogleMapsRoutePlanner';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
 import ShareModal from '../../../components/ShareModal';
 import BookingModal, { BookableItem } from '../../../components/BookingModal';
@@ -195,6 +196,7 @@ export default function TripDetail() {
 
   // New features state
   const [showMapView, setShowMapView] = useState(true);
+  const [mapMode, setMapMode] = useState<'gmaps' | 'overview'>('gmaps');
   const [showShareModal, setShowShareModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
@@ -418,6 +420,18 @@ export default function TripDetail() {
         setConfirmModal(null);
       }
     });
+  };
+
+  const handleSaveDayRouteOrder = async (dayId: string, newWaypoints: RouteWaypoint[]) => {
+    try {
+      const itemIds = newWaypoints.map(w => w.id);
+      await api.put(`/trips/days/${dayId}/reorder-items`, { item_ids: itemIds });
+      refetch();
+      setAppToast({ text: 'Đã lưu thứ tự lộ trình Google Maps thành công!', type: 'success' });
+    } catch (err: any) {
+      console.error('Failed to reorder items:', err);
+      setAppToast({ text: 'Không thể lưu thứ tự hoạt động: ' + (err.message || 'Lỗi kết nối'), type: 'error' });
+    }
   };
 
   const openEdit = (item: any) => {
@@ -976,40 +990,104 @@ export default function TripDetail() {
             </View>
 
             {/* Interactive Route Map */}
-            <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: '#f0ebe0' }}>
-              <Pressable
-                onPress={() => {
-                  setShowMapView(!showMapView);
-                }}
-                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Text style={{ fontSize: 20 }}>🗺️</Text>
+            <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: '#f0ebe0', gap: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <Pressable
+                  onPress={() => setShowMapView(!showMapView)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, cursor: 'pointer' as any }}
+                >
+                  <Text style={{ fontSize: 22 }}>🗺️</Text>
                   <View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={{ fontWeight: '800', color: '#1B3A2D', fontSize: 15 }}>Bản đồ lộ trình chuyến đi</Text>
-                    </View>
-                    <Text style={{ color: '#888', fontSize: 12 }}>Các điểm dừng chân và hoạt động trong chuyến đi tại {trip.destination_city}</Text>
+                    <Text style={{ fontWeight: '800', color: '#1B3A2D', fontSize: 16 }}>Lộ trình & Bản đồ Google Maps</Text>
+                    <Text style={{ color: '#888', fontSize: 12 }}>Tuyến đường theo cung phố thực tế, cự ly và kéo thả sắp xếp điểm dừng</Text>
                   </View>
+                </Pressable>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Pressable
+                    testID="tab-map-gmaps"
+                    onPress={() => { setMapMode('gmaps'); setShowMapView(true); }}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      backgroundColor: mapMode === 'gmaps' ? '#1A73E8' : '#F1F3F4',
+                      cursor: 'pointer' as any
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: mapMode === 'gmaps' ? '#FFF' : '#3C4043' }}>
+                      🚗 Lộ trình Google Maps
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    testID="tab-map-overview"
+                    onPress={() => { setMapMode('overview'); setShowMapView(true); }}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      backgroundColor: mapMode === 'overview' ? '#134A37' : '#F1F3F4',
+                      cursor: 'pointer' as any
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: mapMode === 'overview' ? '#FFF' : '#3C4043' }}>
+                      🌐 Toàn cảnh chuyến đi
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => setShowMapView(!showMapView)}
+                    style={{ padding: 6, cursor: 'pointer' as any }}
+                  >
+                    <Text style={{ fontSize: 16, color: '#888' }}>{showMapView ? '▲' : '▼'}</Text>
+                  </Pressable>
                 </View>
-                <Text style={{ fontSize: 18, color: '#888' }}>{showMapView ? '▲' : '▼'}</Text>
-              </Pressable>
+              </View>
+
               {showMapView && (
-                <View style={{ marginTop: 16 }}>
-                  <InteractiveMap
-                    items={trip.days.flatMap(day => (day.items || []).map(item => ({
-                      id: item.id,
-                      title: item.title,
-                      item_type: item.item_type,
-                      start_time: item.start_time,
-                      estimated_cost: item.estimated_cost,
-                      location_lat: (item as any).location_lat,
-                      location_lng: (item as any).location_lng,
-                      day_number: day.day_number,
-                      google_place_id: item.google_place_id,
-                    })) as MapItem[])}
-                    cityName={trip.destination_city}
-                  />
+                <View style={{ marginTop: 4 }}>
+                  {mapMode === 'gmaps' ? (
+                    <GoogleMapsRoutePlanner
+                      waypoints={(activeDay?.items || [])
+                        .filter(it => it.status !== 'replaced' && it.status !== 'skipped')
+                        .map(it => ({
+                          id: it.id,
+                          title: it.title,
+                          address: it.description,
+                          lat: (it as any).location_lat,
+                          lng: (it as any).location_lng,
+                          item_type: it.item_type,
+                          start_time: it.start_time,
+                          end_time: it.end_time,
+                          estimated_cost: it.estimated_cost,
+                          day_number: activeDay?.day_number,
+                          google_place_id: it.google_place_id,
+                        }))}
+                      cityName={trip.destination_city}
+                      dayNumber={activeDay?.day_number}
+                      dayTitle={activeDay?.notes || `Lộ trình ngày ${activeDay?.day_number || 1}`}
+                      readOnly={isAdmin}
+                      onAddWaypoint={isAdmin ? undefined : openAddItem}
+                      onSaveOrder={isAdmin || !activeDay ? undefined : (newWps) => handleSaveDayRouteOrder(activeDay.id, newWps)}
+                      mapHeight={500}
+                    />
+                  ) : (
+                    <InteractiveMap
+                      items={trip.days.flatMap(day => (day.items || []).map(item => ({
+                        id: item.id,
+                        title: item.title,
+                        item_type: item.item_type,
+                        start_time: item.start_time,
+                        estimated_cost: item.estimated_cost,
+                        location_lat: (item as any).location_lat,
+                        location_lng: (item as any).location_lng,
+                        day_number: day.day_number,
+                        google_place_id: item.google_place_id,
+                      })) as MapItem[])}
+                      cityName={trip.destination_city}
+                    />
+                  )}
                 </View>
               )}
             </View>

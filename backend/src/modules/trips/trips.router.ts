@@ -1807,6 +1807,48 @@ router.post('/days/:dayId/items', requireAuth, async (req: any, res: Response) =
   }
 });
 
+// 2.6 PUT /api/trips/days/:dayId/reorder-items - Cập nhật thứ tự các hoạt động trong ngày (kéo thả Google Maps)
+router.put('/days/:dayId/reorder-items', requireAuth, async (req: any, res: Response) => {
+  const client = getSupabaseUserClient(req.token!);
+  const dayId = req.params.dayId;
+  const { item_ids } = req.body;
+
+  if (!Array.isArray(item_ids)) {
+    return res.status(400).json({ error: 'item_ids must be an array of item IDs' });
+  }
+
+  try {
+    const updatePromises = item_ids.map((itemId: string, index: number) =>
+      client
+        .from('itinerary_items')
+        .update({ order_index: index + 1 })
+        .eq('id', itemId)
+        .eq('day_id', dayId)
+    );
+
+    const results = await Promise.all(updatePromises);
+    const hasError = results.find(r => r.error);
+    if (hasError?.error) throw hasError.error;
+
+    const { data: updatedItems, error: fetchErr } = await client
+      .from('itinerary_items')
+      .select('*')
+      .eq('day_id', dayId)
+      .order('order_index', { ascending: true });
+
+    if (fetchErr) throw fetchErr;
+
+    return res.json({
+      success: true,
+      message: 'Items reordered successfully',
+      items: updatedItems || []
+    });
+  } catch (error: any) {
+    console.error('[Reorder Items Route] Error:', error.message);
+    return res.status(500).json({ error: 'Failed to reorder itinerary items', details: error.message });
+  }
+});
+
 // 3. PUT /api/trips/items/:itemId - Sửa hoạt động thủ công (Sửa tay)
 router.put('/items/:itemId', requireAuth, async (req: any, res: Response) => {
   const client = getSupabaseUserClient(req.token!);
