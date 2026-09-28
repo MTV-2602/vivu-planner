@@ -14,18 +14,15 @@ import {
   Sparkles,
   ShoppingBag,
   X,
-  ChevronRight,
   ArrowDown,
-  Navigation,
+  ArrowUp,
   Car,
-  Utensils,
-  Hotel,
-  Camera,
-  Coffee,
+  Check,
   RotateCcw
 } from 'lucide-react-native';
 import { BRAND_COLORS } from '../../constants';
 import { getCityCenterCoords } from '../map/CuratedMap';
+import { getCuratedPlacesForCity } from '../../constants/curatedPlaces';
 
 export interface CalendarEventItem {
   id: string;
@@ -37,9 +34,9 @@ export interface CalendarEventItem {
   lng?: number;
   cost: number;
   dayNumber: number;
-  startHour: number; // 7, 8, 9 ... 21
-  startMinute: number; // 0, 15, 30, 45
-  durationMinutes: number; // 60, 90, 120...
+  startHour: number; // 7..21
+  startMinute: number; // 0, 15, 30...
+  durationMinutes: number; // 60, 90...
   notes?: string;
 }
 
@@ -55,16 +52,18 @@ export interface StandbyPlaceItem {
 }
 
 export interface GoogleCalendarWorkspaceProps {
-  cityName?: string;
+  cityName: string;
   totalBudget?: number;
   daysCount?: number;
   initialEvents?: CalendarEventItem[];
   standbyPlaces?: StandbyPlaceItem[];
+  onEventsChange?: (events: CalendarEventItem[]) => void;
+  onStandbyChange?: (standby: StandbyPlaceItem[]) => void;
   onSave?: (events: CalendarEventItem[], totalCost: number) => void;
   readOnly?: boolean;
 }
 
-const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 7:00 to 21:00
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 07:00 -> 21:00
 
 const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string; lightBg: string }> = {
   dining: { bg: '#E6F4EA', border: '#137333', text: '#137333', lightBg: '#CEEAD6' },
@@ -77,125 +76,133 @@ const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string
 };
 
 export default function GoogleCalendarWorkspace({
-  cityName = 'Đà Nẵng',
+  cityName = 'Hà Nội',
   totalBudget = 5000000,
-  daysCount: initialDaysCount = 3,
+  daysCount: propDaysCount = 3,
   initialEvents,
-  standbyPlaces: initialStandbyPlaces,
+  standbyPlaces: propStandbyPlaces,
+  onEventsChange,
+  onStandbyChange,
   onSave,
   readOnly = false,
 }: GoogleCalendarWorkspaceProps) {
   const { width: windowWidth } = useWindowDimensions();
-  const isDesktop = Platform.OS === 'web' && windowWidth >= 980;
+  const isDesktop = Platform.OS === 'web' && windowWidth >= 960;
 
   const [activeDay, setActiveDay] = useState(1);
-  const [daysCount, setDaysCount] = useState(initialDaysCount);
+  const [daysCount, setDaysCount] = useState(propDaysCount);
 
-  // Danh sách sự kiện đã xếp vào lịch
-  const [events, setEvents] = useState<CalendarEventItem[]>(() => {
-    if (initialEvents && initialEvents.length > 0) return initialEvents;
-    // Dữ liệu mẫu khởi tạo phong phú
-    return [
-      {
-        id: 'ev-1',
-        placeId: 'p-1',
-        title: 'Bánh mì Phượng / Bún bò sáng',
-        category: 'dining',
-        address: 'Hải Châu, ' + cityName,
-        lat: 16.068,
-        lng: 108.221,
-        cost: 45000,
-        dayNumber: 1,
-        startHour: 8,
-        startMinute: 0,
-        durationMinutes: 60,
-      },
-      {
-        id: 'ev-2',
-        placeId: 'p-2',
-        title: 'Check-in Cầu Rồng & Bờ sông Hàn',
-        category: 'attraction',
-        address: 'Bờ Đông Sông Hàn, ' + cityName,
-        lat: 16.061,
-        lng: 108.227,
-        cost: 0,
-        dayNumber: 1,
-        startHour: 9,
-        startMinute: 30,
-        durationMinutes: 90,
-      },
-      {
-        id: 'ev-3',
-        placeId: 'p-3',
-        title: 'Cà phê trứng & ngắm phố',
-        category: 'cafe',
-        address: 'Đường Bạch Đằng, ' + cityName,
-        lat: 16.064,
-        lng: 108.223,
-        cost: 55000,
-        dayNumber: 1,
-        startHour: 11,
-        startMinute: 15,
-        durationMinutes: 60,
-      },
-      {
-        id: 'ev-4',
-        placeId: 'p-4',
-        title: 'Thưởng thức Cơm Niêu / Bánh tráng cuốn thịt heo',
-        category: 'dining',
-        address: 'Đường Lê Duẩn, ' + cityName,
-        lat: 16.071,
-        lng: 108.219,
-        cost: 150000,
-        dayNumber: 1,
-        startHour: 12,
-        startMinute: 30,
-        durationMinutes: 75,
-      },
-      {
-        id: 'ev-5',
-        placeId: 'p-5',
-        title: 'Khách sạn biển nhận phòng',
-        category: 'accommodation',
-        address: 'Võ Nguyên Giáp, ' + cityName,
-        lat: 16.065,
-        lng: 108.246,
-        cost: 750000,
-        dayNumber: 1,
-        startHour: 14,
-        startMinute: 0,
-        durationMinutes: 60,
-      },
-    ];
-  });
+  // Lấy dữ liệu thực tế từ props hoặc curated places của chính thành phố đó (KHÔNG HARD-CODE)
+  const initialData = useMemo(() => {
+    // 1. Nếu có initialEvents từ props
+    if (initialEvents && initialEvents.length > 0) {
+      return {
+        evs: initialEvents,
+        stb: propStandbyPlaces || [],
+      };
+    }
 
-  // Giỏ địa điểm chờ xếp lịch (Standby places in Cart)
-  const [standbyList, setStandbyList] = useState<StandbyPlaceItem[]>(() => {
-    if (initialStandbyPlaces && initialStandbyPlaces.length > 0) return initialStandbyPlaces;
-    return [
-      { id: 'sb-1', name: 'Bán đảo Sơn Trà & Chùa Linh Ứng', category: 'attraction', cost: 0, lat: 16.104, lng: 108.277, address: 'Sơn Trà, ' + cityName },
-      { id: 'sb-2', name: 'Hải sản Năm Đảnh', category: 'dining', cost: 250000, lat: 16.096, lng: 108.243, address: 'Trần Quang Khải, ' + cityName },
-      { id: 'sb-3', name: 'Chợ Đêm Sơn Trà ẩm thực', category: 'dining', cost: 120000, lat: 16.062, lng: 108.232, address: 'Mai Hắc Đế, ' + cityName },
-      { id: 'sb-4', name: 'Tắm biển Mỹ Khê', category: 'attraction', cost: 30000, lat: 16.060, lng: 108.248, address: 'Mỹ Khê, ' + cityName },
-      { id: 'sb-5', name: 'Thuê xe máy tay ga', category: 'rental', cost: 130000, lat: 16.067, lng: 108.225, address: 'Trung tâm ' + cityName },
-    ];
-  });
+    // 2. Nếu có propStandbyPlaces từ props
+    if (propStandbyPlaces && propStandbyPlaces.length > 0) {
+      // Phân bổ thông minh các điểm vào các ngày theo thứ tự
+      const generatedEvs: CalendarEventItem[] = [];
+      const remainingStb: StandbyPlaceItem[] = [];
 
-  // Điểm được chọn trên bản đồ để hiển thị Popup Callout Bubble (như khung hồng trong bản vẽ)
-  const [selectedMapPlace, setSelectedMapPlace] = useState<{
-    id: string;
-    title: string;
-    category: string;
-    cost: number;
-    address?: string;
-    lat: number;
-    lng: number;
-    source: 'event' | 'standby';
-  } | null>(null);
+      propStandbyPlaces.forEach((p, idx) => {
+        const assignedDay = (idx % propDaysCount) + 1;
+        const hour = 8 + (Math.floor(idx / propDaysCount) % 6) * 2;
 
-  // Kéo thả trạng thái (Drag & Drop state)
+        if (idx < propDaysCount * 3) {
+          generatedEvs.push({
+            id: `ev-${p.id}`,
+            placeId: p.id,
+            title: p.name,
+            category: p.category,
+            address: p.address,
+            lat: p.lat,
+            lng: p.lng,
+            cost: p.cost,
+            dayNumber: assignedDay,
+            startHour: Math.min(20, hour),
+            startMinute: 0,
+            durationMinutes: p.suggestedDuration || 90,
+          });
+        } else {
+          remainingStb.push(p);
+        }
+      });
+
+      return { evs: generatedEvs, stb: remainingStb };
+    }
+
+    // 3. Fallback lấy danh sách thật từ Curated Places của CHÍNH THÀNH PHỐ ĐÓ
+    const cityPlaces = getCuratedPlacesForCity(cityName);
+    const evs: CalendarEventItem[] = [];
+    const stb: StandbyPlaceItem[] = [];
+
+    cityPlaces.forEach((p, idx) => {
+      const assignedDay = (idx % propDaysCount) + 1;
+      const hour = 8 + (Math.floor(idx / propDaysCount) % 6) * 2;
+
+      if (idx < propDaysCount * 2) {
+        evs.push({
+          id: `ev-${p.id}`,
+          placeId: p.id,
+          title: p.name,
+          category: p.category,
+          address: p.address,
+          lat: p.lat,
+          lng: p.lng,
+          cost: p.estimated_cost || 50000,
+          dayNumber: assignedDay,
+          startHour: Math.min(20, hour),
+          startMinute: 0,
+          durationMinutes: 90,
+        });
+      } else {
+        stb.push({
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          address: p.address,
+          lat: p.lat,
+          lng: p.lng,
+          cost: p.estimated_cost || 50000,
+          suggestedDuration: 90,
+        });
+      }
+    });
+
+    return { evs, stb };
+  }, [cityName, propDaysCount, initialEvents, propStandbyPlaces]);
+
+  // State sự kiện và giỏ chờ
+  const [events, setEvents] = useState<CalendarEventItem[]>(initialData.evs);
+  const [standbyList, setStandbyList] = useState<StandbyPlaceItem[]>(initialData.stb);
+
+  // Đồng bộ khi props thay đổi
+  useEffect(() => {
+    setDaysCount(propDaysCount);
+  }, [propDaysCount]);
+
+  useEffect(() => {
+    setEvents(initialData.evs);
+    setStandbyList(initialData.stb);
+  }, [initialData]);
+
+  // Báo thay đổi ra ngoài component cha
+  const notifyChanges = (newEvents: CalendarEventItem[], newStandby: StandbyPlaceItem[]) => {
+    if (onEventsChange) onEventsChange(newEvents);
+    if (onStandbyChange) onStandbyChange(newStandby);
+  };
+
+  // State chọn điểm để gán nhanh (Click-to-place)
+  const [selectedPlaceToPlace, setSelectedPlaceToPlace] = useState<StandbyPlaceItem | null>(null);
+
+  // Kéo thả trạng thái
   const [draggedData, setDraggedData] = useState<{
     type: 'standby' | 'event';
+    id: string;
     item: StandbyPlaceItem | CalendarEventItem;
   } | null>(null);
   const [hoveredHourSlot, setHoveredHourSlot] = useState<number | null>(null);
@@ -204,14 +211,14 @@ export default function GoogleCalendarWorkspace({
   // Sự kiện của ngày đang kích hoạt
   const currentDayEvents = useMemo(() => {
     return events
-      .filter((ev) => ev.dayNumber === activeDay)
+      .filter((ev) => Number(ev.dayNumber) === Number(activeDay))
       .sort((a, b) => a.startHour * 60 + a.startMinute - (b.startHour * 60 + b.startMinute));
   }, [events, activeDay]);
 
-  // Tính toán tài chính Budget Tool
+  // Tính toán ngân sách
   const budgetStats = useMemo(() => {
-    const totalScheduled = events.reduce((sum, ev) => sum + (ev.cost || 0), 0);
-    const dayScheduled = currentDayEvents.reduce((sum, ev) => sum + (ev.cost || 0), 0);
+    const totalScheduled = events.reduce((sum, ev) => sum + (Number(ev.cost) || 0), 0);
+    const dayScheduled = currentDayEvents.reduce((sum, ev) => sum + (Number(ev.cost) || 0), 0);
     const remaining = totalBudget - totalScheduled;
 
     const byCategory: Record<string, number> = {
@@ -225,7 +232,7 @@ export default function GoogleCalendarWorkspace({
 
     events.forEach((ev) => {
       const cat = ev.category in byCategory ? ev.category : 'other';
-      byCategory[cat] += ev.cost || 0;
+      byCategory[cat] += Number(ev.cost) || 0;
     });
 
     return {
@@ -237,7 +244,7 @@ export default function GoogleCalendarWorkspace({
     };
   }, [events, currentDayEvents, totalBudget]);
 
-  // Tọa độ trung tâm bản đồ
+  // Tọa độ trung tâm thành phố thực tế
   const { centerLat, centerLng } = useMemo(() => {
     const allCoords = [
       ...currentDayEvents.filter((e) => e.lat && e.lng),
@@ -252,7 +259,158 @@ export default function GoogleCalendarWorkspace({
     return { centerLat: c.lat, centerLng: c.lng };
   }, [currentDayEvents, standbyList, cityName]);
 
-  // Leaflet Map HTML với Google Maps Tiles và Popup Bubble
+  // Thêm một địa điểm vào lịch
+  const addPlaceToCalendar = (place: StandbyPlaceItem, targetHour?: number) => {
+    const hour =
+      targetHour ||
+      (currentDayEvents.length > 0
+        ? Math.min(21, currentDayEvents[currentDayEvents.length - 1].startHour + 2)
+        : 8);
+
+    const newEvent: CalendarEventItem = {
+      id: `ev-${place.id}-${Date.now()}`,
+      placeId: place.id,
+      title: place.name,
+      category: place.category,
+      address: place.address,
+      lat: place.lat,
+      lng: place.lng,
+      cost: place.cost,
+      dayNumber: activeDay,
+      startHour: hour,
+      startMinute: 0,
+      durationMinutes: place.suggestedDuration || 90,
+    };
+
+    const nextEvents = [...events, newEvent];
+    const nextStandby = standbyList.filter((s) => s.id !== place.id);
+
+    setEvents(nextEvents);
+    setStandbyList(nextStandby);
+    setSelectedPlaceToPlace(null);
+    notifyChanges(nextEvents, nextStandby);
+  };
+
+  // Trả sự kiện từ lịch về giỏ chờ
+  const removeEventToStandby = (eventId: string) => {
+    const ev = events.find((e) => e.id === eventId);
+    if (!ev) return;
+
+    const returnItem: StandbyPlaceItem = {
+      id: ev.placeId || `p-${Date.now()}`,
+      name: ev.title,
+      category: ev.category,
+      address: ev.address,
+      lat: ev.lat,
+      lng: ev.lng,
+      cost: ev.cost,
+      suggestedDuration: ev.durationMinutes,
+    };
+
+    const nextEvents = events.filter((e) => e.id !== eventId);
+    const nextStandby = [...standbyList, returnItem];
+
+    setEvents(nextEvents);
+    setStandbyList(nextStandby);
+    notifyChanges(nextEvents, nextStandby);
+  };
+
+  // Đổi giờ bắt đầu của sự kiện
+  const moveEventHour = (eventId: string, deltaHours: number) => {
+    const nextEvents = events.map((ev) => {
+      if (ev.id === eventId) {
+        const newHour = Math.max(7, Math.min(21, ev.startHour + deltaHours));
+        return { ...ev, startHour: newHour };
+      }
+      return ev;
+    });
+    setEvents(nextEvents);
+    notifyChanges(nextEvents, standbyList);
+  };
+
+  // Drag and drop handlers
+  const handleDragStartStandby = (item: StandbyPlaceItem, e: any) => {
+    if (readOnly) return;
+    setDraggedData({ type: 'standby', id: item.id, item });
+    if (e?.dataTransfer) {
+      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'standby', id: item.id }));
+      e.dataTransfer.effectAllowed = 'copyMove';
+    }
+  };
+
+  const handleDragStartEvent = (event: CalendarEventItem, e: any) => {
+    if (readOnly) return;
+    setDraggedData({ type: 'event', id: event.id, item: event });
+    if (e?.dataTransfer) {
+      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'event', id: event.id }));
+      e.dataTransfer.effectAllowed = 'move';
+    }
+  };
+
+  const handleDragOverHour = (hour: number, e: any) => {
+    if (readOnly) return;
+    if (e?.preventDefault) e.preventDefault();
+    if (hoveredHourSlot !== hour) setHoveredHourSlot(hour);
+  };
+
+  const handleDropOnHour = (hour: number, e: any) => {
+    if (readOnly) return;
+    if (e?.preventDefault) e.preventDefault();
+    setHoveredHourSlot(null);
+
+    // 1. Thả từ Giỏ chờ vào giờ
+    if (draggedData && draggedData.type === 'standby') {
+      const standbyItem = standbyList.find((s) => s.id === draggedData.id) || (draggedData.item as StandbyPlaceItem);
+      if (standbyItem) {
+        addPlaceToCalendar(standbyItem, hour);
+      }
+    } else if (draggedData && draggedData.type === 'event') {
+      // 2. Thả đổi giờ sự kiện
+      const nextEvents = events.map((ev) =>
+        ev.id === draggedData.id ? { ...ev, startHour: hour, dayNumber: activeDay } : ev
+      );
+      setEvents(nextEvents);
+      notifyChanges(nextEvents, standbyList);
+    }
+
+    setDraggedData(null);
+  };
+
+  const handleDropOnCart = (e: any) => {
+    if (readOnly) return;
+    if (e?.preventDefault) e.preventDefault();
+    setHoveredCartZone(false);
+
+    if (draggedData && draggedData.type === 'event') {
+      removeEventToStandby(draggedData.id);
+    }
+    setDraggedData(null);
+  };
+
+  // Quản lý số ngày
+  const handleRemoveDay = (dNum: number) => {
+    if (daysCount <= 1) return;
+    // Chuyển toàn bộ hoạt động của ngày đó về giỏ chờ
+    const dayEvs = events.filter((e) => e.dayNumber === dNum);
+    dayEvs.forEach((e) => removeEventToStandby(e.id));
+
+    const nextEvents = events
+      .filter((e) => e.dayNumber !== dNum)
+      .map((e) => (e.dayNumber > dNum ? { ...e, dayNumber: e.dayNumber - 1 } : e));
+
+    setEvents(nextEvents);
+    setDaysCount((prev) => prev - 1);
+    if (activeDay >= daysCount) setActiveDay(Math.max(1, daysCount - 1));
+    notifyChanges(nextEvents, standbyList);
+  };
+
+  const handleAddDay = () => {
+    const nextCount = daysCount + 1;
+    setDaysCount(nextCount);
+    setActiveDay(nextCount);
+  };
+
+  // HTML bản đồ Google Maps & OSRM
   const mapIframeHTML = useMemo(() => {
     const dayPlaces = currentDayEvents.filter((e) => e.lat && e.lng);
     const standbyCoords = standbyList.filter((s) => s.lat && s.lng);
@@ -268,30 +426,7 @@ export default function GoogleCalendarWorkspace({
     * { margin:0; padding:0; box-sizing:border-box; }
     html, body, #map { width:100%; height:100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     
-    /* Vòng tròn vàng (như nét vẽ của người dùng trong ảnh) */
-    .yellow-map-pin {
-      width: 26px;
-      height: 26px;
-      background: #FBBC04;
-      border: 3px solid #FFFFFF;
-      border-radius: 50%;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.3);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 800;
-      font-size: 11px;
-      color: #202124;
-      transition: transform 0.15s ease;
-    }
-    .yellow-map-pin:hover {
-      transform: scale(1.22);
-      border-color: #EA4335;
-    }
-
-    /* Điểm trong lịch Ngày đang chọn */
-    .active-day-pin {
+    .day-marker-pin {
       width: 30px;
       height: 30px;
       background: #1A73E8;
@@ -307,49 +442,49 @@ export default function GoogleCalendarWorkspace({
       color: #FFFFFF;
       transition: transform 0.15s ease;
     }
-    .active-day-pin:hover {
-      transform: scale(1.22);
-    }
+    .day-marker-pin:hover { transform: scale(1.2); }
 
-    /* Popup Callout Bubble chuẩn y chang nét vẽ hồng trong ảnh */
-    .pink-callout-bubble {
-      background: #FFFFFF;
-      border: 2.5px solid #FF5252;
-      border-radius: 16px;
-      padding: 12px 14px;
-      box-shadow: 0 8px 24px rgba(255,82,82,0.22);
-      min-width: 220px;
-      position: relative;
-    }
-    .pink-callout-title {
-      font-size: 14px;
+    .standby-marker-pin {
+      width: 26px;
+      height: 26px;
+      background: #FBBC04;
+      border: 2.5px solid #FFFFFF;
+      border-radius: 50%;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       font-weight: 800;
+      font-size: 11px;
       color: #202124;
-      margin-bottom: 4px;
+      transition: transform 0.15s ease;
     }
-    .pink-callout-cost {
-      font-size: 12px;
-      font-weight: 700;
-      color: #0F9D58;
-      margin-bottom: 8px;
+    .standby-marker-pin:hover { transform: scale(1.22); border-color: #EA4335; }
+
+    .gmap-bubble {
+      background: #FFFFFF;
+      border: 2px solid #FF5252;
+      border-radius: 14px;
+      padding: 12px;
+      min-width: 220px;
+      box-shadow: 0 8px 24px rgba(255,82,82,0.22);
     }
-    .pink-callout-btn {
-      display: block;
+    .gmap-bubble-title { font-size: 14px; font-weight: 800; color: #202124; margin-bottom: 3px; }
+    .gmap-bubble-price { font-size: 12px; font-weight: 700; color: #0F9D58; margin-bottom: 6px; }
+    .gmap-bubble-btn {
       width: 100%;
-      text-align: center;
+      padding: 7px;
       background: #1A73E8;
       color: #FFFFFF;
-      padding: 6px 10px;
+      border: none;
       border-radius: 8px;
       font-size: 11px;
       font-weight: 700;
-      text-decoration: none;
       cursor: pointer;
-      border: none;
+      margin-top: 6px;
     }
-    .pink-callout-btn:hover {
-      background: #1557B0;
-    }
+    .gmap-bubble-btn:hover { background: #1557B0; }
   </style>
 </head>
 <body>
@@ -357,14 +492,14 @@ export default function GoogleCalendarWorkspace({
   <script>
     const map = L.map('map', { zoomControl: true }).setView([${centerLat}, ${centerLng}], 13);
 
-    // Google Maps Roadmap Tiles Layer
-    const gTiles = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+    // Google Maps Roadmap Tiles
+    const gLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
       maxZoom: 20,
       subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
       attribution: '&copy; Google Maps'
     }).addTo(map);
 
-    gTiles.on('tileerror', function() {
+    gLayer.on('tileerror', function() {
       L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
         attribution: '&copy; Esri World Street Map'
@@ -375,7 +510,7 @@ export default function GoogleCalendarWorkspace({
     const standbyList = ${JSON.stringify(standbyCoords)};
     const bounds = L.latLngBounds([]);
 
-    // 1. Cắm các điểm trong lịch ngày hiện tại
+    // 1. Cắm Markers các điểm của Ngày ${activeDay}
     dayPlaces.forEach((dp, idx) => {
       const lat = Number(dp.lat);
       const lng = Number(dp.lng);
@@ -383,23 +518,23 @@ export default function GoogleCalendarWorkspace({
 
       const icon = L.divIcon({
         className: '',
-        html: '<div class="active-day-pin">' + (idx + 1) + '</div>',
+        html: '<div class="day-marker-pin">' + (idx + 1) + '</div>',
         iconSize: [30, 30],
         iconAnchor: [15, 15]
       });
 
       const m = L.marker([lat, lng], { icon: icon }).addTo(map);
       m.bindPopup(
-        '<div class="pink-callout-bubble">' +
-          '<div style="font-size:10px;font-weight:800;color:#1A73E8;text-transform:uppercase;margin-bottom:2px;">Hoạt động #' + (idx + 1) + ' · Ngày ${activeDay}</div>' +
-          '<div class="pink-callout-title">' + dp.title + '</div>' +
-          '<div class="pink-callout-cost">' + (dp.cost ? Number(dp.cost).toLocaleString("vi-VN") + ' đ' : 'Miễn phí') + '</div>' +
-          '<div style="font-size:11px;color:#5F6368;margin-bottom:8px;">' + (dp.address || '${cityName}') + '</div>' +
+        '<div class="gmap-bubble">' +
+          '<div style="font-size:10px;font-weight:800;color:#1A73E8;text-transform:uppercase;">Hoạt động #' + (idx + 1) + ' · Ngày ${activeDay}</div>' +
+          '<div class="gmap-bubble-title">' + dp.title + '</div>' +
+          '<div class="gmap-bubble-price">' + (dp.cost ? Number(dp.cost).toLocaleString("vi-VN") + ' đ' : 'Miễn phí') + '</div>' +
+          '<div style="font-size:11px;color:#5F6368;">' + (dp.address || '${cityName}') + '</div>' +
         '</div>'
       );
     });
 
-    // 2. Cắm các điểm trong giỏ chờ (màu vàng như nét vẽ người dùng)
+    // 2. Cắm Markers các điểm trong Giỏ chờ
     standbyList.forEach((sp, idx) => {
       const lat = Number(sp.lat);
       const lng = Number(sp.lng);
@@ -407,24 +542,24 @@ export default function GoogleCalendarWorkspace({
 
       const icon = L.divIcon({
         className: '',
-        html: '<div class="yellow-map-pin">' + String.fromCharCode(65 + (idx % 26)) + '</div>',
+        html: '<div class="standby-marker-pin">' + String.fromCharCode(65 + (idx % 26)) + '</div>',
         iconSize: [26, 26],
         iconAnchor: [13, 13]
       });
 
       const m = L.marker([lat, lng], { icon: icon }).addTo(map);
       m.bindPopup(
-        '<div class="pink-callout-bubble">' +
-          '<div style="font-size:10px;font-weight:800;color:#EA4335;text-transform:uppercase;margin-bottom:2px;">Điểm trong kho chờ</div>' +
-          '<div class="pink-callout-title">' + sp.name + '</div>' +
-          '<div class="pink-callout-cost">' + (sp.cost ? Number(sp.cost).toLocaleString("vi-VN") + ' đ' : 'Miễn phí') + '</div>' +
-          '<div style="font-size:11px;color:#5F6368;margin-bottom:8px;">' + (sp.address || '${cityName}') + '</div>' +
-          '<button class="pink-callout-btn" onclick="window.parent.postMessage(JSON.stringify({ type: \\'ADD_STANDBY_TO_CALENDAR\\', placeId: \\'' + sp.id + '\\' }), \\'*\\')">➕ Thêm vào Lịch Ngày ${activeDay}</button>' +
+        '<div class="gmap-bubble">' +
+          '<div style="font-size:10px;font-weight:800;color:#EA4335;text-transform:uppercase;">Điểm trong kho chờ</div>' +
+          '<div class="gmap-bubble-title">' + sp.name + '</div>' +
+          '<div class="gmap-bubble-price">' + (sp.cost ? Number(sp.cost).toLocaleString("vi-VN") + ' đ' : 'Miễn phí') + '</div>' +
+          '<div style="font-size:11px;color:#5F6368;">' + (sp.address || '${cityName}') + '</div>' +
+          '<button class="gmap-bubble-btn" onclick="window.parent.postMessage(JSON.stringify({ type: \\'MAP_ADD_PLACE\\', placeId: \\'' + sp.id + '\\' }), \\'*\\')">➕ Đặt vào Lịch Ngày ${activeDay}</button>' +
         '</div>'
       );
     });
 
-    // 3. Vẽ polyline đường bộ OSRM nối các điểm trong ngày
+    // 3. OSRM Real Street Routing cho Ngày hiện tại
     if (dayPlaces.length >= 2) {
       const coords = dayPlaces.map(p => Number(p.lng) + ',' + Number(p.lat)).join(';');
       fetch('https://router.project-osrm.org/route/v1/driving/' + coords + '?overview=full&geometries=geojson')
@@ -450,148 +585,24 @@ export default function GoogleCalendarWorkspace({
 </html>`;
   }, [currentDayEvents, standbyList, activeDay, centerLat, centerLng, cityName]);
 
-  // Lắng nghe postMessage từ iframe Leaflet khi bấm nút trên Popup Bubble
+  // Lắng nghe postMessage từ bản đồ khi bấm nút "➕ Đặt vào Lịch Ngày này"
   useEffect(() => {
     if (Platform.OS === 'web') {
-      const handler = (evt: MessageEvent) => {
+      const listener = (evt: MessageEvent) => {
         try {
           const d = typeof evt.data === 'string' ? JSON.parse(evt.data) : evt.data;
-          if (d && d.type === 'ADD_STANDBY_TO_CALENDAR' && d.placeId) {
-            handleMoveStandbyToCalendar(d.placeId);
+          if (d && d.type === 'MAP_ADD_PLACE' && d.placeId) {
+            const item = standbyList.find((s) => s.id === d.placeId);
+            if (item) {
+              addPlaceToCalendar(item);
+            }
           }
         } catch (e) {}
       };
-      window.addEventListener('message', handler);
-      return () => window.removeEventListener('message', handler);
+      window.addEventListener('message', listener);
+      return () => window.removeEventListener('message', listener);
     }
   }, [standbyList, events, activeDay]);
-
-  // Chuyển một điểm từ Giỏ chờ (Standby) vào Lịch trình Ngày
-  const handleMoveStandbyToCalendar = (standbyId: string, targetHour?: number) => {
-    const item = standbyList.find((s) => s.id === standbyId);
-    if (!item) return;
-
-    // Tìm khung giờ trống tiếp theo trong ngày
-    const hour = targetHour || (currentDayEvents.length > 0
-      ? Math.min(20, Math.max(8, currentDayEvents[currentDayEvents.length - 1].startHour + 2))
-      : 8);
-
-    const newEvent: CalendarEventItem = {
-      id: `ev-${Date.now()}`,
-      placeId: item.id,
-      title: item.name,
-      category: item.category,
-      address: item.address,
-      lat: item.lat,
-      lng: item.lng,
-      cost: item.cost,
-      dayNumber: activeDay,
-      startHour: hour,
-      startMinute: 0,
-      durationMinutes: item.suggestedDuration || 90,
-    };
-
-    setEvents((prev) => [...prev, newEvent]);
-    setStandbyList((prev) => prev.filter((s) => s.id !== standbyId));
-  };
-
-  // Chuyển một sự kiện từ Lịch trình trở lại Giỏ chờ (Budget Tool Cart)
-  const handleRemoveEventToStandby = (eventId: string) => {
-    const ev = events.find((e) => e.id === eventId);
-    if (!ev) return;
-
-    const standbyItem: StandbyPlaceItem = {
-      id: ev.placeId || `p-${Date.now()}`,
-      name: ev.title,
-      category: ev.category,
-      address: ev.address,
-      lat: ev.lat,
-      lng: ev.lng,
-      cost: ev.cost,
-      suggestedDuration: ev.durationMinutes,
-    };
-
-    setEvents((prev) => prev.filter((e) => e.id !== eventId));
-    setStandbyList((prev) => [...prev, standbyItem]);
-  };
-
-  // Kéo thả HTML5 Drag and Drop handlers
-  const handleDragStartStandby = (item: StandbyPlaceItem, e: any) => {
-    if (readOnly) return;
-    setDraggedData({ type: 'standby', item });
-    if (e?.dataTransfer) {
-      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'standby', id: item.id }));
-      e.dataTransfer.effectAllowed = 'copyMove';
-    }
-  };
-
-  const handleDragStartEvent = (event: CalendarEventItem, e: any) => {
-    if (readOnly) return;
-    setDraggedData({ type: 'event', item: event });
-    if (e?.dataTransfer) {
-      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'event', id: event.id }));
-      e.dataTransfer.effectAllowed = 'move';
-    }
-  };
-
-  const handleDragOverHour = (hour: number, e: any) => {
-    if (readOnly) return;
-    if (e?.preventDefault) e.preventDefault();
-    if (hoveredHourSlot !== hour) setHoveredHourSlot(hour);
-  };
-
-  const handleDropOnHour = (hour: number, e: any) => {
-    if (readOnly) return;
-    if (e?.preventDefault) e.preventDefault();
-    setHoveredHourSlot(null);
-
-    if (!draggedData) return;
-
-    if (draggedData.type === 'standby') {
-      // Kéo từ Giỏ chờ thả vào khung giờ Google Calendar
-      handleMoveStandbyToCalendar((draggedData.item as StandbyPlaceItem).id, hour);
-    } else if (draggedData.type === 'event') {
-      // Đổi giờ bắt đầu của sự kiện trong Google Calendar
-      const eventId = (draggedData.item as CalendarEventItem).id;
-      setEvents((prev) =>
-        prev.map((ev) => (ev.id === eventId ? { ...ev, startHour: hour, dayNumber: activeDay } : ev))
-      );
-    }
-    setDraggedData(null);
-  };
-
-  const handleDropOnCart = (e: any) => {
-    if (readOnly) return;
-    if (e?.preventDefault) e.preventDefault();
-    setHoveredCartZone(false);
-
-    if (draggedData && draggedData.type === 'event') {
-      handleRemoveEventToStandby((draggedData.item as CalendarEventItem).id);
-    }
-    setDraggedData(null);
-  };
-
-  // Nút xóa ngày (giống các dấu X trên tab ngày trong bản vẽ của người dùng)
-  const handleRemoveDay = (dayNum: number) => {
-    if (daysCount <= 1) return;
-    // Chuyển toàn bộ hoạt động của ngày đó về giỏ chờ
-    const dayEvs = events.filter((e) => e.dayNumber === dayNum);
-    dayEvs.forEach((e) => handleRemoveEventToStandby(e.id));
-
-    // Cập nhật lại số ngày và số thứ tự ngày
-    setEvents((prev) =>
-      prev
-        .filter((e) => e.dayNumber !== dayNum)
-        .map((e) => (e.dayNumber > dayNum ? { ...e, dayNumber: e.dayNumber - 1 } : e))
-    );
-    setDaysCount((prev) => prev - 1);
-    if (activeDay >= daysCount) setActiveDay(Math.max(1, daysCount - 1));
-  };
-
-  const handleAddDay = () => {
-    setDaysCount((prev) => prev + 1);
-    setActiveDay(daysCount + 1);
-  };
 
   return (
     <View
@@ -605,7 +616,7 @@ export default function GoogleCalendarWorkspace({
         boxShadow: '0 8px 32px rgba(0,0,0,0.06)' as any,
       }}
     >
-      {/* ── TOP BAR: TIÊU ĐỀ WORKSPACE & NÚT HOÀN TẤT ── */}
+      {/* ── TOP BAR: TIÊU ĐỀ & NÚT LƯU LỊCH TRÌNH ── */}
       <View
         style={{
           paddingHorizontal: 20,
@@ -638,7 +649,7 @@ export default function GoogleCalendarWorkspace({
               Không gian Lập lịch & Quản lý Ngân sách (Google Calendar Workspace)
             </Text>
             <Text style={{ fontSize: 11, color: '#5F6368' }}>
-              Kéo thả trực tiếp giữa Bản đồ, Lịch trình theo giờ và Giỏ ngân sách
+              {cityName} · Kéo thả hoặc bấm gán trực tiếp giữa Bản đồ, Lịch theo giờ và Giỏ ngân sách
             </Text>
           </View>
         </View>
@@ -666,11 +677,11 @@ export default function GoogleCalendarWorkspace({
         )}
       </View>
 
-      {/* ── KHUNG CHÍNH SPLIT-VIEW (2 CỘT CHUẨN THEO BẢN VẼ) ── */}
+      {/* ── KHUNG CHÍNH SPLIT-VIEW (2 CỘT CHUẨN THEO BẢN VẼ TAY) ── */}
       <View
         style={{
           flexDirection: isDesktop ? 'row' : 'column',
-          minHeight: 740,
+          minHeight: 760,
         }}
       >
         {/* ══════════════════════════════════════════════════════════ */}
@@ -689,7 +700,7 @@ export default function GoogleCalendarWorkspace({
             backgroundColor: '#F8F9FA',
           }}
         >
-          {/* Header Tabs: Ngày 1, Ngày 2, Ngày 3 (Có dấu X gỡ ngày như ảnh vẽ) */}
+          {/* Tabs Ngày 1, Ngày 2, Ngày 3 (kèm nút xóa ngày X như ảnh vẽ tay) */}
           <View
             style={{
               paddingHorizontal: 14,
@@ -706,7 +717,7 @@ export default function GoogleCalendarWorkspace({
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {Array.from({ length: daysCount }, (_, i) => i + 1).map((dNum) => {
                 const isActive = activeDay === dNum;
-                const countInDay = events.filter((e) => e.dayNumber === dNum).length;
+                const countInDay = events.filter((e) => Number(e.dayNumber) === Number(dNum)).length;
 
                 return (
                   <View
@@ -741,7 +752,6 @@ export default function GoogleCalendarWorkspace({
                       </Text>
                     </Pressable>
 
-                    {/* Dấu X gỡ ngày (tương tự chữ X người dùng gạch trong ảnh vẽ tay) */}
                     {!readOnly && daysCount > 1 && (
                       <Pressable
                         onPress={() => handleRemoveDay(dNum)}
@@ -785,8 +795,8 @@ export default function GoogleCalendarWorkspace({
             </ScrollView>
           </View>
 
-          {/* Bản đồ MAP (Chiếm toàn bộ không gian còn lại của cột trái) */}
-          <View style={{ flex: 1, minHeight: 480, position: 'relative' }}>
+          {/* Bản đồ MAP chiếm trọn chiều cao cột trái */}
+          <View style={{ flex: 1, minHeight: 500, position: 'relative' }}>
             {Platform.OS === 'web' ? (
               <iframe
                 title="calendar-workspace-map"
@@ -794,24 +804,23 @@ export default function GoogleCalendarWorkspace({
                 style={{
                   width: '100%',
                   height: '100%',
-                  minHeight: 480,
+                  minHeight: 500,
                   border: 'none',
                 }}
               />
             ) : (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: '#888', fontSize: 12 }}>Bản đồ Google Maps hiển thị trên Web</Text>
+                <Text style={{ color: '#888', fontSize: 12 }}>Bản đồ Google Maps hỗ trợ trên Web</Text>
               </View>
             )}
 
-            {/* Chú thích bản đồ (Map Legend) */}
+            {/* Chú thích bản đồ */}
             <View
               style={{
                 position: 'absolute',
                 bottom: 12,
                 left: 12,
                 backgroundColor: 'rgba(255,255,255,0.92)',
-                backdropFilter: 'blur(8px)' as any,
                 paddingHorizontal: 12,
                 paddingVertical: 8,
                 borderRadius: 12,
@@ -859,7 +868,7 @@ export default function GoogleCalendarWorkspace({
               borderBottomColor: 'rgba(27,36,32,0.12)',
               display: 'flex',
               flexDirection: 'column',
-              minHeight: 380,
+              minHeight: 400,
             }}
           >
             {/* Header Lịch trình */}
@@ -881,14 +890,22 @@ export default function GoogleCalendarWorkspace({
                   Lịch trình Google Calendar · Ngày {activeDay}
                 </Text>
               </View>
-              <Text style={{ fontSize: 11, color: '#5F6368', fontWeight: '600' }}>
-                Kéo thả đổi giờ hoặc kéo trả về Giỏ bên dưới
-              </Text>
+
+              {selectedPlaceToPlace && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#E8F0FE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#1A73E8' }}>
+                    Đang chọn: "{selectedPlaceToPlace.name}" → Bấm vào slot giờ để đặt
+                  </Text>
+                  <Pressable onPress={() => setSelectedPlaceToPlace(null)} style={{ padding: 2 }}>
+                    <X size={12} color="#1A73E8" />
+                  </Pressable>
+                </View>
+              )}
             </View>
 
-            {/* Google Calendar Time Grid (Khung giờ dạng lịch Google) */}
-            <ScrollView style={{ flex: 1, maxHeight: 360, paddingHorizontal: 14 }} showsVerticalScrollIndicator={true}>
-              <View style={{ paddingVertical: 10 }}>
+            {/* Time Grid Google Calendar */}
+            <ScrollView style={{ flex: 1, maxHeight: 380, paddingHorizontal: 14 }} showsVerticalScrollIndicator={true}>
+              <View style={{ paddingVertical: 8 }}>
                 {HOURS.map((hour) => {
                   const hourEvents = currentDayEvents.filter((ev) => ev.startHour === hour);
                   const isSlotHovered = hoveredHourSlot === hour;
@@ -900,7 +917,7 @@ export default function GoogleCalendarWorkspace({
                       style={{
                         flexDirection: 'row',
                         alignItems: 'flex-start',
-                        minHeight: 52,
+                        minHeight: 54,
                         borderTopWidth: 1,
                         borderTopColor: isSlotHovered ? '#1A73E8' : 'rgba(27,36,32,0.08)',
                         backgroundColor: isSlotHovered ? 'rgba(26,115,232,0.08)' : 'transparent',
@@ -911,16 +928,42 @@ export default function GoogleCalendarWorkspace({
                       // @ts-ignore
                       onDrop={(e: any) => handleDropOnHour(hour, e)}
                     >
-                      {/* Cột mốc giờ bên trái (07:00, 08:00...) */}
-                      <View style={{ width: 50, paddingRight: 8, paddingTop: 2 }}>
+                      {/* Cột mốc giờ bên trái */}
+                      <View style={{ width: 50, paddingRight: 8, paddingTop: 4 }}>
                         <Text style={{ fontSize: 11, fontWeight: '700', color: '#5F6368', textAlign: 'right' }}>
                           {hour < 10 ? `0${hour}:00` : `${hour}:00`}
                         </Text>
                       </View>
 
-                      {/* Vùng nhận thả sự kiện (Event Card Container) */}
+                      {/* Vùng nhận thả sự kiện */}
                       <View style={{ flex: 1, paddingLeft: 8, gap: 6 }}>
-                        {hourEvents.length === 0 ? (
+                        {selectedPlaceToPlace && (
+                          <Pressable
+                            testID={`btn-place-to-hour-${hour}`}
+                            onPress={() => addPlaceToCalendar(selectedPlaceToPlace, hour)}
+                            style={{
+                              paddingVertical: 6,
+                              paddingHorizontal: 10,
+                              borderRadius: 8,
+                              backgroundColor: '#E8F0FE',
+                              borderWidth: 1,
+                              borderStyle: 'dashed',
+                              borderColor: '#1A73E8',
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 6,
+                              cursor: 'pointer' as any,
+                            }}
+                          >
+                            <Plus size={13} color="#1A73E8" />
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#1A73E8' }}>
+                              + Đặt "{selectedPlaceToPlace.name}" vào {hour < 10 ? `0${hour}:00` : `${hour}:00`}
+                            </Text>
+                          </Pressable>
+                        )}
+
+                        {hourEvents.length === 0 && !selectedPlaceToPlace ? (
                           <View
                             style={{
                               height: 38,
@@ -933,7 +976,7 @@ export default function GoogleCalendarWorkspace({
                             }}
                           >
                             <Text style={{ fontSize: 10, color: isSlotHovered ? '#1A73E8' : 'rgba(27,36,32,0.25)', fontStyle: 'italic' }}>
-                              {isSlotHovered ? 'Thả vào khung giờ này' : '+ Trống (thả địa điểm vào đây)'}
+                              {isSlotHovered ? 'Thả vào khung giờ này' : '+ Trống (kéo thả địa điểm vào đây)'}
                             </Text>
                           </View>
                         ) : (
@@ -985,6 +1028,11 @@ export default function GoogleCalendarWorkspace({
                                   <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '700', color: '#202124', marginTop: 2 }}>
                                     {ev.title}
                                   </Text>
+                                  {ev.address && (
+                                    <Text numberOfLines={1} style={{ fontSize: 10, color: '#5F6368', marginTop: 1 }}>
+                                      {ev.address}
+                                    </Text>
+                                  )}
                                 </View>
 
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -993,13 +1041,30 @@ export default function GoogleCalendarWorkspace({
                                   </Text>
 
                                   {!readOnly && (
-                                    <Pressable
-                                      testID={`btn-remove-event-${ev.id}`}
-                                      onPress={() => handleRemoveEventToStandby(ev.id)}
-                                      style={{ padding: 4, cursor: 'pointer' as any }}
-                                    >
-                                      <ArrowDown size={14} color="#D93025" />
-                                    </Pressable>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                                      {/* Đổi giờ lên / xuống */}
+                                      <Pressable
+                                        onPress={() => moveEventHour(ev.id, -1)}
+                                        style={{ padding: 3, cursor: 'pointer' as any }}
+                                      >
+                                        <ArrowUp size={12} color="#5F6368" />
+                                      </Pressable>
+                                      <Pressable
+                                        onPress={() => moveEventHour(ev.id, 1)}
+                                        style={{ padding: 3, cursor: 'pointer' as any }}
+                                      >
+                                        <ArrowDown size={12} color="#5F6368" />
+                                      </Pressable>
+
+                                      {/* Trả về giỏ chờ bên dưới */}
+                                      <Pressable
+                                        testID={`btn-remove-event-${ev.id}`}
+                                        onPress={() => removeEventToStandby(ev.id)}
+                                        style={{ padding: 4, cursor: 'pointer' as any }}
+                                      >
+                                        <Trash2 size={13} color="#D93025" />
+                                      </Pressable>
+                                    </View>
                                   )}
                                 </View>
                               </View>
@@ -1041,7 +1106,7 @@ export default function GoogleCalendarWorkspace({
               </Text>
             </View>
 
-            {/* BỐ CỤC 3 CỘT CHUẨN CỦA BUDGET TOOL (NHƯ KHUNG 3 CỘT TRONG BẢN VẼ TAY) */}
+            {/* BỐ CỤC 3 CỘT CHUẨN CỦA BUDGET TOOL */}
             <View
               style={{
                 flexDirection: isDesktop ? 'row' : 'column',
@@ -1095,7 +1160,7 @@ export default function GoogleCalendarWorkspace({
                 </View>
               </View>
 
-              {/* CỘT 2: GIỎ ĐỊA ĐIỂM CHỜ XẾP LỊCH (KÉO THẢ THẲNG LÊN LỊCH TRÌNH Ở TRÊN!) */}
+              {/* CỘT 2: GIỎ ĐỊA ĐIỂM CHỜ XẾP LỊCH (KÉO THẢ HOẶC BẤM ĐỂ ĐẶT VÀO LỊCH) */}
               <View
                 testID="calendar-standby-cart-zone"
                 style={{
@@ -1134,50 +1199,56 @@ export default function GoogleCalendarWorkspace({
                 ) : (
                   <ScrollView style={{ maxHeight: 110 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                     <View style={{ gap: 5 }}>
-                      {standbyList.map((item) => (
-                        <View
-                          key={item.id}
-                          testID={`standby-chip-${item.id}`}
-                          style={{
-                            backgroundColor: '#F8F9FA',
-                            borderRadius: 8,
-                            paddingHorizontal: 8,
-                            paddingVertical: 5,
-                            borderWidth: 1,
-                            borderColor: 'rgba(27,36,32,0.08)',
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            cursor: readOnly ? 'default' : 'grab' as any,
-                          }}
-                          // @ts-ignore
-                          draggable={!readOnly}
-                          // @ts-ignore
-                          onDragStart={(e: any) => handleDragStartStandby(item, e)}
-                        >
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, paddingRight: 4 }}>
-                            <GripVertical size={12} color="#9AA0A6" />
-                            <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '700', color: '#202124' }}>
-                              {item.name}
-                            </Text>
-                          </View>
+                      {standbyList.map((item) => {
+                        const isSelected = selectedPlaceToPlace?.id === item.id;
+                        return (
+                          <View
+                            key={item.id}
+                            testID={`standby-chip-${item.id}`}
+                            style={{
+                              backgroundColor: isSelected ? '#E8F0FE' : '#F8F9FA',
+                              borderRadius: 8,
+                              paddingHorizontal: 8,
+                              paddingVertical: 5,
+                              borderWidth: 1,
+                              borderColor: isSelected ? '#1A73E8' : 'rgba(27,36,32,0.08)',
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              cursor: readOnly ? 'default' : 'grab' as any,
+                            }}
+                            // @ts-ignore
+                            draggable={!readOnly}
+                            // @ts-ignore
+                            onDragStart={(e: any) => handleDragStartStandby(item, e)}
+                          >
+                            <Pressable
+                              onPress={() => setSelectedPlaceToPlace(isSelected ? null : item)}
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, paddingRight: 4, cursor: 'pointer' as any }}
+                            >
+                              <GripVertical size={12} color="#9AA0A6" />
+                              <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#1A73E8' : '#202124' }}>
+                                {item.name}
+                              </Text>
+                            </Pressable>
 
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#137333' }}>
-                              {item.cost ? `${Number(item.cost).toLocaleString('vi-VN')} đ` : '0 đ'}
-                            </Text>
-                            {!readOnly && (
-                              <Pressable
-                                testID={`btn-add-standby-${item.id}`}
-                                onPress={() => handleMoveStandbyToCalendar(item.id)}
-                                style={{ padding: 2, cursor: 'pointer' as any }}
-                              >
-                                <Plus size={13} color="#1A73E8" />
-                              </Pressable>
-                            )}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: '#137333' }}>
+                                {item.cost ? `${Number(item.cost).toLocaleString('vi-VN')} đ` : '0 đ'}
+                              </Text>
+                              {!readOnly && (
+                                <Pressable
+                                  testID={`btn-add-standby-${item.id}`}
+                                  onPress={() => addPlaceToCalendar(item)}
+                                  style={{ padding: 2, cursor: 'pointer' as any }}
+                                >
+                                  <Plus size={13} color="#1A73E8" />
+                                </Pressable>
+                              )}
+                            </View>
                           </View>
-                        </View>
-                      ))}
+                        );
+                      })}
                     </View>
                   </ScrollView>
                 )}
@@ -1214,7 +1285,7 @@ export default function GoogleCalendarWorkspace({
                     </Text>
                   </View>
 
-                  {/* Thanh tiến độ phần trăm ngân sách */}
+                  {/* Thanh tiến độ */}
                   <View style={{ marginTop: 4, height: 6, borderRadius: 3, backgroundColor: 'rgba(27,36,32,0.08)', overflow: 'hidden' }}>
                     <View
                       style={{

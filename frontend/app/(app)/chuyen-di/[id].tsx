@@ -9,7 +9,7 @@ import {
   Compass, ArrowLeft, AlertTriangle, Calendar, Wallet, MapPin,
   Sparkles, Clock, Map, Utensils, Home, Bike, Check, X,
   HelpCircle, ChevronRight, Activity, ThermometerSun, Trash2, PenLine,
-  Shield, Share2, Crown, Plus,
+  Shield, Share2, Crown, Plus, Lock,
 } from 'lucide-react-native';
 import { api } from '../../../lib/api';
 import { getCache, setCache } from '../../../lib/cache';
@@ -235,6 +235,7 @@ export default function TripDetail() {
 
   const tripData = trip ?? cachedTrip;
   const isLocked = !statusData?.isPremium;
+  const isUserPro = Boolean(statusData?.isPremium || isAdmin);
   const { distanceKm, loading: locLoading } = useDistanceToCity(tripData?.destination_city ?? '');
 
   const { setTripId, registerPreviewTrigger, unregisterPreviewTrigger } = useContext(ChatbotContext);
@@ -1047,6 +1048,22 @@ export default function TripDetail() {
 
               {showMapView && (
                 <View style={{ marginTop: 4 }}>
+                  {!isUserPro && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, backgroundColor: '#FFFBF0', borderWidth: 1, borderColor: '#F5D599', borderRadius: 12, marginBottom: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, paddingRight: 8 }}>
+                        <Lock size={16} color="#D4A017" />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#9A5B00', lineHeight: 18 }}>
+                          🔒 Bạn đang xem Bản đồ ở chế độ Chỉ Đọc. Nâng cấp ViVu Pro để mở khóa tính năng Chỉnh sửa trực tiếp trên Bản đồ, thêm điểm và kéo thả lộ trình.
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={() => setShowPremiumModal(true)}
+                        style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#D4A017' }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>Mở khóa Pro</Text>
+                      </Pressable>
+                    </View>
+                  )}
                   {mapMode === 'gmaps' ? (
                     <GoogleMapsRoutePlanner
                       waypoints={(activeDay?.items || [])
@@ -1067,9 +1084,9 @@ export default function TripDetail() {
                       cityName={trip.destination_city}
                       dayNumber={activeDay?.day_number}
                       dayTitle={activeDay?.notes || `Lộ trình ngày ${activeDay?.day_number || 1}`}
-                      readOnly={isAdmin}
-                      onAddWaypoint={isAdmin ? undefined : openAddItem}
-                      onSaveOrder={isAdmin || !activeDay ? undefined : (newWps) => handleSaveDayRouteOrder(activeDay.id, newWps)}
+                      readOnly={!isUserPro}
+                      onAddWaypoint={isUserPro ? openAddItem : () => setShowPremiumModal(true)}
+                      onSaveOrder={isUserPro && activeDay ? (newWps) => handleSaveDayRouteOrder(activeDay.id, newWps) : undefined}
                       mapHeight={500}
                     />
                   ) : (
