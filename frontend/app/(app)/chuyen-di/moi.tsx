@@ -19,6 +19,7 @@ import BudgetBreakdown, { BudgetBreakdownData } from '../../../components/cart/B
 import LiveBudgetBar from '../../../components/cart/LiveBudgetBar';
 import CuratedMap from '../../../components/map/CuratedMap';
 import GoogleMapsRoutePlanner, { RouteWaypoint } from '../../../components/map/GoogleMapsRoutePlanner';
+import GoogleCalendarWorkspace, { CalendarEventItem, StandbyPlaceItem } from '../../../components/workspace/GoogleCalendarWorkspace';
 import { PlaceItem } from '../../../components/map/PlacePopup';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
 import {
@@ -291,7 +292,7 @@ export default function TripWizard() {
   const [placeCategoryFilter, setPlaceCategoryFilter] = useState<string>('all');
   const [activeScheduleDay, setActiveScheduleDay] = useState<number>(1);
   const [scheduleMapMode, setScheduleMapMode] = useState<'gmaps' | 'curated'>('gmaps');
-  const [schedulingViewMode, setSchedulingViewMode] = useState<'board' | 'timeline'>('board');
+  const [schedulingViewMode, setSchedulingViewMode] = useState<'calendar' | 'board' | 'timeline'>('calendar');
   const [draggedPlaceId, setDraggedPlaceId] = useState<string | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<number | 'unassigned' | null>(null);
   const [cartItems, setCartItems] = useState<{
@@ -581,6 +582,56 @@ export default function TripWizard() {
   const handleStartEditCost = (placeId: string, currentCost: number) => {
     setEditingCostPlaceId(placeId);
     setEditCostInput(String(currentCost));
+  };
+
+  const calendarInitialEvents: CalendarEventItem[] = useMemo(() => {
+    return cartItems
+      .filter(it => it.day_number && it.day_number > 0)
+      .map((it, idx) => ({
+        id: `ev-${it.place.id}`,
+        placeId: it.place.id,
+        title: it.place.name,
+        category: it.place.category,
+        address: it.place.address,
+        lat: it.place.lat,
+        lng: it.place.lng,
+        cost: it.custom_cost,
+        dayNumber: it.day_number,
+        startHour: 8 + (idx % 6) * 2,
+        startMinute: 0,
+        durationMinutes: 90,
+      }));
+  }, [cartItems]);
+
+  const calendarStandbyPlaces: StandbyPlaceItem[] = useMemo(() => {
+    return cartItems
+      .filter(it => !it.day_number || it.day_number === 0)
+      .map(it => ({
+        id: it.place.id,
+        name: it.place.name,
+        category: it.place.category,
+        address: it.place.address,
+        lat: it.place.lat,
+        lng: it.place.lng,
+        cost: it.custom_cost,
+      }));
+  }, [cartItems]);
+
+  const handleSaveCalendarWorkspace = (updatedEvents: CalendarEventItem[]) => {
+    setCartItems(prev => {
+      return prev.map(item => {
+        const foundEv = updatedEvents.find(e => e.placeId === item.place.id || e.id === `ev-${item.place.id}`);
+        if (foundEv) {
+          return {
+            ...item,
+            day_number: foundEv.dayNumber,
+            custom_cost: foundEv.cost,
+          };
+        }
+        return item;
+      });
+    });
+    handleProScheduleSubmit('manual');
   };
 
   const handleProScheduleSubmit = async (mode: 'ai_auto' | 'manual') => {
@@ -1645,6 +1696,16 @@ export default function TripWizard() {
                             {/* View mode toggle */}
                             <View className="flex-row items-center gap-1 p-1 bg-brand-bgAlt rounded-xl border border-brand-line/40">
                               <Pressable
+                                testID="toggle-view-calendar"
+                                onPress={() => setSchedulingViewMode('calendar')}
+                                className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 ${schedulingViewMode === 'calendar' ? 'bg-white shadow-sm border border-brand-line/40' : ''}`}
+                              >
+                                <Calendar size={13} color={schedulingViewMode === 'calendar' ? '#1A73E8' : BRAND_COLORS.textSoft} />
+                                <Text className={`text-xs font-bold ${schedulingViewMode === 'calendar' ? 'text-[#1A73E8]' : 'text-brand-textSoft'}`}>
+                                  📅 Google Calendar & Map
+                                </Text>
+                              </Pressable>
+                              <Pressable
                                 onPress={() => setSchedulingViewMode('board')}
                                 className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 ${schedulingViewMode === 'board' ? 'bg-white shadow-sm border border-brand-line/40' : ''}`}
                               >
@@ -1680,7 +1741,18 @@ export default function TripWizard() {
                         </View>
 
                         {/* Side-by-Side Responsive Layout */}
-                        {schedulingViewMode === 'timeline' ? (
+                        {schedulingViewMode === 'calendar' ? (
+                          <View className="w-full">
+                            <GoogleCalendarWorkspace
+                              cityName={destinationCity}
+                              totalBudget={budgetTotal}
+                              daysCount={daysCount}
+                              initialEvents={calendarInitialEvents}
+                              standbyPlaces={calendarStandbyPlaces}
+                              onSave={handleSaveCalendarWorkspace}
+                            />
+                          </View>
+                        ) : schedulingViewMode === 'timeline' ? (
                           /* ── CHẾ ĐỘ XEM TRƯỚC LỊCH TRÌNH CHI TIẾT THEO KHUNG GIỜ TẠI WORKSPACE ── */
                           <View className="gap-4 w-full">
                             <View className="p-4 rounded-2xl bg-white border border-brand-line/40 gap-3 shadow-sm">
