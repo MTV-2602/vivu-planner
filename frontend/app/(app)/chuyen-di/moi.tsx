@@ -1564,7 +1564,7 @@ export default function TripWizard() {
                           <Crown size={16} color="#FFFFFF" />
                         </View>
                         <View>
-                          <Text className="text-xs font-extrabold text-brand-text">Không gian Pro Workspace (Bản đồ Google Maps & Calendar)</Text>
+                          <Text className="text-xs font-extrabold text-brand-text">Không gian Pro Workspace (Bản đồ & Lịch trình ViVu)</Text>
                           <Text className="text-[10px] text-brand-textSoft">AI đã sinh kho địa điểm thực tế tại {destinationCity}</Text>
                         </View>
                       </View>
@@ -1823,13 +1823,13 @@ export default function TripWizard() {
                           >
                             <Calendar size={16} color="#FFFFFF" />
                             <Text className="text-xs font-extrabold text-white">
-                              🚀 Mở Google Calendar & Xếp lịch ({cartItems.length} điểm) →
+                              🚀 Mở Lịch trình & Xếp lịch ({cartItems.length} điểm) →
                             </Text>
                           </Pressable>
                         </View>
                       </View>
                     ) : (
-                      /* BƯỚC 4B: KHÔNG GIAN LẬP LỊCH GOOGLE CALENDAR & GOOGLE MAPS */
+                      /* BƯỚC 4B: KHÔNG GIAN LẬP LỊCH TRỰC QUAN & BẢN ĐỒ VIVU */
                       <View className="w-full gap-3">
                         <View className="flex-row items-center justify-between p-3 rounded-2xl bg-white border border-brand-line/40 shadow-sm">
                           <View className="flex-row items-center gap-2">
@@ -1838,7 +1838,7 @@ export default function TripWizard() {
                             </View>
                             <View>
                               <Text className="text-xs font-extrabold text-brand-text">
-                                Không gian Lập lịch Google Calendar ({cartItems.length} địa điểm trong giỏ)
+                                Không gian Lập lịch ViVu ({cartItems.length} địa điểm trong giỏ)
                               </Text>
                             </View>
                           </View>
@@ -2158,10 +2158,10 @@ export default function TripWizard() {
                     </View>
                     <View>
                       <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: (isPremium || isAdmin) ? BRAND_COLORS.primary : '#9A5B00' }}>
-                        🗺️ Không gian Map Live & Lập lịch
+                        🗺️ Không gian Bản đồ Live & Lập lịch
                       </Text>
                       <Text style={{ fontSize: 11, color: (isPremium || isAdmin) ? '#1F6F54' : '#7A5210', fontWeight: '500' }}>
-                        Google Maps Live & Google Calendar
+                        Bản đồ Live & Lịch trình ViVu
                       </Text>
                     </View>
                   </View>
@@ -2175,8 +2175,8 @@ export default function TripWizard() {
 
                 <Text style={{ fontSize: 12, color: (isPremium || isAdmin) ? '#3F4F45' : '#7A5210', lineHeight: 17, paddingLeft: 50 }}>
                   {(isPremium || isAdmin)
-                    ? 'Tự do kéo thả địa điểm từ Giỏ hàng vào Google Calendar, xem đường xe chạy OSRM và cân đối Bảng ngân sách ma trận.'
-                    : 'Đặc quyền thành viên ViVu Pro. Mở khóa Không gian Map Live & Google Calendar để tự tay sắp xếp lịch trình trên bản đồ.'}
+                    ? 'Tự do kéo thả địa điểm từ Giỏ hàng vào Lịch trình trực quan, xem đường xe chạy OSRM và cân đối Bảng ngân sách ma trận.'
+                    : 'Đặc quyền thành viên ViVu Pro. Mở khóa Không gian Bản đồ Live & Lịch trình ViVu để tự tay sắp xếp lịch trình trên bản đồ.'}
                 </Text>
               </Pressable>
             </View>

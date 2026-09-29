@@ -22,7 +22,7 @@ export default function TripWorkspaceSplitView() {
         }}>
           <Sparkles size={14} color="#1A73E8" />
           <Text style={{ color: '#1A73E8', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>
-            Không gian Lập lịch & Quản trị Toàn diện (Google Calendar & Map Workspace)
+            Không gian Lập lịch & Quản trị Toàn diện (Bản đồ & Lịch trình ViVu)
           </Text>
         </View>
 
@@ -32,11 +32,11 @@ export default function TripWorkspaceSplitView() {
           color: '#202124',
           letterSpacing: -0.5,
         }}>
-          Kéo thả giữa Bản đồ thực tế, Lịch trình dạng Google Calendar và Giỏ ngân sách
+          Kéo thả giữa Bản đồ thực tế, Lịch trình trực quan và Giỏ ngân sách
         </Text>
       </View>
 
-      {/* Main Interactive Google Calendar Workspace */}
+      {/* Main Interactive ViVu Workspace */}
       <GoogleCalendarWorkspace
         cityName="Đà Nẵng"
         totalBudget={5000000}

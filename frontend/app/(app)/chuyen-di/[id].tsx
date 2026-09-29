@@ -487,7 +487,7 @@ export default function TripDetail() {
     });
   };
 
-  // Chuyển đổi dữ liệu ngày và hoạt động từ Supabase sang CalendarEventItem[] cho Google Calendar Workspace
+  // Chuyển đổi dữ liệu ngày và hoạt động từ Supabase sang CalendarEventItem[] cho Không gian Lập lịch ViVu
   const calendarEvents = useMemo(() => {
     if (!trip?.days) return [];
     const evs: CalendarEventItem[] = [];
@@ -1047,13 +1047,13 @@ export default function TripDetail() {
             </View>
           )}
 
-          {/* ── GOOGLE CALENDAR WORKSPACE (BẢN ĐỒ GOOGLE MAPS + LỊCH KÉO THẢ + BẢNG NGÂN SÁCH) ── */}
+          {/* ── KHÔNG GIAN LẬP LỊCH VIVU (BẢN ĐỒ + LỊCH KÉO THẢ + BẢNG NGÂN SÁCH) ── */}
           <View className="gap-6">
             <View className="flex-row items-center justify-between flex-wrap gap-3">
               <View className="flex-row items-center gap-2">
                 <Calendar size={20} color={BRAND_COLORS.primary} />
                 <Text className="text-xl font-extrabold text-brand-text">
-                  Lịch trình & Lộ trình Google Maps
+                  Lịch trình & Lộ trình di chuyển
                 </Text>
               </View>
 
