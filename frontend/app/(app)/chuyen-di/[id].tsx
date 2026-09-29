@@ -994,21 +994,6 @@ export default function TripDetail() {
                   <Text style={{ fontSize: 15 }}>🔗</Text>
                   <Text style={{ fontWeight: '700', color: '#1B3A2D', fontSize: 13 }}>Chia sẻ</Text>
                 </Pressable>
-                <Pressable
-                  onPress={() => {
-                    const allItems: BookableItem[] = trip.days.flatMap(day =>
-                      day.items
-                        .filter(item => ['accommodation', 'dining', 'attraction', 'rental'].includes(item.item_type))
-                        .map(item => ({ ...item, day_number: day.day_number }))
-                    );
-                    setSelectedBookingItems(allItems);
-                    setShowBookingModal(true);
-                  }}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, backgroundColor: '#D4A017' }}
-                >
-                  <Text style={{ fontSize: 15 }}>⚡</Text>
-                  <Text style={{ fontWeight: '800', color: '#fff', fontSize: 13 }}>1-Click Booking</Text>
-                </Pressable>
                 {!isAdmin && (
                   <>
                     <Pressable onPress={() => setDisruptionOpen(true)} className="flex-row items-center gap-2 px-5 py-3.5 rounded-xl bg-brand-danger">
@@ -1094,6 +1079,7 @@ export default function TripDetail() {
               readOnly={isLocked}
               isDetailPage={true}
               isUserPro={isUserPro}
+              tripId={trip.id}
               creationMode={trip?.preferences?.creation_mode || 'ai_auto'}
               onUpgradePro={() => setShowPremiumModal(true)}
               onOpenManualAdd={openAddItem}

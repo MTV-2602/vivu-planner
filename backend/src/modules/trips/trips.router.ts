@@ -6,7 +6,7 @@ import { getSupabaseUserClient, supabaseAdmin } from '../../config/supabase';
 import { getCityCoordinates, searchPlaces, PlaceCandidate, fetchCandidatePlacesForCity } from '../places/places.service';
 import { geocodeOnline } from '../places/geocoding.service';
 import { getWeatherForecast } from '../weather/weather.service';
-import { generateItinerary, adaptItinerary, generateAlternatives, chatWithItinerary, generateRichPlacesPool } from '../ai/gemini.service';
+import { generateItinerary, adaptItinerary, generateAlternatives, chatWithItinerary, generateRichPlacesPool, exploreMorePlaces } from '../ai/gemini.service';
 import { getRelevantPartners, convertPartnersToPlaceCandidates, logPartnerEvent } from '../partners/partners.service';
 import {
   TripStatus,
@@ -1382,6 +1382,24 @@ router.post('/:id/chat', requireAuth, aiChatLimiter, async (req: any, res: Respo
   } catch (error: any) {
     console.error(`[Trip Chat Route] Error: ${error.message}`, error.stack);
     return res.status(500).json({ error: `Failed to process chat with AI. Details: ${error.message}` });
+  }
+});
+
+// POST /trips/:id/explore-more - AI gợi ý thêm địa điểm cho Pro user
+router.post('/:id/explore-more', requireAuth, async (req: any, res: Response) => {
+  try {
+    const client = getSupabaseUserClient(req.token!);
+    const tripId = req.params.id;
+    const { currentItinerary, standbyList, userRequest } = req.body;
+
+    const { data: trip, error: tripError } = await client.from('trips').select('*').eq('id', tripId).eq('user_id', req.user!.id).single();
+    if (tripError || !trip) return res.status(404).json({ error: 'Trip not found' });
+
+    const result = await exploreMorePlaces(trip, currentItinerary, standbyList || [], userRequest);
+    return res.json(result);
+  } catch (err: any) {
+    console.error('[explore-more] Error:', err.message);
+    return res.status(500).json({ error: err.message });
   }
 });
 

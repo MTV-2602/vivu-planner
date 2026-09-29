@@ -56,6 +56,13 @@ export interface StandbyPlaceItem {
   suggestedDuration?: number;
 }
 
+export interface ExpenseLogEditHistoryEntry {
+  editedAt: string;
+  previousAmount: number;
+  previousNote: string;
+  previousPlaceName: string;
+}
+
 export interface ExpenseLogItem {
   id: string;
   timestamp: string;
@@ -66,6 +73,7 @@ export interface ExpenseLogItem {
   categoryLabel: string;
   amount: number;
   note: string;
+  editHistory?: ExpenseLogEditHistoryEntry[];
 }
 
 export function autoClassifyCategory(category?: string, name?: string): {
@@ -159,6 +167,7 @@ export interface GoogleCalendarWorkspaceProps {
   readOnly?: boolean;
   isDetailPage?: boolean;
   isUserPro?: boolean;
+  tripId?: string;
   creationMode?: string;
   onUpgradePro?: () => void;
   onOpenManualAdd?: () => void;
@@ -203,6 +212,7 @@ export default function GoogleCalendarWorkspace({
   readOnly = false,
   isDetailPage = false,
   isUserPro = true,
+  tripId,
   creationMode = 'manual',
   onUpgradePro,
   onOpenManualAdd,
@@ -292,6 +302,11 @@ export default function GoogleCalendarWorkspace({
 
   // State toast thông báo kết quả tối ưu
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // State cho tính năng Khám phá thêm địa điểm (Pro)
+  const [isExploringMore, setIsExploringMore] = useState(false);
+  const [exploreUserInput, setExploreUserInput] = useState('');
+  const [showExplorePrompt, setShowExplorePrompt] = useState(false);
 
   // ── STATE CHI TIÊU THỰC TẾ & NHẬT KÝ THEO TỪNG NGÀY & ĐỊA ĐIỂM ──
   const [expenseLogs, setExpenseLogs] = useState<ExpenseLogItem[]>(() => {
@@ -629,21 +644,27 @@ export default function GoogleCalendarWorkspace({
     if (editingLogId) {
       // Cập nhật bản ghi có sẵn (thích sửa lúc nào cũng được)
       setExpenseLogs((prev) =>
-        prev.map((l) =>
-          l.id === editingLogId
-            ? {
-                ...l,
-                dayNumber: selectedExpenseDay,
-                placeId: selectedPlaceId !== 'custom' ? selectedPlaceId : undefined,
-                placeName: placeTitle,
-                category: categoryKey,
-                categoryLabel: catLabels[categoryKey] || 'Chi tiêu',
-                amount: num,
-                note: expenseNoteInput.trim() || `Chi tiêu tại ${placeTitle}`,
-                timestamp: timeStr,
-              }
-            : l
-        )
+        prev.map((l) => {
+          if (l.id !== editingLogId) return l;
+          const oldEntry: ExpenseLogEditHistoryEntry = {
+            editedAt: new Date().toISOString(),
+            previousAmount: l.amount,
+            previousNote: l.note,
+            previousPlaceName: l.placeName,
+          };
+          return {
+            ...l,
+            dayNumber: selectedExpenseDay,
+            placeId: selectedPlaceId !== 'custom' ? selectedPlaceId : undefined,
+            placeName: placeTitle,
+            category: categoryKey,
+            categoryLabel: catLabels[categoryKey] || 'Chi tiêu',
+            amount: num,
+            note: expenseNoteInput.trim() || `Chi tiêu tại ${placeTitle}`,
+            timestamp: timeStr,
+            editHistory: [...(l.editHistory || []), oldEntry],
+          };
+        })
       );
       setToastMsg(`✓ Đã cập nhật chi tiêu "${placeTitle}" thành ${(num / 1000).toLocaleString('vi-VN')}k!`);
     } else {
@@ -761,7 +782,8 @@ export default function GoogleCalendarWorkspace({
     const newEvents: CalendarEventItem[] = [];
     const totalDays = Math.max(1, daysCount);
 
-    // Nếu có khách sạn, đặt vào Ngày 1 lúc 14:00 (check-in)
+    // Nếu có khách sạn, đặt vào Ngày 1 lúc 14:00 (check-in), cost nhân số đêm
+    const nightsCount = Math.max(1, totalDays - 1);
     if (hotels.length > 0) {
       hotels.forEach((h, hIdx) => {
         newEvents.push({
@@ -772,7 +794,7 @@ export default function GoogleCalendarWorkspace({
           address: h.address,
           lat: h.lat,
           lng: h.lng,
-          cost: h.cost,
+          cost: (h.cost || 0) * nightsCount,
           dayNumber: (hIdx % totalDays) + 1,
           startHour: 14,
           startMinute: 0,
@@ -829,6 +851,20 @@ export default function GoogleCalendarWorkspace({
 
   // Thêm một địa điểm vào lịch
   const addPlaceToCalendar = (place: StandbyPlaceItem, targetHour?: number) => {
+    // Cảnh báo nếu thêm accommodation khi đã có chỗ ở trong lịch
+    const isAccommodation = (cat: string) => {
+      const c = (cat || '').toLowerCase();
+      return c === 'hotel' || c === 'accommodation' || c.includes('khách sạn') || c.includes('nghỉ') || c.includes('homestay') || c.includes('resort');
+    };
+    if (isAccommodation(place.category)) {
+      const existingAccommodation = eventsRef.current.some((ev) => isAccommodation(ev.category));
+      if (existingAccommodation) {
+        setToastMsg('⚠️ Lịch đã có chỗ ở rồi! Bạn có chắc muốn thêm nơi ở thứ 2?');
+        setTimeout(() => setToastMsg(null), 4000);
+        // Vẫn tiếp tục thêm nhưng đã cảnh báo user
+      }
+    }
+
     let hour = targetHour;
     if (hour === undefined) {
       const usedHours = new Set(
@@ -907,31 +943,88 @@ export default function GoogleCalendarWorkspace({
   };
 
   // Tải thêm địa điểm gợi ý vào giỏ chờ cho Pro user
-  const handleLoadMoreStandbyPlaces = () => {
-    const cityPlaces = getCuratedPlacesForCity(cityName);
-    const currentEventTitles = new Set(events.map((e) => (e.title || '').toLowerCase().trim()));
-    const currentStandbyIds = new Set(standbyList.map((s) => s.id));
-    const more = cityPlaces
-      .filter((p) => !currentEventTitles.has((p.name || '').toLowerCase().trim()) && !currentStandbyIds.has(p.id))
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        category: p.category,
-        address: p.address,
-        lat: p.lat,
-        lng: p.lng,
-        cost: p.estimated_cost || 50000,
-        suggestedDuration: 90,
-      }));
-    if (more.length > 0) {
-      const nextStandby = [...standbyList, ...more];
-      setStandbyList(nextStandby);
-      notifyChanges(events, nextStandby);
-      setToastMsg(`✓ Đã nạp thêm ${more.length} địa điểm gợi ý vào Giỏ chờ!`);
-      setTimeout(() => setToastMsg(null), 3000);
-    } else {
-      setToastMsg('ℹ️ Tất cả các địa điểm gợi ý đã có trong lịch hoặc giỏ!');
-      setTimeout(() => setToastMsg(null), 3000);
+  const handleLoadMoreStandbyPlaces = async () => {
+    if (!isUserPro) return;
+    // Hiện prompt hỏi user muốn gì trước
+    setShowExplorePrompt(true);
+  };
+
+  const handleExploreMore = async (userRequest?: string) => {
+    setShowExplorePrompt(false);
+    setIsExploringMore(true);
+    try {
+      // Gọi AI để lấy gợi ý phù hợp
+      const currentStandbyIds = new Set(standbyList.map((s) => s.id));
+      const currentEventTitles = new Set(events.map((e) => (e.title || '').toLowerCase().trim()));
+
+      // Build current itinerary snapshot để gửi AI
+      const itinerarySnapshot = {
+        days: Array.from({ length: daysCount }, (_, i) => ({
+          day_number: i + 1,
+          items: events
+            .filter((e) => e.dayNumber === i + 1)
+            .map((e) => ({ title: e.title, item_type: e.category || 'attraction' }))
+        }))
+      };
+
+      // Thử gọi AI API
+      try {
+        if (tripId) {
+          const resp = await fetch(`/api/trips/${tripId}/explore-more`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              currentItinerary: itinerarySnapshot,
+              standbyList: standbyList.map((s) => ({ id: s.id, name: s.name })),
+              userRequest: userRequest || 'Gợi ý thêm địa điểm hay'
+            })
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            const newPlaces = (data.places || []).filter(
+              (p: any) => !currentStandbyIds.has(p.id) && !currentEventTitles.has((p.name || '').toLowerCase().trim())
+            );
+            if (newPlaces.length > 0) {
+              const nextStandby = [...standbyList, ...newPlaces];
+              setStandbyList(nextStandby);
+              notifyChanges(events, nextStandby);
+              setToastMsg(`✓ AI gợi ý thêm ${newPlaces.length} địa điểm vào Giỏ chờ!`);
+              setTimeout(() => setToastMsg(null), 3500);
+              setIsExploringMore(false);
+              return;
+            }
+          }
+        }
+      } catch (apiErr) {
+        console.warn('[exploreMore] API call failed, fallback to curated', apiErr);
+      }
+
+      // Fallback: dùng curated places (logic cũ)
+      const cityPlaces = getCuratedPlacesForCity(cityName);
+      const more = cityPlaces
+        .filter((p) => !currentEventTitles.has((p.name || '').toLowerCase().trim()) && !currentStandbyIds.has(p.id))
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          address: p.address,
+          lat: p.lat,
+          lng: p.lng,
+          cost: p.estimated_cost || 50000,
+          suggestedDuration: 90,
+        }));
+      if (more.length > 0) {
+        const nextStandby = [...standbyList, ...more];
+        setStandbyList(nextStandby);
+        notifyChanges(events, nextStandby);
+        setToastMsg(`✓ Đã nạp thêm ${more.length} địa điểm gợi ý vào Giỏ chờ!`);
+        setTimeout(() => setToastMsg(null), 3000);
+      } else {
+        setToastMsg('ℹ️ Tất cả các địa điểm gợi ý đã có trong lịch hoặc giỏ!');
+        setTimeout(() => setToastMsg(null), 3000);
+      }
+    } finally {
+      setIsExploringMore(false);
     }
   };
 
@@ -2329,6 +2422,7 @@ export default function GoogleCalendarWorkspace({
                       borderRadius: 12,
                       backgroundColor: '#FAFAFA',
                       gap: 10,
+                      position: 'relative' as any,
                     }}
                   >
                     <Text style={{ fontSize: 11, color: '#5F6368', fontWeight: '500' }}>
@@ -2352,9 +2446,47 @@ export default function GoogleCalendarWorkspace({
                     >
                       <Plus size={12} color="#1A73E8" />
                       <Text style={{ fontSize: 11, fontWeight: '700', color: '#1A73E8' }}>
-                        + Khám phá thêm địa điểm vào giỏ
+                        {isExploringMore ? '⏳ AI đang tìm...' : '+ Khám phá thêm địa điểm vào giỏ'}
                       </Text>
                     </Pressable>
+                    {showExplorePrompt && (
+                      <View style={{
+                        position: 'absolute' as any, bottom: 60, left: 0, right: 0,
+                        backgroundColor: '#FFFFFF', padding: 12, borderRadius: 12,
+                        borderWidth: 1, borderColor: 'rgba(27,36,32,0.1)',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)' as any, zIndex: 100,
+                      }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#1B2420', marginBottom: 8 }}>
+                          🤖 AI gợi ý theo yêu cầu của bạn:
+                        </Text>
+                        <TextInput
+                          value={exploreUserInput}
+                          onChangeText={setExploreUserInput}
+                          placeholder="Ví dụ: quán cafe view đẹp, nhà hàng hải sản..."
+                          style={{
+                            borderWidth: 1, borderColor: 'rgba(27,36,32,0.15)',
+                            borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+                            fontSize: 12, marginBottom: 8,
+                          }}
+                        />
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <Pressable
+                            onPress={() => handleExploreMore(exploreUserInput || undefined)}
+                            style={{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: '#1F6F54', alignItems: 'center' }}
+                          >
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
+                              {isExploringMore ? '⏳ Đang tìm...' : '🔍 Tìm ngay'}
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => setShowExplorePrompt(false)}
+                            style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#F1F3F4', alignItems: 'center' }}
+                          >
+                            <Text style={{ fontSize: 12, color: '#5F6368' }}>Hủy</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
                   </View>
                 ) : (
                   <ScrollView
@@ -3336,7 +3468,7 @@ export default function GoogleCalendarWorkspace({
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Clock size={18} color="#1A73E8" />
                       <Text style={{ fontSize: 16, fontWeight: '800', color: '#1B2420' }}>
-                        Nhật ký Chi tiêu & Sửa sai lúc nào cũng được
+                        Nhật ký Ghi
                       </Text>
                     </View>
                     <Pressable
@@ -3517,6 +3649,18 @@ export default function GoogleCalendarWorkspace({
                                   <Text style={{ fontSize: 11, color: '#5F6368' }}>
                                     {log.note}
                                   </Text>
+                                ) : null}
+                                {(log.editHistory && log.editHistory.length > 0) ? (
+                                  <View style={{ marginTop: 4, paddingTop: 4, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+                                    <Text style={{ fontSize: 9, color: '#80868B', fontWeight: '700', marginBottom: 2 }}>
+                                      Lịch sử sửa ({log.editHistory.length}):
+                                    </Text>
+                                    {log.editHistory.map((h, idx) => (
+                                      <Text key={idx} style={{ fontSize: 9, color: '#9AA0A6' }}>
+                                        • {new Date(h.editedAt).toLocaleString('vi-VN')}: {(h.previousAmount/1000).toLocaleString('vi-VN')}k — {h.previousPlaceName}
+                                      </Text>
+                                    ))}
+                                  </View>
                                 ) : null}
                               </View>
 

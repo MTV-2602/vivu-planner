@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, Pressable, TextInput } from 'react-native';
-import { Truck, Home, Utensils, Coffee, Ticket, Percent } from 'lucide-react-native';
+import { Truck, Home, Utensils, Coffee, Ticket } from 'lucide-react-native';
 
 export interface BudgetBreakdownData {
   transport: number;
@@ -37,42 +37,40 @@ const calcInitialPercentages = (b: BudgetBreakdownData, total: number) => {
       };
     }
   }
-  return {
-    transport: 20,
-    accommodation: 30,
-    dining: 25,
-    cafe: 10,
-    entertainment: 15,
-  };
+  return { transport: 20, accommodation: 30, dining: 25, cafe: 10, entertainment: 15 };
 };
 
 export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: BudgetBreakdownProps) {
   const [percentages, setPercentages] = useState<{ [key: string]: number }>(() =>
     calcInitialPercentages(breakdown, totalBudget)
   );
+  // Flag: đang nhập tay → bỏ qua useEffect sync từ prop
+  const isEditingRef = useRef(false);
+  const editDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync internal percentages state when breakdown prop changes externally or upon remount
+  // Chỉ sync lại khi KHÔNG đang nhập (ví dụ khi parent thay totalBudget bằng nút Auto)
   useEffect(() => {
+    if (isEditingRef.current) return;
     if (totalBudget > 0 && breakdown) {
       const computed = calcInitialPercentages(breakdown, totalBudget);
       setPercentages(computed);
     }
   }, [breakdown?.transport, breakdown?.accommodation, breakdown?.dining, breakdown?.cafe, breakdown?.entertainment, totalBudget]);
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('vi-VN').format(val) + ' đ';
-  };
+  const markEditing = useCallback(() => {
+    isEditingRef.current = true;
+    if (editDebounceRef.current) clearTimeout(editDebounceRef.current);
+    editDebounceRef.current = setTimeout(() => {
+      isEditingRef.current = false;
+    }, 600);
+  }, []);
+
+  const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN').format(val) + ' đ';
 
   const handleAutoDistribute = () => {
-    const defaultPct = {
-      transport: 20,
-      accommodation: 30,
-      dining: 25,
-      cafe: 10,
-      entertainment: 15,
-    };
+    isEditingRef.current = false; // reset để sync được
+    const defaultPct = { transport: 20, accommodation: 30, dining: 25, cafe: 10, entertainment: 15 };
     setPercentages(defaultPct);
-
     const updated: BudgetBreakdownData = {
       transport: Math.round((totalBudget * 0.20) / 1000) * 1000,
       accommodation: Math.round((totalBudget * 0.30) / 1000) * 1000,
@@ -84,24 +82,15 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
   };
 
   const handlePercentChange = (targetKey: keyof BudgetBreakdownData, textPct: string) => {
+    markEditing();
     const rawVal = textPct.replace(/\D/g, '');
     const targetPct = Math.min(100, Math.max(0, parseInt(rawVal, 10) || 0));
     const remainingPct = Math.max(0, 100 - targetPct);
-
     const otherKeys = CATEGORIES.map((c) => c.key).filter((k) => k !== targetKey);
     const otherSumPct = otherKeys.reduce((sum, k) => sum + (percentages[k] || 0), 0);
-
-    const newPercentages: Record<string, number> = {
-      ...percentages,
-      [targetKey]: targetPct,
-    };
-
+    const newPercentages: Record<string, number> = { ...percentages, [targetKey]: targetPct };
     const targetMoney = Math.round((totalBudget * (targetPct / 100)) / 1000) * 1000;
-    const newBreakdown: BudgetBreakdownData = {
-      ...breakdown,
-      [targetKey]: targetMoney,
-    };
-
+    const newBreakdown: BudgetBreakdownData = { ...breakdown, [targetKey]: targetMoney };
     otherKeys.forEach((k) => {
       let catPct = 0;
       if (otherSumPct > 0) {
@@ -112,35 +101,23 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
       newPercentages[k] = Number(catPct.toFixed(1));
       newBreakdown[k] = Math.max(0, Math.round((totalBudget * (catPct / 100)) / 1000) * 1000);
     });
-
     setPercentages(newPercentages);
     onChange(newBreakdown);
   };
 
   const handleMoneyChange = (targetKey: keyof BudgetBreakdownData, textVal: string) => {
+    markEditing();
     const newMoney = parseInt(textVal.replace(/\D/g, ''), 10) || 0;
-
     if (totalBudget <= 0) {
       onChange({ ...breakdown, [targetKey]: newMoney });
       return;
     }
-
     const targetPct = (newMoney / totalBudget) * 100;
     const remainingPct = Math.max(0, 100 - targetPct);
-
     const otherKeys = CATEGORIES.map((c) => c.key).filter((k) => k !== targetKey);
     const otherSumPct = otherKeys.reduce((sum, k) => sum + (percentages[k] || 0), 0);
-
-    const newPercentages: Record<string, number> = {
-      ...percentages,
-      [targetKey]: Number(targetPct.toFixed(1)),
-    };
-
-    const newBreakdown: BudgetBreakdownData = {
-      ...breakdown,
-      [targetKey]: newMoney,
-    };
-
+    const newPercentages: Record<string, number> = { ...percentages, [targetKey]: Number(targetPct.toFixed(1)) };
+    const newBreakdown: BudgetBreakdownData = { ...breakdown, [targetKey]: newMoney };
     otherKeys.forEach((k) => {
       let catPct = 0;
       if (otherSumPct > 0) {
@@ -151,7 +128,6 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
       newPercentages[k] = Number(catPct.toFixed(1));
       newBreakdown[k] = Math.max(0, Math.round((totalBudget * (catPct / 100)) / 1000) * 1000);
     });
-
     setPercentages(newPercentages);
     onChange(newBreakdown);
   };
@@ -164,7 +140,6 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
     (breakdown.entertainment || 0);
 
   const totalPercentAllocated = Object.values(percentages).reduce((a, b) => a + b, 0);
-
   const isOverBudget = allocatedTotal > totalBudget;
 
   return (
@@ -188,7 +163,6 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
             Tự động chia theo Realtime & tùy chỉnh % theo ý muốn
           </Text>
         </View>
-
         <Pressable
           onPress={handleAutoDistribute}
           style={({ pressed }) => [{
@@ -215,7 +189,6 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
             Tổng trần: {formatCurrency(totalBudget)}
           </Text>
         </View>
-
         <View style={{ height: 8, borderRadius: 4, backgroundColor: 'rgba(27,36,32,0.08)', overflow: 'hidden', flexDirection: 'row' }}>
           {CATEGORIES.map((cat) => {
             const val = breakdown[cat.key] || 0;
@@ -234,13 +207,12 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
         </View>
       </View>
 
-      {/* Input list with % and Money */}
+      {/* Input list */}
       <View style={{ gap: 10 }}>
         {CATEGORIES.map((cat) => {
           const IconComp = cat.icon;
           const val = breakdown[cat.key] || 0;
           const pct = percentages[cat.key] ?? cat.defaultPercent;
-
           return (
             <View
               key={cat.key}
@@ -254,7 +226,6 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
                 backgroundColor: 'rgba(243,236,220,0.4)',
               }}
             >
-              {/* Category Icon & Name */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
                 <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: `${cat.color}15`, alignItems: 'center', justifyContent: 'center' }}>
                   <IconComp size={15} color={cat.color} />
@@ -263,10 +234,7 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
                   {cat.label}
                 </Text>
               </View>
-
-              {/* Custom Percent (%) & Money Inputs */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {/* Custom % Input */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
                   <TextInput
                     value={String(pct)}
@@ -289,8 +257,6 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
                   />
                   <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#1F6F54' }}>%</Text>
                 </View>
-
-                {/* Money Input */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   <TextInput
                     value={val > 0 ? new Intl.NumberFormat('vi-VN').format(val) : ''}
