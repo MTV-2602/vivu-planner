@@ -46,7 +46,7 @@ interface TripDetailData {
   start_date: string; end_date: string; budget_total: number;
   traveler_count: number; traveler_type: string; status: string;
   days: ItineraryDay[]; revisions?: any[]; is_free_tier?: boolean;
-  preferences?: any;
+  preferences?: any; budget_breakdown?: any;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

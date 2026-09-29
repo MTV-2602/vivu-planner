@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+// @ts-ignore
 import ReactDOM from 'react-dom';
 import { View, Text, Pressable, Platform, ScrollView, TextInput, useWindowDimensions } from 'react-native';
 import {
@@ -177,6 +178,9 @@ export default function GoogleCalendarWorkspace({
 
   // State chọn điểm để gán nhanh (1-click place)
   const [selectedPlaceToPlace, setSelectedPlaceToPlace] = useState<StandbyPlaceItem | null>(null);
+
+  // State toast thông báo kết quả tối ưu
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   // ── REAL POINTER DRAG & DROP STATE ──
   const [pointerDrag, setPointerDrag] = useState<{
@@ -2014,6 +2018,45 @@ export default function GoogleCalendarWorkspace({
           </View>
         </View>
       </View>
+
+      {/* ── FLOATING TOAST THÔNG BÁO TỐI ƯU HÓA LỊCH TRÌNH ── */}
+      {toastMsg && (
+        <View
+          style={{
+            position: 'absolute',
+            bottom: 28,
+            left: 20,
+            right: 20,
+            alignItems: 'center',
+            zIndex: 999999,
+            pointerEvents: 'none' as any,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: '#1E293B',
+              borderRadius: 30,
+              paddingVertical: 10,
+              paddingHorizontal: 22,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.35,
+              shadowRadius: 12,
+              elevation: 12,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.15)',
+            }}
+          >
+            <Sparkles size={16} color="#C084FC" />
+            <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
+              {toastMsg}
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* ── FLOATING GHOST PREVIEW CARD KHI KÉO THẢ TRÊN WEB DÙNG PORTAL TRÁNH LỆCH TOẠ ĐỘ ── */}
       {Platform.OS === 'web' && pointerDrag && typeof document !== 'undefined' && ReactDOM.createPortal(
