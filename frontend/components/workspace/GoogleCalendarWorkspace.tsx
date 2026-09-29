@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { View, Text, Pressable, Platform, ScrollView, TextInput, useWindowDimensions } from 'react-native';
 import {
   Calendar,
@@ -55,6 +56,14 @@ export interface StandbyPlaceItem {
 export interface GoogleCalendarWorkspaceProps {
   cityName: string;
   totalBudget?: number;
+  budgetBreakdown?: {
+    food?: number;
+    hotel?: number;
+    transport?: number;
+    entertainment?: number;
+    cafe?: number;
+    other?: number;
+  };
   daysCount?: number;
   initialEvents?: CalendarEventItem[];
   standbyPlaces?: StandbyPlaceItem[];
@@ -62,6 +71,7 @@ export interface GoogleCalendarWorkspaceProps {
   onStandbyChange?: (standby: StandbyPlaceItem[]) => void;
   onSave?: (events: CalendarEventItem[], totalCost: number) => void;
   readOnly?: boolean;
+  isDetailPage?: boolean;
 }
 
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 07:00 -> 21:00
@@ -69,6 +79,7 @@ const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 07:00 -> 21:00
 const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string; lightBg: string; emoji: string }> = {
   dining: { bg: '#E6F4EA', border: '#137333', text: '#137333', lightBg: '#CEEAD6', emoji: '🍽️' },
   accommodation: { bg: '#F3E8FD', border: '#8430CE', text: '#8430CE', lightBg: '#E9D2FD', emoji: '🏨' },
+  hotel: { bg: '#F3E8FD', border: '#8430CE', text: '#8430CE', lightBg: '#E9D2FD', emoji: '🏨' },
   attraction: { bg: '#E8F0FE', border: '#1A73E8', text: '#1A73E8', lightBg: '#D2E3FC', emoji: '🏔️' },
   cafe: { bg: '#FEF7E0', border: '#B06000', text: '#B06000', lightBg: '#FEEFC3', emoji: '☕' },
   rental: { bg: '#FCE8E6', border: '#C5221F', text: '#C5221F', lightBg: '#FAD2CF', emoji: '🛵' },
@@ -79,6 +90,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string
 export default function GoogleCalendarWorkspace({
   cityName = 'Hà Nội',
   totalBudget = 5000000,
+  budgetBreakdown,
   daysCount: propDaysCount = 3,
   initialEvents,
   standbyPlaces: propStandbyPlaces,
@@ -86,12 +98,14 @@ export default function GoogleCalendarWorkspace({
   onStandbyChange,
   onSave,
   readOnly = false,
+  isDetailPage = false,
 }: GoogleCalendarWorkspaceProps) {
   const { width: windowWidth } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && windowWidth >= 960;
 
   const [activeDay, setActiveDay] = useState(1);
   const [daysCount, setDaysCount] = useState(propDaysCount);
+  const [showCartInDetail, setShowCartInDetail] = useState(false);
 
   // Khởi tạo dữ liệu
   const initialData = useMemo(() => {
@@ -189,27 +203,44 @@ export default function GoogleCalendarWorkspace({
       .sort((a, b) => a.startHour * 60 + a.startMinute - (b.startHour * 60 + b.startMinute));
   }, [events, activeDay]);
 
-  // Kế hoạch ngân sách phân bổ theo danh mục
+  // Kế hoạch ngân sách phân bổ theo danh mục: ăn, cf, nghỉ ngơi, vui chơi, khác, tổng
   const plannedBudget = useMemo(() => {
     const total = Number(totalBudget) || 5000000;
+    if (budgetBreakdown) {
+      const food = Number(budgetBreakdown.food) || Math.round(total * 0.25);
+      const cafe = Number(budgetBreakdown.cafe) || Math.round(total * 0.10);
+      const hotel = Number(budgetBreakdown.hotel) || Math.round(total * 0.30);
+      const attraction = Number(budgetBreakdown.entertainment) || Math.round(total * 0.15);
+      const other = Number(budgetBreakdown.transport) || Math.round(total * 0.20);
+      return {
+        dining: food,
+        cafe: cafe,
+        hotel: hotel,
+        attraction: attraction,
+        other: other,
+        total: total,
+      };
+    }
     return {
-      dining: Math.round(total * 0.35),
-      cafe: Math.round(total * 0.15),
-      attraction: Math.round(total * 0.25),
-      other: Math.round(total * 0.25),
+      dining: Math.round(total * 0.25),
+      cafe: Math.round(total * 0.10),
+      hotel: Math.round(total * 0.30),
+      attraction: Math.round(total * 0.15),
+      other: Math.round(total * 0.20),
       total: total,
     };
-  }, [totalBudget]);
+  }, [totalBudget, budgetBreakdown]);
 
-  // Bảng ngân sách ma trận Excel
+  // Bảng ngân sách ma trận Excel theo chuẩn 5 hạng mục: ăn, cf, nghỉ ngơi, vui chơi, khác, tổng
   const budgetStats = useMemo(() => {
     const totalScheduled = events.reduce((sum, ev) => sum + (Number(ev.cost) || 0), 0);
     const dayScheduled = currentDayEvents.reduce((sum, ev) => sum + (Number(ev.cost) || 0), 0);
     const remaining = (Number(totalBudget) || 0) - totalScheduled;
 
-    const used = {
+    const estimated = {
       dining: 0,
       cafe: 0,
+      hotel: 0,
       attraction: 0,
       other: 0,
       total: totalScheduled,
@@ -218,21 +249,24 @@ export default function GoogleCalendarWorkspace({
     events.forEach((ev) => {
       const c = (ev.category || '').toLowerCase();
       if (c === 'dining' || c.includes('ăn') || c.includes('food')) {
-        used.dining += Number(ev.cost) || 0;
-      } else if (c === 'cafe' || c.includes('cà phê') || c.includes('coffee')) {
-        used.cafe += Number(ev.cost) || 0;
-      } else if (c === 'attraction' || c.includes('chơi') || c.includes('tham quan')) {
-        used.attraction += Number(ev.cost) || 0;
+        estimated.dining += Number(ev.cost) || 0;
+      } else if (c === 'cafe' || c.includes('cà phê') || c.includes('coffee') || c.includes('cf')) {
+        estimated.cafe += Number(ev.cost) || 0;
+      } else if (c === 'hotel' || c === 'accommodation' || c.includes('khách sạn') || c.includes('nghỉ') || c.includes('homestay') || c.includes('resort')) {
+        estimated.hotel += Number(ev.cost) || 0;
+      } else if (c === 'attraction' || c === 'experience' || c.includes('chơi') || c.includes('tham quan') || c.includes('vé')) {
+        estimated.attraction += Number(ev.cost) || 0;
       } else {
-        used.other += Number(ev.cost) || 0;
+        estimated.other += Number(ev.cost) || 0;
       }
     });
 
     const remainingByCategory = {
-      dining: plannedBudget.dining - used.dining,
-      cafe: plannedBudget.cafe - used.cafe,
-      attraction: plannedBudget.attraction - used.attraction,
-      other: plannedBudget.other - used.other,
+      dining: plannedBudget.dining - estimated.dining,
+      cafe: plannedBudget.cafe - estimated.cafe,
+      hotel: plannedBudget.hotel - estimated.hotel,
+      attraction: plannedBudget.attraction - estimated.attraction,
+      other: plannedBudget.other - estimated.other,
       total: remaining,
     };
 
@@ -241,10 +275,137 @@ export default function GoogleCalendarWorkspace({
       dayScheduled,
       remaining,
       percentUsed: Math.min(100, Math.round((totalScheduled / (Number(totalBudget) || 1)) * 100)),
-      used,
+      estimated,
       remainingByCategory,
     };
   }, [events, currentDayEvents, totalBudget, plannedBudget]);
+
+  // ── AI TỰ ĐỘNG TỐI ƯU LỘ TRÌNH VÀ PHÂN BỔ LỊCH TRÌNH TỪ GIỎ HÀNG ──
+  const handleAiOptimizeSchedule = () => {
+    if (standbyList.length === 0 && events.length === 0) return;
+
+    // Gom tất cả địa điểm hiện có (cả trong giỏ chờ và đã có trong lịch)
+    const allPlaces: StandbyPlaceItem[] = [
+      ...events.map((e) => ({
+        id: e.placeId || e.id,
+        name: e.title,
+        category: e.category,
+        address: e.address,
+        lat: e.lat,
+        lng: e.lng,
+        cost: e.cost,
+        suggestedDuration: e.durationMinutes,
+      })),
+      ...standbyList,
+    ];
+
+    // Loại bỏ trùng lặp
+    const uniquePlaces: StandbyPlaceItem[] = [];
+    const seen = new Set<string>();
+    allPlaces.forEach((p) => {
+      if (!seen.has(p.id)) {
+        seen.add(p.id);
+        uniquePlaces.push(p);
+      }
+    });
+
+    // Tách riêng khách sạn nếu có
+    const hotels = uniquePlaces.filter((p) => {
+      const c = (p.category || '').toLowerCase();
+      return c === 'hotel' || c === 'accommodation' || c.includes('khách sạn') || c.includes('nghỉ');
+    });
+    const nonHotels = uniquePlaces.filter((p) => !hotels.includes(p));
+
+    // Sắp xếp các địa điểm theo khoảng cách địa lý (Nearest Neighbor) để tối ưu đường đi
+    const ordered: StandbyPlaceItem[] = [];
+    if (nonHotels.length > 0) {
+      const remainingPool = [...nonHotels];
+      let current = remainingPool.shift()!;
+      ordered.push(current);
+
+      while (remainingPool.length > 0) {
+        let nearestIdx = 0;
+        let minDist = Infinity;
+        for (let i = 0; i < remainingPool.length; i++) {
+          const cand = remainingPool[i];
+          const dist = Math.hypot(
+            (Number(cand.lat) || 0) - (Number(current.lat) || 0),
+            (Number(cand.lng) || 0) - (Number(current.lng) || 0)
+          );
+          if (dist < minDist) {
+            minDist = dist;
+            nearestIdx = i;
+          }
+        }
+        current = remainingPool.splice(nearestIdx, 1)[0];
+        ordered.push(current);
+      }
+    }
+
+    // Các khung giờ khoa học cho từng ngày (Sáng, Trưa, Chiều, Tối)
+    const timeSlots = [
+      { hour: 8, minute: 0, dur: 90 },   // 08:00 (Cà phê / Đi dạo)
+      { hour: 10, minute: 0, dur: 90 },  // 10:00 (Tham quan / Di tích)
+      { hour: 12, minute: 0, dur: 90 },  // 12:00 (Ẩm thực đặc sản)
+      { hour: 14, minute: 30, dur: 90 }, // 14:30 (Vui chơi / Trải nghiệm)
+      { hour: 16, minute: 30, dur: 90 }, // 16:30 (Check-in / Cafe view)
+      { hour: 18, minute: 30, dur: 90 }, // 18:30 (Ăn tối / Phố ẩm thực)
+      { hour: 20, minute: 30, dur: 75 }, // 20:30 (Chợ đêm / Dạo phố)
+    ];
+
+    const newEvents: CalendarEventItem[] = [];
+    const totalDays = Math.max(1, daysCount);
+
+    // Nếu có khách sạn, đặt vào Ngày 1 lúc 14:00 (check-in)
+    if (hotels.length > 0) {
+      hotels.forEach((h, hIdx) => {
+        newEvents.push({
+          id: `ev-hotel-${h.id}-${Date.now()}`,
+          placeId: h.id,
+          title: h.name,
+          category: 'hotel',
+          address: h.address,
+          lat: h.lat,
+          lng: h.lng,
+          cost: h.cost,
+          dayNumber: (hIdx % totalDays) + 1,
+          startHour: 14,
+          startMinute: 0,
+          durationMinutes: 60,
+          notes: 'Nhận phòng khách sạn & cất hành lý',
+        });
+      });
+    }
+
+    // Phân bổ đều các địa điểm vào từng ngày
+    ordered.forEach((p, idx) => {
+      const targetDay = (idx % totalDays) + 1;
+      const dayOrder = Math.floor(idx / totalDays);
+      const slot = timeSlots[dayOrder % timeSlots.length] || { hour: 8 + (dayOrder * 2) % 12, minute: 0, dur: 90 };
+
+      newEvents.push({
+        id: `ev-opt-${p.id}-${Date.now()}-${idx}`,
+        placeId: p.id,
+        title: p.name,
+        category: p.category,
+        address: p.address,
+        lat: p.lat,
+        lng: p.lng,
+        cost: p.cost,
+        dayNumber: targetDay,
+        startHour: slot.hour,
+        startMinute: slot.minute,
+        durationMinutes: p.suggestedDuration || slot.dur,
+        notes: `AI tối ưu lộ trình ngày ${targetDay}`,
+      });
+    });
+
+    setEvents(newEvents);
+    setStandbyList([]);
+    notifyChanges(newEvents, []);
+    setToastMsg('✓ AI đã tối ưu hóa lộ trình và phân bổ lịch trình thông minh!');
+    setTimeout(() => setToastMsg(null), 3500);
+  };
 
   // Tọa độ trung tâm thành phố
   const { centerLat, centerLng } = useMemo(() => {
@@ -1355,169 +1516,270 @@ export default function GoogleCalendarWorkspace({
               gap: 14,
             }}
           >
-            {/* 1. KHAY GIỎ HÀNG CHỜ XẾP LỊCH (STANDBY CART TRAY) */}
-            <View
-              // @ts-ignore
-              data-cart-dropzone="true"
-              style={{
-                backgroundColor: hoveredCartZone ? 'rgba(251,188,4,0.15)' : '#FFFFFF',
-                borderRadius: 16,
-                borderWidth: hoveredCartZone ? 2 : 1,
-                borderStyle: hoveredCartZone ? 'dashed' : 'solid',
-                borderColor: hoveredCartZone ? '#FBBC04' : 'rgba(27,36,32,0.12)',
-                padding: 12,
-                gap: 10,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.04)' as any,
-                transition: 'background-color 0.15s ease',
-              } as any}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <ShoppingBag size={15} color="#B06000" />
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#1B2420' }}>
-                    Khay Giỏ Hàng Chờ Xếp Lịch
+            {/* NẾU LÀ TRANG CHI TIẾT VÀ CHƯA BẤM MỞ GIỎ: HIỂN THỊ THANH TINH GỌN */}
+            {isDetailPage && !showCartInDetail ? (
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: 'rgba(27,36,32,0.1)',
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.03)' as any,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 14 }}>🗺️</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#1B2420' }}>
+                    Lịch trình hoàn chỉnh · {events.length} hoạt động
                   </Text>
-                  <View
+                  {standbyList.length > 0 && (
+                    <View
+                      style={{
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 8,
+                        backgroundColor: '#FEF7E0',
+                        borderWidth: 1,
+                        borderColor: '#B06000',
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#B06000' }}>
+                        Còn {standbyList.length} điểm chờ
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Pressable
+                    testID="btn-open-standby-detail"
+                    onPress={() => setShowCartInDetail(true)}
                     style={{
-                      paddingHorizontal: 7,
-                      paddingVertical: 2,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 5,
+                      paddingVertical: 6,
+                      paddingHorizontal: 12,
                       borderRadius: 10,
-                      backgroundColor: '#FEF7E0',
+                      backgroundColor: '#E8F0FE',
                       borderWidth: 1,
-                      borderColor: '#B06000',
+                      borderColor: '#1A73E8',
+                      cursor: 'pointer' as any,
                     }}
                   >
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#B06000' }}>
-                      {standbyList.length} địa điểm
+                    <ShoppingBag size={13} color="#1A73E8" />
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>
+                      {standbyList.length > 0 ? `Xem khay giỏ chờ (${standbyList.length})` : '🔍 Thêm / Thay thế địa điểm'}
                     </Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : (
+              /* 1. KHAY GIỎ HÀNG CHỜ XẾP LỊCH (STANDBY CART TRAY) */
+              <View
+                // @ts-ignore
+                data-cart-dropzone="true"
+                style={{
+                  backgroundColor: hoveredCartZone ? 'rgba(251,188,4,0.15)' : '#FFFFFF',
+                  borderRadius: 16,
+                  borderWidth: hoveredCartZone ? 2 : 1,
+                  borderStyle: hoveredCartZone ? 'dashed' : 'solid',
+                  borderColor: hoveredCartZone ? '#FBBC04' : 'rgba(27,36,32,0.12)',
+                  padding: 12,
+                  gap: 10,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)' as any,
+                  transition: 'background-color 0.15s ease',
+                } as any}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <ShoppingBag size={15} color="#B06000" />
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#1B2420' }}>
+                      Khay Giỏ Hàng Chờ Xếp Lịch
+                    </Text>
+                    <View
+                      style={{
+                        paddingHorizontal: 7,
+                        paddingVertical: 2,
+                        borderRadius: 10,
+                        backgroundColor: '#FEF7E0',
+                        borderWidth: 1,
+                        borderColor: '#B06000',
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#B06000' }}>
+                        {standbyList.length} địa điểm
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {/* Nút AI Tối ưu lịch trình tự động từ giỏ hàng */}
+                    <Pressable
+                      testID="btn-ai-optimize-schedule"
+                      onPress={handleAiOptimizeSchedule}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        paddingVertical: 5,
+                        paddingHorizontal: 11,
+                        borderRadius: 10,
+                        backgroundColor: '#F3E8FD',
+                        borderWidth: 1,
+                        borderColor: '#8430CE',
+                        cursor: 'pointer' as any,
+                      }}
+                    >
+                      <Sparkles size={12} color="#8430CE" />
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#8430CE' }}>
+                        ⚡ AI Tối ưu lịch trình
+                      </Text>
+                    </Pressable>
+
+                    {isDetailPage && (
+                      <Pressable
+                        onPress={() => setShowCartInDetail(false)}
+                        style={{
+                          paddingVertical: 4,
+                          paddingHorizontal: 8,
+                          borderRadius: 8,
+                          backgroundColor: '#F1F3F4',
+                          cursor: 'pointer' as any,
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#5F6368' }}>Thu gọn</Text>
+                      </Pressable>
+                    )}
                   </View>
                 </View>
 
-                <Text style={{ fontSize: 10, color: '#5F6368', fontStyle: 'italic' }}>
-                  {hoveredCartZone ? '👉 Thả vào đây để đưa về giỏ chờ' : 'Kéo thả hoặc bấm "+ Đặt giờ" để lên lịch'}
-                </Text>
-              </View>
+                {standbyList.length === 0 ? (
+                  <View
+                    style={{
+                      paddingVertical: 18,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderStyle: 'dashed',
+                      borderColor: 'rgba(27,36,32,0.1)',
+                      borderRadius: 12,
+                      backgroundColor: '#FAFAFA',
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, color: '#5F6368', fontWeight: '500' }}>
+                      🎉 Đã xếp toàn bộ địa điểm vào Lịch trình! Kéo sự kiện từ lịch thả vào đây nếu muốn đưa lại giỏ chờ.
+                    </Text>
+                  </View>
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
+                  >
+                    {standbyList.map((item) => {
+                      const colors = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.default;
+                      const isSelected = selectedPlaceToPlace?.id === item.id;
 
-              {standbyList.length === 0 ? (
-                <View
-                  style={{
-                    paddingVertical: 18,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderWidth: 1,
-                    borderStyle: 'dashed',
-                    borderColor: 'rgba(27,36,32,0.1)',
-                    borderRadius: 12,
-                    backgroundColor: '#FAFAFA',
-                  }}
-                >
-                  <Text style={{ fontSize: 11, color: '#5F6368', fontWeight: '500' }}>
-                    🎉 Đã xếp toàn bộ địa điểm vào Lịch trình! Kéo sự kiện từ lịch thả vào đây nếu muốn đưa lại giỏ chờ.
-                  </Text>
-                </View>
-              ) : (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
-                >
-                  {standbyList.map((item) => {
-                    const colors = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.default;
-                    const isSelected = selectedPlaceToPlace?.id === item.id;
+                      return (
+                        <View
+                          key={item.id}
+                          testID={`standby-chip-${item.id}`}
+                          style={{
+                            width: 195,
+                            backgroundColor: isSelected ? '#E8F0FE' : '#FFFFFF',
+                            borderRadius: 12,
+                            borderWidth: 1.5,
+                            borderColor: isSelected ? '#1A73E8' : 'rgba(27,36,32,0.12)',
+                            padding: 10,
+                            gap: 6,
+                            boxShadow: '0 2px 6px rgba(0,0,0,0.04)' as any,
+                          }}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 4,
+                                backgroundColor: colors.lightBg,
+                                paddingHorizontal: 6,
+                                paddingVertical: 2,
+                                borderRadius: 6,
+                              }}
+                            >
+                              <Text style={{ fontSize: 10 }}>{colors.emoji}</Text>
+                              <Text style={{ fontSize: 9, fontWeight: '800', color: colors.text, textTransform: 'uppercase' }}>
+                                {item.category}
+                              </Text>
+                            </View>
 
-                    return (
-                      <View
-                        key={item.id}
-                        testID={`standby-chip-${item.id}`}
-                        style={{
-                          width: 195,
-                          backgroundColor: isSelected ? '#E8F0FE' : '#FFFFFF',
-                          borderRadius: 12,
-                          borderWidth: 1.5,
-                          borderColor: isSelected ? '#1A73E8' : 'rgba(27,36,32,0.12)',
-                          padding: 10,
-                          gap: 6,
-                          boxShadow: '0 2px 6px rgba(0,0,0,0.04)' as any,
-                        }}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <View
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 4,
-                              backgroundColor: colors.lightBg,
-                              paddingHorizontal: 6,
-                              paddingVertical: 2,
-                              borderRadius: 6,
-                            }}
-                          >
-                            <Text style={{ fontSize: 10 }}>{colors.emoji}</Text>
-                            <Text style={{ fontSize: 9, fontWeight: '800', color: colors.text, textTransform: 'uppercase' }}>
-                              {item.category}
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: '#137333' }}>
+                              {Number(item.cost).toLocaleString('vi-VN')}đ
                             </Text>
                           </View>
 
-                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#137333' }}>
-                            {Number(item.cost).toLocaleString('vi-VN')}đ
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#202124' }} numberOfLines={1}>
+                            {item.name}
                           </Text>
-                        </View>
 
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#202124' }} numberOfLines={1}>
-                          {item.name}
-                        </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+                            {/* Grip Handle for Pointer Drag */}
+                            <View
+                              // @ts-ignore
+                              onPointerDown={(e: any) => handleStartPointerDrag(item, 'standby', e)}
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 2,
+                                paddingVertical: 3,
+                                paddingHorizontal: 6,
+                                borderRadius: 6,
+                                backgroundColor: '#F1F3F4',
+                                cursor: 'grab' as any,
+                                touchAction: 'none' as any,
+                              }}
+                            >
+                              <GripVertical size={12} color="#5F6368" />
+                              <Text style={{ fontSize: 9, color: '#5F6368', fontWeight: '700' }}>Kéo thẻ</Text>
+                            </View>
 
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-                          {/* Grip Handle for Pointer Drag */}
-                          <View
-                            // @ts-ignore
-                            onPointerDown={(e: any) => handleStartPointerDrag(item, 'standby', e)}
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 2,
-                              paddingVertical: 3,
-                              paddingHorizontal: 6,
-                              borderRadius: 6,
-                              backgroundColor: '#F1F3F4',
-                              cursor: 'grab' as any,
-                              touchAction: 'none' as any,
-                            }}
-                          >
-                            <GripVertical size={12} color="#5F6368" />
-                            <Text style={{ fontSize: 9, color: '#5F6368', fontWeight: '700' }}>Kéo thẻ</Text>
+                            <Pressable
+                              testID={`btn-quick-place-${item.id}`}
+                              onPress={() => {
+                                if (isSelected) {
+                                  setSelectedPlaceToPlace(null);
+                                } else {
+                                  setSelectedPlaceToPlace(item);
+                                }
+                              }}
+                              style={{
+                                paddingHorizontal: 8,
+                                paddingVertical: 4,
+                                borderRadius: 6,
+                                backgroundColor: isSelected ? '#1A73E8' : 'rgba(26,115,232,0.08)',
+                                cursor: 'pointer' as any,
+                              }}
+                            >
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: isSelected ? '#FFFFFF' : '#1A73E8' }}>
+                                {isSelected ? '✓ Đang chọn' : '+ Đặt giờ'}
+                              </Text>
+                            </Pressable>
                           </View>
-
-                          <Pressable
-                            testID={`btn-quick-place-${item.id}`}
-                            onPress={() => {
-                              if (isSelected) {
-                                setSelectedPlaceToPlace(null);
-                              } else {
-                                setSelectedPlaceToPlace(item);
-                              }
-                            }}
-                            style={{
-                              paddingHorizontal: 8,
-                              paddingVertical: 4,
-                              borderRadius: 6,
-                              backgroundColor: isSelected ? '#1A73E8' : 'rgba(26,115,232,0.08)',
-                              cursor: 'pointer' as any,
-                            }}
-                          >
-                            <Text style={{ fontSize: 10, fontWeight: '800', color: isSelected ? '#FFFFFF' : '#1A73E8' }}>
-                              {isSelected ? '✓ Đang chọn' : '+ Đặt giờ'}
-                            </Text>
-                          </Pressable>
                         </View>
-                      </View>
-                    );
-                  })}
-                </ScrollView>
-              )}
-            </View>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+              </View>
+            )}
 
-            {/* 2. BẢNG NGÂN SÁCH MA TRẬN EXCEL */}
+            {/* 2. BẢNG NGÂN SÁCH MA TRẬN EXCEL (5 HẠNG MỤC: ĂN, CF, NGHỈ NGƠI, VUI CHƠI, KHÁC, TỔNG) */}
             <View
               style={{
                 backgroundColor: '#FFFFFF',
@@ -1550,7 +1812,10 @@ export default function GoogleCalendarWorkspace({
                   <Text style={{ fontSize: 11, fontWeight: '800', color: '#B06000' }}>cf</Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>chơi</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#8430CE' }}>nghỉ ngơi</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>vui chơi</Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 11, fontWeight: '800', color: '#5F6368' }}>khác</Text>
@@ -1581,6 +1846,9 @@ export default function GoogleCalendarWorkspace({
                   <Text style={{ fontSize: 10, color: '#3C4043' }}>{(plannedBudget.cafe / 1000).toLocaleString('vi-VN')}k</Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#3C4043' }}>{(plannedBudget.hotel / 1000).toLocaleString('vi-VN')}k</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 10, color: '#3C4043' }}>{(plannedBudget.attraction / 1000).toLocaleString('vi-VN')}k</Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -1593,39 +1861,73 @@ export default function GoogleCalendarWorkspace({
                 </View>
               </View>
 
-              {/* Hàng 2: Đã dùng */}
+              {/* Hàng 2: Ước tính lịch trình */}
               <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: 'rgba(27,36,32,0.06)', paddingVertical: 7, backgroundColor: '#FFFFFF' }}>
                 <View style={{ width: 85, paddingHorizontal: 8, justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#1B2420' }}>đã dùng</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#1A73E8' }}>ước tính</Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 10, fontWeight: '600', color: '#202124' }}>
-                    {(budgetStats.used.dining / 1000).toLocaleString('vi-VN')}k
+                    {(budgetStats.estimated.dining / 1000).toLocaleString('vi-VN')}k
                   </Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 10, fontWeight: '600', color: '#202124' }}>
-                    {(budgetStats.used.cafe / 1000).toLocaleString('vi-VN')}k
+                    {(budgetStats.estimated.cafe / 1000).toLocaleString('vi-VN')}k
                   </Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 10, fontWeight: '600', color: '#202124' }}>
-                    {(budgetStats.used.attraction / 1000).toLocaleString('vi-VN')}k
+                    {(budgetStats.estimated.hotel / 1000).toLocaleString('vi-VN')}k
                   </Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 10, fontWeight: '600', color: '#202124' }}>
-                    {(budgetStats.used.other / 1000).toLocaleString('vi-VN')}k
+                    {(budgetStats.estimated.attraction / 1000).toLocaleString('vi-VN')}k
+                  </Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#202124' }}>
+                    {(budgetStats.estimated.other / 1000).toLocaleString('vi-VN')}k
                   </Text>
                 </View>
                 <View style={{ flex: 1.2, alignItems: 'center', justifyContent: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(27,36,32,0.06)', backgroundColor: '#E8F0FE' }}>
                   <Text style={{ fontSize: 11, fontWeight: '900', color: '#1A73E8' }}>
-                    {(budgetStats.used.total / 1000).toLocaleString('vi-VN')}k
+                    {(budgetStats.estimated.total / 1000).toLocaleString('vi-VN')}k
                   </Text>
                 </View>
               </View>
 
-              {/* Hàng 3: Còn lại */}
+              {/* Hàng 3: Đã dùng (Khách ghi nhận sau khi đi - lúc xếp lịch để trống) */}
+              <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: 'rgba(27,36,32,0.06)', paddingVertical: 7, backgroundColor: '#FFFFFF' }}>
+                <View style={{ width: 85, paddingHorizontal: 8, justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#80868B' }}>
+                    đã dùng
+                  </Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#9AA0A6' }}>-</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#9AA0A6' }}>-</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#9AA0A6' }}>-</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#9AA0A6' }}>-</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#9AA0A6' }}>-</Text>
+                </View>
+                <View style={{ flex: 1.2, alignItems: 'center', justifyContent: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(27,36,32,0.06)' }}>
+                  <Text style={{ fontSize: 9, fontStyle: 'italic', color: '#9AA0A6' }}>
+                    Ghi khi đi
+                  </Text>
+                </View>
+              </View>
+
+              {/* Hàng 4: Còn lại (Chênh lệch Dự định - Ước tính) */}
               <View style={{ flexDirection: 'row', paddingVertical: 7, backgroundColor: '#F8F9FA' }}>
                 <View style={{ width: 85, paddingHorizontal: 8, justifyContent: 'center' }}>
                   <Text style={{ fontSize: 11, fontWeight: '800', color: budgetStats.remaining >= 0 ? '#137333' : '#C5221F' }}>
@@ -1652,6 +1954,17 @@ export default function GoogleCalendarWorkspace({
                     }}
                   >
                     {(budgetStats.remainingByCategory.cafe / 1000).toLocaleString('vi-VN')}k
+                  </Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: budgetStats.remainingByCategory.hotel >= 0 ? '#137333' : '#C5221F',
+                    }}
+                  >
+                    {(budgetStats.remainingByCategory.hotel / 1000).toLocaleString('vi-VN')}k
                   </Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -1702,25 +2015,26 @@ export default function GoogleCalendarWorkspace({
         </View>
       </View>
 
-      {/* ── FLOATING GHOST PREVIEW CARD KHI KÉO THẢ TRÊN WEB ── */}
-      {Platform.OS === 'web' && pointerDrag && (
+      {/* ── FLOATING GHOST PREVIEW CARD KHI KÉO THẢ TRÊN WEB DÙNG PORTAL TRÁNH LỆCH TOẠ ĐỘ ── */}
+      {Platform.OS === 'web' && pointerDrag && typeof document !== 'undefined' && ReactDOM.createPortal(
         <div
           style={{
             position: 'fixed',
-            left: pointerDrag.currentX - 100,
-            top: pointerDrag.currentY - 35,
+            left: pointerDrag.currentX - 105,
+            top: pointerDrag.currentY - 30,
             width: 210,
-            zIndex: 999999,
+            zIndex: 9999999,
             pointerEvents: 'none',
             backgroundColor: '#FFFFFF',
             border: '2px solid #1A73E8',
             borderRadius: 12,
             padding: '8px 12px',
-            boxShadow: '0 14px 32px rgba(26,115,232,0.38)',
+            boxShadow: '0 14px 32px rgba(26,115,232,0.45)',
             transform: 'rotate(2.5deg) scale(1.04)',
             display: 'flex',
             flexDirection: 'column',
             gap: 4,
+            transformOrigin: 'center center',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1749,7 +2063,8 @@ export default function GoogleCalendarWorkspace({
               ? `👉 Chuyển sang Ngày ${hoveredDayTab}`
               : 'Kéo đến khung giờ muốn đặt'}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </View>
   );

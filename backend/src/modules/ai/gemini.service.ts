@@ -1588,6 +1588,8 @@ function deduplicateRichPlaces(list: GeneratedRichPlaceItem[]): GeneratedRichPla
   return result;
 }
 
+const richPlacesPoolCache = new Map<string, { data: { places: GeneratedRichPlaceItem[]; city_center: { lat: number; lng: number } }; expiry: number }>();
+
 export async function generateRichPlacesPool(params: GenerateRichPlacesPoolParams): Promise<{
   places: GeneratedRichPlaceItem[];
   city_center: { lat: number; lng: number };
@@ -1596,6 +1598,12 @@ export async function generateRichPlacesPool(params: GenerateRichPlacesPoolParam
   const daysCount = Math.max(1, Math.min(params.days_count || 2, 7));
   const totalBudget = Number(params.budget_total) || 5000000;
   const preferencesList = Array.isArray(params.preferences) ? params.preferences.join(', ') : (params.preferences || 'Khám phá, Ẩm thực');
+
+  const cacheKey = `${params.destination_city.toLowerCase()}_${daysCount}_${Math.round(totalBudget / 1000000)}_${preferencesList}`;
+  const cached = richPlacesPoolCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiry && cached.data.places.length >= 15) {
+    return cached.data;
+  }
 
   const systemPrompt = `Bạn là Chuyên gia Thổ địa và Hướng dẫn viên Du lịch cao cấp tại Việt Nam.
 Nhiệm vụ của bạn là sinh ra một BỂ KHO ĐỊA ĐIỂM GỢI Ý (Place Buffet) THỰC TẾ, CỰC KỲ ĐA DẠNG VÀ PHONG PHÚ tại "${params.destination_city}".
@@ -1767,10 +1775,18 @@ QUY TẮC BẮT BUỘC ĐỂ ĐẢM BẢO CHẤT LƯỢNG TUYỆT ĐỐI (KHÔNG
     // Khử trùng lặp triệt để 100%
     const uniquePlaces = deduplicateRichPlaces(formattedPlaces);
 
-    return {
+    const result = {
       places: uniquePlaces,
       city_center: cityCoords
     };
+
+    // Cache trong 15 phút
+    richPlacesPoolCache.set(cacheKey, {
+      data: result,
+      expiry: Date.now() + 15 * 60 * 1000
+    });
+
+    return result;
   } catch (error: any) {
     console.error('Error in generateRichPlacesPool:', error.message);
     throw error;

@@ -547,6 +547,25 @@ export default function TripDetail() {
     return evs;
   }, [trip]);
 
+  // Danh sách địa điểm gợi ý sẵn sàng cho khay chờ nếu người dùng muốn thêm/thay thế
+  const standbySuggestions = useMemo(() => {
+    if (!trip?.destination_city) return [];
+    const pool = getCuratedPlacesForCity(trip.destination_city);
+    const existingTitles = new Set(calendarEvents.map((e) => (e.title || '').toLowerCase().trim()));
+    return pool
+      .filter((p) => !existingTitles.has((p.name || '').toLowerCase().trim()))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        address: p.address,
+        lat: p.lat,
+        lng: p.lng,
+        cost: p.estimated_cost || 50000,
+        suggestedDuration: 90,
+      }));
+  }, [trip?.destination_city, calendarEvents]);
+
   const handleSaveCalendarWorkspace = async (newEvents: CalendarEventItem[]) => {
     try {
       await api.put(`/trips/${id}/sync-calendar`, { events: newEvents });
@@ -1053,11 +1072,13 @@ export default function TripDetail() {
             <GoogleCalendarWorkspace
               cityName={trip.destination_city}
               totalBudget={trip.budget_total}
+              budgetBreakdown={trip.budget_breakdown}
               daysCount={sortedDays.length}
               initialEvents={calendarEvents}
-              standbyPlaces={[]}
+              standbyPlaces={standbySuggestions}
               onSave={handleSaveCalendarWorkspace}
               readOnly={isLocked}
+              isDetailPage={true}
             />
 
             {/* Weather */}

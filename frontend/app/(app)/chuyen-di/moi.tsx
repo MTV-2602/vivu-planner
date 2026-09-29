@@ -17,7 +17,7 @@ import PremiumModal from '../../../components/PremiumModal';
 import Reveal from '../../../components/Reveal';
 import BudgetBreakdown, { BudgetBreakdownData } from '../../../components/cart/BudgetBreakdown';
 import LiveBudgetBar from '../../../components/cart/LiveBudgetBar';
-import CuratedMap from '../../../components/map/CuratedMap';
+import CuratedMap, { getCityCenterCoords } from '../../../components/map/CuratedMap';
 import GoogleMapsRoutePlanner, { RouteWaypoint } from '../../../components/map/GoogleMapsRoutePlanner';
 import GoogleCalendarWorkspace, { CalendarEventItem, StandbyPlaceItem } from '../../../components/workspace/GoogleCalendarWorkspace';
 import { PlaceItem } from '../../../components/map/PlacePopup';
@@ -316,6 +316,8 @@ export default function TripWizard() {
   const [showScheduleOptionModal, setShowScheduleOptionModal] = useState(false);
   const [editingCostPlaceId, setEditingCostPlaceId] = useState<string | null>(null);
   const [editCostInput, setEditCostInput] = useState('');
+  const [hoveredPoolPlaceId, setHoveredPoolPlaceId] = useState<string | null>(null);
+  const cartMapIframeRef = useRef<any>(null);
   const { width: windowWidth } = useWindowDimensions();
   const isLargeScreen = windowWidth >= 900;
 
@@ -414,7 +416,7 @@ export default function TripWizard() {
         traveler_type: travelerType,
         special_requirements: specialRequirements,
         ai_provider: selectedAiProvider
-      }, { timeout: 6000 });
+      }, { timeout: 25000 });
       if (res.data?.places && Array.isArray(res.data.places)) {
         setPregenPlaces(res.data.places);
       }
@@ -438,6 +440,182 @@ export default function TripWizard() {
       return [...prev, { place, pricing_option: option, custom_cost: finalCost, day_number: 0, order_index: prev.length + 1 }];
     });
   };
+
+  // ── LẮNG NGHE SỰ KIỆN CLICK THÊM GIỎ TỪ BẢN ĐỒ BƯỚC 4A ──
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const handleMapMessage = (e: MessageEvent) => {
+      if (!e.data || typeof e.data !== 'object') return;
+      if (e.data.type === 'MAP_TOGGLE_CART' && e.data.placeId) {
+        const target = deduplicatedPool.find((p: any) => p.id === e.data.placeId);
+        if (target) {
+          handleAddToCart(target);
+        }
+      } else if (e.data.type === 'MAP_HOVER_PLACE' && e.data.placeId) {
+        setHoveredPoolPlaceId(e.data.placeId);
+      }
+    };
+    window.addEventListener('message', handleMapMessage);
+    return () => window.removeEventListener('message', handleMapMessage);
+  }, [deduplicatedPool]);
+
+  // ── HTML GOOGLE MAPS TILES CHO BƯỚC 4A (KHO GỢI Ý & GIỎ HÀNG) ──
+  const cartMapIframeHTML = useMemo(() => {
+    const validPlaces = filteredPoolPlaces.filter((p: any) => p.lat && p.lng);
+    const cartIds = new Set(cartItems.map((it) => it.place.id));
+    const center = getCityCenterCoords(destinationCity);
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body, #map { width:100%; height:100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .map-pin {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      cursor: pointer;
+      transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      position: relative;
+    }
+    .map-pin:hover {
+      transform: scale(1.24);
+      z-index: 9999 !important;
+    }
+    .pin-badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      background: #137333;
+      color: white;
+      font-size: 9px;
+      font-weight: 900;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1.5px solid white;
+    }
+    .leaflet-popup-content-wrapper {
+      border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+      padding: 0;
+      overflow: hidden;
+    }
+    .leaflet-popup-content {
+      margin: 0;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var map = L.map('map', { zoomControl: false }).setView([${center.lat}, ${center.lng}], 13);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      maxZoom: 20,
+      attribution: '© Google Maps'
+    }).addTo(map);
+
+    var markersMap = {};
+    var places = ${JSON.stringify(validPlaces)};
+    var cartIds = ${JSON.stringify(Array.from(cartIds))};
+    var cartSet = new Set(cartIds);
+
+    var categoryColors = {
+      dining: '#EA4335',
+      cafe: '#B06000',
+      hotel: '#8E24AA',
+      accommodation: '#8E24AA',
+      attraction: '#137333',
+      experience: '#1A73E8',
+      default: '#1A73E8'
+    };
+
+    var categoryIcons = {
+      dining: '🍽️',
+      cafe: '☕',
+      hotel: '🏨',
+      accommodation: '🏨',
+      attraction: '🏔️',
+      experience: '✨',
+      default: '📍'
+    };
+
+    var bounds = [];
+
+    places.forEach(function(p) {
+      if (!p.lat || !p.lng) return;
+      var inCart = cartSet.has(p.id);
+      var cat = (p.category || 'default').toLowerCase();
+      var color = categoryColors[cat] || categoryColors.default;
+      var icon = categoryIcons[cat] || categoryIcons.default;
+      var costFormatted = (Number(p.estimated_cost) || 0).toLocaleString('vi-VN') + ' đ';
+
+      var html = '<div class="map-pin" style="width:34px; height:34px; background:' + (inCart ? '#137333' : color) + '; border:2.5px solid white;">' +
+        '<span style="font-size:14px;">' + icon + '</span>' +
+        (inCart ? '<span class="pin-badge">✓</span>' : '') +
+        '</div>';
+
+      var customIcon = L.divIcon({
+        html: html,
+        className: 'custom-leaflet-pin',
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+        popupAnchor: [0, -18]
+      });
+
+      var marker = L.marker([p.lat, p.lng], { icon: customIcon }).addTo(map);
+      markersMap[p.id] = marker;
+      bounds.push([p.lat, p.lng]);
+
+      var popupHtml = '<div style="padding:12px; min-width:210px; max-width:260px;">' +
+        '<div style="font-size:10px; font-weight:800; color:' + color + '; text-transform:uppercase; margin-bottom:2px;">' + icon + ' ' + (p.category || 'Địa điểm') + '</div>' +
+        '<div style="font-size:13px; font-weight:800; color:#202124; margin-bottom:4px;">' + p.name + '</div>' +
+        '<div style="font-size:11px; font-weight:800; color:#137333; margin-bottom:4px;">' + costFormatted + '</div>' +
+        (p.address ? '<div style="font-size:10px; color:#5F6368; margin-bottom:8px;">📍 ' + p.address + '</div>' : '') +
+        '<button onclick="window.parent.postMessage({ type: \\'MAP_TOGGLE_CART\\', placeId: \\'' + p.id + '\\' }, \\'*\\')" style="width:100%; padding:7px 10px; border-radius:8px; border:none; cursor:pointer; font-weight:800; font-size:11px; background:' + (inCart ? '#E6F4EA' : '#1A73E8') + '; color:' + (inCart ? '#137333' : '#FFFFFF') + ';">' +
+        (inCart ? '✓ Đã trong giỏ (Bấm để bỏ)' : '+ Thêm vào giỏ') +
+        '</button>' +
+        '</div>';
+
+      marker.bindPopup(popupHtml);
+
+      marker.on('mouseover', function() {
+        window.parent.postMessage({ type: 'MAP_HOVER_PLACE', placeId: p.id }, '*');
+      });
+    });
+
+    if (bounds.length > 0) {
+      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+    }
+
+    // Lắng nghe lệnh từ React Native (highlight place khi hover card)
+    window.addEventListener('message', function(e) {
+      if (!e.data || typeof e.data !== 'object') return;
+      if (e.data.type === 'PAN_TO_PLACE' && e.data.placeId) {
+        var m = markersMap[e.data.placeId];
+        if (m) {
+          map.panTo(m.getLatLng(), { animate: true, duration: 0.6 });
+          m.openPopup();
+        }
+      }
+    });
+  </script>
+</body>
+</html>`;
+  }, [filteredPoolPlaces, cartItems, destinationCity]);
 
   const handleDragStart = (placeId: string, e: any) => {
     setDraggedPlaceId(placeId);
@@ -1423,149 +1601,192 @@ export default function TripWizard() {
                             </Text>
                           </View>
                           <Text className="text-xs text-brand-textSoft leading-relaxed">
-                            AI đã phân tích {daysCount} ngày, ngân sách {new Intl.NumberFormat('vi-VN').format(budgetTotal)} đ và sở thích của bạn. Hãy chọn các địa điểm bạn muốn vào Giỏ hàng bên dưới để xếp lịch trên Google Calendar!
+                            AI đã phân tích {daysCount} ngày, ngân sách {new Intl.NumberFormat('vi-VN').format(budgetTotal)} đ và sở thích của bạn. Trỏ vào từng địa điểm để định vị trên bản đồ bên phải, hoặc bấm trực tiếp trên bản đồ để thêm vào giỏ!
                           </Text>
                         </View>
 
-                        {/* Thanh lọc danh mục & Thao tác nhanh */}
-                        <View className="flex-row flex-wrap items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-brand-line/50">
-                          {/* Filter Tabs */}
-                          <View className="flex-row flex-wrap items-center gap-1.5">
-                            {[
-                              { id: 'all', label: 'Tất cả' },
-                              { id: 'dining', label: 'Ẩm thực 🍽️' },
-                              { id: 'cafe', label: 'Cà phê ☕' },
-                              { id: 'attraction', label: 'Tham quan 🏔️' },
-                              { id: 'hotel', label: 'Khách sạn 🏨' },
-                            ].map((tab) => (
-                              <Pressable
-                                key={tab.id}
-                                onPress={() => setPlaceCategoryFilter(tab.id)}
-                                className={`px-3 py-1.5 rounded-xl border ${
-                                  placeCategoryFilter === tab.id
-                                    ? 'bg-brand-primary border-brand-primary'
-                                    : 'bg-brand-bgAlt border-brand-line/50'
-                                }`}
-                              >
-                                <Text
-                                  className={`text-xs font-bold ${
-                                    placeCategoryFilter === tab.id ? 'text-white' : 'text-brand-textSoft'
-                                  }`}
-                                >
-                                  {tab.label}
-                                </Text>
-                              </Pressable>
-                            ))}
-                          </View>
-
-                          {/* Action Buttons */}
-                          <View className="flex-row items-center gap-2">
-                            <Pressable
-                              onPress={() => {
-                                filteredPoolPlaces.forEach((p) => {
-                                  const exists = cartItems.some((it) => it.place.id === p.id);
-                                  if (!exists) handleAddToCart(p);
-                                });
-                              }}
-                              className="px-3 py-1.5 rounded-xl bg-brand-primary/10 border border-brand-primary/30 flex-row items-center gap-1"
-                            >
-                              <Sparkles size={12} color={BRAND_COLORS.primary} />
-                              <Text className="text-xs font-bold text-brand-primary">
-                                ⚡ Chọn tất cả ({filteredPoolPlaces.length})
-                              </Text>
-                            </Pressable>
-
-                            {cartItems.length > 0 && (
-                              <Pressable
-                                onPress={() => setCartItems([])}
-                                className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 flex-row items-center gap-1"
-                              >
-                                <Trash2 size={12} color="#E11D48" />
-                                <Text className="text-xs font-bold text-rose-600">Xóa giỏ ({cartItems.length})</Text>
-                              </Pressable>
-                            )}
-                          </View>
-                        </View>
-
-                        {/* Ô tìm kiếm */}
-                        <View className="flex-row items-center px-3.5 py-2.5 bg-white rounded-xl border border-brand-line/50 gap-2">
-                          <Text style={{ fontSize: 13 }}>🔍</Text>
-                          <TextInput
-                            value={placeSearchQuery}
-                            onChangeText={setPlaceSearchQuery}
-                            placeholder="Tìm kiếm địa điểm theo tên hoặc địa chỉ..."
-                            placeholderTextColor="#9CA3AF"
-                            className="flex-1 text-xs text-brand-text outline-none"
-                          />
-                          {placeSearchQuery ? (
-                            <Pressable onPress={() => setPlaceSearchQuery('')}>
-                              <X size={14} color="#9CA3AF" />
-                            </Pressable>
-                          ) : null}
-                        </View>
-
-                        {/* Danh sách địa điểm AI gợi ý */}
-                        <View className="flex-row flex-wrap gap-3">
-                          {filteredPoolPlaces.map((place) => {
-                            const isInCart = cartItems.some((it) => it.place.id === place.id);
-                            const cost = place.estimated_cost || 50000;
-
-                            return (
-                              <View
-                                key={place.id}
-                                className={`p-3.5 rounded-2xl border bg-white flex-1 min-w-[280px] max-w-[380px] gap-2.5 shadow-sm ${
-                                  isInCart ? 'border-brand-primary bg-emerald-50/20' : 'border-brand-line/50'
-                                }`}
-                              >
-                                <View className="flex-row items-start justify-between gap-2">
-                                  <View className="flex-1 gap-1">
-                                    <View className="flex-row items-center gap-2">
-                                      <View className="px-2 py-0.5 rounded-md bg-brand-bgAlt border border-brand-line/40">
-                                        <Text className="text-[10px] font-extrabold uppercase text-brand-textSoft">
-                                          {place.category || 'Địa điểm'}
-                                        </Text>
-                                      </View>
-                                      <Text className="text-xs font-extrabold text-emerald-700">
-                                        {new Intl.NumberFormat('vi-VN').format(cost)} đ
-                                      </Text>
-                                    </View>
-                                    <Text className="text-sm font-extrabold text-brand-text" numberOfLines={1}>
-                                      {place.name}
+                        {/* Layout 2 Cột: Bên trái Danh sách địa điểm, Bên phải Bản đồ tương tác */}
+                        <View className="flex-col lg:flex-row gap-5 items-start">
+                          {/* CỘT TRÁI: BỘ LỌC + DANH SÁCH ĐỊA ĐIỂM */}
+                          <View className="w-full lg:flex-1 gap-3.5">
+                            {/* Thanh lọc danh mục & Thao tác nhanh */}
+                            <View className="flex-row flex-wrap items-center justify-between gap-2.5 p-3 bg-white rounded-2xl border border-brand-line/50">
+                              {/* Filter Tabs */}
+                              <View className="flex-row flex-wrap items-center gap-1.5">
+                                {[
+                                  { id: 'all', label: 'Tất cả' },
+                                  { id: 'dining', label: 'Ẩm thực 🍽️' },
+                                  { id: 'cafe', label: 'Cà phê ☕' },
+                                  { id: 'attraction', label: 'Tham quan 🏔️' },
+                                  { id: 'hotel', label: 'Khách sạn 🏨' },
+                                ].map((tab) => (
+                                  <Pressable
+                                    key={tab.id}
+                                    onPress={() => setPlaceCategoryFilter(tab.id)}
+                                    className={`px-2.5 py-1.5 rounded-xl border ${
+                                      placeCategoryFilter === tab.id
+                                        ? 'bg-brand-primary border-brand-primary'
+                                        : 'bg-brand-bgAlt border-brand-line/50'
+                                    }`}
+                                  >
+                                    <Text
+                                      className={`text-xs font-bold ${
+                                        placeCategoryFilter === tab.id ? 'text-white' : 'text-brand-textSoft'
+                                      }`}
+                                    >
+                                      {tab.label}
                                     </Text>
-                                    {place.address && (
-                                      <Text className="text-[11px] text-brand-textSoft" numberOfLines={1}>
-                                        📍 {place.address}
-                                      </Text>
-                                    )}
-                                  </View>
-                                </View>
-
-                                <Pressable
-                                  testID={`btn-toggle-cart-${place.id}`}
-                                  onPress={() => handleAddToCart(place)}
-                                  className={`w-full py-2 px-3 rounded-xl flex-row items-center justify-center gap-1.5 ${
-                                    isInCart
-                                      ? 'bg-brand-primary/10 border border-brand-primary/30'
-                                      : 'bg-brand-primary active:opacity-90'
-                                  }`}
-                                >
-                                  {isInCart ? (
-                                    <>
-                                      <Check size={14} color={BRAND_COLORS.primary} />
-                                      <Text className="text-xs font-bold text-brand-primary">
-                                        ✓ Đã trong giỏ · Bấm để bỏ
-                                      </Text>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Plus size={14} color="#FFFFFF" />
-                                      <Text className="text-xs font-bold text-white">+ Thêm vào giỏ</Text>
-                                    </>
-                                  )}
-                                </Pressable>
+                                  </Pressable>
+                                ))}
                               </View>
-                            );
-                          })}
+
+                              {/* Action Buttons */}
+                              <View className="flex-row items-center gap-2">
+                                <Pressable
+                                  onPress={() => {
+                                    filteredPoolPlaces.forEach((p) => {
+                                      const exists = cartItems.some((it) => it.place.id === p.id);
+                                      if (!exists) handleAddToCart(p);
+                                    });
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-xl bg-brand-primary/10 border border-brand-primary/30 flex-row items-center gap-1"
+                                >
+                                  <Sparkles size={12} color={BRAND_COLORS.primary} />
+                                  <Text className="text-xs font-bold text-brand-primary">
+                                    ⚡ Chọn tất cả ({filteredPoolPlaces.length})
+                                  </Text>
+                                </Pressable>
+
+                                {cartItems.length > 0 && (
+                                  <Pressable
+                                    onPress={() => setCartItems([])}
+                                    className="px-2.5 py-1.5 rounded-xl bg-rose-50 border border-rose-200 flex-row items-center gap-1"
+                                  >
+                                    <Trash2 size={12} color="#E11D48" />
+                                    <Text className="text-xs font-bold text-rose-600">Xóa giỏ ({cartItems.length})</Text>
+                                  </Pressable>
+                                )}
+                              </View>
+                            </View>
+
+                            {/* Ô tìm kiếm */}
+                            <View className="flex-row items-center px-3.5 py-2.5 bg-white rounded-xl border border-brand-line/50 gap-2">
+                              <Text style={{ fontSize: 13 }}>🔍</Text>
+                              <TextInput
+                                value={placeSearchQuery}
+                                onChangeText={setPlaceSearchQuery}
+                                placeholder="Tìm kiếm địa điểm theo tên hoặc địa chỉ..."
+                                placeholderTextColor="#9CA3AF"
+                                className="flex-1 text-xs text-brand-text outline-none"
+                              />
+                              {placeSearchQuery ? (
+                                <Pressable onPress={() => setPlaceSearchQuery('')}>
+                                  <X size={14} color="#9CA3AF" />
+                                </Pressable>
+                              ) : null}
+                            </View>
+
+                            {/* Danh sách địa điểm AI gợi ý (2 cột trên desktop) */}
+                            <View className="flex-row flex-wrap gap-3">
+                              {filteredPoolPlaces.map((place) => {
+                                const isInCart = cartItems.some((it) => it.place.id === place.id);
+                                const cost = place.estimated_cost || 50000;
+                                const isHovered = hoveredPoolPlaceId === place.id;
+
+                                return (
+                                  <View
+                                    key={place.id}
+                                    // @ts-ignore
+                                    onMouseEnter={() => {
+                                      if (Platform.OS === 'web' && cartMapIframeRef.current?.contentWindow) {
+                                        cartMapIframeRef.current.contentWindow.postMessage({
+                                          type: 'PAN_TO_PLACE',
+                                          placeId: place.id
+                                        }, '*');
+                                      }
+                                    }}
+                                    className={`p-3.5 rounded-2xl border bg-white flex-1 min-w-[240px] max-w-[360px] gap-2.5 shadow-sm transition-all ${
+                                      isInCart
+                                        ? 'border-brand-primary bg-emerald-50/20'
+                                        : isHovered
+                                        ? 'border-brand-accent bg-amber-50/30'
+                                        : 'border-brand-line/50'
+                                    }`}
+                                  >
+                                    <View className="flex-row items-start justify-between gap-2">
+                                      <View className="flex-1 gap-1">
+                                        <View className="flex-row items-center gap-2">
+                                          <View className="px-2 py-0.5 rounded-md bg-brand-bgAlt border border-brand-line/40">
+                                            <Text className="text-[10px] font-extrabold uppercase text-brand-textSoft">
+                                              {place.category || 'Địa điểm'}
+                                            </Text>
+                                          </View>
+                                          <Text className="text-xs font-extrabold text-emerald-700">
+                                            {new Intl.NumberFormat('vi-VN').format(cost)} đ
+                                          </Text>
+                                        </View>
+                                        <Text className="text-sm font-extrabold text-brand-text" numberOfLines={1}>
+                                          {place.name}
+                                        </Text>
+                                        {place.address && (
+                                          <Text className="text-[11px] text-brand-textSoft" numberOfLines={1}>
+                                            📍 {place.address}
+                                          </Text>
+                                        )}
+                                      </View>
+                                    </View>
+
+                                    <Pressable
+                                      testID={`btn-toggle-cart-${place.id}`}
+                                      onPress={() => handleAddToCart(place)}
+                                      className={`w-full py-2 px-3 rounded-xl flex-row items-center justify-center gap-1.5 ${
+                                        isInCart
+                                          ? 'bg-brand-primary/10 border border-brand-primary/30'
+                                          : 'bg-brand-primary active:opacity-90'
+                                      }`}
+                                    >
+                                      {isInCart ? (
+                                        <>
+                                          <Check size={14} color={BRAND_COLORS.primary} />
+                                          <Text className="text-xs font-bold text-brand-primary">
+                                            ✓ Đã trong giỏ · Bấm để bỏ
+                                          </Text>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Plus size={14} color="#FFFFFF" />
+                                          <Text className="text-xs font-bold text-white">+ Thêm vào giỏ</Text>
+                                        </>
+                                      )}
+                                    </Pressable>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          </View>
+
+                          {/* CỘT PHẢI: BẢN ĐỒ TƯƠNG TÁC GOOGLE MAPS TILES */}
+                          <View className="w-full lg:w-[420px] rounded-2xl overflow-hidden border border-brand-line/50 shadow-md bg-white min-h-[460px] lg:min-h-[580px] lg:sticky lg:top-4">
+                            <View className="p-3 bg-white border-b border-brand-line/40 flex-row items-center justify-between">
+                              <View className="flex-row items-center gap-2">
+                                <MapPin size={15} color={BRAND_COLORS.primary} />
+                                <Text className="text-xs font-extrabold text-brand-text">
+                                  Bản đồ Gợi ý ({filteredPoolPlaces.length} điểm)
+                                </Text>
+                              </View>
+                              <Text className="text-[10px] text-brand-textSoft italic">
+                                Trỏ vào để định vị · Bấm pin để thêm
+                              </Text>
+                            </View>
+
+                            {Platform.OS === 'web' ? (
+                              <iframe
+                                ref={cartMapIframeRef}
+                                srcDoc={cartMapIframeHTML}
+                                style={{ width: '100%', height: 530, border: 'none' }}
+                              />
+                            ) : null}
+                          </View>
                         </View>
 
                         {/* Thanh tổng kết giỏ hàng & Nút mở Calendar */}
@@ -1619,18 +1840,15 @@ export default function TripWizard() {
                               <Text className="text-xs font-extrabold text-brand-text">
                                 Không gian Lập lịch Google Calendar ({cartItems.length} địa điểm trong giỏ)
                               </Text>
-                              <Text className="text-[10px] text-brand-textSoft">
-                                Kéo thả các địa điểm từ Khay giỏ hàng bên dưới vào các khung giờ của Ngày 1, Ngày 2...
-                              </Text>
                             </View>
                           </View>
 
                           <Pressable
                             testID="btn-back-to-pick-places"
                             onPress={() => setWorkspaceStage('collecting')}
-                            className="px-3 py-1.5 rounded-lg bg-brand-bgAlt border border-brand-line/40 flex-row items-center gap-1.5"
+                            className="px-3.5 py-1.5 rounded-xl bg-brand-bgAlt border border-brand-line/50 flex-row items-center gap-1.5"
                           >
-                            <Plus size={12} color={BRAND_COLORS.primary} />
+                            <Plus size={13} color={BRAND_COLORS.primary} />
                             <Text className="text-xs font-bold text-brand-primary">Thêm/bớt địa điểm khác</Text>
                           </Pressable>
                         </View>
@@ -1638,6 +1856,7 @@ export default function TripWizard() {
                         <GoogleCalendarWorkspace
                           cityName={destinationCity}
                           totalBudget={budgetTotal}
+                          budgetBreakdown={budgetBreakdown}
                           daysCount={daysCount}
                           initialEvents={calendarInitialEvents}
                           standbyPlaces={calendarStandbyPlaces}
