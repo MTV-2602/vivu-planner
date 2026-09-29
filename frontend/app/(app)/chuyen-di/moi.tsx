@@ -617,21 +617,21 @@ export default function TripWizard() {
   }, [cartItems]);
 
   const calendarStandbyPlaces: StandbyPlaceItem[] = useMemo(() => {
-    const inCartIds = new Set(cartItems.map(it => it.place.id));
-    const pool = pregenPlaces.length > 0 ? pregenPlaces : getCuratedPlacesForCity(destinationCity);
-    return pool
-      .filter(p => !inCartIds.has(p.id))
-      .map(p => ({
-        id: p.id,
-        name: p.name,
-        category: p.category,
-        address: p.address,
-        lat: p.lat,
-        lng: p.lng,
-        cost: p.estimated_cost || 50000,
+    // Chỉ đưa vào Giỏ chờ những địa điểm người dùng ĐÃ TỰ TAY CHỌN VÀO GIỎ HÀNG (cartItems) và chưa được xếp giờ
+    const assignedIds = new Set(cartItems.filter(it => it.day_number > 0).map(it => it.place.id));
+    return cartItems
+      .filter(it => !assignedIds.has(it.place.id))
+      .map(it => ({
+        id: it.place.id,
+        name: it.place.name,
+        category: it.place.category,
+        address: it.place.address,
+        lat: it.place.lat,
+        lng: it.place.lng,
+        cost: it.custom_cost,
         suggestedDuration: 90,
       }));
-  }, [cartItems, pregenPlaces, destinationCity]);
+  }, [cartItems]);
 
   const handleCalendarEventsChange = (updatedEvents: CalendarEventItem[]) => {
     setCartItems(prev => {
@@ -1411,9 +1411,230 @@ export default function TripWizard() {
                           Đang phân tích ngân sách {new Intl.NumberFormat('vi-VN').format(budgetTotal)} đ và sở thích "{selectedPrefs.join(', ') || 'ẩm thực, trải nghiệm'}" tại {destinationCity} để gợi ý các địa điểm chất lượng cao, tọa độ chuẩn xác.
                         </Text>
                       </View>
+                    ) : workspaceStage === 'collecting' ? (
+                      /* BƯỚC 4A: GỢI Ý ĐỊA ĐIỂM TỪ AI ĐỂ NGƯỜI DÙNG TỰ CHỌN VÀO GIỎ */
+                      <View className="gap-5">
+                        {/* Header giải thích */}
+                        <View className="gap-1.5 p-4 rounded-2xl bg-brand-primary/5 border border-brand-primary/20">
+                          <View className="flex-row items-center gap-2">
+                            <Sparkles size={18} color={BRAND_COLORS.primary} />
+                            <Text className="text-base font-extrabold text-brand-text">
+                              Gợi ý Địa điểm từ AI cho chuyến đi {destinationCity}
+                            </Text>
+                          </View>
+                          <Text className="text-xs text-brand-textSoft leading-relaxed">
+                            AI đã phân tích {daysCount} ngày, ngân sách {new Intl.NumberFormat('vi-VN').format(budgetTotal)} đ và sở thích của bạn. Hãy chọn các địa điểm bạn muốn vào Giỏ hàng bên dưới để xếp lịch trên Google Calendar!
+                          </Text>
+                        </View>
+
+                        {/* Thanh lọc danh mục & Thao tác nhanh */}
+                        <View className="flex-row flex-wrap items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-brand-line/50">
+                          {/* Filter Tabs */}
+                          <View className="flex-row flex-wrap items-center gap-1.5">
+                            {[
+                              { id: 'all', label: 'Tất cả' },
+                              { id: 'dining', label: 'Ẩm thực 🍽️' },
+                              { id: 'cafe', label: 'Cà phê ☕' },
+                              { id: 'attraction', label: 'Tham quan 🏔️' },
+                              { id: 'hotel', label: 'Khách sạn 🏨' },
+                            ].map((tab) => (
+                              <Pressable
+                                key={tab.id}
+                                onPress={() => setPlaceCategoryFilter(tab.id)}
+                                className={`px-3 py-1.5 rounded-xl border ${
+                                  placeCategoryFilter === tab.id
+                                    ? 'bg-brand-primary border-brand-primary'
+                                    : 'bg-brand-bgAlt border-brand-line/50'
+                                }`}
+                              >
+                                <Text
+                                  className={`text-xs font-bold ${
+                                    placeCategoryFilter === tab.id ? 'text-white' : 'text-brand-textSoft'
+                                  }`}
+                                >
+                                  {tab.label}
+                                </Text>
+                              </Pressable>
+                            ))}
+                          </View>
+
+                          {/* Action Buttons */}
+                          <View className="flex-row items-center gap-2">
+                            <Pressable
+                              onPress={() => {
+                                filteredPoolPlaces.forEach((p) => {
+                                  const exists = cartItems.some((it) => it.place.id === p.id);
+                                  if (!exists) handleAddToCart(p);
+                                });
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-brand-primary/10 border border-brand-primary/30 flex-row items-center gap-1"
+                            >
+                              <Sparkles size={12} color={BRAND_COLORS.primary} />
+                              <Text className="text-xs font-bold text-brand-primary">
+                                ⚡ Chọn tất cả ({filteredPoolPlaces.length})
+                              </Text>
+                            </Pressable>
+
+                            {cartItems.length > 0 && (
+                              <Pressable
+                                onPress={() => setCartItems([])}
+                                className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 flex-row items-center gap-1"
+                              >
+                                <Trash2 size={12} color="#E11D48" />
+                                <Text className="text-xs font-bold text-rose-600">Xóa giỏ ({cartItems.length})</Text>
+                              </Pressable>
+                            )}
+                          </View>
+                        </View>
+
+                        {/* Ô tìm kiếm */}
+                        <View className="flex-row items-center px-3.5 py-2.5 bg-white rounded-xl border border-brand-line/50 gap-2">
+                          <Text style={{ fontSize: 13 }}>🔍</Text>
+                          <TextInput
+                            value={placeSearchQuery}
+                            onChangeText={setPlaceSearchQuery}
+                            placeholder="Tìm kiếm địa điểm theo tên hoặc địa chỉ..."
+                            placeholderTextColor="#9CA3AF"
+                            className="flex-1 text-xs text-brand-text outline-none"
+                          />
+                          {placeSearchQuery ? (
+                            <Pressable onPress={() => setPlaceSearchQuery('')}>
+                              <X size={14} color="#9CA3AF" />
+                            </Pressable>
+                          ) : null}
+                        </View>
+
+                        {/* Danh sách địa điểm AI gợi ý */}
+                        <View className="flex-row flex-wrap gap-3">
+                          {filteredPoolPlaces.map((place) => {
+                            const isInCart = cartItems.some((it) => it.place.id === place.id);
+                            const cost = place.estimated_cost || 50000;
+
+                            return (
+                              <View
+                                key={place.id}
+                                className={`p-3.5 rounded-2xl border bg-white flex-1 min-w-[280px] max-w-[380px] gap-2.5 shadow-sm ${
+                                  isInCart ? 'border-brand-primary bg-emerald-50/20' : 'border-brand-line/50'
+                                }`}
+                              >
+                                <View className="flex-row items-start justify-between gap-2">
+                                  <View className="flex-1 gap-1">
+                                    <View className="flex-row items-center gap-2">
+                                      <View className="px-2 py-0.5 rounded-md bg-brand-bgAlt border border-brand-line/40">
+                                        <Text className="text-[10px] font-extrabold uppercase text-brand-textSoft">
+                                          {place.category || 'Địa điểm'}
+                                        </Text>
+                                      </View>
+                                      <Text className="text-xs font-extrabold text-emerald-700">
+                                        {new Intl.NumberFormat('vi-VN').format(cost)} đ
+                                      </Text>
+                                    </View>
+                                    <Text className="text-sm font-extrabold text-brand-text" numberOfLines={1}>
+                                      {place.name}
+                                    </Text>
+                                    {place.address && (
+                                      <Text className="text-[11px] text-brand-textSoft" numberOfLines={1}>
+                                        📍 {place.address}
+                                      </Text>
+                                    )}
+                                  </View>
+                                </View>
+
+                                <Pressable
+                                  testID={`btn-toggle-cart-${place.id}`}
+                                  onPress={() => handleAddToCart(place)}
+                                  className={`w-full py-2 px-3 rounded-xl flex-row items-center justify-center gap-1.5 ${
+                                    isInCart
+                                      ? 'bg-brand-primary/10 border border-brand-primary/30'
+                                      : 'bg-brand-primary active:opacity-90'
+                                  }`}
+                                >
+                                  {isInCart ? (
+                                    <>
+                                      <Check size={14} color={BRAND_COLORS.primary} />
+                                      <Text className="text-xs font-bold text-brand-primary">
+                                        ✓ Đã trong giỏ · Bấm để bỏ
+                                      </Text>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Plus size={14} color="#FFFFFF" />
+                                      <Text className="text-xs font-bold text-white">+ Thêm vào giỏ</Text>
+                                    </>
+                                  )}
+                                </Pressable>
+                              </View>
+                            );
+                          })}
+                        </View>
+
+                        {/* Thanh tổng kết giỏ hàng & Nút mở Calendar */}
+                        <View className="p-4 rounded-2xl bg-[#FFFBF0] border border-[#F5D599] flex-row items-center justify-between gap-3 shadow-md mt-2">
+                          <View className="flex-row items-center gap-3">
+                            <View className="w-10 h-10 rounded-xl bg-brand-accent/20 items-center justify-center">
+                              <ShoppingBag size={20} color={BRAND_COLORS.accent} />
+                            </View>
+                            <View>
+                              <Text className="text-sm font-extrabold text-[#9A5B00]">
+                                🛒 Giỏ hàng: {cartItems.length} địa điểm
+                              </Text>
+                              <Text className="text-xs text-[#7A5210]">
+                                Dự tính: {new Intl.NumberFormat('vi-VN').format(currentCartTotal)} đ / Ngân sách:{' '}
+                                {new Intl.NumberFormat('vi-VN').format(budgetTotal)} đ
+                              </Text>
+                            </View>
+                          </View>
+
+                          <Pressable
+                            testID="btn-open-calendar-from-cart"
+                            disabled={cartItems.length === 0}
+                            onPress={() => {
+                              if (cartItems.length === 0) {
+                                setErrorMsg('Vui lòng chọn ít nhất 1 địa điểm vào giỏ hàng trước khi lên lịch!');
+                                return;
+                              }
+                              setErrorMsg('');
+                              setWorkspaceStage('scheduling');
+                            }}
+                            className={`px-5 py-3 rounded-xl flex-row items-center gap-2 shadow-sm ${
+                              cartItems.length === 0 ? 'bg-gray-300 opacity-60' : 'bg-brand-primary active:opacity-90'
+                            }`}
+                          >
+                            <Calendar size={16} color="#FFFFFF" />
+                            <Text className="text-xs font-extrabold text-white">
+                              🚀 Mở Google Calendar & Xếp lịch ({cartItems.length} điểm) →
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </View>
                     ) : (
-                      /* KHÔNG GIAN LẬP LỊCH GOOGLE CALENDAR & GOOGLE MAPS DUY NHẤT */
-                      <View className="w-full">
+                      /* BƯỚC 4B: KHÔNG GIAN LẬP LỊCH GOOGLE CALENDAR & GOOGLE MAPS */
+                      <View className="w-full gap-3">
+                        <View className="flex-row items-center justify-between p-3 rounded-2xl bg-white border border-brand-line/40 shadow-sm">
+                          <View className="flex-row items-center gap-2">
+                            <View className="w-8 h-8 rounded-lg bg-brand-primary items-center justify-center">
+                              <Calendar size={16} color="#FFFFFF" />
+                            </View>
+                            <View>
+                              <Text className="text-xs font-extrabold text-brand-text">
+                                Không gian Lập lịch Google Calendar ({cartItems.length} địa điểm trong giỏ)
+                              </Text>
+                              <Text className="text-[10px] text-brand-textSoft">
+                                Kéo thả các địa điểm từ Khay giỏ hàng bên dưới vào các khung giờ của Ngày 1, Ngày 2...
+                              </Text>
+                            </View>
+                          </View>
+
+                          <Pressable
+                            testID="btn-back-to-pick-places"
+                            onPress={() => setWorkspaceStage('collecting')}
+                            className="px-3 py-1.5 rounded-lg bg-brand-bgAlt border border-brand-line/40 flex-row items-center gap-1.5"
+                          >
+                            <Plus size={12} color={BRAND_COLORS.primary} />
+                            <Text className="text-xs font-bold text-brand-primary">Thêm/bớt địa điểm khác</Text>
+                          </Pressable>
+                        </View>
+
                         <GoogleCalendarWorkspace
                           cityName={destinationCity}
                           totalBudget={budgetTotal}

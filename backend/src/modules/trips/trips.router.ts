@@ -1811,20 +1811,40 @@ router.post('/days/:dayId/items', requireAuth, async (req: any, res: Response) =
 router.put('/days/:dayId/reorder-items', requireAuth, async (req: any, res: Response) => {
   const client = getSupabaseUserClient(req.token!);
   const dayId = req.params.dayId;
-  const { item_ids } = req.body;
+  const { item_ids, schedule } = req.body;
 
   if (!Array.isArray(item_ids)) {
     return res.status(400).json({ error: 'item_ids must be an array of item IDs' });
   }
 
+  const DEFAULT_TIMES = [
+    { start: '08:00:00', end: '09:30:00' },
+    { start: '09:30:00', end: '11:00:00' },
+    { start: '11:30:00', end: '13:00:00' },
+    { start: '13:30:00', end: '15:30:00' },
+    { start: '15:30:00', end: '17:30:00' },
+    { start: '18:00:00', end: '19:30:00' },
+    { start: '20:00:00', end: '21:30:00' },
+    { start: '21:30:00', end: '23:00:00' },
+  ];
+
   try {
-    const updatePromises = item_ids.map((itemId: string, index: number) =>
-      client
+    const updatePromises = item_ids.map((itemId: string, index: number) => {
+      const explicit = Array.isArray(schedule) ? schedule.find((s: any) => s.id === itemId) : null;
+      const updateData: any = { order_index: index + 1 };
+      if (explicit?.start_time) {
+        updateData.start_time = formatTimeForDb(explicit.start_time);
+        updateData.end_time = formatTimeForDb(explicit.end_time) || null;
+      } else if (index < DEFAULT_TIMES.length) {
+        updateData.start_time = DEFAULT_TIMES[index].start;
+        updateData.end_time = DEFAULT_TIMES[index].end;
+      }
+      return client
         .from('itinerary_items')
-        .update({ order_index: index + 1 })
+        .update(updateData)
         .eq('id', itemId)
-        .eq('day_id', dayId)
-    );
+        .eq('day_id', dayId);
+    });
 
     const results = await Promise.all(updatePromises);
     const hasError = results.find(r => r.error);
@@ -1840,12 +1860,71 @@ router.put('/days/:dayId/reorder-items', requireAuth, async (req: any, res: Resp
 
     return res.json({
       success: true,
-      message: 'Items reordered successfully',
+      message: 'Items reordered successfully with updated schedule',
       items: updatedItems || []
     });
   } catch (error: any) {
     console.error('[Reorder Items Route] Error:', error.message);
     return res.status(500).json({ error: 'Failed to reorder itinerary items', details: error.message });
+  }
+});
+
+// 2.7 PUT /api/trips/:id/sync-calendar - Lưu toàn bộ lịch trình Calendar kéo thả
+router.put('/:id/sync-calendar', requireAuth, async (req: any, res: Response) => {
+  const client = getSupabaseUserClient(req.token!);
+  const tripId = req.params.id;
+  const { events } = req.body;
+
+  if (!Array.isArray(events)) {
+    return res.status(400).json({ error: 'events must be an array' });
+  }
+
+  try {
+    // 1. Lấy danh sách các ngày của trip
+    const { data: days, error: daysErr } = await client
+      .from('itinerary_days')
+      .select('id, day_number')
+      .eq('trip_id', tripId)
+      .order('day_number', { ascending: true });
+
+    if (daysErr) throw daysErr;
+
+    const dayMap = new Map<number, string>();
+    days?.forEach((d: any) => dayMap.set(Number(d.day_number), d.id));
+
+    // 2. Cập nhật từng item
+    const updatePromises = events.map(async (ev: any, index: number) => {
+      const dayId = dayMap.get(Number(ev.dayNumber));
+      if (!dayId) return null;
+
+      const startH = Number(ev.startHour) || 8;
+      const startM = Number(ev.startMinute) || 0;
+      const dur = Number(ev.durationMinutes) || 90;
+      const endTotalM = startH * 60 + startM + dur;
+      const endH = Math.floor(endTotalM / 60);
+      const endM = endTotalM % 60;
+
+      const startTimeStr = `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}:00`;
+      const endTimeStr = `${String(Math.min(23, endH)).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`;
+
+      return client
+        .from('itinerary_items')
+        .update({
+          day_id: dayId,
+          start_time: startTimeStr,
+          end_time: endTimeStr,
+          order_index: index + 1,
+          estimated_cost: ev.cost !== undefined ? ev.cost : undefined,
+        })
+        .eq('id', ev.id);
+    });
+
+    await Promise.all(updatePromises);
+
+    return res.json({ success: true, message: 'Lịch trình Calendar đã được đồng bộ thành công' });
+  } catch (error: any) {
+    console.error('[Sync Calendar Route] Error:', error.message);
+    return res.status(500).json({ error: 'Failed to sync calendar', details: error.message });
   }
 });
 

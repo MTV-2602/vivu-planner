@@ -18,7 +18,8 @@ import {
   ArrowUp,
   Car,
   Check,
-  RotateCcw
+  RotateCcw,
+  ExternalLink
 } from 'lucide-react-native';
 import { BRAND_COLORS } from '../../constants';
 import { getCityCenterCoords } from '../map/CuratedMap';
@@ -65,14 +66,14 @@ export interface GoogleCalendarWorkspaceProps {
 
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 07:00 -> 21:00
 
-const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string; lightBg: string }> = {
-  dining: { bg: '#E6F4EA', border: '#137333', text: '#137333', lightBg: '#CEEAD6' },
-  accommodation: { bg: '#F3E8FD', border: '#8430CE', text: '#8430CE', lightBg: '#E9D2FD' },
-  attraction: { bg: '#E8F0FE', border: '#1A73E8', text: '#1A73E8', lightBg: '#D2E3FC' },
-  cafe: { bg: '#FEF7E0', border: '#B06000', text: '#B06000', lightBg: '#FEEFC3' },
-  rental: { bg: '#FCE8E6', border: '#C5221F', text: '#C5221F', lightBg: '#FAD2CF' },
-  transport: { bg: '#F1F3F4', border: '#5F6368', text: '#3C4043', lightBg: '#E8EAED' },
-  default: { bg: '#E8F0FE', border: '#1A73E8', text: '#1A73E8', lightBg: '#D2E3FC' },
+const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string; lightBg: string; emoji: string }> = {
+  dining: { bg: '#E6F4EA', border: '#137333', text: '#137333', lightBg: '#CEEAD6', emoji: '🍽️' },
+  accommodation: { bg: '#F3E8FD', border: '#8430CE', text: '#8430CE', lightBg: '#E9D2FD', emoji: '🏨' },
+  attraction: { bg: '#E8F0FE', border: '#1A73E8', text: '#1A73E8', lightBg: '#D2E3FC', emoji: '🏔️' },
+  cafe: { bg: '#FEF7E0', border: '#B06000', text: '#B06000', lightBg: '#FEEFC3', emoji: '☕' },
+  rental: { bg: '#FCE8E6', border: '#C5221F', text: '#C5221F', lightBg: '#FAD2CF', emoji: '🛵' },
+  transport: { bg: '#F1F3F4', border: '#5F6368', text: '#3C4043', lightBg: '#E8EAED', emoji: '🚌' },
+  default: { bg: '#E8F0FE', border: '#1A73E8', text: '#1A73E8', lightBg: '#D2E3FC', emoji: '📍' },
 };
 
 export default function GoogleCalendarWorkspace({
@@ -92,23 +93,22 @@ export default function GoogleCalendarWorkspace({
   const [activeDay, setActiveDay] = useState(1);
   const [daysCount, setDaysCount] = useState(propDaysCount);
 
-  // Lấy dữ liệu thực tế: Toàn bộ địa điểm đưa vào Giỏ hàng chờ xếp lịch (standbyList), Lịch trình Google Calendar ban đầu TRỐNG!
+  // Khởi tạo dữ liệu
   const initialData = useMemo(() => {
-    // 1. Nếu có initialEvents từ props (đã được lưu/sắp xếp từ trước)
+    // 1. Nếu có initialEvents từ props
     if (initialEvents && initialEvents.length > 0) {
       return {
         evs: initialEvents,
-        stb: propStandbyPlaces || [],
+        stb: propStandbyPlaces !== undefined ? propStandbyPlaces : [],
       };
     }
 
-    // 2. MỚI VÀO CHƯA SẮP XẾP GÌ:
-    // Toàn bộ địa điểm phải nằm ở Giỏ hàng (standbyList), evs là RỖNG ([])
+    // 2. Mới vào: nếu có propStandbyPlaces (kể cả rỗng []), tôn trọng propStandbyPlaces!
     let stb: StandbyPlaceItem[] = [];
-
-    if (propStandbyPlaces && propStandbyPlaces.length > 0) {
+    if (propStandbyPlaces !== undefined) {
       stb = propStandbyPlaces;
     } else {
+      // Chỉ fallback khi chạy độc lập / demo không truyền propStandbyPlaces
       const cityPlaces = getCuratedPlacesForCity(cityName);
       stb = cityPlaces.map((p) => ({
         id: p.id,
@@ -130,7 +130,15 @@ export default function GoogleCalendarWorkspace({
   const [standbyList, setStandbyList] = useState<StandbyPlaceItem[]>(initialData.stb);
   const isInitializedRef = useRef(false);
 
-  // Đồng bộ khi props thay đổi từ component cha (chỉ chạy khởi tạo một lần, không ghi đè khi người dùng đang xếp lịch)
+  // Refs để luôn đọc giá trị mới nhất trong pointer listeners
+  const eventsRef = useRef(events);
+  eventsRef.current = events;
+  const standbyListRef = useRef(standbyList);
+  standbyListRef.current = standbyList;
+  const activeDayRef = useRef(activeDay);
+  activeDayRef.current = activeDay;
+
+  // Đồng bộ props
   useEffect(() => {
     setDaysCount(propDaysCount);
   }, [propDaysCount]);
@@ -140,39 +148,48 @@ export default function GoogleCalendarWorkspace({
       if (initialEvents && initialEvents.length > 0) {
         setEvents(initialEvents);
       }
-      if (propStandbyPlaces && propStandbyPlaces.length > 0) {
+      if (propStandbyPlaces !== undefined) {
         setStandbyList(propStandbyPlaces);
       }
       isInitializedRef.current = true;
     }
   }, [initialEvents, propStandbyPlaces]);
 
-  // Báo thay đổi ra ngoài component cha
+  // Thông báo thay đổi
   const notifyChanges = (newEvents: CalendarEventItem[], newStandby: StandbyPlaceItem[]) => {
     if (onEventsChange) onEventsChange(newEvents);
     if (onStandbyChange) onStandbyChange(newStandby);
   };
 
-  // State chọn điểm để gán nhanh (Click-to-place)
+  // State chọn điểm để gán nhanh (1-click place)
   const [selectedPlaceToPlace, setSelectedPlaceToPlace] = useState<StandbyPlaceItem | null>(null);
 
-  // Kéo thả trạng thái
-  const [draggedData, setDraggedData] = useState<{
-    type: 'standby' | 'event';
+  // ── REAL POINTER DRAG & DROP STATE ──
+  const [pointerDrag, setPointerDrag] = useState<{
+    type: 'event' | 'standby';
     id: string;
     item: StandbyPlaceItem | CalendarEventItem;
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
   } | null>(null);
+  const pointerDragRef = useRef(pointerDrag);
+  pointerDragRef.current = pointerDrag;
+
   const [hoveredHourSlot, setHoveredHourSlot] = useState<number | null>(null);
   const [hoveredCartZone, setHoveredCartZone] = useState(false);
+  const [hoveredDayTab, setHoveredDayTab] = useState<number | null>(null);
+  const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null);
 
-  // Sự kiện của ngày đang kích hoạt
+  // Sự kiện của ngày đang kích hoạt (sắp xếp theo thời gian)
   const currentDayEvents = useMemo(() => {
     return events
       .filter((ev) => Number(ev.dayNumber) === Number(activeDay))
       .sort((a, b) => a.startHour * 60 + a.startMinute - (b.startHour * 60 + b.startMinute));
   }, [events, activeDay]);
 
-  // Kế hoạch ngân sách phân bổ theo từng danh mục (Dự định)
+  // Kế hoạch ngân sách phân bổ theo danh mục
   const plannedBudget = useMemo(() => {
     const total = Number(totalBudget) || 5000000;
     return {
@@ -184,7 +201,7 @@ export default function GoogleCalendarWorkspace({
     };
   }, [totalBudget]);
 
-  // Tính toán ngân sách Đã dùng và Còn lại theo ma trận Excel (Image 5)
+  // Bảng ngân sách ma trận Excel
   const budgetStats = useMemo(() => {
     const totalScheduled = events.reduce((sum, ev) => sum + (Number(ev.cost) || 0), 0);
     const dayScheduled = currentDayEvents.reduce((sum, ev) => sum + (Number(ev.cost) || 0), 0);
@@ -199,12 +216,12 @@ export default function GoogleCalendarWorkspace({
     };
 
     events.forEach((ev) => {
-      const c = (ev.category || "").toLowerCase();
-      if (c === "dining" || c.includes("ăn") || c.includes("food")) {
+      const c = (ev.category || '').toLowerCase();
+      if (c === 'dining' || c.includes('ăn') || c.includes('food')) {
         used.dining += Number(ev.cost) || 0;
-      } else if (c === "cafe" || c.includes("cà phê") || c.includes("coffee")) {
+      } else if (c === 'cafe' || c.includes('cà phê') || c.includes('coffee')) {
         used.cafe += Number(ev.cost) || 0;
-      } else if (c === "attraction" || c.includes("chơi") || c.includes("tham quan")) {
+      } else if (c === 'attraction' || c.includes('chơi') || c.includes('tham quan')) {
         used.attraction += Number(ev.cost) || 0;
       } else {
         used.other += Number(ev.cost) || 0;
@@ -229,7 +246,7 @@ export default function GoogleCalendarWorkspace({
     };
   }, [events, currentDayEvents, totalBudget, plannedBudget]);
 
-  // Tọa độ trung tâm thành phố thực tế
+  // Tọa độ trung tâm thành phố
   const { centerLat, centerLng } = useMemo(() => {
     const allCoords = [
       ...currentDayEvents.filter((e) => e.lat && e.lng),
@@ -319,69 +336,156 @@ export default function GoogleCalendarWorkspace({
     notifyChanges(nextEvents, standbyList);
   };
 
-  // Drag and drop handlers
-  const handleDragStartStandby = (item: StandbyPlaceItem, e: any) => {
+  // ── XỬ LÝ REAL POINTER DRAG & DROP TRÊN WEB ──
+  const handleStartPointerDrag = (
+    item: StandbyPlaceItem | CalendarEventItem,
+    type: 'event' | 'standby',
+    e: any
+  ) => {
     if (readOnly) return;
-    setDraggedData({ type: 'standby', id: item.id, item });
-    if (e?.dataTransfer) {
-      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'standby', id: item.id }));
-      e.dataTransfer.effectAllowed = 'copyMove';
+    if (e?.button !== undefined && e.button !== 0) return; // Chỉ chuột trái
+
+    const clientX = e?.clientX ?? (e?.touches && e.touches[0]?.clientX) ?? 0;
+    const clientY = e?.clientY ?? (e?.touches && e.touches[0]?.clientY) ?? 0;
+
+    const dragObj = {
+      type,
+      id: item.id,
+      item,
+      startX: clientX,
+      startY: clientY,
+      currentX: clientX,
+      currentY: clientY,
+    };
+    setPointerDrag(dragObj);
+    pointerDragRef.current = dragObj;
+
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'grabbing';
     }
   };
 
-  const handleDragStartEvent = (event: CalendarEventItem, e: any) => {
-    if (readOnly) return;
-    setDraggedData({ type: 'event', id: event.id, item: event });
-    if (e?.dataTransfer) {
-      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'event', id: event.id }));
-      e.dataTransfer.effectAllowed = 'move';
-    }
-  };
+  // Global Pointer / Mouse Move & Up Listeners
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
-  const handleDragOverHour = (hour: number, e: any) => {
-    if (readOnly) return;
-    if (e?.preventDefault) e.preventDefault();
-    if (hoveredHourSlot !== hour) setHoveredHourSlot(hour);
-  };
+    const handleGlobalPointerMove = (e: MouseEvent | TouchEvent) => {
+      if (!pointerDragRef.current) return;
+      const clientX = 'clientX' in e ? e.clientX : e.touches[0]?.clientX || 0;
+      const clientY = 'clientY' in e ? e.clientY : e.touches[0]?.clientY || 0;
 
-  const handleDropOnHour = (hour: number, e: any) => {
-    if (readOnly) return;
-    if (e?.preventDefault) e.preventDefault();
-    setHoveredHourSlot(null);
+      setPointerDrag((prev) => (prev ? { ...prev, currentX: clientX, currentY: clientY } : null));
 
-    // 1. Thả từ Giỏ chờ vào giờ
-    if (draggedData && draggedData.type === 'standby') {
-      const standbyItem = standbyList.find((s) => s.id === draggedData.id) || (draggedData.item as StandbyPlaceItem);
-      if (standbyItem) {
-        addPlaceToCalendar(standbyItem, hour);
+      const elem = document.elementFromPoint(clientX, clientY);
+      if (elem) {
+        const hourEl = elem.closest('[data-hour]');
+        if (hourEl) {
+          const h = parseInt(hourEl.getAttribute('data-hour') || '', 10);
+          if (!isNaN(h)) setHoveredHourSlot(h);
+        } else {
+          setHoveredHourSlot(null);
+        }
+
+        const cartEl = elem.closest('[data-cart-dropzone]');
+        setHoveredCartZone(!!cartEl);
+
+        const dayEl = elem.closest('[data-day-tab]');
+        if (dayEl) {
+          const d = parseInt(dayEl.getAttribute('data-day-tab') || '', 10);
+          if (!isNaN(d)) setHoveredDayTab(d);
+        } else {
+          setHoveredDayTab(null);
+        }
       }
-    } else if (draggedData && draggedData.type === 'event') {
-      // 2. Thả đổi giờ sự kiện
-      const nextEvents = events.map((ev) =>
-        ev.id === draggedData.id ? { ...ev, startHour: hour, dayNumber: activeDay } : ev
-      );
-      setEvents(nextEvents);
-      notifyChanges(nextEvents, standbyList);
-    }
+    };
 
-    setDraggedData(null);
-  };
+    const handleGlobalPointerUp = (e: MouseEvent | TouchEvent) => {
+      const cur = pointerDragRef.current;
+      if (!cur) return;
 
-  const handleDropOnCart = (e: any) => {
-    if (readOnly) return;
-    if (e?.preventDefault) e.preventDefault();
-    setHoveredCartZone(false);
+      const clientX =
+        'clientX' in e
+          ? e.clientX
+          : ('changedTouches' in e && e.changedTouches[0]?.clientX) || cur.currentX;
+      const clientY =
+        'clientY' in e
+          ? e.clientY
+          : ('changedTouches' in e && e.changedTouches[0]?.clientY) || cur.currentY;
 
-    if (draggedData && draggedData.type === 'event') {
-      removeEventToStandby(draggedData.id);
-    }
-    setDraggedData(null);
-  };
+      const elem = document.elementFromPoint(clientX, clientY);
+      const hourEl = elem?.closest('[data-hour]');
+      const cartEl = elem?.closest('[data-cart-dropzone]');
+      const dayEl = elem?.closest('[data-day-tab]');
+
+      if (hourEl) {
+        const targetHour = parseInt(hourEl.getAttribute('data-hour') || '', 10);
+        if (!isNaN(targetHour)) {
+          if (cur.type === 'standby') {
+            const standbyItem =
+              standbyListRef.current.find((s) => s.id === cur.id) || (cur.item as StandbyPlaceItem);
+            if (standbyItem) {
+              addPlaceToCalendar(standbyItem, targetHour);
+            }
+          } else if (cur.type === 'event') {
+            const nextEvents = eventsRef.current.map((ev) =>
+              ev.id === cur.id ? { ...ev, startHour: targetHour, dayNumber: activeDayRef.current } : ev
+            );
+            setEvents(nextEvents);
+            notifyChanges(nextEvents, standbyListRef.current);
+          }
+        }
+      } else if (cartEl) {
+        if (cur.type === 'event') {
+          removeEventToStandby(cur.id);
+        }
+      } else if (dayEl) {
+        const targetDay = parseInt(dayEl.getAttribute('data-day-tab') || '', 10);
+        if (!isNaN(targetDay) && cur.type === 'event') {
+          const nextEvents = eventsRef.current.map((ev) =>
+            ev.id === cur.id ? { ...ev, dayNumber: targetDay } : ev
+          );
+          setEvents(nextEvents);
+          notifyChanges(nextEvents, standbyListRef.current);
+        }
+      }
+
+      setPointerDrag(null);
+      pointerDragRef.current = null;
+      setHoveredHourSlot(null);
+      setHoveredCartZone(false);
+      setHoveredDayTab(null);
+
+      if (typeof document !== 'undefined') {
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+      }
+    };
+
+    window.addEventListener('pointermove', handleGlobalPointerMove);
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    window.addEventListener('mousemove', handleGlobalPointerMove);
+    window.addEventListener('mouseup', handleGlobalPointerUp);
+    window.addEventListener('touchmove', handleGlobalPointerMove);
+    window.addEventListener('touchend', handleGlobalPointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handleGlobalPointerMove);
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+      window.removeEventListener('mousemove', handleGlobalPointerMove);
+      window.removeEventListener('mouseup', handleGlobalPointerUp);
+      window.removeEventListener('touchmove', handleGlobalPointerMove);
+      window.removeEventListener('touchend', handleGlobalPointerUp);
+      if (typeof document !== 'undefined') {
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+      }
+    };
+  }, []);
 
   // Quản lý số ngày
   const handleRemoveDay = (dNum: number) => {
     if (daysCount <= 1) return;
-    // Chuyển toàn bộ hoạt động của ngày đó về giỏ chờ
     const dayEvs = events.filter((e) => e.dayNumber === dNum);
     dayEvs.forEach((e) => removeEventToStandby(e.id));
 
@@ -401,7 +505,7 @@ export default function GoogleCalendarWorkspace({
     setActiveDay(nextCount);
   };
 
-  // HTML bản đồ Google Maps & OSRM
+  // ── HTML GOOGLE MAPS ROUTE PLANNER VIEW ──
   const mapIframeHTML = useMemo(() => {
     const dayPlaces = currentDayEvents.filter((e) => e.lat && e.lng);
     const standbyCoords = standbyList.filter((s) => s.lat && s.lng);
@@ -417,71 +521,123 @@ export default function GoogleCalendarWorkspace({
     * { margin:0; padding:0; box-sizing:border-box; }
     html, body, #map { width:100%; height:100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     
-    .day-marker-pin {
-      width: 30px;
-      height: 30px;
-      background: #1A73E8;
-      border: 3px solid #FFFFFF;
-      border-radius: 50%;
-      box-shadow: 0 4px 12px rgba(26,115,232,0.45);
-      cursor: pointer;
+    /* Modern Google Maps Pins */
+    .gmap-pin-container {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      font-weight: 800;
-      font-size: 12px;
-      color: #FFFFFF;
-      transition: transform 0.15s ease;
+      cursor: pointer;
     }
-    .day-marker-pin:hover { transform: scale(1.2); }
-
-    .standby-marker-pin {
-      width: 26px;
-      height: 26px;
-      background: #FBBC04;
+    .gmap-pin-time {
+      background: #FFFFFF;
+      color: #1A73E8;
+      font-weight: 800;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      margin-bottom: 2px;
+      white-space: nowrap;
+      border: 1px solid #1A73E8;
+    }
+    .gmap-pin-circle {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #1A73E8 0%, #1557B0 100%);
       border: 2.5px solid #FFFFFF;
       border-radius: 50%;
-      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 14px rgba(26,115,232,0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 13px;
+      color: #FFFFFF;
+      transition: transform 0.15s ease;
+    }
+    .gmap-pin-circle:hover {
+      transform: scale(1.2);
+    }
+    .gmap-pin-pulse {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(26,115,232,0.3);
+      animation: pulse 1.8s infinite;
+      z-index: -1;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.8); opacity: 1; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+
+    .standby-pin {
+      width: 24px;
+      height: 24px;
+      background: #FBBC04;
+      border: 2px solid #FFFFFF;
+      border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 800;
       font-size: 11px;
-      color: #202124;
       transition: transform 0.15s ease;
     }
-    .standby-marker-pin:hover { transform: scale(1.22); border-color: #EA4335; }
-
-    .gmap-bubble {
-      background: #FFFFFF;
-      border: 2px solid #FF5252;
-      border-radius: 14px;
-      padding: 12px;
-      min-width: 220px;
-      box-shadow: 0 8px 24px rgba(255,82,82,0.22);
+    .standby-pin:hover {
+      transform: scale(1.25);
     }
-    .gmap-bubble-title { font-size: 14px; font-weight: 800; color: #202124; margin-bottom: 3px; }
-    .gmap-bubble-price { font-size: 12px; font-weight: 700; color: #0F9D58; margin-bottom: 6px; }
-    .gmap-bubble-btn {
+
+    /* Route info overlay banner */
+    .route-banner {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(26, 115, 232, 0.25);
+      border-radius: 12px;
+      padding: 10px 14px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: #202124;
+    }
+
+    .popup-box {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-width: 200px;
+      padding: 4px;
+    }
+    .popup-title { font-size: 14px; font-weight: 800; color: #1B2420; margin-bottom: 2px; }
+    .popup-meta { font-size: 11px; color: #5F6368; margin-bottom: 6px; }
+    .popup-cost { font-size: 12px; font-weight: 800; color: #0F9D58; margin-bottom: 8px; }
+    .popup-btn {
       width: 100%;
-      padding: 7px;
+      padding: 6px 10px;
       background: #1A73E8;
-      color: #FFFFFF;
+      color: #fff;
       border: none;
       border-radius: 8px;
       font-size: 11px;
       font-weight: 700;
       cursor: pointer;
-      margin-top: 6px;
     }
-    .gmap-bubble-btn:hover { background: #1557B0; }
   </style>
 </head>
 <body>
+  <div id="route-banner" class="route-banner" style="display: none;"></div>
   <div id="map"></div>
   <script>
-    const map = L.map('map', { zoomControl: true }).setView([${centerLat}, ${centerLng}], 13);
+    const map = L.map('map', { zoomControl: false }).setView([${centerLat}, ${centerLng}], 13);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     // Google Maps Roadmap Tiles
     const gLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
@@ -501,82 +657,131 @@ export default function GoogleCalendarWorkspace({
     const standbyList = ${JSON.stringify(standbyCoords)};
     const bounds = L.latLngBounds([]);
 
-    // 1. Cắm Markers các điểm của Ngày ${activeDay}
-    dayPlaces.forEach((dp, idx) => {
-      const lat = Number(dp.lat);
-      const lng = Number(dp.lng);
-      bounds.extend([lat, lng]);
+    // 1. Cắm Markers các điểm của Ngày ${activeDay} theo thứ tự 1, 2, 3...
+    dayPlaces.forEach((p, idx) => {
+      bounds.extend([p.lat, p.lng]);
+      const orderNum = idx + 1;
+      const timeStr = (p.startHour < 10 ? '0' + p.startHour : p.startHour) + ':00';
+
+      const pinHtml = \`
+        <div class="gmap-pin-container" onclick="parent.postMessage({ type: 'MAP_SELECT_EVENT', eventId: '\${p.id}' }, '*')">
+          <div class="gmap-pin-time">\${timeStr}</div>
+          <div class="gmap-pin-circle">
+            \${orderNum === 1 ? '<div class="gmap-pin-pulse"></div>' : ''}
+            <span>\${orderNum}</span>
+          </div>
+        </div>
+      \`;
 
       const icon = L.divIcon({
-        className: '',
-        html: '<div class="day-marker-pin">' + (idx + 1) + '</div>',
-        iconSize: [30, 30],
-        iconAnchor: [15, 15]
+        className: 'custom-gmap-pin',
+        html: pinHtml,
+        iconSize: [44, 56],
+        iconAnchor: [22, 56],
+        popupAnchor: [0, -50]
       });
 
-      const m = L.marker([lat, lng], { icon: icon }).addTo(map);
-      m.bindPopup(
-        '<div class="gmap-bubble">' +
-          '<div style="font-size:10px;font-weight:800;color:#1A73E8;text-transform:uppercase;">Hoạt động #' + (idx + 1) + ' · Ngày ${activeDay}</div>' +
-          '<div class="gmap-bubble-title">' + dp.title + '</div>' +
-          '<div class="gmap-bubble-price">' + (dp.cost ? Number(dp.cost).toLocaleString("vi-VN") + ' đ' : 'Miễn phí') + '</div>' +
-          '<div style="font-size:11px;color:#5F6368;">' + (dp.address || '${cityName}') + '</div>' +
-        '</div>'
-      );
+      const costStr = Number(p.cost || 0).toLocaleString('vi-VN') + 'đ';
+      L.marker([p.lat, p.lng], { icon })
+        .addTo(map)
+        .bindPopup(\`
+          <div class="popup-box">
+            <div class="popup-title">#\${orderNum} · \${p.title}</div>
+            <div class="popup-meta">Khung giờ: \${timeStr} · Ngày ${activeDay}</div>
+            <div class="popup-cost">Chi phí: \${costStr}</div>
+            <div style="font-size:10px; color:#5F6368; line-height:1.3; margin-bottom:8px;">\${p.address || ''}</div>
+            <button class="popup-btn" onclick="parent.postMessage({ type: 'MAP_SELECT_EVENT', eventId: '\${p.id}' }, '*')">
+              🔍 Xem trên Lịch trình
+            </button>
+          </div>
+        \`);
     });
 
-    // 2. Cắm Markers các điểm trong Giỏ chờ
-    standbyList.forEach((sp, idx) => {
-      const lat = Number(sp.lat);
-      const lng = Number(sp.lng);
-      bounds.extend([lat, lng]);
-
+    // 2. Cắm Markers các điểm trong Giỏ chờ (Standby)
+    standbyList.forEach((s) => {
+      bounds.extend([s.lat, s.lng]);
+      const standbyHtml = \`
+        <div class="standby-pin" title="\${s.name} (Giỏ chờ)">
+          <span>🛍️</span>
+        </div>
+      \`;
       const icon = L.divIcon({
-        className: '',
-        html: '<div class="standby-marker-pin">' + String.fromCharCode(65 + (idx % 26)) + '</div>',
+        className: 'custom-standby-pin',
+        html: standbyHtml,
         iconSize: [26, 26],
-        iconAnchor: [13, 13]
+        iconAnchor: [13, 13],
+        popupAnchor: [0, -14]
       });
 
-      const m = L.marker([lat, lng], { icon: icon }).addTo(map);
-      m.bindPopup(
-        '<div class="gmap-bubble">' +
-          '<div style="font-size:10px;font-weight:800;color:#EA4335;text-transform:uppercase;">Điểm trong kho chờ</div>' +
-          '<div class="gmap-bubble-title">' + sp.name + '</div>' +
-          '<div class="gmap-bubble-price">' + (sp.cost ? Number(sp.cost).toLocaleString("vi-VN") + ' đ' : 'Miễn phí') + '</div>' +
-          '<div style="font-size:11px;color:#5F6368;">' + (sp.address || '${cityName}') + '</div>' +
-          '<button class="gmap-bubble-btn" onclick="window.parent.postMessage(JSON.stringify({ type: \\'MAP_ADD_PLACE\\', placeId: \\'' + sp.id + '\\' }), \\'*\\')">➕ Đặt vào Lịch Ngày ${activeDay}</button>' +
-        '</div>'
-      );
+      const costStr = Number(s.cost || 0).toLocaleString('vi-VN') + 'đ';
+      L.marker([s.lat, s.lng], { icon })
+        .addTo(map)
+        .bindPopup(\`
+          <div class="popup-box">
+            <div style="font-size:10px; font-weight:800; color:#B06000; text-transform:uppercase;">🛒 ĐANG TRONG GIỎ CHỜ</div>
+            <div class="popup-title">\${s.name}</div>
+            <div class="popup-cost">\${costStr}</div>
+            <button class="popup-btn" style="background:#FBBC04; color:#202124;" onclick="parent.postMessage({ type: 'MAP_ADD_PLACE', placeId: '\${s.id}' }, '*')">
+              ➕ Đặt vào Lịch Ngày ${activeDay}
+            </button>
+          </div>
+        \`);
     });
 
-    // 3. OSRM Real Street Routing cho Ngày hiện tại
+    // 3. Vẽ Polyline Lộ trình OSRM kết nối các điểm 1 -> 2 -> 3...
     if (dayPlaces.length >= 2) {
-      const coords = dayPlaces.map(p => Number(p.lng) + ',' + Number(p.lat)).join(';');
+      const coords = dayPlaces.map(p => p.lng + ',' + p.lat).join(';');
       fetch('https://router.project-osrm.org/route/v1/driving/' + coords + '?overview=full&geometries=geojson')
-        .then(r => r.json())
+        .then(res => res.json())
         .then(data => {
-          if (data.routes && data.routes[0]) {
-            const pts = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-            L.polyline(pts, { color: '#0D47A1', weight: 7, opacity: 0.3 }).addTo(map);
-            L.polyline(pts, { color: '#1A73E8', weight: 4.5, opacity: 0.95 }).addTo(map);
+          if (data && data.routes && data.routes[0]) {
+            const route = data.routes[0];
+            L.geoJSON(route.geometry, {
+              style: { color: '#1A73E8', weight: 5, opacity: 0.85, lineJoin: 'round' }
+            }).addTo(map);
+
+            const distKm = (route.distance / 1000).toFixed(1);
+            const durMin = Math.round(route.duration / 60);
+            const banner = document.getElementById('route-banner');
+            if (banner) {
+              banner.innerHTML = \`
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="font-size:16px;">🚗</span>
+                  <span>Lộ trình Ngày ${activeDay}: <b>\${dayPlaces.length} điểm</b> · <b>~\${distKm} km</b> (~\${durMin} phút đi xe)</span>
+                </div>
+                <a href="https://www.google.com/maps/dir/\${dayPlaces.map(p => encodeURIComponent(p.title + ' ' + '${cityName}')).join('/')}" target="_blank" style="color:#1A73E8; font-weight:800; text-decoration:none; font-size:11px;">
+                  Mở Google Maps ↗
+                </a>
+              \`;
+              banner.style.display = 'flex';
+            }
           }
         })
         .catch(() => {
-          const directPts = dayPlaces.map(p => [Number(p.lat), Number(p.lng)]);
-          L.polyline(directPts, { color: '#1A73E8', weight: 4, dashArray: '6, 6' }).addTo(map);
+          const latlngs = dayPlaces.map(p => [p.lat, p.lng]);
+          L.polyline(latlngs, { color: '#1A73E8', weight: 4, dashArray: '6, 8', opacity: 0.8 }).addTo(map);
         });
+    } else if (dayPlaces.length === 1) {
+      const banner = document.getElementById('route-banner');
+      if (banner) {
+        banner.innerHTML = \`
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span>📍 Ngày ${activeDay} hiện có 1 điểm dừng. Hãy kéo thêm điểm từ Giỏ chờ vào lịch!</span>
+          </div>
+        \`;
+        banner.style.display = 'flex';
+      }
     }
 
     if (bounds.isValid()) {
-      setTimeout(() => map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 }), 200);
+      setTimeout(() => map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 }), 200);
     }
   </script>
 </body>
 </html>`;
   }, [currentDayEvents, standbyList, activeDay, centerLat, centerLng, cityName]);
 
-  // Lắng nghe postMessage từ bản đồ khi bấm nút "➕ Đặt vào Lịch Ngày này"
+  // Lắng nghe postMessage từ iframe map
   useEffect(() => {
     if (Platform.OS === 'web') {
       const listener = (evt: MessageEvent) => {
@@ -587,6 +792,9 @@ export default function GoogleCalendarWorkspace({
             if (item) {
               addPlaceToCalendar(item);
             }
+          } else if (d && d.type === 'MAP_SELECT_EVENT' && d.eventId) {
+            setHighlightedEventId(d.eventId);
+            setTimeout(() => setHighlightedEventId(null), 3000);
           }
         } catch (e) {}
       };
@@ -640,7 +848,7 @@ export default function GoogleCalendarWorkspace({
               Không gian Lập lịch & Quản lý Ngân sách (Google Calendar Workspace)
             </Text>
             <Text style={{ fontSize: 11, color: '#5F6368' }}>
-              {cityName} · Kéo thả hoặc bấm gán trực tiếp giữa Bản đồ, Lịch theo giờ và Giỏ ngân sách
+              {cityName} · Kéo thả thẻ hoạt động trực tiếp vào từng khung giờ hoặc dùng nút điều chỉnh
             </Text>
           </View>
         </View>
@@ -668,7 +876,7 @@ export default function GoogleCalendarWorkspace({
         )}
       </View>
 
-      {/* ── KHUNG CHÍNH SPLIT-VIEW (2 CỘT CHUẨN THEO BẢN VẼ TAY) ── */}
+      {/* ── KHUNG CHÍNH SPLIT-VIEW (2 CỘT) ── */}
       <View
         style={{
           flexDirection: isDesktop ? 'row' : 'column',
@@ -688,73 +896,78 @@ export default function GoogleCalendarWorkspace({
             borderBottomColor: 'rgba(27,36,32,0.08)',
             display: 'flex',
             flexDirection: 'column',
-            backgroundColor: '#F8F9FA',
           }}
         >
-          {/* Tabs Ngày 1, Ngày 2, Ngày 3 (kèm nút xóa ngày X như ảnh vẽ tay) */}
+          {/* Day Tabs Bar */}
           <View
             style={{
-              paddingHorizontal: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 16,
               paddingVertical: 10,
               backgroundColor: '#FFFFFF',
               borderBottomWidth: 1,
-              borderBottomColor: 'rgba(27,36,32,0.08)',
-              flexDirection: 'row',
-              alignItems: 'center',
+              borderBottomColor: 'rgba(27,36,32,0.06)',
               gap: 8,
-              overflow: 'hidden',
+              flexWrap: 'wrap',
             }}
           >
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {Array.from({ length: daysCount }, (_, i) => i + 1).map((dNum) => {
                 const isActive = activeDay === dNum;
-                const countInDay = events.filter((e) => Number(e.dayNumber) === Number(dNum)).length;
+                const isHoveredTab = hoveredDayTab === dNum;
+                const dayEvCount = events.filter((e) => e.dayNumber === dNum).length;
 
                 return (
                   <View
                     key={dNum}
+                    // @ts-ignore
+                    data-day-tab={dNum}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
+                      backgroundColor: isHoveredTab
+                        ? 'rgba(26,115,232,0.2)'
+                        : isActive
+                        ? '#1A73E8'
+                        : '#F1F3F4',
                       borderRadius: 10,
-                      backgroundColor: isActive ? '#E8F0FE' : '#F1F3F4',
-                      borderWidth: 1.5,
-                      borderColor: isActive ? '#1A73E8' : 'rgba(27,36,32,0.1)',
-                      overflow: 'hidden',
+                      borderWidth: isHoveredTab ? 2 : 1,
+                      borderStyle: isHoveredTab ? 'dashed' : 'solid',
+                      borderColor: isHoveredTab ? '#1A73E8' : isActive ? '#1A73E8' : 'rgba(27,36,32,0.08)',
+                      paddingLeft: 12,
+                      paddingRight: daysCount > 1 && !readOnly ? 6 : 12,
+                      paddingVertical: 7,
                     }}
                   >
                     <Pressable
-                      testID={`tab-calendar-day-${dNum}`}
+                      testID={`tab-day-${dNum}`}
                       onPress={() => setActiveDay(dNum)}
-                      style={{
-                        paddingHorizontal: 12,
-                        paddingVertical: 7,
-                        cursor: 'pointer' as any,
-                      }}
+                      style={{ cursor: 'pointer' as any }}
                     >
                       <Text
                         style={{
                           fontSize: 12,
                           fontWeight: '800',
-                          color: isActive ? '#1A73E8' : '#3C4043',
+                          color: isActive ? '#FFFFFF' : '#3C4043',
                         }}
                       >
-                        Ngày {dNum} {countInDay > 0 ? `(${countInDay})` : ''}
+                        Ngày {dNum} ({dayEvCount})
                       </Text>
                     </Pressable>
 
-                    {!readOnly && daysCount > 1 && (
+                    {daysCount > 1 && !readOnly && (
                       <Pressable
                         onPress={() => handleRemoveDay(dNum)}
                         style={{
-                          paddingHorizontal: 6,
-                          paddingVertical: 7,
-                          borderLeftWidth: 1,
-                          borderLeftColor: isActive ? '#1A73E8' : 'rgba(27,36,32,0.1)',
+                          marginLeft: 6,
+                          padding: 2,
+                          borderRadius: 4,
+                          backgroundColor: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.06)',
                           cursor: 'pointer' as any,
                         }}
                       >
-                        <X size={12} color={isActive ? '#1A73E8' : '#70757A'} />
+                        <X size={11} color={isActive ? '#FFFFFF' : '#5F6368'} />
                       </Pressable>
                     )}
                   </View>
@@ -763,74 +976,80 @@ export default function GoogleCalendarWorkspace({
 
               {!readOnly && (
                 <Pressable
-                  testID="btn-add-calendar-day"
+                  testID="btn-add-day-workspace"
                   onPress={handleAddDay}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 4,
-                    paddingHorizontal: 10,
+                    paddingHorizontal: 12,
                     paddingVertical: 7,
                     borderRadius: 10,
                     backgroundColor: '#FFFFFF',
                     borderWidth: 1,
-                    borderStyle: 'dashed',
                     borderColor: '#1A73E8',
+                    borderStyle: 'dashed',
                     cursor: 'pointer' as any,
                   }}
                 >
-                  <Plus size={13} color="#1A73E8" />
+                  <Plus size={12} color="#1A73E8" />
                   <Text style={{ fontSize: 11, fontWeight: '700', color: '#1A73E8' }}>Thêm ngày</Text>
                 </Pressable>
               )}
             </ScrollView>
           </View>
 
-          {/* Bản đồ MAP chiếm trọn chiều cao cột trái */}
-          <View style={{ flex: 1, minHeight: 500, position: 'relative' }}>
+          {/* Bản đồ Map View */}
+          <View style={{ flex: 1, minHeight: 480, position: 'relative', backgroundColor: '#F8F9FA' }}>
             {Platform.OS === 'web' ? (
               <iframe
-                title="calendar-workspace-map"
+                title="Google Maps Live Route"
                 srcDoc={mapIframeHTML}
                 style={{
                   width: '100%',
                   height: '100%',
-                  minHeight: 500,
+                  minHeight: 480,
                   border: 'none',
+                  display: 'block',
                 }}
               />
             ) : (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: '#888', fontSize: 12 }}>Bản đồ Google Maps hỗ trợ trên Web</Text>
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                <MapPin size={32} color={BRAND_COLORS.primary} />
+                <Text style={{ fontSize: 13, color: '#5F6368', marginTop: 8 }}>
+                  Bản đồ trực tuyến hiển thị tốt nhất trên trình duyệt Web.
+                </Text>
               </View>
             )}
 
-            {/* Chú thích bản đồ */}
+            {/* Map Legend Overlay */}
             <View
               style={{
                 position: 'absolute',
                 bottom: 12,
                 left: 12,
-                backgroundColor: 'rgba(255,255,255,0.92)',
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 12,
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
                 borderWidth: 1,
-                borderColor: 'rgba(27,36,32,0.1)',
-                gap: 4,
-                zIndex: 10,
+                borderColor: 'rgba(0,0,0,0.1)',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.08)' as any,
               }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#1A73E8' }} />
-                <Text style={{ fontSize: 11, fontWeight: '700', color: '#202124' }}>
-                  Điểm Ngày {activeDay} ({currentDayEvents.length} điểm)
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#1A73E8' }} />
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#202124' }}>
+                  Điểm Ngày {activeDay} ({currentDayEvents.length})
                 </Text>
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#FBBC04' }} />
-                <Text style={{ fontSize: 11, fontWeight: '600', color: '#5F6368' }}>
-                  Điểm trong Giỏ chờ ({standbyList.length} điểm)
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#FBBC04' }} />
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#202124' }}>
+                  Giỏ chờ ({standbyList.length})
                 </Text>
               </View>
             </View>
@@ -838,7 +1057,7 @@ export default function GoogleCalendarWorkspace({
         </View>
 
         {/* ══════════════════════════════════════════════════════════ */}
-        {/* CỘT PHẢI (RIGHT PANEL): LỊCH TRÌNH TRÊN + BUDGET TOOL DƯỚI */}
+        {/* CỘT PHẢI (RIGHT PANEL): LỊCH GOOGLE CALENDAR + BUDGET     */}
         {/* ══════════════════════════════════════════════════════════ */}
         <View
           style={{
@@ -850,7 +1069,7 @@ export default function GoogleCalendarWorkspace({
           }}
         >
           {/* ──────────────────────────────────────────────────────── */}
-          {/* Ô TRÊN (TOP BOX): LỊCH TRÌNH (GOOGLE CALENDAR STYLE)     */}
+          {/* Ô TRÊN (TOP BOX): LỊCH TRÌNH GOOGLE CALENDAR             */}
           {/* ──────────────────────────────────────────────────────── */}
           <View
             style={{
@@ -859,7 +1078,7 @@ export default function GoogleCalendarWorkspace({
               borderBottomColor: 'rgba(27,36,32,0.12)',
               display: 'flex',
               flexDirection: 'column',
-              minHeight: 400,
+              minHeight: 410,
             }}
           >
             {/* Header Lịch trình */}
@@ -883,9 +1102,19 @@ export default function GoogleCalendarWorkspace({
               </View>
 
               {selectedPlaceToPlace && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#E8F0FE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: '#E8F0FE',
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 8,
+                  }}
+                >
                   <Text style={{ fontSize: 11, fontWeight: '700', color: '#1A73E8' }}>
-                    Đang chọn: "{selectedPlaceToPlace.name}" → Bấm vào slot giờ để đặt
+                    Đang chọn: "{selectedPlaceToPlace.name}" → Bấm vào slot giờ bên dưới để đặt
                   </Text>
                   <Pressable onPress={() => setSelectedPlaceToPlace(null)} style={{ padding: 2 }}>
                     <X size={12} color="#1A73E8" />
@@ -894,8 +1123,11 @@ export default function GoogleCalendarWorkspace({
               )}
             </View>
 
-            {/* Time Grid Google Calendar */}
-            <ScrollView style={{ flex: 1, maxHeight: 380, paddingHorizontal: 14 }} showsVerticalScrollIndicator={true}>
+            {/* Time Grid Google Calendar (07:00 -> 21:00) */}
+            <ScrollView
+              style={{ flex: 1, maxHeight: 400, paddingHorizontal: 14 }}
+              showsVerticalScrollIndicator={true}
+            >
               <View style={{ paddingVertical: 8 }}>
                 {HOURS.map((hour) => {
                   const hourEvents = currentDayEvents.filter((ev) => ev.startHour === hour);
@@ -905,19 +1137,18 @@ export default function GoogleCalendarWorkspace({
                     <View
                       key={hour}
                       testID={`calendar-hour-row-${hour}`}
+                      // @ts-ignore
+                      data-hour={hour}
                       style={{
                         flexDirection: 'row',
                         alignItems: 'flex-start',
-                        minHeight: 54,
+                        minHeight: 56,
                         borderTopWidth: 1,
                         borderTopColor: isSlotHovered ? '#1A73E8' : 'rgba(27,36,32,0.08)',
-                        backgroundColor: isSlotHovered ? 'rgba(26,115,232,0.08)' : 'transparent',
+                        backgroundColor: isSlotHovered ? 'rgba(26,115,232,0.12)' : 'transparent',
                         paddingVertical: 4,
-                      }}
-                      // @ts-ignore
-                      onDragOver={(e: any) => handleDragOverHour(hour, e)}
-                      // @ts-ignore
-                      onDrop={(e: any) => handleDropOnHour(hour, e)}
+                        transition: 'background-color 0.15s ease',
+                      } as any}
                     >
                       {/* Cột mốc giờ bên trái */}
                       <View style={{ width: 50, paddingRight: 8, paddingTop: 4 }}>
@@ -955,24 +1186,42 @@ export default function GoogleCalendarWorkspace({
                         )}
 
                         {hourEvents.length === 0 && !selectedPlaceToPlace ? (
-                          <View
+                          <Pressable
+                            onPress={() => {
+                              if (standbyList.length > 0) {
+                                addPlaceToCalendar(standbyList[0], hour);
+                              }
+                            }}
                             style={{
-                              height: 38,
+                              height: 40,
                               borderRadius: 8,
-                              borderWidth: 1,
+                              borderWidth: isSlotHovered ? 2 : 1,
                               borderStyle: 'dashed',
                               borderColor: isSlotHovered ? '#1A73E8' : 'rgba(27,36,32,0.06)',
+                              backgroundColor: isSlotHovered ? 'rgba(26,115,232,0.15)' : 'transparent',
                               justifyContent: 'center',
                               paddingHorizontal: 10,
+                              cursor: isSlotHovered ? 'copy' : 'default' as any,
                             }}
                           >
-                            <Text style={{ fontSize: 10, color: isSlotHovered ? '#1A73E8' : 'rgba(27,36,32,0.25)', fontStyle: 'italic' }}>
-                              {isSlotHovered ? 'Thả vào khung giờ này' : '+ Trống (kéo thả địa điểm vào đây)'}
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                color: isSlotHovered ? '#1A73E8' : 'rgba(27,36,32,0.3)',
+                                fontStyle: 'italic',
+                                fontWeight: isSlotHovered ? '800' : '400',
+                              }}
+                            >
+                              {isSlotHovered
+                                ? `👉 Thả vào đây để xếp lịch lúc ${hour < 10 ? '0' + hour : hour}:00`
+                                : '+ Trống (kéo thả địa điểm từ Giỏ chờ vào đây)'}
                             </Text>
-                          </View>
+                          </Pressable>
                         ) : (
                           hourEvents.map((ev) => {
                             const colors = CATEGORY_COLORS[ev.category] || CATEGORY_COLORS.default;
+                            const isCardHighlighted = highlightedEventId === ev.id;
+
                             return (
                               <View
                                 key={ev.id}
@@ -987,77 +1236,103 @@ export default function GoogleCalendarWorkspace({
                                   flexDirection: 'row',
                                   alignItems: 'center',
                                   justifyContent: 'space-between',
-                                  boxShadow: '0 2px 6px rgba(0,0,0,0.05)' as any,
-                                  cursor: readOnly ? 'default' : 'grab' as any,
+                                  boxShadow: isCardHighlighted
+                                    ? '0 0 0 2px #1A73E8, 0 4px 12px rgba(26,115,232,0.35)'
+                                    : ('0 2px 6px rgba(0,0,0,0.05)' as any),
+                                  borderWidth: isCardHighlighted ? 1 : 0,
+                                  borderColor: isCardHighlighted ? '#1A73E8' : 'transparent',
                                 }}
-                                // @ts-ignore
-                                draggable={!readOnly}
-                                // @ts-ignore
-                                onDragStart={(e: any) => handleDragStartEvent(ev, e)}
                               >
                                 <View style={{ flex: 1, paddingRight: 8 }}>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                    <Text style={{ fontSize: 10, fontWeight: '800', color: colors.text }}>
-                                      {ev.startHour < 10 ? `0${ev.startHour}` : ev.startHour}:
-                                      {ev.startMinute < 10 ? `0${ev.startMinute}` : ev.startMinute} (
-                                      {ev.durationMinutes}p)
-                                    </Text>
-                                    <View
+                                    <Text style={{ fontSize: 12 }}>{colors.emoji}</Text>
+                                    <Text
                                       style={{
-                                        paddingHorizontal: 6,
-                                        paddingVertical: 1,
-                                        borderRadius: 4,
-                                        backgroundColor: colors.lightBg,
+                                        fontSize: 12,
+                                        fontWeight: '800',
+                                        color: '#1B2420',
+                                        flex: 1,
                                       }}
+                                      numberOfLines={1}
                                     >
-                                      <Text style={{ fontSize: 9, fontWeight: '700', color: colors.text, textTransform: 'uppercase' }}>
-                                        {ev.category}
-                                      </Text>
-                                    </View>
+                                      {ev.title}
+                                    </Text>
                                   </View>
 
-                                  <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '700', color: '#202124', marginTop: 2 }}>
-                                    {ev.title}
-                                  </Text>
-                                  {ev.address && (
-                                    <Text numberOfLines={1} style={{ fontSize: 10, color: '#5F6368', marginTop: 1 }}>
-                                      {ev.address}
+                                  <View
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      gap: 8,
+                                      marginTop: 3,
+                                      flexWrap: 'wrap',
+                                    }}
+                                  >
+                                    <Text style={{ fontSize: 10, color: '#5F6368' }}>
+                                      {ev.startHour < 10 ? `0${ev.startHour}:00` : `${ev.startHour}:00`} · {ev.durationMinutes}p
                                     </Text>
-                                  )}
+                                    <Text style={{ fontSize: 10, fontWeight: '700', color: colors.text }}>
+                                      {Number(ev.cost).toLocaleString('vi-VN')}đ
+                                    </Text>
+                                  </View>
                                 </View>
 
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#137333' }}>
-                                    {ev.cost ? `${Number(ev.cost).toLocaleString('vi-VN')} đ` : 'Miễn phí'}
-                                  </Text>
+                                {/* Action Buttons: Shift Hour, Delete, Drag Grip */}
+                                {!readOnly && (
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                    <Pressable
+                                      testID={`btn-shift-up-${ev.id}`}
+                                      onPress={() => moveEventHour(ev.id, -1)}
+                                      style={{
+                                        padding: 3,
+                                        borderRadius: 4,
+                                        backgroundColor: 'rgba(0,0,0,0.05)',
+                                        cursor: 'pointer' as any,
+                                      }}
+                                    >
+                                      <ArrowUp size={12} color="#5F6368" />
+                                    </Pressable>
 
-                                  {!readOnly && (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                                      {/* Đổi giờ lên / xuống */}
-                                      <Pressable
-                                        onPress={() => moveEventHour(ev.id, -1)}
-                                        style={{ padding: 3, cursor: 'pointer' as any }}
-                                      >
-                                        <ArrowUp size={12} color="#5F6368" />
-                                      </Pressable>
-                                      <Pressable
-                                        onPress={() => moveEventHour(ev.id, 1)}
-                                        style={{ padding: 3, cursor: 'pointer' as any }}
-                                      >
-                                        <ArrowDown size={12} color="#5F6368" />
-                                      </Pressable>
+                                    <Pressable
+                                      testID={`btn-shift-down-${ev.id}`}
+                                      onPress={() => moveEventHour(ev.id, 1)}
+                                      style={{
+                                        padding: 3,
+                                        borderRadius: 4,
+                                        backgroundColor: 'rgba(0,0,0,0.05)',
+                                        cursor: 'pointer' as any,
+                                      }}
+                                    >
+                                      <ArrowDown size={12} color="#5F6368" />
+                                    </Pressable>
 
-                                      {/* Trả về giỏ chờ bên dưới */}
-                                      <Pressable
-                                        testID={`btn-remove-event-${ev.id}`}
-                                        onPress={() => removeEventToStandby(ev.id)}
-                                        style={{ padding: 4, cursor: 'pointer' as any }}
-                                      >
-                                        <Trash2 size={13} color="#D93025" />
-                                      </Pressable>
+                                    <Pressable
+                                      testID={`btn-remove-to-cart-${ev.id}`}
+                                      onPress={() => removeEventToStandby(ev.id)}
+                                      style={{
+                                        padding: 3,
+                                        borderRadius: 4,
+                                        backgroundColor: 'rgba(197,34,31,0.08)',
+                                        cursor: 'pointer' as any,
+                                      }}
+                                    >
+                                      <Trash2 size={12} color="#C5221F" />
+                                    </Pressable>
+
+                                    {/* Grip Handle for Pointer Drag */}
+                                    <View
+                                      // @ts-ignore
+                                      onPointerDown={(e: any) => handleStartPointerDrag(ev, 'event', e)}
+                                      style={{
+                                        padding: 4,
+                                        cursor: 'grab' as any,
+                                        touchAction: 'none' as any,
+                                      }}
+                                    >
+                                      <GripVertical size={14} color="#80868B" />
                                     </View>
-                                  )}
-                                </View>
+                                  </View>
+                                )}
                               </View>
                             );
                           })
@@ -1071,136 +1346,169 @@ export default function GoogleCalendarWorkspace({
           </View>
 
           {/* ──────────────────────────────────────────────────────── */}
-          {/* Ô DƯỚI (BOTTOM BOX): BUDGET TOOL (3 CỘT THEO ĐÚNG BẢN VẼ) */}
+          {/* Ô DƯỚI (BOTTOM BOX): STANDBY CART TRAY + BẢNG NGÂN SÁCH   */}
           {/* ──────────────────────────────────────────────────────── */}
           <View
             style={{
               padding: 16,
-              backgroundColor: '#F8F9FA',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
+              backgroundColor: '#FAFAFA',
+              gap: 14,
             }}
           >
-            {/* ══════════════════════════════════════════════════════════ */}
-            {/* 1. KHAY GIỎ HÀNG ĐỊA ĐIỂM CHỜ XẾP LỊCH (STANDBY CART TRAY) */}
-            {/* ══════════════════════════════════════════════════════════ */}
+            {/* 1. KHAY GIỎ HÀNG CHỜ XẾP LỊCH (STANDBY CART TRAY) */}
             <View
-              testID="calendar-standby-cart-zone"
+              // @ts-ignore
+              data-cart-dropzone="true"
               style={{
-                backgroundColor: hoveredCartZone ? "#E8F0FE" : "#FFFFFF",
+                backgroundColor: hoveredCartZone ? 'rgba(251,188,4,0.15)' : '#FFFFFF',
                 borderRadius: 16,
-                padding: 14,
-                borderWidth: 1.5,
-                borderStyle: "dashed",
-                borderColor: hoveredCartZone ? "#1A73E8" : "rgba(27,36,32,0.15)",
+                borderWidth: hoveredCartZone ? 2 : 1,
+                borderStyle: hoveredCartZone ? 'dashed' : 'solid',
+                borderColor: hoveredCartZone ? '#FBBC04' : 'rgba(27,36,32,0.12)',
+                padding: 12,
                 gap: 10,
-              }}
-              // @ts-ignore
-              onDragOver={(e: any) => { if (Platform.OS === "web") e.preventDefault(); setHoveredCartZone(true); }}
-              // @ts-ignore
-              onDragLeave={() => setHoveredCartZone(false)}
-              // @ts-ignore
-              onDrop={handleDropOnCart}
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)' as any,
+                transition: 'background-color 0.15s ease',
+              } as any}
             >
-              {/* Header Giỏ Hàng */}
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <ShoppingBag size={16} color="#1A73E8" />
-                  <Text style={{ fontSize: 13, fontWeight: "800", color: "#1B2420" }}>
-                    Giỏ địa điểm chờ xếp lịch ({standbyList.length} địa điểm)
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <ShoppingBag size={15} color="#B06000" />
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#1B2420' }}>
+                    Khay Giỏ Hàng Chờ Xếp Lịch
                   </Text>
-                  <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: "#E8F0FE" }}>
-                    <Text style={{ fontSize: 10, fontWeight: "700", color: "#1A73E8" }}>Kéo thẻ lên Lịch ⬆</Text>
+                  <View
+                    style={{
+                      paddingHorizontal: 7,
+                      paddingVertical: 2,
+                      borderRadius: 10,
+                      backgroundColor: '#FEF7E0',
+                      borderWidth: 1,
+                      borderColor: '#B06000',
+                    }}
+                  >
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#B06000' }}>
+                      {standbyList.length} địa điểm
+                    </Text>
                   </View>
                 </View>
-                <Text style={{ fontSize: 11, color: "#5F6368" }}>
-                  Kéo thả vào ô giờ hoặc bấm thẻ để đặt nhanh
+
+                <Text style={{ fontSize: 10, color: '#5F6368', fontStyle: 'italic' }}>
+                  {hoveredCartZone ? '👉 Thả vào đây để đưa về giỏ chờ' : 'Kéo thả hoặc bấm "+ Đặt giờ" để lên lịch'}
                 </Text>
               </View>
 
-              {/* Danh sách thẻ trong giỏ */}
               {standbyList.length === 0 ? (
-                <View style={{ paddingVertical: 16, alignItems: "center", justifyContent: "center", backgroundColor: "#F8F9FA", borderRadius: 10 }}>
-                  <Text style={{ fontSize: 12, color: "#137333", fontWeight: "700" }}>
-                    ✓ Tất cả địa điểm đã được xếp vào lịch trình! Kéo thả từ lịch về đây nếu muốn đổi.
+                <View
+                  style={{
+                    paddingVertical: 18,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderStyle: 'dashed',
+                    borderColor: 'rgba(27,36,32,0.1)',
+                    borderRadius: 12,
+                    backgroundColor: '#FAFAFA',
+                  }}
+                >
+                  <Text style={{ fontSize: 11, color: '#5F6368', fontWeight: '500' }}>
+                    🎉 Đã xếp toàn bộ địa điểm vào Lịch trình! Kéo sự kiện từ lịch thả vào đây nếu muốn đưa lại giỏ chờ.
                   </Text>
                 </View>
               ) : (
                 <ScrollView
-                  horizontal={true}
-                  showsHorizontalScrollIndicator={true}
-                  style={{ maxHeight: 115 }}
-                  contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
                 >
                   {standbyList.map((item) => {
+                    const colors = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.default;
                     const isSelected = selectedPlaceToPlace?.id === item.id;
-                    const catLower = (item.category || "").toLowerCase();
-                    const catLabel =
-                      catLower === "dining" || catLower.includes("ăn")
-                        ? "🔴 Ăn"
-                        : catLower === "cafe" || catLower.includes("cà phê")
-                        ? "🟡 CF"
-                        : catLower === "attraction" || catLower.includes("chơi")
-                        ? "🟣 Chơi"
-                        : "🔵 Khách sạn";
 
                     return (
                       <View
                         key={item.id}
                         testID={`standby-chip-${item.id}`}
                         style={{
-                          width: 190,
-                          backgroundColor: isSelected ? "#E8F0FE" : "#FFFFFF",
+                          width: 195,
+                          backgroundColor: isSelected ? '#E8F0FE' : '#FFFFFF',
                           borderRadius: 12,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? '#1A73E8' : 'rgba(27,36,32,0.12)',
                           padding: 10,
-                          borderWidth: isSelected ? 1.5 : 1,
-                          borderColor: isSelected ? "#1A73E8" : "rgba(27,36,32,0.12)",
                           gap: 6,
-                          justifyContent: "space-between",
-                          boxShadow: "0 1px 4px rgba(0,0,0,0.06)" as any,
-                          cursor: readOnly ? "default" : ("grab" as any),
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.04)' as any,
                         }}
-                        // @ts-ignore
-                        draggable={!readOnly}
-                        // @ts-ignore
-                        onDragStart={(e: any) => handleDragStartStandby(item, e)}
                       >
-                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                          <Text style={{ fontSize: 10, fontWeight: "800", color: "#5F6368" }}>
-                            {catLabel}
-                          </Text>
-                          <Text style={{ fontSize: 11, fontWeight: "800", color: "#E2703A" }}>
-                            {item.cost ? `${Number(item.cost).toLocaleString("vi-VN")} đ` : "0 đ"}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                              backgroundColor: colors.lightBg,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 6,
+                            }}
+                          >
+                            <Text style={{ fontSize: 10 }}>{colors.emoji}</Text>
+                            <Text style={{ fontSize: 9, fontWeight: '800', color: colors.text, textTransform: 'uppercase' }}>
+                              {item.category}
+                            </Text>
+                          </View>
+
+                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#137333' }}>
+                            {Number(item.cost).toLocaleString('vi-VN')}đ
                           </Text>
                         </View>
 
-                        <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "700", color: "#1B2420" }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#202124' }} numberOfLines={1}>
                           {item.name}
                         </Text>
 
-                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "rgba(27,36,32,0.06)", paddingTop: 4 }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                            <GripVertical size={11} color="#9AA0A6" />
-                            <Text style={{ fontSize: 9, color: "#9AA0A6" }}>Kéo thẻ</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+                          {/* Grip Handle for Pointer Drag */}
+                          <View
+                            // @ts-ignore
+                            onPointerDown={(e: any) => handleStartPointerDrag(item, 'standby', e)}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 2,
+                              paddingVertical: 3,
+                              paddingHorizontal: 6,
+                              borderRadius: 6,
+                              backgroundColor: '#F1F3F4',
+                              cursor: 'grab' as any,
+                              touchAction: 'none' as any,
+                            }}
+                          >
+                            <GripVertical size={12} color="#5F6368" />
+                            <Text style={{ fontSize: 9, color: '#5F6368', fontWeight: '700' }}>Kéo thẻ</Text>
                           </View>
 
-                          {!readOnly && (
-                            <Pressable
-                              testID={`btn-add-standby-${item.id}`}
-                              onPress={() => setSelectedPlaceToPlace(isSelected ? null : item)}
-                              style={{
-                                paddingHorizontal: 6,
-                                paddingVertical: 2,
-                                borderRadius: 6,
-                                backgroundColor: isSelected ? "#1A73E8" : "#F1F3F4",
-                              }}
-                            >
-                              <Text style={{ fontSize: 10, fontWeight: "700", color: isSelected ? "#FFFFFF" : "#1A73E8" }}>
-                                {isSelected ? "Đang chọn" : "+ Đặt giờ"}
-                              </Text>
-                            </Pressable>
-                          )}
+                          <Pressable
+                            testID={`btn-quick-place-${item.id}`}
+                            onPress={() => {
+                              if (isSelected) {
+                                setSelectedPlaceToPlace(null);
+                              } else {
+                                setSelectedPlaceToPlace(item);
+                              }
+                            }}
+                            style={{
+                              paddingHorizontal: 8,
+                              paddingVertical: 4,
+                              borderRadius: 6,
+                              backgroundColor: isSelected ? '#1A73E8' : 'rgba(26,115,232,0.08)',
+                              cursor: 'pointer' as any,
+                            }}
+                          >
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: isSelected ? '#FFFFFF' : '#1A73E8' }}>
+                              {isSelected ? '✓ Đang chọn' : '+ Đặt giờ'}
+                            </Text>
+                          </Pressable>
                         </View>
                       </View>
                     );
@@ -1209,198 +1517,240 @@ export default function GoogleCalendarWorkspace({
               )}
             </View>
 
-            {/* ══════════════════════════════════════════════════════════ */}
-            {/* 2. BẢNG NGÂN SÁCH MA TRẬN (BUDGET MATRIX - CHUẨN EXCEL)  */}
-            {/* ══════════════════════════════════════════════════════════ */}
+            {/* 2. BẢNG NGÂN SÁCH MA TRẬN EXCEL */}
             <View
               style={{
-                backgroundColor: "#FFFFFF",
+                backgroundColor: '#FFFFFF',
                 borderRadius: 16,
-                padding: 14,
                 borderWidth: 1,
-                borderColor: "rgba(27,36,32,0.12)",
-                gap: 10,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.04)" as any,
+                borderColor: 'rgba(27,36,32,0.12)',
+                overflow: 'hidden',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)' as any,
               }}
             >
-              {/* Header Bảng Ngân Sách */}
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <DollarSign size={16} color="#137333" />
-                  <Text style={{ fontSize: 13, fontWeight: "800", color: "#1B2420" }}>
-                    Công cụ Ngân sách Ma trận (Budget Matrix Tool)
+              {/* Header Excel Bar (Yellow #FFF275) */}
+              <View
+                style={{
+                  backgroundColor: '#FFF275',
+                  flexDirection: 'row',
+                  borderBottomWidth: 1,
+                  borderBottomColor: '#E6D759',
+                  paddingVertical: 8,
+                }}
+              >
+                <View style={{ width: 85, paddingHorizontal: 8, justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: '#333333', textTransform: 'uppercase' }}>
+                    Chỉ số
                   </Text>
                 </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#137333' }}>ăn</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#B06000' }}>cf</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>chơi</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#5F6368' }}>khác</Text>
+                </View>
+                <View
+                  style={{
+                    flex: 1.2,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#FDE24F',
+                    borderLeftWidth: 1,
+                    borderLeftColor: '#E6D759',
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: '#202124' }}>tổng</Text>
+                </View>
+              </View>
 
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <Text style={{ fontSize: 11, color: "#5F6368" }}>
-                    Tổng hạn mức: <Text style={{ fontWeight: "800", color: "#1B2420" }}>{Number(totalBudget).toLocaleString("vi-VN")} đ</Text>
-                  </Text>
-                  <Text style={{ fontSize: 11, fontWeight: "800", color: budgetStats.remaining >= 0 ? "#137333" : "#D93025" }}>
-                    {budgetStats.remaining >= 0
-                      ? `Còn lại: ${Number(budgetStats.remaining).toLocaleString("vi-VN")} đ`
-                      : `⚠️ Vượt: ${Number(Math.abs(budgetStats.remaining)).toLocaleString("vi-VN")} đ`}
+              {/* Hàng 1: Dự định */}
+              <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: 'rgba(27,36,32,0.06)', paddingVertical: 7, backgroundColor: '#FAFAFA' }}>
+                <View style={{ width: 85, paddingHorizontal: 8, justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#5F6368' }}>dự định</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#3C4043' }}>{(plannedBudget.dining / 1000).toLocaleString('vi-VN')}k</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#3C4043' }}>{(plannedBudget.cafe / 1000).toLocaleString('vi-VN')}k</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#3C4043' }}>{(plannedBudget.attraction / 1000).toLocaleString('vi-VN')}k</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#3C4043' }}>{(plannedBudget.other / 1000).toLocaleString('vi-VN')}k</Text>
+                </View>
+                <View style={{ flex: 1.2, alignItems: 'center', justifyContent: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(27,36,32,0.06)' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#202124' }}>
+                    {(plannedBudget.total / 1000).toLocaleString('vi-VN')}k
                   </Text>
                 </View>
               </View>
 
-              {/* Bảng Excel Ma Trận: ăn | cf | chơi | khác | tổng */}
-              <View
-                style={{
-                  borderWidth: 1.5,
-                  borderColor: "#1B2420",
-                  borderRadius: 8,
-                  overflow: "hidden",
-                }}
-              >
-                {/* Hàng 0: Header Cột (Màu vàng chuẩn bản vẽ Excel của user) */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    backgroundColor: "#FFF275",
-                    borderBottomWidth: 1.5,
-                    borderBottomColor: "#1B2420",
-                  }}
-                >
-                  <View style={{ width: 85, paddingVertical: 7, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1B2420", textAlign: "center" }}>Chỉ số</Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 7, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1B2420", textAlign: "center" }}>ăn</Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 7, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1B2420", textAlign: "center" }}>cf</Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 7, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1B2420", textAlign: "center" }}>chơi</Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 7, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1B2420", textAlign: "center" }}>khác</Text>
-                  </View>
-                  <View style={{ flex: 1.15, paddingVertical: 7, paddingHorizontal: 4, justifyContent: "center", backgroundColor: "#FFE600" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "900", color: "#1B2420", textAlign: "center" }}>tổng</Text>
-                  </View>
+              {/* Hàng 2: Đã dùng */}
+              <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: 'rgba(27,36,32,0.06)', paddingVertical: 7, backgroundColor: '#FFFFFF' }}>
+                <View style={{ width: 85, paddingHorizontal: 8, justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#1B2420' }}>đã dùng</Text>
                 </View>
-
-                {/* Hàng 1: DỰ ĐỊNH */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    backgroundColor: "#FFFFFF",
-                    borderBottomWidth: 1,
-                    borderBottomColor: "#1B2420",
-                  }}
-                >
-                  <View style={{ width: 85, paddingVertical: 8, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: "#1B2420", backgroundColor: "#F8F9FA", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#1B2420" }}>dự định</Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "600", color: "#1B2420" }}>
-                      {Number(plannedBudget.dining).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "600", color: "#1B2420" }}>
-                      {Number(plannedBudget.cafe).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "600", color: "#1B2420" }}>
-                      {Number(plannedBudget.attraction).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "600", color: "#1B2420" }}>
-                      {Number(plannedBudget.other).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1.15, paddingVertical: 8, paddingHorizontal: 4, justifyContent: "center", alignItems: "center", backgroundColor: "#FFFDE7" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1B2420" }}>
-                      {Number(plannedBudget.total).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#202124' }}>
+                    {(budgetStats.used.dining / 1000).toLocaleString('vi-VN')}k
+                  </Text>
                 </View>
-
-                {/* Hàng 2: ĐÃ DÙNG */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    backgroundColor: "#FFFFFF",
-                    borderBottomWidth: 1,
-                    borderBottomColor: "#1B2420",
-                  }}
-                >
-                  <View style={{ width: 85, paddingVertical: 8, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: "#1B2420", backgroundColor: "#F8F9FA", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#1A73E8" }}>đã dùng</Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.used.dining > 0 ? "#1A73E8" : "#5F6368" }}>
-                      {Number(budgetStats.used.dining).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.used.cafe > 0 ? "#1A73E8" : "#5F6368" }}>
-                      {Number(budgetStats.used.cafe).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.used.attraction > 0 ? "#1A73E8" : "#5F6368" }}>
-                      {Number(budgetStats.used.attraction).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.used.other > 0 ? "#1A73E8" : "#5F6368" }}>
-                      {Number(budgetStats.used.other).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1.15, paddingVertical: 8, paddingHorizontal: 4, justifyContent: "center", alignItems: "center", backgroundColor: "#E8F0FE" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#1A73E8" }}>
-                      {Number(budgetStats.used.total).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#202124' }}>
+                    {(budgetStats.used.cafe / 1000).toLocaleString('vi-VN')}k
+                  </Text>
                 </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#202124' }}>
+                    {(budgetStats.used.attraction / 1000).toLocaleString('vi-VN')}k
+                  </Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#202124' }}>
+                    {(budgetStats.used.other / 1000).toLocaleString('vi-VN')}k
+                  </Text>
+                </View>
+                <View style={{ flex: 1.2, alignItems: 'center', justifyContent: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(27,36,32,0.06)', backgroundColor: '#E8F0FE' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: '#1A73E8' }}>
+                    {(budgetStats.used.total / 1000).toLocaleString('vi-VN')}k
+                  </Text>
+                </View>
+              </View>
 
-                {/* Hàng 3: CÒN LẠI */}
+              {/* Hàng 3: Còn lại */}
+              <View style={{ flexDirection: 'row', paddingVertical: 7, backgroundColor: '#F8F9FA' }}>
+                <View style={{ width: 85, paddingHorizontal: 8, justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: budgetStats.remaining >= 0 ? '#137333' : '#C5221F' }}>
+                    còn lại
+                  </Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: budgetStats.remainingByCategory.dining >= 0 ? '#137333' : '#C5221F',
+                    }}
+                  >
+                    {(budgetStats.remainingByCategory.dining / 1000).toLocaleString('vi-VN')}k
+                  </Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: budgetStats.remainingByCategory.cafe >= 0 ? '#137333' : '#C5221F',
+                    }}
+                  >
+                    {(budgetStats.remainingByCategory.cafe / 1000).toLocaleString('vi-VN')}k
+                  </Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: budgetStats.remainingByCategory.attraction >= 0 ? '#137333' : '#C5221F',
+                    }}
+                  >
+                    {(budgetStats.remainingByCategory.attraction / 1000).toLocaleString('vi-VN')}k
+                  </Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: budgetStats.remainingByCategory.other >= 0 ? '#137333' : '#C5221F',
+                    }}
+                  >
+                    {(budgetStats.remainingByCategory.other / 1000).toLocaleString('vi-VN')}k
+                  </Text>
+                </View>
                 <View
                   style={{
-                    flexDirection: "row",
-                    backgroundColor: "#FFFFFF",
+                    flex: 1.2,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderLeftWidth: 1,
+                    borderLeftColor: 'rgba(27,36,32,0.06)',
+                    backgroundColor: budgetStats.remaining >= 0 ? '#E6F4EA' : '#FCE8E6',
                   }}
                 >
-                  <View style={{ width: 85, paddingVertical: 8, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: "#1B2420", backgroundColor: "#F8F9FA", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.remaining >= 0 ? "#137333" : "#D93025" }}>còn lại</Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.remainingByCategory.dining >= 0 ? "#137333" : "#D93025" }}>
-                      {Number(budgetStats.remainingByCategory.dining).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.remainingByCategory.cafe >= 0 ? "#137333" : "#D93025" }}>
-                      {Number(budgetStats.remainingByCategory.cafe).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.remainingByCategory.attraction >= 0 ? "#137333" : "#D93025" }}>
-                      {Number(budgetStats.remainingByCategory.attraction).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: "#1B2420", justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: budgetStats.remainingByCategory.other >= 0 ? "#137333" : "#D93025" }}>
-                      {Number(budgetStats.remainingByCategory.other).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1.15, paddingVertical: 8, paddingHorizontal: 4, justifyContent: "center", alignItems: "center", backgroundColor: budgetStats.remaining >= 0 ? "#E6F4EA" : "#FCE8E6" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "900", color: budgetStats.remaining >= 0 ? "#137333" : "#D93025" }}>
-                      {Number(budgetStats.remaining).toLocaleString("vi-VN")}
-                    </Text>
-                  </View>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '900',
+                      color: budgetStats.remaining >= 0 ? '#137333' : '#C5221F',
+                    }}
+                  >
+                    {(budgetStats.remaining / 1000).toLocaleString('vi-VN')}k
+                  </Text>
                 </View>
               </View>
             </View>
-</View>
+          </View>
         </View>
       </View>
+
+      {/* ── FLOATING GHOST PREVIEW CARD KHI KÉO THẢ TRÊN WEB ── */}
+      {Platform.OS === 'web' && pointerDrag && (
+        <div
+          style={{
+            position: 'fixed',
+            left: pointerDrag.currentX - 100,
+            top: pointerDrag.currentY - 35,
+            width: 210,
+            zIndex: 999999,
+            pointerEvents: 'none',
+            backgroundColor: '#FFFFFF',
+            border: '2px solid #1A73E8',
+            borderRadius: 12,
+            padding: '8px 12px',
+            boxShadow: '0 14px 32px rgba(26,115,232,0.38)',
+            transform: 'rotate(2.5deg) scale(1.04)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 13 }}>📍</span>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                color: '#1B2420',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {pointerDrag.type === 'standby'
+                ? (pointerDrag.item as StandbyPlaceItem).name
+                : (pointerDrag.item as CalendarEventItem).title}
+            </span>
+          </div>
+          <div style={{ fontSize: 10, color: '#1A73E8', fontWeight: 700 }}>
+            {hoveredHourSlot
+              ? `👉 Thả vào ${hoveredHourSlot < 10 ? '0' + hoveredHourSlot : hoveredHourSlot}:00`
+              : hoveredCartZone
+              ? '👉 Thả về Giỏ chờ'
+              : hoveredDayTab
+              ? `👉 Chuyển sang Ngày ${hoveredDayTab}`
+              : 'Kéo đến khung giờ muốn đặt'}
+          </div>
+        </div>
+      )}
     </View>
   );
 }

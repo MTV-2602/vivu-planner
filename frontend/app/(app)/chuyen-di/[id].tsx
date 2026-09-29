@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useContext } from 'react';
+import { useState, useEffect, useRef, useContext, useMemo } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   Modal, Alert, ActivityIndicator, Platform, Linking, Share,
@@ -22,6 +22,7 @@ import BackToTop from '../../../components/BackToTop';
 import { BRAND_COLORS, ItineraryItemType, APP_ROUTES } from '../../../constants';
 import InteractiveMap, { MapItem } from '../../../components/InteractiveMap';
 import GoogleMapsRoutePlanner, { RouteWaypoint } from '../../../components/map/GoogleMapsRoutePlanner';
+import GoogleCalendarWorkspace, { CalendarEventItem } from '../../../components/workspace/GoogleCalendarWorkspace';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
 import ShareModal from '../../../components/ShareModal';
 import BookingModal, { BookableItem } from '../../../components/BookingModal';
@@ -484,6 +485,80 @@ export default function TripDetail() {
       description: `${disruptionDesc}\n\n[Thông tin bổ sung]:\n${answersStr}`,
       day_id: disruptionDayId || null,
     });
+  };
+
+  // Chuyển đổi dữ liệu ngày và hoạt động từ Supabase sang CalendarEventItem[] cho Google Calendar Workspace
+  const calendarEvents = useMemo(() => {
+    if (!trip?.days) return [];
+    const evs: CalendarEventItem[] = [];
+    const sorted = [...trip.days].sort((a, b) => a.day_number - b.day_number);
+
+    sorted.forEach((day) => {
+      const dayItems = (day.items || [])
+        .filter((it: any) => it.status !== 'replaced' && it.status !== 'skipped')
+        .sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
+
+      dayItems.forEach((it: any, idx: number) => {
+        let startH = 8 + (idx * 2);
+        let startM = 0;
+        let dur = 90;
+
+        if (it.start_time) {
+          const match = it.start_time.match(/(\d{1,2}):(\d{2})/);
+          if (match) {
+            startH = parseInt(match[1], 10);
+            startM = parseInt(match[2], 10);
+          }
+        }
+        if (it.end_time && it.start_time) {
+          const matchEnd = it.end_time.match(/(\d{1,2}):(\d{2})/);
+          if (matchEnd) {
+            const endH = parseInt(matchEnd[1], 10);
+            const endM = parseInt(matchEnd[2], 10);
+            const totalEndM = endH * 60 + endM;
+            const totalStartM = startH * 60 + startM;
+            if (totalEndM > totalStartM) {
+              dur = totalEndM - totalStartM;
+            }
+          }
+        }
+
+        let costVal = Number(it.estimated_cost) || 0;
+        if (costVal > 0 && costVal < 10000) costVal *= 1000;
+
+        evs.push({
+          id: it.id,
+          placeId: it.google_place_id || it.id,
+          title: it.title,
+          category: it.item_type || 'attraction',
+          address: it.location_name || '',
+          lat: it.location_lat,
+          lng: it.location_lng,
+          cost: costVal,
+          dayNumber: day.day_number,
+          startHour: Math.max(7, Math.min(21, startH)),
+          startMinute: startM,
+          durationMinutes: dur,
+          notes: it.description || '',
+        });
+      });
+    });
+
+    return evs;
+  }, [trip]);
+
+  const handleSaveCalendarWorkspace = async (newEvents: CalendarEventItem[]) => {
+    try {
+      await api.put(`/trips/${id}/sync-calendar`, { events: newEvents });
+      await refetch();
+      setAppToast({ text: '✓ Đã lưu lịch trình và đồng bộ thời gian thành công!', type: 'success' });
+    } catch (err: any) {
+      console.error('Failed to sync calendar:', err);
+      setAppToast({
+        text: 'Lỗi lưu lịch trình: ' + (err.response?.data?.error || err.message || 'Lỗi server'),
+        type: 'error',
+      });
+    }
   };
 
   // ── Loading / Error states ────────────────────────────────────────────────
@@ -953,161 +1028,37 @@ export default function TripDetail() {
             </View>
           )}
 
-          {/* Body: Day switcher + Timeline */}
-          <View className="gap-8">
-            {/* Day Switcher */}
-            <View className="bg-brand-bgAlt p-5 rounded-2xl border border-brand-line/50 gap-4">
-              <Text className="font-bold text-brand-text text-sm">Các ngày hành trình</Text>
-              <View className="gap-2">
-                {sortedDays.map(day => {
-                  const active = activeTabId === day.id;
-                  return (
-                    <Pressable
-                      key={day.id}
-                      onPress={() => setActiveTabId(day.id)}
-                      className={`p-4 rounded-xl border ${active ? 'bg-brand-primary border-brand-primary' : 'bg-brand-bg/50 border-brand-line/30'}`}
-                    >
-                      <View className="flex-row justify-between items-center">
-                        <View className="flex-1">
-                          <Text className={`text-xs font-semibold ${active ? 'text-white/75' : 'text-brand-textMuted'}`}>Ngày 0{day.day_number}</Text>
-                          <Text className={`font-bold text-sm mt-0.5 ${active ? 'text-white' : 'text-brand-textSoft'}`}>{formatDate(day.date)}</Text>
-                          
-                          <View className="flex-row items-center gap-2 mt-1.5 flex-wrap">
-                            <Text className={`text-[10px] font-bold ${active ? 'text-white/90' : 'text-brand-textSoft'}`}>
-                              Dự kiến: <Text className={active ? 'text-white' : 'text-brand-accent'}>{formatVND(dailySpent[day.id] || 0)}</Text>
-                            </Text>
-                            <Text className={`text-[10px] ${active ? 'text-white/60' : 'text-brand-textMuted'}`}>|</Text>
-                            <Text className={`text-[10px] font-bold ${active ? 'text-white/90' : 'text-brand-textSoft'}`}>
-                              Còn lại: <Text className={active ? 'text-white' : 'text-emerald-600'}>{formatVND(dailyRemaining[day.id] || 0)}</Text>
-                            </Text>
-                          </View>
-                        </View>
-                        <ChevronRight size={16} color={active ? 'white' : BRAND_COLORS.textSoft} />
-                      </View>
-                    </Pressable>
-                  );
-                })}
+          {/* ── GOOGLE CALENDAR WORKSPACE (BẢN ĐỒ GOOGLE MAPS + LỊCH KÉO THẢ + BẢNG NGÂN SÁCH) ── */}
+          <View className="gap-6">
+            <View className="flex-row items-center justify-between flex-wrap gap-3">
+              <View className="flex-row items-center gap-2">
+                <Calendar size={20} color={BRAND_COLORS.primary} />
+                <Text className="text-xl font-extrabold text-brand-text">
+                  Lịch trình & Lộ trình Google Maps
+                </Text>
               </View>
-            </View>
 
-            {/* Interactive Route Map */}
-            <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: '#f0ebe0', gap: 16 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+              {!isAdmin && (
                 <Pressable
-                  onPress={() => setShowMapView(!showMapView)}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, cursor: 'pointer' as any }}
+                  testID="btn-add-activity"
+                  onPress={openAddItem}
+                  className="flex-row items-center gap-1.5 px-3.5 py-2 rounded-xl bg-brand-primary active:opacity-90 shadow-sm"
                 >
-                  <Text style={{ fontSize: 22 }}>🗺️</Text>
-                  <View>
-                    <Text style={{ fontWeight: '800', color: '#1B3A2D', fontSize: 16 }}>Lộ trình & Bản đồ Google Maps</Text>
-                    <Text style={{ color: '#888', fontSize: 12 }}>Tuyến đường theo cung phố thực tế, cự ly và kéo thả sắp xếp điểm dừng</Text>
-                  </View>
+                  <Plus size={14} color="#FFFFFF" />
+                  <Text className="text-xs font-bold text-white">+ Thêm hoạt động mới</Text>
                 </Pressable>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Pressable
-                    testID="tab-map-gmaps"
-                    onPress={() => { setMapMode('gmaps'); setShowMapView(true); }}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 8,
-                      backgroundColor: mapMode === 'gmaps' ? '#1A73E8' : '#F1F3F4',
-                      cursor: 'pointer' as any
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: mapMode === 'gmaps' ? '#FFF' : '#3C4043' }}>
-                      🚗 Lộ trình Google Maps
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    testID="tab-map-overview"
-                    onPress={() => { setMapMode('overview'); setShowMapView(true); }}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 8,
-                      backgroundColor: mapMode === 'overview' ? '#134A37' : '#F1F3F4',
-                      cursor: 'pointer' as any
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: mapMode === 'overview' ? '#FFF' : '#3C4043' }}>
-                      🌐 Toàn cảnh chuyến đi
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => setShowMapView(!showMapView)}
-                    style={{ padding: 6, cursor: 'pointer' as any }}
-                  >
-                    <Text style={{ fontSize: 16, color: '#888' }}>{showMapView ? '▲' : '▼'}</Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              {showMapView && (
-                <View style={{ marginTop: 4 }}>
-                  {!isUserPro && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, backgroundColor: '#FFFBF0', borderWidth: 1, borderColor: '#F5D599', borderRadius: 12, marginBottom: 12 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, paddingRight: 8 }}>
-                        <Lock size={16} color="#D4A017" />
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#9A5B00', lineHeight: 18 }}>
-                          🔒 Bạn đang xem Bản đồ ở chế độ Chỉ Đọc. Nâng cấp ViVu Pro để mở khóa tính năng Chỉnh sửa trực tiếp trên Bản đồ, thêm điểm và kéo thả lộ trình.
-                        </Text>
-                      </View>
-                      <Pressable
-                        onPress={() => setShowPremiumModal(true)}
-                        style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#D4A017' }}
-                      >
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>Mở khóa Pro</Text>
-                      </Pressable>
-                    </View>
-                  )}
-                  {mapMode === 'gmaps' ? (
-                    <GoogleMapsRoutePlanner
-                      waypoints={(activeDay?.items || [])
-                        .filter(it => it.status !== 'replaced' && it.status !== 'skipped')
-                        .map(it => ({
-                          id: it.id,
-                          title: it.title,
-                          address: it.description,
-                          lat: (it as any).location_lat,
-                          lng: (it as any).location_lng,
-                          item_type: it.item_type,
-                          start_time: it.start_time,
-                          end_time: it.end_time,
-                          estimated_cost: it.estimated_cost,
-                          day_number: activeDay?.day_number,
-                          google_place_id: it.google_place_id,
-                        }))}
-                      cityName={trip.destination_city}
-                      dayNumber={activeDay?.day_number}
-                      dayTitle={activeDay?.notes || `Lộ trình ngày ${activeDay?.day_number || 1}`}
-                      readOnly={!isUserPro}
-                      onAddWaypoint={isUserPro ? openAddItem : () => setShowPremiumModal(true)}
-                      onSaveOrder={isUserPro && activeDay ? (newWps) => handleSaveDayRouteOrder(activeDay.id, newWps) : undefined}
-                      mapHeight={500}
-                    />
-                  ) : (
-                    <InteractiveMap
-                      items={trip.days.flatMap(day => (day.items || []).map(item => ({
-                        id: item.id,
-                        title: item.title,
-                        item_type: item.item_type,
-                        start_time: item.start_time,
-                        estimated_cost: item.estimated_cost,
-                        location_lat: (item as any).location_lat,
-                        location_lng: (item as any).location_lng,
-                        day_number: day.day_number,
-                        google_place_id: item.google_place_id,
-                      })) as MapItem[])}
-                      cityName={trip.destination_city}
-                    />
-                  )}
-                </View>
               )}
             </View>
+
+            <GoogleCalendarWorkspace
+              cityName={trip.destination_city}
+              totalBudget={trip.budget_total}
+              daysCount={sortedDays.length}
+              initialEvents={calendarEvents}
+              standbyPlaces={[]}
+              onSave={handleSaveCalendarWorkspace}
+              readOnly={isLocked}
+            />
 
             {/* Weather */}
             {activeDay && (
@@ -1148,151 +1099,6 @@ export default function TripDetail() {
                 ))}
               </View>
             )}
-
-            {/* Timeline */}
-            <View className="bg-brand-bgAlt p-6 rounded-3xl border border-brand-line/50 gap-6">
-              <View className="flex-row justify-between items-center flex-wrap gap-2">
-                <View className="flex-row items-center gap-3">
-                  <Text className="font-display font-extrabold text-2xl text-brand-text">Chi tiết hoạt động</Text>
-                  {!isAdmin && (
-                    <Pressable
-                      testID="btn-add-activity"
-                      onPress={openAddItem}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6,
-                        paddingHorizontal: 12,
-                        paddingVertical: 6,
-                        borderRadius: 10,
-                        backgroundColor: 'rgba(27,58,45,0.08)',
-                        borderWidth: 1,
-                        borderColor: 'rgba(27,58,45,0.2)'
-                      }}
-                    >
-                      <Plus size={14} color={BRAND_COLORS.primary} />
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: BRAND_COLORS.primary }}>+ Thêm hoạt động</Text>
-                    </Pressable>
-                  )}
-                </View>
-                {activeDay && (
-                  <View className="flex-row gap-2">
-                    <View className="px-2.5 py-1 rounded-lg bg-brand-accent/10 border border-brand-accent/20">
-                      <Text className="text-[10px] font-extrabold text-brand-accent uppercase">Dự kiến: {formatVND(dailySpent[activeDay.id] || 0)}</Text>
-                    </View>
-                    <View className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200">
-                      <Text className="text-[10px] font-extrabold text-emerald-600 uppercase">Còn lại: {formatVND(dailyRemaining[activeDay.id] || 0)}</Text>
-                    </View>
-                  </View>
-                )}
-              </View>
-              {activeItems.length === 0 ? (
-                <Text className="text-center py-12 text-brand-textSoft text-sm">Chưa có hoạt động nào.</Text>
-              ) : (
-                <View style={{ borderLeftWidth: 1, borderLeftColor: 'rgba(27,36,32,0.12)', marginLeft: 12, paddingLeft: 24, gap: 24 }}>
-                  {activeItems.map((item) => {
-                    const isReplaced = item.status === 'replaced';
-                    const isSkipped = item.status === 'skipped';
-                    return (
-                      <View key={item.id} style={{ opacity: isReplaced || isSkipped ? 0.4 : 1 }}>
-                        {/* Timeline dot */}
-                        <View style={{
-                          position: 'absolute', left: -31, top: 6, width: 16, height: 16,
-                          borderRadius: 8, borderWidth: 2,
-                          backgroundColor: isReplaced ? 'rgba(27,36,32,0.12)' : BRAND_COLORS.bg,
-                          borderColor: isReplaced ? BRAND_COLORS.textMuted : BRAND_COLORS.primary,
-                          alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          {isReplaced && <X size={8} color={BRAND_COLORS.textMuted} />}
-                        </View>
-
-                        <View className="p-4 rounded-2xl bg-brand-bg border border-brand-line/40 gap-3">
-                          <View className="flex-row justify-between items-start gap-2">
-                            <View className="gap-2 flex-1">
-                              {/* Type + time badges */}
-                              <View className="flex-row flex-wrap items-center gap-2">
-                                <View className="flex-row items-center gap-1 bg-white border border-brand-line/40 px-2 py-0.5 rounded">
-                                  {getItemTypeIcon(item.item_type)}
-                                  <Text className="text-[10px] font-bold uppercase tracking-wider text-brand-primary">{ITEM_TYPE_LABELS[item.item_type] || 'Khác'}</Text>
-                                </View>
-                                {item.start_time && (
-                                  <View className="flex-row items-center gap-1">
-                                    <Clock size={12} color={BRAND_COLORS.textSoft} />
-                                    <Text className="text-[10px] font-bold text-brand-textSoft">{item.start_time.substring(0, 5)}{item.end_time ? ` — ${item.end_time.substring(0, 5)}` : ''}</Text>
-                                  </View>
-                                )}
-                                {isReplaced && (
-                                  <View className="bg-brand-danger/10 border border-brand-danger/35 px-1.5 py-0.5 rounded">
-                                    <Text className="text-[9px] font-bold text-brand-danger">ĐÃ THAY THẾ</Text>
-                                  </View>
-                                )}
-                                {item.google_place_id && item.google_place_id.startsWith('partner_') && (
-                                  <View className="flex-row items-center gap-1 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                                    <Shield size={10} color="#059669" />
-                                    <Text className="text-[9px] font-extrabold uppercase tracking-wider text-emerald-600">Đối tác xác minh</Text>
-                                  </View>
-                                )}
-                              </View>
-                              <Text className="text-base font-bold text-brand-text" style={isReplaced ? { textDecorationLine: 'line-through' } : undefined}>{item.title}</Text>
-                              <Text className="text-xs text-brand-textSoft font-serif" numberOfLines={4}>{item.description}</Text>
-                              {item.booking_url && (
-                                <Pressable
-                                  onPress={() => {
-                                    if (item.booking_url) {
-                                      Linking.openURL(item.booking_url).catch(err =>
-                                        console.error("Failed to open URL", err)
-                                      );
-                                      if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
-                                        const partnerId = item.google_place_id.replace('partner_', '');
-                                        api.post(`/admin/partners/${partnerId}/click`, { tripId: id }).catch(err =>
-                                          console.error("Failed to log partner click", err)
-                                        );
-                                      }
-                                    }
-                                  }}
-                                  className="mt-2 self-start flex-row items-center gap-1.5 bg-brand-primary/10 py-1.5 px-3 rounded-lg border border-brand-primary/20"
-                                >
-                                  <Compass size={12} color={BRAND_COLORS.primary} />
-                                  <Text className="text-[10px] font-bold text-brand-primary">Đặt chỗ trực tuyến</Text>
-                                </Pressable>
-                              )}
-                            </View>
-
-                            {/* Cost + actions */}
-                            <View className="items-end gap-3">
-                              {(hasOfficialCost(item.estimated_cost) || item.item_type === 'accommodation' || item.item_type === 'rental') && (
-                                <View className="items-end">
-                                  <Text className="text-[10px] text-brand-textMuted font-bold uppercase tracking-wider">Dự tính</Text>
-                                  <Text className="text-xs font-extrabold text-brand-text">{formatCost(item.estimated_cost, item.item_type)}</Text>
-                                </View>
-                              )}
-                              {!isAdmin && (
-                                <View className="flex-row gap-2">
-                                  <Pressable
-                                    onPress={() => { setAiReplaceItem(item); setAiAlternatives([]); setAiRequirement(''); setAiReplaceOpen(true); }}
-                                    className="flex-row items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brand-accent/15 border border-brand-accent/30"
-                                    style={{ cursor: 'pointer' as any }}
-                                  >
-                                    <Sparkles size={13} color={BRAND_COLORS.accent} />
-                                    <Text className="text-[11px] font-bold text-brand-accent">Thay thế</Text>
-                                  </Pressable>
-                                  <Pressable testID={`btn-edit-item-${item.id}`} onPress={() => openEdit(item)} className="p-1.5 rounded bg-brand-primary/10">
-                                    <PenLine size={14} color={BRAND_COLORS.primary} />
-                                  </Pressable>
-                                  <Pressable testID={`btn-delete-item-${item.id}`} onPress={() => confirmDelete(item.id, item.title)} className="p-1.5 rounded bg-brand-danger/10">
-                                    <Trash2 size={14} color={BRAND_COLORS.danger} />
-                                  </Pressable>
-                                </View>
-                              )}
-                            </View>
-                          </View>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
           </View>
         </View>
       </ScrollView>
