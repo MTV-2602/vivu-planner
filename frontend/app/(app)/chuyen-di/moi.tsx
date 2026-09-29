@@ -35,6 +35,18 @@ const LOADING_STAGES = [
   'Đang khởi tạo cơ sở dữ liệu chuyến đi của bạn...',
 ];
 
+const CATEGORY_NAMES_VI: Record<string, string> = {
+  dining: 'Ăn uống',
+  cafe: 'Cà phê',
+  hotel: 'Khách sạn',
+  accommodation: 'Khách sạn',
+  attraction: 'Tham quan',
+  experience: 'Trải nghiệm',
+  rental: 'Thuê xe',
+  transport: 'Di chuyển',
+  default: 'Địa điểm',
+};
+
 function getTodayString() {
   const today = new Date();
   const year = today.getFullYear();
@@ -196,7 +208,7 @@ function LoadingScreen({ stage, onCancel }: { stage: number; onCancel: () => voi
 
         <View className="items-center gap-2">
           <Text className="font-display font-extrabold text-2xl text-brand-textDark tracking-tight">
-            ViVu AI Planner
+            ViVu Lập Lịch Thông Minh
           </Text>
           <Text className="font-serif text-sm text-brand-textMuted italic text-center">
             "Lập trình trải nghiệm du lịch thông minh"
@@ -553,6 +565,18 @@ export default function TripWizard() {
       default: '📍'
     };
 
+    var categoryNames = {
+      dining: 'Ăn uống',
+      cafe: 'Cà phê',
+      hotel: 'Khách sạn',
+      accommodation: 'Khách sạn',
+      attraction: 'Tham quan',
+      experience: 'Trải nghiệm',
+      rental: 'Thuê xe',
+      transport: 'Di chuyển',
+      default: 'Địa điểm'
+    };
+
     var bounds = [];
 
     places.forEach(function(p) {
@@ -581,7 +605,7 @@ export default function TripWizard() {
       bounds.push([p.lat, p.lng]);
 
       var popupHtml = '<div style="padding:12px; min-width:210px; max-width:260px;">' +
-        '<div style="font-size:10px; font-weight:800; color:' + color + '; text-transform:uppercase; margin-bottom:2px;">' + icon + ' ' + (p.category || 'Địa điểm') + '</div>' +
+        '<div style="font-size:10px; font-weight:800; color:' + color + '; margin-bottom:2px;">' + icon + ' ' + (categoryNames[cat] || 'Địa điểm') + '</div>' +
         '<div style="font-size:13px; font-weight:800; color:#202124; margin-bottom:4px;">' + p.name + '</div>' +
         '<div style="font-size:11px; font-weight:800; color:#137333; margin-bottom:4px;">' + costFormatted + '</div>' +
         (p.address ? '<div style="font-size:10px; color:#5F6368; margin-bottom:8px;">📍 ' + p.address + '</div>' : '') +
@@ -1266,7 +1290,7 @@ export default function TripWizard() {
                   <View className="gap-2">
                     <View className="flex-row items-center gap-1.5">
                       <MapPin size={14} color={BRAND_COLORS.primary} />
-                      <Text className="text-sm font-bold text-brand-textSoft">Điểm đến (Dropdown Chọn Thành Phố)</Text>
+                      <Text className="text-sm font-bold text-brand-textSoft">Điểm đến (Chọn Thành Phố)</Text>
                     </View>
                     {Platform.OS === 'web' ? (
                       <select
@@ -1363,8 +1387,8 @@ export default function TripWizard() {
                         {(travelerType === TravelerType.SOLO || travelerType === TravelerType.COUPLE) && (
                           <Text className="text-xs font-semibold text-brand-primary">
                             {travelerType === TravelerType.SOLO
-                              ? 'ℹ️ Đã tự động thiết lập 1 người (Solo).'
-                              : 'ℹ️ Đã tự động thiết lập 2 người (Couple).'}
+                              ? 'ℹ️ Đã tự động thiết lập 1 người (Đi một mình).'
+                              : 'ℹ️ Đã tự động thiết lập 2 người (Cặp đôi).'}
                           </Text>
                         )}
                       </View>
@@ -1542,11 +1566,11 @@ export default function TripWizard() {
                         <View className="flex-row items-center gap-1.5">
                           <Crown size={16} color={BRAND_COLORS.accent} />
                           <Text className="text-sm font-extrabold text-[#9A5B00]">
-                            🌟 Chế độ Pro Planner: Tự tay nhặt địa điểm trên Bản đồ & Tính ngân sách Live 🔒
+                            🌟 Chế độ Lập kế hoạch Chuyên sâu: Tự tay chọn địa điểm trên Bản đồ & Quản lý ngân sách 🔒
                           </Text>
                         </View>
                         <Text className="text-xs text-[#7A5210] leading-relaxed">
-                          AI sinh kho 16-22 địa điểm phong phú thực tế theo đúng sở thích và ngân sách vừa chọn. Bạn tự do nhặt vào giỏ, đổi ngày và xem đường đi real-time.
+                          AI sinh kho 16-22 địa điểm phong phú thực tế theo đúng sở thích và ngân sách vừa chọn. Bạn tự do nhặt vào giỏ, đổi ngày và xem đường đi trực tiếp.
                         </Text>
                       </View>
                       <Pressable
@@ -1564,7 +1588,7 @@ export default function TripWizard() {
                           <Crown size={16} color="#FFFFFF" />
                         </View>
                         <View>
-                          <Text className="text-xs font-extrabold text-brand-text">Không gian Pro Workspace (Bản đồ & Lịch trình ViVu)</Text>
+                          <Text className="text-xs font-extrabold text-brand-text">Không gian Lập lịch Chuyên sâu (Bản đồ & Lịch trình ViVu)</Text>
                           <Text className="text-[10px] text-brand-textSoft">AI đã sinh kho địa điểm thực tế tại {destinationCity}</Text>
                         </View>
                       </View>
@@ -1739,8 +1763,8 @@ export default function TripWizard() {
                                       <View className="flex-1 gap-1">
                                         <View className="flex-row items-center gap-2">
                                           <View className="px-2 py-0.5 rounded-md bg-brand-bgAlt border border-brand-line/40">
-                                            <Text className="text-[10px] font-extrabold uppercase text-brand-textSoft">
-                                              {place.category || 'Địa điểm'}
+                                            <Text className="text-[10px] font-extrabold text-brand-textSoft">
+                                              {CATEGORY_NAMES_VI[String(place.category || '').toLowerCase()] || place.category || 'Địa điểm'}
                                             </Text>
                                           </View>
                                           <Text className="text-xs font-extrabold text-emerald-700">
@@ -1932,7 +1956,7 @@ export default function TripWizard() {
                           {(isPremium || isAdmin) ? (
                             <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-md bg-[#FFF2E0] border border-brand-accent/30">
                               <Crown size={11} color={BRAND_COLORS.accent} />
-                              <Text className="text-[10px] font-extrabold text-brand-accent">PRO UNLOCKED</Text>
+                              <Text className="text-[10px] font-extrabold text-brand-accent">ĐÃ MỞ KHÓA PRO</Text>
                             </View>
                           ) : (
                             <Pressable onPress={() => setShowPremiumModal(true)} className="flex-row items-center gap-1 px-2 py-0.5 rounded-md bg-brand-bgAlt border border-brand-line/40">
@@ -1986,12 +2010,12 @@ export default function TripWizard() {
                               </View>
                               {(isPremium || isAdmin) ? (
                                 <View className="px-1.5 py-0.5 rounded bg-brand-accent/20">
-                                  <Text className="text-[9px] font-extrabold text-brand-accent">PRO</Text>
+                                  <Text className="text-[9px] font-extrabold text-brand-accent">GÓI PRO</Text>
                                 </View>
                               ) : (
                                 <View className="flex-row items-center gap-0.5 px-1.5 py-0.5 rounded bg-brand-line/30">
                                   <Lock size={9} color={BRAND_COLORS.textSoft} />
-                                  <Text className="text-[9px] font-extrabold text-brand-textSoft">PRO</Text>
+                                  <Text className="text-[9px] font-extrabold text-brand-textSoft">GÓI PRO</Text>
                                 </View>
                               )}
                             </View>
@@ -2007,7 +2031,7 @@ export default function TripWizard() {
                         <Text className="font-bold text-brand-text text-sm border-b border-brand-line/30 pb-2">Tóm tắt hành trình</Text>
                         <View className="flex-row flex-wrap gap-x-4 gap-y-1.5">
                           <Text className="text-xs text-brand-textSoft">Điểm đến: <Text className="font-bold text-brand-text">{destinationCity}</Text></Text>
-                          <Text className="text-xs text-brand-textSoft">Thành viên: <Text className="font-bold text-brand-text">{travelerCount} khách ({travelerType})</Text></Text>
+                          <Text className="text-xs text-brand-textSoft">Thành viên: <Text className="font-bold text-brand-text">{travelerCount} khách ({TRAVELER_TYPES.find(t => t.value === travelerType)?.label || travelerType})</Text></Text>
                           <Text className="text-xs text-brand-textSoft">Bắt đầu: <Text className="font-bold text-brand-text">{formatDateForDisplay(startDate)}</Text></Text>
                           <Text className="text-xs text-brand-textSoft">Kết thúc: <Text className="font-bold text-brand-text">{formatDateForDisplay(endDate)}</Text></Text>
                           <Text className="text-xs text-brand-textSoft">
@@ -2180,17 +2204,17 @@ export default function TripWizard() {
                     </View>
                     <View>
                       <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: (isPremium || isAdmin) ? BRAND_COLORS.primary : '#9A5B00' }}>
-                        🗺️ Không gian Bản đồ Live & Lập lịch
+                        🗺️ Không gian Bản đồ Trực quan & Lập lịch
                       </Text>
                       <Text style={{ fontSize: 11, color: (isPremium || isAdmin) ? '#1F6F54' : '#7A5210', fontWeight: '500' }}>
-                        Bản đồ Live & Lịch trình ViVu
+                        Bản đồ Trực quan & Lịch trình ViVu
                       </Text>
                     </View>
                   </View>
                   <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: (isPremium || isAdmin) ? BRAND_COLORS.primary : '#D4A017', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     {!(isPremium || isAdmin) && <Lock size={10} color="#FFFFFF" />}
                     <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>
-                      {(isPremium || isAdmin) ? 'PRO UNLOCKED' : 'PRO 🔒'}
+                      {(isPremium || isAdmin) ? 'ĐÃ MỞ KHÓA PRO' : 'GÓI PRO 🔒'}
                     </Text>
                   </View>
                 </View>
@@ -2198,7 +2222,7 @@ export default function TripWizard() {
                 <Text style={{ fontSize: 12, color: (isPremium || isAdmin) ? '#3F4F45' : '#7A5210', lineHeight: 17, paddingLeft: 50 }}>
                   {(isPremium || isAdmin)
                     ? 'Tự do kéo thả địa điểm từ Giỏ hàng vào Lịch trình trực quan, xem đường xe chạy OSRM và cân đối Bảng ngân sách ma trận.'
-                    : 'Đặc quyền thành viên ViVu Pro. Mở khóa Không gian Bản đồ Live & Lịch trình ViVu để tự tay sắp xếp lịch trình trên bản đồ.'}
+                    : 'Đặc quyền thành viên ViVu Pro. Mở khóa Không gian Bản đồ Trực quan & Lịch trình ViVu để tự tay sắp xếp lịch trình trên bản đồ.'}
                 </Text>
               </Pressable>
             </View>

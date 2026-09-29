@@ -1264,12 +1264,13 @@ router.post('/chat', requireAuth, aiChatLimiter, async (req: any, res: Response)
       requires_premium: true
     });
   }
+  const isAiProUser = Boolean((isPremium || isAdmin) && (targetProvider === 'custom_openai' || (!targetProvider && (isPremium || isAdmin))));
 
   try {
     // Save user message
     await saveChatMessage(null, req.user!.id, ChatMessageRole.USER, message);
 
-    const chatResponse = await chatWithItinerary(message, history || [], undefined, undefined, undefined, targetProvider);
+    const chatResponse = await chatWithItinerary(message, history || [], undefined, undefined, undefined, targetProvider, isAiProUser);
 
     // Save model response
     await saveChatMessage(null, req.user!.id, ChatMessageRole.MODEL, chatResponse.responseText, {
@@ -1312,6 +1313,7 @@ router.post('/:id/chat', requireAuth, aiChatLimiter, async (req: any, res: Respo
       requires_premium: true
     });
   }
+  const isAiProUser = Boolean((isPremium || isAdmin) && (targetProvider === 'custom_openai' || (!targetProvider && (isPremium || isAdmin))));
 
   try {
     // 1. Lấy thông tin chuyến đi
@@ -1361,7 +1363,7 @@ router.post('/:id/chat', requireAuth, aiChatLimiter, async (req: any, res: Respo
       }
     }
 
-    const chatResponse = await chatWithItinerary(message, history || [], trip, previousSnapshot, weatherForecast, targetProvider);
+    const chatResponse = await chatWithItinerary(message, history || [], trip, previousSnapshot, weatherForecast, targetProvider, isAiProUser);
 
     // Save model response
     await saveChatMessage(tripId, req.user!.id, 'model', chatResponse.responseText, {

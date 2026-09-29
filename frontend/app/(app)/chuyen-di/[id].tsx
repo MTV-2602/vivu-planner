@@ -89,6 +89,14 @@ const ITEM_TYPE_LABELS: Record<string, string> = {
   [ItineraryItemType.EXPERIENCE]: 'Trải nghiệm',
 };
 
+const TRAVELER_TYPE_LABELS: Record<string, string> = {
+  solo: 'Đi một mình',
+  couple: 'Cặp đôi',
+  family: 'Gia đình',
+  friends: 'Nhóm bạn',
+  other: 'Khác',
+};
+
 // ─── SelectPicker ─────────────────────────────────────────────────────────────
 interface SelectOption { value: string; label: string; }
 function SelectPicker({ options, value, onChange }: { options: SelectOption[]; value: string; onChange: (v: string) => void }) {
@@ -239,7 +247,7 @@ export default function TripDetail() {
   const isUserPro = Boolean(statusData?.isPremium || isAdmin);
   const { distanceKm, loading: locLoading } = useDistanceToCity(tripData?.destination_city ?? '');
 
-  const { setTripId, registerPreviewTrigger, unregisterPreviewTrigger } = useContext(ChatbotContext);
+  const { setTripId, registerPreviewTrigger, unregisterPreviewTrigger, openChatbot } = useContext(ChatbotContext);
 
   useEffect(() => {
     if (id) {
@@ -549,22 +557,37 @@ export default function TripDetail() {
 
   // Danh sách địa điểm gợi ý sẵn sàng cho khay chờ nếu người dùng muốn thêm/thay thế
   const standbySuggestions = useMemo(() => {
-    if (!trip?.destination_city) return [];
-    const pool = getCuratedPlacesForCity(trip.destination_city);
+    // 1. User thường KHÔNG có giỏ hàng chờ xếp lịch (Giỏ hàng khóa cho Pro)
+    if (!isUserPro) return [];
+
+    // 2. Chuyến đi tạo nhanh 1-Click (creation_mode === 'ai_auto' hoặc không có giỏ ban đầu)
+    const creationMode = trip?.preferences?.creation_mode || 'ai_auto';
+    if (creationMode === 'ai_auto') {
+      return [];
+    }
+
+    // 3. Chuyến đi tạo từ Bản đồ Pro (manual):
+    // Chỉ lấy những địa điểm trong giỏ ban đầu mà CHƯA xếp vào lịch trình ("mấy cái chưa hết")
+    const candidatePool = (trip?.preferences?.candidate_pool as any[]) || [];
     const existingTitles = new Set(calendarEvents.map((e) => (e.title || '').toLowerCase().trim()));
-    return pool
-      .filter((p) => !existingTitles.has((p.name || '').toLowerCase().trim()))
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        category: p.category,
-        address: p.address,
-        lat: p.lat,
-        lng: p.lng,
-        cost: p.estimated_cost || 50000,
-        suggestedDuration: 90,
-      }));
-  }, [trip?.destination_city, calendarEvents]);
+
+    if (Array.isArray(candidatePool) && candidatePool.length > 0) {
+      return candidatePool
+        .filter((p) => !existingTitles.has((p.name || '').toLowerCase().trim()))
+        .map((p) => ({
+          id: p.id || String(Math.random()),
+          name: p.name,
+          category: p.category || 'attraction',
+          address: p.address || '',
+          lat: p.lat,
+          lng: p.lng,
+          cost: p.estimated_cost || 50000,
+          suggestedDuration: 90,
+        }));
+    }
+
+    return [];
+  }, [isUserPro, trip, calendarEvents]);
 
   const handleSaveCalendarWorkspace = async (newEvents: CalendarEventItem[]) => {
     try {
@@ -951,7 +974,9 @@ export default function TripDetail() {
                   </View>
                   <View className="flex-row items-center gap-1.5">
                     <Compass size={16} color={BRAND_COLORS.primary} />
-                    <Text className="text-xs text-brand-textSoft font-semibold">{trip.traveler_count} khách ({trip.traveler_type})</Text>
+                    <Text className="text-xs text-brand-textSoft font-semibold">
+                      {trip.traveler_count} khách ({TRAVELER_TYPE_LABELS[String(trip.traveler_type || '').toLowerCase()] || trip.traveler_type})
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -1056,17 +1081,6 @@ export default function TripDetail() {
                   Lịch trình & Lộ trình di chuyển
                 </Text>
               </View>
-
-              {!isAdmin && (
-                <Pressable
-                  testID="btn-add-activity"
-                  onPress={openAddItem}
-                  className="flex-row items-center gap-1.5 px-3.5 py-2 rounded-xl bg-brand-primary active:opacity-90 shadow-sm"
-                >
-                  <Plus size={14} color="#FFFFFF" />
-                  <Text className="text-xs font-bold text-white">+ Thêm hoạt động mới</Text>
-                </Pressable>
-              )}
             </View>
 
             <GoogleCalendarWorkspace
@@ -1079,6 +1093,15 @@ export default function TripDetail() {
               onSave={handleSaveCalendarWorkspace}
               readOnly={isLocked}
               isDetailPage={true}
+              isUserPro={isUserPro}
+              creationMode={trip?.preferences?.creation_mode || 'ai_auto'}
+              onUpgradePro={() => setShowPremiumModal(true)}
+              onOpenManualAdd={openAddItem}
+              onOpenAiAssistant={() => {
+                if (openChatbot) {
+                  openChatbot();
+                }
+              }}
             />
 
             {/* Weather */}
@@ -1806,11 +1829,11 @@ export default function TripDetail() {
                   </View>
                 </View>
 
-                {day.weather_summary?.note && (
+                {Boolean(day.weather_summary?.note) ? (
                   <View style={{ backgroundColor: '#f9f9f9', padding: 8, borderRadius: 6, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#14201B' }}>
-                    <Text style={{ fontSize: 11, fontStyle: 'italic', color: '#555555' }}>☀️ Thời tiết: {day.weather_summary.note}</Text>
+                    <Text style={{ fontSize: 11, fontStyle: 'italic', color: '#555555' }}>☀️ Thời tiết: {day.weather_summary?.note}</Text>
                   </View>
-                )}
+                ) : null}
 
                 {items.length === 0 ? (
                   <Text style={{ fontSize: 12, color: '#777777', fontStyle: 'italic', paddingLeft: 10 }}>Chưa có hoạt động nào được lên lịch.</Text>
@@ -1823,22 +1846,22 @@ export default function TripDetail() {
                             <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#14201B', backgroundColor: '#e2f0ea', paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4 }}>
                               {ITEM_TYPE_LABELS[item.item_type] || 'Khác'}
                             </Text>
-                            {item.start_time && (
+                            {Boolean(item.start_time) ? (
                               <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#666666' }}>
-                                ⏱️ {item.start_time.substring(0, 5)}{item.end_time ? ` - ${item.end_time.substring(0, 5)}` : ''}
+                                ⏱️ {item.start_time?.substring(0, 5)}{item.end_time ? ` - ${item.end_time?.substring(0, 5)}` : ''}
                               </Text>
-                            )}
+                            ) : null}
                           </View>
-                          {hasOfficialCost(item.estimated_cost) && (
+                          {Boolean(hasOfficialCost(item.estimated_cost)) ? (
                             <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#14201B' }}>
                               {formatCost(item.estimated_cost, item.item_type)}
                             </Text>
-                          )}
+                          ) : null}
                         </View>
                         <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#111111', marginBottom: 4 }}>{item.title}</Text>
-                        {item.description && (
+                        {Boolean(item.description) ? (
                           <Text style={{ fontSize: 11, color: '#555555', lineHeight: 15 }}>{item.description}</Text>
-                        )}
+                        ) : null}
                       </View>
                     ))}
                   </View>

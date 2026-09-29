@@ -37,14 +37,25 @@ export function ChatbotWidget() {
   const scrollViewRef = useRef<ScrollView>(null);
   const isCreatingRef = useRef(false);
 
+  const isAiProActive = Boolean((selectedAi === 'custom_openai' || isPremium || isAdmin) && (isPremium || isAdmin));
+
   const setDefaultWelcomeMessage = () => {
     if (tripId) {
-      setMessages([
-        {
-          role: 'model',
-          content: 'Xin chào! Tôi là ViVu AI. Tôi đã nhận diện được chuyến đi của bạn. Bạn muốn tôi giúp điều chỉnh hoạt động nào, thêm địa điểm ăn uống hay thay đổi chỗ nghỉ không?'
-        }
-      ]);
+      if (isAiProActive) {
+        setMessages([
+          {
+            role: 'model',
+            content: 'Xin chào! Tôi là ViVu AI Pro. Tôi có thể hỗ trợ tính toán chi tiêu dự kiến theo ngày/hạng mục, hoặc cập nhật lịch trình & bản đồ khi bạn gửi link Google Maps!'
+          }
+        ]);
+      } else {
+        setMessages([
+          {
+            role: 'model',
+            content: 'Xin chào! Tôi là ViVu AI. Tôi có thể giải đáp thắc mắc về chuyến đi và hỗ trợ tính toán chi tiêu dự kiến theo ngày hoặc theo từng hạng mục cho bạn!'
+          }
+        ]);
+      }
     } else {
       setMessages([
         {
@@ -425,11 +436,13 @@ export function ChatbotWidget() {
           {tripId && (
             <View 
               className="flex-row items-center justify-center py-2 px-3 gap-1.5"
-              style={{ backgroundColor: '#1F6F54' }}
+              style={{ backgroundColor: isAiProActive ? '#1F6F54' : '#1E2D27' }}
             >
               <Sparkles size={11} color="#FFF2E0" />
               <Text className="text-[10px] text-white font-bold" style={{ color: '#FFF2E0' }}>
-                Chế độ tự động sửa lịch trình đang bật cho chuyến đi này
+                {isAiProActive
+                  ? 'Chế độ AI Pro: Nhận link Google Maps & tính dự kiến chi tiêu'
+                  : 'Chế độ AI Tiêu chuẩn: Tính toán chi tiêu dự kiến & giải đáp chuyến đi'}
               </Text>
             </View>
           )}

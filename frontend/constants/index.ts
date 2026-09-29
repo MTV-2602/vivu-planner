@@ -72,10 +72,10 @@ export enum TravelerType {
 }
 
 export const TRAVELER_TYPES = [
-  { value: TravelerType.SOLO, label: 'Đi một mình (Solo)' },
-  { value: TravelerType.COUPLE, label: 'Cặp đôi (Couple)' },
-  { value: TravelerType.FAMILY, label: 'Gia đình (Family)' },
-  { value: TravelerType.FRIENDS, label: 'Nhóm bạn (Friends)' },
+  { value: TravelerType.SOLO, label: 'Đi một mình' },
+  { value: TravelerType.COUPLE, label: 'Cặp đôi' },
+  { value: TravelerType.FAMILY, label: 'Gia đình' },
+  { value: TravelerType.FRIENDS, label: 'Nhóm bạn' },
   { value: TravelerType.OTHER, label: 'Khác' },
 ];
 

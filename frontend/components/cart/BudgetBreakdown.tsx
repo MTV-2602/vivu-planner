@@ -20,7 +20,7 @@ const CATEGORIES = [
   { key: 'transport' as const, label: 'Di chuyển', icon: Truck, color: '#3B82F6', defaultPercent: 20 },
   { key: 'accommodation' as const, label: 'Khách sạn', icon: Home, color: '#2563EB', defaultPercent: 30 },
   { key: 'dining' as const, label: 'Ăn uống', icon: Utensils, color: '#B23B3B', defaultPercent: 25 },
-  { key: 'cafe' as const, label: 'Cafe & View', icon: Coffee, color: '#F0B255', defaultPercent: 10 },
+  { key: 'cafe' as const, label: 'Cà phê & Điểm ngắm', icon: Coffee, color: '#F0B255', defaultPercent: 10 },
   { key: 'entertainment' as const, label: 'Vui chơi & Vé', icon: Ticket, color: '#8B5CF6', defaultPercent: 15 },
 ];
 

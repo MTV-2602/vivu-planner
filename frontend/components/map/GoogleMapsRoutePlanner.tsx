@@ -593,7 +593,7 @@ export default function GoogleMapsRoutePlanner({
           >
             <Car size={16} color={selectedTransit === 'driving' ? '#1A73E8' : '#5F6368'} />
             <Text style={{ fontSize: 12, fontWeight: '700', color: selectedTransit === 'driving' ? '#1A73E8' : '#5F6368' }}>
-              Ô tô {selectedTransit === 'driving' && routeInfo.durationMinutes > 0 ? `· ${routeInfo.durationMinutes}p` : ''}
+              Ô tô {selectedTransit === 'driving' && routeInfo.durationMinutes > 0 ? `· ${routeInfo.durationMinutes} phút` : ''}
             </Text>
           </Pressable>
 
@@ -615,7 +615,7 @@ export default function GoogleMapsRoutePlanner({
           >
             <Bike size={16} color={selectedTransit === 'motorcycle' ? '#1A73E8' : '#5F6368'} />
             <Text style={{ fontSize: 12, fontWeight: '700', color: selectedTransit === 'motorcycle' ? '#1A73E8' : '#5F6368' }}>
-              Xe máy {selectedTransit === 'motorcycle' && routeInfo.durationMinutes > 0 ? `· ${routeInfo.durationMinutes}p` : ''}
+              Xe máy {selectedTransit === 'motorcycle' && routeInfo.durationMinutes > 0 ? `· ${routeInfo.durationMinutes} phút` : ''}
             </Text>
           </Pressable>
 
@@ -839,7 +839,7 @@ export default function GoogleMapsRoutePlanner({
                   <Plus size={14} color="#5F6368" />
                 </View>
                 <Text style={{ fontSize: 13, fontWeight: '600', color: '#1A73E8' }}>
-                  + Thêm điểm đến (Add destination)
+                  + Thêm điểm đến
                 </Text>
               </Pressable>
             )}

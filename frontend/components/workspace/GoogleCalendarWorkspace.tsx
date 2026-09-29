@@ -21,7 +21,9 @@ import {
   Car,
   Check,
   RotateCcw,
-  ExternalLink
+  ExternalLink,
+  Crown,
+  Lock
 } from 'lucide-react-native';
 import { BRAND_COLORS } from '../../constants';
 import { getCityCenterCoords } from '../map/CuratedMap';
@@ -156,6 +158,11 @@ export interface GoogleCalendarWorkspaceProps {
   onSave?: (events: CalendarEventItem[], totalCost: number) => void;
   readOnly?: boolean;
   isDetailPage?: boolean;
+  isUserPro?: boolean;
+  creationMode?: string;
+  onUpgradePro?: () => void;
+  onOpenManualAdd?: () => void;
+  onOpenAiAssistant?: () => void;
 }
 
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 07:00 -> 21:00
@@ -171,6 +178,18 @@ const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string
   default: { bg: '#E8F0FE', border: '#1A73E8', text: '#1A73E8', lightBg: '#D2E3FC', emoji: '📍' },
 };
 
+const CATEGORY_NAMES_VI: Record<string, string> = {
+  dining: 'Ăn uống',
+  cafe: 'Cà phê',
+  hotel: 'Nghỉ ngơi',
+  accommodation: 'Nghỉ ngơi',
+  attraction: 'Vui chơi',
+  rental: 'Thuê xe',
+  transport: 'Di chuyển',
+  other: 'Khác',
+  default: 'Địa điểm',
+};
+
 export default function GoogleCalendarWorkspace({
   cityName = 'Hà Nội',
   totalBudget = 5000000,
@@ -183,6 +202,11 @@ export default function GoogleCalendarWorkspace({
   onSave,
   readOnly = false,
   isDetailPage = false,
+  isUserPro = true,
+  creationMode = 'manual',
+  onUpgradePro,
+  onOpenManualAdd,
+  onOpenAiAssistant,
 }: GoogleCalendarWorkspaceProps) {
   const { width: windowWidth } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && windowWidth >= 960;
@@ -206,22 +230,26 @@ export default function GoogleCalendarWorkspace({
     if (propStandbyPlaces !== undefined) {
       stb = propStandbyPlaces;
     } else {
-      // Chỉ fallback khi chạy độc lập / demo không truyền propStandbyPlaces
-      const cityPlaces = getCuratedPlacesForCity(cityName);
-      stb = cityPlaces.map((p) => ({
-        id: p.id,
-        name: p.name,
-        category: p.category,
-        address: p.address,
-        lat: p.lat,
-        lng: p.lng,
-        cost: p.estimated_cost || 50000,
-        suggestedDuration: 90,
-      }));
+      // Chỉ fallback khi demo độc lập / không truyền propStandbyPlaces VÀ là Pro
+      if (isUserPro) {
+        const cityPlaces = getCuratedPlacesForCity(cityName);
+        stb = cityPlaces.map((p) => ({
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          address: p.address,
+          lat: p.lat,
+          lng: p.lng,
+          cost: p.estimated_cost || 50000,
+          suggestedDuration: 90,
+        }));
+      } else {
+        stb = [];
+      }
     }
 
     return { evs: [], stb };
-  }, [cityName, propDaysCount, initialEvents, propStandbyPlaces]);
+  }, [cityName, propDaysCount, initialEvents, propStandbyPlaces, isUserPro]);
 
   // State sự kiện và giỏ chờ
   const [events, setEvents] = useState<CalendarEventItem[]>(initialData.evs);
@@ -878,6 +906,35 @@ export default function GoogleCalendarWorkspace({
     notifyChanges(nextEvents, standbyListRef.current);
   };
 
+  // Tải thêm địa điểm gợi ý vào giỏ chờ cho Pro user
+  const handleLoadMoreStandbyPlaces = () => {
+    const cityPlaces = getCuratedPlacesForCity(cityName);
+    const currentEventTitles = new Set(events.map((e) => (e.title || '').toLowerCase().trim()));
+    const currentStandbyIds = new Set(standbyList.map((s) => s.id));
+    const more = cityPlaces
+      .filter((p) => !currentEventTitles.has((p.name || '').toLowerCase().trim()) && !currentStandbyIds.has(p.id))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        address: p.address,
+        lat: p.lat,
+        lng: p.lng,
+        cost: p.estimated_cost || 50000,
+        suggestedDuration: 90,
+      }));
+    if (more.length > 0) {
+      const nextStandby = [...standbyList, ...more];
+      setStandbyList(nextStandby);
+      notifyChanges(events, nextStandby);
+      setToastMsg(`✓ Đã nạp thêm ${more.length} địa điểm gợi ý vào Giỏ chờ!`);
+      setTimeout(() => setToastMsg(null), 3000);
+    } else {
+      setToastMsg('ℹ️ Tất cả các địa điểm gợi ý đã có trong lịch hoặc giỏ!');
+      setTimeout(() => setToastMsg(null), 3000);
+    }
+  };
+
   // ── XỬ LÝ REAL POINTER DRAG & DROP TRÊN WEB ──
   const handleStartPointerDrag = (
     item: StandbyPlaceItem | CalendarEventItem,
@@ -885,6 +942,12 @@ export default function GoogleCalendarWorkspace({
     e: any
   ) => {
     if (readOnly) return;
+    if (type === 'standby' && !isUserPro) {
+      if (onUpgradePro) onUpgradePro();
+      setToastMsg('🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!');
+      setTimeout(() => setToastMsg(null), 3000);
+      return;
+    }
     if (e?.button !== undefined && e.button !== 0) return; // Chỉ chuột trái
 
     const clientX = e?.clientX ?? (e?.touches && e.touches[0]?.clientX) ?? 0;
@@ -1016,7 +1079,11 @@ export default function GoogleCalendarWorkspace({
           setTimeout(() => setToastMsg(null), 3000);
         }
       } else if (cartEl) {
-        if (cur.type === 'event') {
+        if (!isUserPro) {
+          if (onUpgradePro) onUpgradePro();
+          setToastMsg('🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!');
+          setTimeout(() => setToastMsg(null), 3000);
+        } else if (cur.type === 'event') {
           removeEventToStandby(cur.id);
           const evTitle = (cur.item as CalendarEventItem).title || (cur.item as any).name || 'Hoạt động';
           setToastMsg(`✓ Đã chuyển "${evTitle}" về Giỏ chờ!`);
@@ -1447,27 +1514,53 @@ export default function GoogleCalendarWorkspace({
           </View>
         </View>
 
-        {onSave && !readOnly && (
-          <Pressable
-            testID="btn-save-calendar-workspace"
-            onPress={() => onSave(events, budgetStats.totalScheduled)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              backgroundColor: '#134A37',
-              paddingHorizontal: 16,
-              paddingVertical: 9,
-              borderRadius: 10,
-              cursor: 'pointer' as any,
-            }}
-          >
-            <CheckCircle2 size={16} color="#FFFFFF" />
-            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
-              ✓ Lưu lịch trình & Ngân sách
-            </Text>
-          </Pressable>
-        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {isUserPro && !readOnly && onOpenManualAdd && (
+            <Pressable
+              testID="btn-pro-add-activity"
+              onPress={onOpenManualAdd}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                backgroundColor: '#E6F4EA',
+                borderWidth: 1,
+                borderColor: '#137333',
+                paddingHorizontal: 13,
+                paddingVertical: 9,
+                borderRadius: 10,
+                cursor: 'pointer' as any,
+              }}
+            >
+              <Plus size={14} color="#137333" />
+              <Text style={{ color: '#137333', fontSize: 12, fontWeight: '700' }}>
+                Thêm hoạt động
+              </Text>
+            </Pressable>
+          )}
+
+          {onSave && !readOnly && (
+            <Pressable
+              testID="btn-save-calendar-workspace"
+              onPress={() => onSave(events, budgetStats.totalScheduled)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                backgroundColor: '#134A37',
+                paddingHorizontal: 16,
+                paddingVertical: 9,
+                borderRadius: 10,
+                cursor: 'pointer' as any,
+              }}
+            >
+              <CheckCircle2 size={16} color="#FFFFFF" />
+              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                ✓ Lưu lịch trình & Ngân sách
+              </Text>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {/* ── KHUNG CHÍNH SPLIT-VIEW (2 CỘT) ── */}
@@ -1599,7 +1692,7 @@ export default function GoogleCalendarWorkspace({
           <View style={{ flex: 1, minHeight: 480, position: 'relative', backgroundColor: '#F8F9FA' }}>
             {Platform.OS === 'web' ? (
               <iframe
-                title="Google Maps Live Route"
+                title="Bản đồ lộ trình ViVu"
                 srcDoc={mapIframeHTML}
                 style={{
                   width: '100%',
@@ -1710,7 +1803,7 @@ export default function GoogleCalendarWorkspace({
                   }}
                 >
                   <Text style={{ fontSize: 11, fontWeight: '700', color: '#1A73E8' }}>
-                    Đang chọn: "{selectedPlaceToPlace.name}" → Bấm vào slot giờ bên dưới để đặt
+                    Đang chọn: "{selectedPlaceToPlace.name}" → Bấm vào khung giờ bên dưới để đặt
                   </Text>
                   <Pressable onPress={() => setSelectedPlaceToPlace(null)} style={{ padding: 2 }}>
                     <X size={12} color="#1A73E8" />
@@ -1877,7 +1970,7 @@ export default function GoogleCalendarWorkspace({
                                     }}
                                   >
                                     <Text style={{ fontSize: 10, color: '#5F6368' }}>
-                                      {ev.startHour < 10 ? `0${ev.startHour}:00` : `${ev.startHour}:00`} · {ev.durationMinutes}p
+                                      {ev.startHour < 10 ? `0${ev.startHour}:00` : `${ev.startHour}:00`} · {ev.durationMinutes} phút
                                     </Text>
                                     <Text style={{ fontSize: 10, fontWeight: '700', color: colors.text }}>
                                       {Number(ev.cost).toLocaleString('vi-VN')}đ
@@ -2012,8 +2105,73 @@ export default function GoogleCalendarWorkspace({
               gap: 14,
             }}
           >
-            {/* NẾU LÀ TRANG CHI TIẾT VÀ CHƯA BẤM MỞ GIỎ: HIỂN THỊ THANH TINH GỌN */}
-            {isDetailPage && !showCartInDetail ? (
+            {/* 1. KHAY GIỎ HÀNG CHỜ XẾP LỊCH (STANDBY CART TRAY) */}
+            {!isUserPro ? (
+              /* KHAY GIỎ HÀNG BỊ KHÓA CHO USER THƯỜNG (GÓI PRO 🔒) */
+              <View
+                testID="cart-locked-pro-box"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: '#F5D599',
+                  padding: 14,
+                  gap: 10,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.03)' as any,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <ShoppingBag size={15} color="#B06000" />
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#1B2420' }}>
+                      Khay Giỏ Hàng Chờ Xếp Lịch
+                    </Text>
+                    <View
+                      style={{
+                        paddingHorizontal: 7,
+                        paddingVertical: 2,
+                        borderRadius: 8,
+                        backgroundColor: '#FFF2E0',
+                        borderWidth: 1,
+                        borderColor: '#D4A017',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 3,
+                      }}
+                    >
+                      <Lock size={10} color="#B06000" />
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#B06000' }}>
+                        GÓI PRO 🔒
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Pressable
+                      testID="btn-upgrade-pro-cart"
+                      onPress={onUpgradePro}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        backgroundColor: '#D4A017',
+                        paddingVertical: 5,
+                        paddingHorizontal: 11,
+                        borderRadius: 8,
+                        cursor: 'pointer' as any,
+                      }}
+                    >
+                      <Crown size={11} color="#FFFFFF" />
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>Mở khóa PRO</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <Text style={{ fontSize: 12, color: '#5F6368', lineHeight: 18 }}>
+                  Tính năng Khay Giỏ Hàng và kéo thả địa điểm chờ là đặc quyền của <Text style={{ fontWeight: '700', color: '#B06000' }}>Gói PRO</Text>. Chuyến đi tạo nhanh 1-Click đã được AI tối ưu toàn bộ các hoạt động. Vui lòng nâng cấp lên Gói PRO để tự tay sắp xếp và kéo thả các địa điểm trên bản đồ.
+                </Text>
+              </View>
+            ) : isDetailPage && !showCartInDetail ? (
               <View
                 style={{
                   backgroundColor: '#FFFFFF',
@@ -2045,7 +2203,7 @@ export default function GoogleCalendarWorkspace({
                       }}
                     >
                       <Text style={{ fontSize: 10, fontWeight: '800', color: '#B06000' }}>
-                        Còn {standbyList.length} điểm chờ
+                        Còn {standbyList.length} điểm trong giỏ
                       </Text>
                     </View>
                   )}
@@ -2070,13 +2228,13 @@ export default function GoogleCalendarWorkspace({
                   >
                     <ShoppingBag size={13} color="#1A73E8" />
                     <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>
-                      {standbyList.length > 0 ? `Xem khay giỏ chờ (${standbyList.length})` : '🔍 Thêm / Thay thế địa điểm'}
+                      {standbyList.length > 0 ? `Xem khay giỏ chờ (${standbyList.length})` : '🔍 Mở khay giỏ hàng'}
                     </Text>
                   </Pressable>
                 </View>
               </View>
             ) : (
-              /* 1. KHAY GIỎ HÀNG CHỜ XẾP LỊCH (STANDBY CART TRAY) */
+              /* 1. KHAY GIỎ HÀNG CHỜ XẾP LỊCH CHO THÀNH VIÊN PRO */
               <View
                 testID="cart-dropzone"
                 // @ts-ignore
@@ -2118,27 +2276,29 @@ export default function GoogleCalendarWorkspace({
 
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     {/* Nút AI Tối ưu lịch trình tự động từ giỏ hàng */}
-                    <Pressable
-                      testID="btn-ai-optimize-schedule"
-                      onPress={handleAiOptimizeSchedule}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 5,
-                        paddingVertical: 5,
-                        paddingHorizontal: 11,
-                        borderRadius: 10,
-                        backgroundColor: '#F3E8FD',
-                        borderWidth: 1,
-                        borderColor: '#8430CE',
-                        cursor: 'pointer' as any,
-                      }}
-                    >
-                      <Sparkles size={12} color="#8430CE" />
-                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#8430CE' }}>
-                        ⚡ AI Tối ưu lịch trình
-                      </Text>
-                    </Pressable>
+                    {standbyList.length > 0 && (
+                      <Pressable
+                        testID="btn-ai-optimize-schedule"
+                        onPress={handleAiOptimizeSchedule}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 5,
+                          paddingVertical: 5,
+                          paddingHorizontal: 11,
+                          borderRadius: 10,
+                          backgroundColor: '#F3E8FD',
+                          borderWidth: 1,
+                          borderColor: '#8430CE',
+                          cursor: 'pointer' as any,
+                        }}
+                      >
+                        <Sparkles size={12} color="#8430CE" />
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#8430CE' }}>
+                          ⚡ AI Tối ưu lịch trình
+                        </Text>
+                      </Pressable>
+                    )}
 
                     {isDetailPage && (
                       <Pressable
@@ -2168,11 +2328,33 @@ export default function GoogleCalendarWorkspace({
                       borderColor: 'rgba(27,36,32,0.1)',
                       borderRadius: 12,
                       backgroundColor: '#FAFAFA',
+                      gap: 10,
                     }}
                   >
                     <Text style={{ fontSize: 11, color: '#5F6368', fontWeight: '500' }}>
                       🎉 Đã xếp toàn bộ địa điểm vào Lịch trình! Kéo sự kiện từ lịch thả vào đây nếu muốn đưa lại giỏ chờ.
                     </Text>
+                    <Pressable
+                      testID="btn-load-more-standby"
+                      onPress={handleLoadMoreStandbyPlaces}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        paddingVertical: 6,
+                        paddingHorizontal: 12,
+                        borderRadius: 10,
+                        backgroundColor: '#E8F0FE',
+                        borderWidth: 1,
+                        borderColor: '#1A73E8',
+                        cursor: 'pointer' as any,
+                      }}
+                    >
+                      <Plus size={12} color="#1A73E8" />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1A73E8' }}>
+                        + Khám phá thêm địa điểm vào giỏ
+                      </Text>
+                    </Pressable>
                   </View>
                 ) : (
                   <ScrollView
@@ -2217,8 +2399,8 @@ export default function GoogleCalendarWorkspace({
                               }}
                             >
                               <Text style={{ fontSize: 10 }}>{colors.emoji}</Text>
-                              <Text style={{ fontSize: 9, fontWeight: '800', color: colors.text, textTransform: 'uppercase' }}>
-                                {item.category}
+                              <Text style={{ fontSize: 9, fontWeight: '800', color: colors.text }}>
+                                {CATEGORY_NAMES_VI[item.category] || item.category}
                               </Text>
                             </View>
 
@@ -2307,7 +2489,7 @@ export default function GoogleCalendarWorkspace({
                 >
                   <Plus size={13} color="#FFFFFF" />
                   <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>
-                    + Ghi chi tiêu theo ngày
+                    Ghi chi tiêu theo ngày
                   </Text>
                 </Pressable>
 
@@ -2361,19 +2543,19 @@ export default function GoogleCalendarWorkspace({
                   </Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#137333' }}>ăn</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#137333' }}>Ăn uống</Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#B06000' }}>cf</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#B06000' }}>Cà phê</Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#8430CE' }}>nghỉ ngơi</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#8430CE' }}>Nghỉ ngơi</Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>vui chơi</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>Vui chơi</Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#5F6368' }}>khác</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#5F6368' }}>Khác</Text>
                 </View>
                 <View
                   style={{
@@ -2385,14 +2567,14 @@ export default function GoogleCalendarWorkspace({
                     borderLeftColor: '#E6D759',
                   }}
                 >
-                  <Text style={{ fontSize: 11, fontWeight: '900', color: '#202124' }}>tổng</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: '#202124' }}>Tổng</Text>
                 </View>
               </View>
 
               {/* Hàng 1: Dự định */}
               <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: 'rgba(27,36,32,0.06)', paddingVertical: 7, backgroundColor: '#FAFAFA' }}>
                 <View style={{ width: 85, paddingHorizontal: 8, justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#5F6368' }}>dự định</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#5F6368' }}>Dự kiến</Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 10, color: '#3C4043' }}>{(plannedBudget.dining / 1000).toLocaleString('vi-VN')}k</Text>
@@ -2419,7 +2601,7 @@ export default function GoogleCalendarWorkspace({
               {/* Hàng 2: Ước tính lịch trình */}
               <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: 'rgba(27,36,32,0.06)', paddingVertical: 7, backgroundColor: '#FFFFFF' }}>
                 <View style={{ width: 85, paddingHorizontal: 8, justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#1A73E8' }}>ước tính</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#1A73E8' }}>Ước tính</Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 10, fontWeight: '600', color: '#202124' }}>
@@ -2457,7 +2639,7 @@ export default function GoogleCalendarWorkspace({
               <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: 'rgba(27,36,32,0.06)', paddingVertical: 7, backgroundColor: '#FFFFFF' }}>
                 <View style={{ width: 85, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: totalActual > 0 ? '#137333' : '#5F6368' }}>
-                    đã dùng
+                    Đã chi
                   </Text>
                   <Pressable
                     testID="btn-open-expense-logs-row"
@@ -2618,11 +2800,11 @@ export default function GoogleCalendarWorkspace({
                 </View>
               </View>
 
-              {/* Hàng 4: Còn lại (Chênh lệch Dự định - Thực tế đã dùng hoặc Ước tính) */}
+              {/* Hàng 4: Còn lại (Chênh lệch Dự kiến - Thực tế đã chi hoặc Ước tính) */}
               <View style={{ flexDirection: 'row', paddingVertical: 7, backgroundColor: '#F8F9FA' }}>
                 <View style={{ width: 85, paddingHorizontal: 8, justifyContent: 'center' }}>
                   <Text style={{ fontSize: 11, fontWeight: '800', color: effectiveRemaining.total >= 0 ? '#137333' : '#C5221F' }}>
-                    còn lại{effectiveRemaining.isActual ? '*' : ''}
+                    Còn lại{effectiveRemaining.isActual ? '*' : ''}
                   </Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>

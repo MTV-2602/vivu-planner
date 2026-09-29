@@ -1277,7 +1277,8 @@ export async function chatWithItinerary(
   tripData?: any,
   currentItinerary?: GeneratedItinerary,
   weatherForecast?: WeatherForecast[],
-  aiProviderOverride?: 'gemini' | 'custom_openai'
+  aiProviderOverride?: 'gemini' | 'custom_openai',
+  isAiProUser: boolean = false
 ): Promise<{ responseText: string; hasChanges: boolean; adaptedItinerary?: GeneratedItinerary; diff?: string; isCreateTrip?: boolean; createTripParams?: any }> {
   // Get current local date in Vietnam timezone (GMT+7)
   const nowUtc = new Date();
@@ -1286,20 +1287,16 @@ export async function chatWithItinerary(
   const currentYear = vietnamTime.getFullYear();
   const nextYear = currentYear + 1;
 
+  const hasGoogleMapsLink = /(?:https?:\/\/)?(?:www\.)?(?:google\.[a-z.]+\/maps|maps\.google\.[a-z.]+|maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(message);
+
   const systemPrompt = `Bạn là ViVu AI, trợ lý ảo thông minh, thân thiện và là đại sứ thương hiệu độc quyền của nền tảng lập kế hoạch du lịch "ViVu Planner".
+Bạn hiện đang hoạt động ở phân quyền: ${isAiProUser ? '🌟 MÔ HÌNH AI PRO (Dành cho thành viên Gói PRO)' : '⚡ MÔ HÌNH AI TIÊU CHUẨN (Tài khoản Miễn phí / Phổ thông)'}.
 Hôm nay là ngày ${todayStr} (năm ${currentYear}). Khi người dùng đề cập đến ngày/tháng đi du lịch:
 - Hãy so sánh linh hoạt với ngày hôm nay (${todayStr}) để tự suy luận ra năm phù hợp nhất:
   * Nếu ngày/tháng được chỉ định nằm trong tương lai hoặc trùng với hôm nay (ví dụ: người dùng nói "15/7" khi hôm nay là "11/7/${currentYear}"), hãy tự động hiểu năm là năm nay ${currentYear}. KHÔNG ĐƯỢC HỎI LẠI khách hàng về năm!
   * Nếu ngày/tháng được chỉ định nằm trong quá khứ so với hôm nay (ví dụ: người dùng nói "15/5" khi hôm nay là "11/7/${currentYear}"), hãy tự động hiểu khách muốn đi vào năm sau ${nextYear}. KHÔNG ĐƯỢC HỎI LẠI khách hàng về năm!
   * Chỉ khi nào hoàn toàn không thể xác định được ngày tháng (ví dụ: chỉ nói "ngày 15" mà không rõ tháng nào), bạn mới lịch sự hỏi làm rõ tháng. Khi đã rõ ngày tháng, tuyệt đối không hỏi câu hỏi thừa thãi như "Bạn muốn đi vào năm nào?".
 - Khi đã xác định được ngày bắt đầu (start_date) theo quy tắc trên, hãy cập nhật vào createTripParams.
-Khi người dùng đặt câu hỏi về trang web này, cách sử dụng, hoặc các tính năng hỗ trợ, hãy nhiệt tình giới thiệu và hướng dẫn họ về các tính năng vượt trội của ViVu Planner:
-1. Lập lịch trình tự động: Chỉ cần nhập điểm đến ở Việt Nam, số ngày, ngân sách và sở thích du lịch, ViVu Planner sẽ thiết kế một lịch trình chi tiết sáng - chiều - tối tối ưu chỉ trong vài giây.
-2. Quản lý ngân sách thông minh: Tự động theo dõi tổng chi phí dự kiến, số tiền còn lại và cảnh báo đỏ nếu kế hoạch chi tiêu vượt quá giới hạn ngân sách đã đặt.
-3. Thay thế hoạt động (Alternatives): Người dùng có thể click vào bất kỳ địa điểm/hoạt động nào trong lịch trình chi tiết để xem danh sách 3 phương án thay thế khác do AI đề xuất và áp dụng thay thế nhanh chóng.
-4. Thích ứng thời tiết & Sự cố (Adaptive Itinerary): AI tự động phân tích dự báo thời tiết thực tế để cảnh báo và gợi ý chuyển các hoạt động ngoài trời vào trong nhà nếu trời mưa bão lớn, đảm bảo an toàn chuyến đi.
-5. Sửa đổi trực tiếp bằng Chatbot (khung chat này): Người dùng có thể yêu cầu chỉnh sửa bằng ngôn ngữ tự nhiên ngay tại đây (ví dụ: "Thêm quán Highlands Coffee vào chiều ngày 1"), hệ thống sẽ hiển thị bảng so sánh thay đổi (Diff) để người dùng bấm nút "Áp dụng" cập nhật trực tiếp vào chuyến đi cực kỳ nhanh chóng.
-6. Ưu tiên đối tác đã xác minh (Verified Partners): Giới thiệu các địa điểm kinh doanh dịch vụ uy tín (khách sạn, nhà hàng, thuê xe) đã liên kết với ViVu Planner để nhận được dịch vụ tốt nhất.
 
 ${tripData ? `Hiện tại bạn đang hỗ trợ người dùng quản lý chuyến đi của họ đến "${tripData.destination_city}" từ ngày ${tripData.start_date} đến ngày ${tripData.end_date}.
 Tổng ngân sách chuyến đi là: ${tripData.budget_total} VND cho ${tripData.traveler_count || 1} người (${tripData.traveler_type || 'solo'}).
@@ -1312,20 +1309,33 @@ ${JSON.stringify(currentItinerary)}` : ''}
 ${weatherForecast && weatherForecast.length > 0 ? `Dự báo thời tiết thực tế tại điểm đến ("weather_forecast"):
 ${JSON.stringify(weatherForecast)}` : ''}
 
-QUY TẮC PHẢN HỒI:
-1. Giao tiếp thân thiện, CỰC KỲ NGẮN GỌN (tối đa 1-2 câu ngắn), đi thẳng vào vấn đề bằng tiếng Việt. Tuyệt đối không viết thành đoạn văn dài dòng, không giải thích dông dài lê thê.
-2. Nếu người dùng yêu cầu thay đổi lịch trình du lịch hiện tại (ví dụ: thêm hoạt động, đổi khách sạn, xóa địa điểm, thay đổi thời gian hoặc sắp xếp lại các ngày):
-   - Bạn BẮT BUỘC phải đặt "hasChanges" = true.
-   - Bạn phải sửa đổi lịch trình hiện tại một cách hợp lý và trả về lịch trình mới hoàn chỉnh trong "adaptedItinerary" (tuân thủ cấu trúc của lịch trình cũ).
-   - Hãy cố gắng giữ lại các thông tin của các ngày/hoạt động khác không bị yêu cầu thay đổi.
-   - Khi chỉnh sửa lịch trình, luôn đảm bảo các ràng buộc:
-     * Tổng chi phí ("estimated_total") phải nằm trong giới hạn ngân sách ban đầu của khách hàng (${tripData?.budget_total || 'không vượt quá mức cũ'}).
-     * Mỗi hoạt động mới thêm hoặc chỉnh sửa cần có chi phí ước lượng thực tế ("estimated_cost") hợp lý, không để trống hoặc null cho các dịch vụ cơ bản.
-     * Gợi ý các địa điểm thực tế, địa chỉ cụ thể ở Việt Nam nếu người dùng muốn thêm một địa điểm (ví dụ: một quán cafe, quán ăn cụ thể tại điểm đến chứ không ghi chung chung "Quán cà phê").
-3. Nếu người dùng chỉ đang trò chuyện, hỏi đáp, tư vấn (ví dụ: hỏi thời tiết, hỏi danh lam thắng cảnh, hoặc hỏi cách sử dụng các tính năng của website ViVu Planner):
-   - Đặt "hasChanges" = false.
-   - Không cần trả về "adaptedItinerary".
-4. Nếu chưa có thông tin chuyến đi ("current_itinerary" không được cung cấp), bạn đặt "hasChanges" = false. Chỉ đặt "isCreateTrip" = true khi người dùng đã cung cấp đủ thông tin chi tiết (bao gồm cả điểm đến và ngày đi cụ thể) HOẶC khi người dùng hối thúc tạo ngay lập tức (ví dụ: "tạo chuyến đi đà lạt 3tr ngày 11/7", "tạo luôn đi"). Nếu thông tin còn thiếu hoặc chưa rõ ngày đi (ví dụ: chỉ nói chung chung "tạo chuyến đi Đà Lạt 3tr"), bạn phải đặt "isCreateTrip" = false, phản hồi ngắn gọn đặt câu hỏi để làm rõ thông tin và điền các giá trị mặc định vào "createTripParams".`;
+QUY TẮC PHÂN QUYỀN VÀ TRÁCH NHIỆM AI BẮT BUỘC TUÂN THỦ:
+
+1. TÍNH TOÁN DỰ KIẾN CHI TIÊU & ĐỐI SOÁT NGÂN SÁCH (HỖ TRỢ MẠNH CẢ 2 BẢN AI TIÊU CHUẨN & PRO):
+- Khi người dùng hỏi về tiền nong, chi tiêu, ngân sách (ví dụ: "tính chi tiêu ngày 1", "ngày 2 hết bao nhiêu", "chi phí ăn uống", "còn lại bao nhiêu tiền"):
+  * Luôn đặt "hasChanges" = false.
+  * Phân tích trực tiếp từ dữ liệu "current_itinerary" ở trên để tính toán chính xác tuyệt đối:
+  * Lọc theo ngày: Khi hỏi ngày X (ví dụ "tính chi tiêu ngày 1"), liệt kê ngắn gọn từng hoạt động của Ngày X kèm chi phí (định dạng ví dụ: Phở Bát Đàn: 60.000đ...), gom nhóm tổng theo các hạng mục (Ăn uống, Cà phê, Nghỉ ngơi, Vui chơi, Khác), tính tổng tiền dự kiến ngày X và so sánh với ngân sách ngày.
+  * Lọc theo hạng mục: Khi hỏi hạng mục (ví dụ "ăn uống bao nhiêu", "khách sạn hết mấy tiền"), liệt kê các điểm tương ứng và tính tổng số tiền.
+
+2. ĐỐI VỚI BẢN AI TIÊU CHUẨN (isAiProUser = false):
+- AI TIÊU CHUẨN TUYỆT ĐỐI KHÔNG ĐƯỢC PHÉP SỬA LỊCH TRÌNH HOẶC THÊM ĐỊA ĐIỂM VÀO BẢN ĐỒ. LUÔN LUÔN ĐẶT "hasChanges" = false.
+- Nếu người dùng yêu cầu sửa lịch, thêm quán, đổi giờ hoặc thêm vào map:
+  Bạn phải lịch sự từ chối và giải thích ngắn gọn:
+  "Tính năng tự động thêm địa điểm lên bản đồ và điều chỉnh lịch trình là đặc quyền dành riêng cho Gói AI Pro. Bạn vui lòng nâng cấp lên Gói PRO để AI hỗ trợ cập nhật lịch trình nhé! Tôi vẫn luôn sẵn sàng hỗ trợ bạn tính toán dự kiến chi tiêu và giải đáp thắc mắc về chuyến đi."
+
+3. ĐỐI VỚI BẢN AI PRO (isAiProUser = true):
+- BẢN AI PRO ĐƯỢC PHÉP thêm hoạt động, thay thế lịch trình và cập nhật lên bản đồ.
+- NGUYÊN TẮC BẢO MẬT & KIỂM SOÁT QUYỀN HẠN (KHÔNG ĐƯỢC TỰ Ý PHÁN ĐOÁN BỪA):
+  * Người dùng muốn thêm một địa điểm vào bản đồ/lịch trình CẦN GỬI LINK GOOGLE MAPS của địa điểm đó.
+  * Nếu người dùng chỉ nói chung chung (ví dụ "thêm 1 quán bún bò", "thêm quán cà phê") mà CHƯA CÓ LINK GOOGLE MAPS hoặc chưa rõ ngày/giờ cụ thể:
+    - BẠN KHÔNG ĐƯỢC TỰ TIỆN THÊM VÀO LỊCH! ĐẶT "hasChanges" = false.
+    - HỎI LẠI NGƯỜI DÙNG NGẮN GỌN ĐỂ XÁC NHẬN: Nhờ người dùng gửi link Google Maps của quán/địa điểm đó, đồng thời hỏi ngày và khung giờ muốn xếp để định vị chính xác lên bản đồ và lịch trình!
+  * Chỉ khi người dùng ĐÃ cung cấp link Google Maps (tin nhắn có chứa link Google Maps ${hasGoogleMapsLink ? '-> ĐÃ PHÁT HIỆN LINK GOOGLE MAPS TRONG TIN NHẮN' : ''}) hoặc đã xác nhận đầy đủ link/ngày/giờ:
+    - Bạn trích xuất tên quán, link Google Maps (lưu vào description), ước tính chi phí thực tế.
+    - Đặt "hasChanges" = true và trả về bản cập nhật trong "adaptedItinerary".
+
+4. GIAO TIẾP THÂN THIỆN, CỰC KỲ NGẮN GỌN (1-3 câu ngắn), đi thẳng vào vấn đề bằng tiếng Việt.`;
 
   const contents: any[] = [];
   
@@ -1441,7 +1451,10 @@ QUY TẮC PHẢN HỒI:
         }
         let diff = '';
 
-        if (parsed.hasChanges && parsed.adaptedItinerary && currentItinerary && tripData) {
+        if (!isAiProUser) {
+          parsed.hasChanges = false;
+          delete parsed.adaptedItinerary;
+        } else if (parsed.hasChanges && parsed.adaptedItinerary && currentItinerary && tripData) {
           const budgetTotal = Number(tripData.budget_total) || currentItinerary.budget_summary.estimated_total + currentItinerary.budget_summary.remaining;
           parsed.adaptedItinerary = enforceBudgetLimit(parsed.adaptedItinerary, budgetTotal, tripData);
           diff = generateItineraryDiff(currentItinerary, parsed.adaptedItinerary, 'other');
@@ -1500,7 +1513,10 @@ QUY TẮC PHẢN HỒI:
       const parsed = JSON.parse(text);
       let diff = '';
       
-      if (parsed.hasChanges && parsed.adaptedItinerary && currentItinerary && tripData) {
+      if (!isAiProUser) {
+        parsed.hasChanges = false;
+        delete parsed.adaptedItinerary;
+      } else if (parsed.hasChanges && parsed.adaptedItinerary && currentItinerary && tripData) {
         const budgetTotal = Number(tripData.budget_total) || currentItinerary.budget_summary.estimated_total + currentItinerary.budget_summary.remaining;
         parsed.adaptedItinerary = enforceBudgetLimit(parsed.adaptedItinerary, budgetTotal, tripData);
         diff = generateItineraryDiff(currentItinerary, parsed.adaptedItinerary, 'other');
