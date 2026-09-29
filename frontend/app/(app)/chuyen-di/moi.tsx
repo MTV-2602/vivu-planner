@@ -1575,7 +1575,29 @@ export default function TripWizard() {
                         <Text className="text-xs font-bold text-brand-textSoft">← Đổi sang tạo nhanh</Text>
                       </Pressable>
                     </View>
-                  ) : null}
+                  ) : (
+                    <View className="p-4 rounded-2xl bg-[#FFFBF0] border border-[#F5D599] flex-row items-center justify-between gap-3 shadow-sm">
+                      <View className="flex-1 gap-1">
+                        <View className="flex-row items-center gap-1.5">
+                          <Crown size={16} color={BRAND_COLORS.accent} />
+                          <Text className="text-sm font-extrabold text-[#9A5B00]">
+                            🌟 Không gian Lập lịch ViVu (Bản đồ & Lịch trình kéo thả)
+                          </Text>
+                        </View>
+                        <Text className="text-xs text-[#7A5210] leading-relaxed">
+                          Chọn địa điểm trên bản đồ tương tác, tự do kéo thả xếp lịch, phân bổ ngân sách 5 mục và theo dõi chi phí thực tế.
+                        </Text>
+                      </View>
+                      <Pressable
+                        testID="btn-switch-to-pro-workspace"
+                        onPress={() => setUseProWorkspace(true)}
+                        className="px-4 py-2 rounded-xl bg-brand-primary active:opacity-90 flex-row items-center gap-1.5 self-center shadow-sm"
+                      >
+                        <Crown size={13} color="#FFFFFF" />
+                        <Text className="text-xs font-bold text-white whitespace-nowrap">Mở Lịch trình ViVu →</Text>
+                      </Pressable>
+                    </View>
+                  )}
 
                   {/* PRO WORKSPACE VIEW */}
                   {useProWorkspace && (isPremium || isAdmin) ? (

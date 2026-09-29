@@ -54,6 +54,89 @@ export interface StandbyPlaceItem {
   suggestedDuration?: number;
 }
 
+export interface ExpenseLogItem {
+  id: string;
+  timestamp: string;
+  dayNumber: number;
+  placeId?: string;
+  placeName: string;
+  category: 'dining' | 'cafe' | 'hotel' | 'attraction' | 'other';
+  categoryLabel: string;
+  amount: number;
+  note: string;
+}
+
+export function autoClassifyCategory(category?: string, name?: string): {
+  key: 'dining' | 'cafe' | 'hotel' | 'attraction' | 'other';
+  label: string;
+  emoji: string;
+} {
+  const c = ((category || '') + ' ' + (name || '')).toLowerCase();
+  if (
+    c.includes('cafe') ||
+    c.includes('cà phê') ||
+    c.includes('coffee') ||
+    c.includes('cf') ||
+    c.includes('trà') ||
+    c.includes('tea') ||
+    c.includes('milktea') ||
+    c.includes('trà sữa')
+  ) {
+    return { key: 'cafe', label: 'Cà phê', emoji: '☕' };
+  }
+  if (
+    c.includes('dining') ||
+    c.includes('ăn') ||
+    c.includes('food') ||
+    c.includes('nhà hàng') ||
+    c.includes('quán ăn') ||
+    c.includes('phở') ||
+    c.includes('bún') ||
+    c.includes('chả') ||
+    c.includes('lẩu') ||
+    c.includes('nướng') ||
+    c.includes('bánh') ||
+    c.includes('cơm') ||
+    c.includes('bữa') ||
+    c.includes('ẩm thực') ||
+    c.includes('hải sản')
+  ) {
+    return { key: 'dining', label: 'Ăn uống', emoji: '🍽️' };
+  }
+  if (
+    c.includes('hotel') ||
+    c.includes('accommodation') ||
+    c.includes('khách sạn') ||
+    c.includes('nghỉ') ||
+    c.includes('homestay') ||
+    c.includes('resort') ||
+    c.includes('hostel') ||
+    c.includes('dorm') ||
+    c.includes('phòng')
+  ) {
+    return { key: 'hotel', label: 'Nghỉ ngơi', emoji: '🛏️' };
+  }
+  if (
+    c.includes('attraction') ||
+    c.includes('experience') ||
+    c.includes('chơi') ||
+    c.includes('tham quan') ||
+    c.includes('vé') ||
+    c.includes('tour') ||
+    c.includes('di tích') ||
+    c.includes('bảo tàng') ||
+    c.includes('vui chơi') ||
+    c.includes('công viên') ||
+    c.includes('phố đi bộ') ||
+    c.includes('biển') ||
+    c.includes('hồ') ||
+    c.includes('cáp treo')
+  ) {
+    return { key: 'attraction', label: 'Vui chơi', emoji: '🎡' };
+  }
+  return { key: 'other', label: 'Khác', emoji: '📦' };
+}
+
 export interface GoogleCalendarWorkspaceProps {
   cityName: string;
   totalBudget?: number;
@@ -182,31 +265,8 @@ export default function GoogleCalendarWorkspace({
   // State toast thông báo kết quả tối ưu
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // ── STATE CHI TIÊU THỰC TẾ & LỊCH SỬ / NHẬT KÝ SỬA SAI ──
-  const [actualExpenses, setActualExpenses] = useState<{
-    dining: number;
-    cafe: number;
-    hotel: number;
-    attraction: number;
-    other: number;
-  }>(() => {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        const saved = window.localStorage.getItem(`vivu_budget_actual_${cityName}`);
-        if (saved) return JSON.parse(saved);
-      } catch (e) {}
-    }
-    return { dining: 0, cafe: 0, hotel: 0, attraction: 0, other: 0 };
-  });
-
-  const [expenseLogs, setExpenseLogs] = useState<{
-    id: string;
-    timestamp: string;
-    category: 'dining' | 'cafe' | 'hotel' | 'attraction' | 'other';
-    categoryLabel: string;
-    amount: number;
-    note: string;
-  }[]>(() => {
+  // ── STATE CHI TIÊU THỰC TẾ & NHẬT KÝ THEO TỪNG NGÀY & ĐỊA ĐIỂM ──
+  const [expenseLogs, setExpenseLogs] = useState<ExpenseLogItem[]>(() => {
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         const saved = window.localStorage.getItem(`vivu_budget_logs_${cityName}`);
@@ -216,27 +276,57 @@ export default function GoogleCalendarWorkspace({
     return [];
   });
 
-  const [editingCategory, setEditingCategory] = useState<'dining' | 'cafe' | 'hotel' | 'attraction' | 'other' | null>(null);
-  const [editAmountInput, setEditAmountInput] = useState('');
-  const [editNoteInput, setEditNoteInput] = useState('');
-  const [showExpenseLogModal, setShowExpenseLogModal] = useState(false);
+  // Tự động phân loại 5 hạng mục từ nhật ký chi tiêu
+  const actualExpenses = useMemo(() => {
+    const acc = { dining: 0, cafe: 0, hotel: 0, attraction: 0, other: 0 };
+    expenseLogs.forEach((log) => {
+      if (acc[log.category] !== undefined) {
+        acc[log.category] += Number(log.amount) || 0;
+      } else {
+        acc.other += Number(log.amount) || 0;
+      }
+    });
+    return acc;
+  }, [expenseLogs]);
 
-  // Tự động lưu chi tiêu và log vào localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        window.localStorage.setItem(`vivu_budget_actual_${cityName}`, JSON.stringify(actualExpenses));
-      } catch (e) {}
-    }
-  }, [actualExpenses, cityName]);
+  // Map chi phí thực tế vào từng sự kiện lịch trình (để hiển thị badge và nút sửa trực tiếp)
+  const eventExpenseMap = useMemo(() => {
+    const map: Record<string, { total: number; logs: ExpenseLogItem[] }> = {};
+    expenseLogs.forEach((log) => {
+      if (log.placeId) {
+        if (!map[log.placeId]) {
+          map[log.placeId] = { total: 0, logs: [] };
+        }
+        map[log.placeId].total += Number(log.amount) || 0;
+        map[log.placeId].logs.push(log);
+      }
+    });
+    return map;
+  }, [expenseLogs]);
 
+  // State modal ghi / sửa chi tiêu theo ngày & địa điểm
+  const [expenseModalOpen, setExpenseModalOpen] = useState(false);
+  const [selectedExpenseDay, setSelectedExpenseDay] = useState<number>(1);
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string>(''); // eventId hoặc 'custom'
+  const [customPlaceName, setCustomPlaceName] = useState<string>('');
+  const [manualCategory, setManualCategory] = useState<'dining' | 'cafe' | 'hotel' | 'attraction' | 'other' | null>(null);
+  const [expenseAmountInput, setExpenseAmountInput] = useState<string>('');
+  const [expenseNoteInput, setExpenseNoteInput] = useState<string>('');
+  const [editingLogId, setEditingLogId] = useState<string | null>(null); // null = tạo mới, string = sửa log này
+
+  // Modal xem nhật ký & sửa sai
+  const [showExpenseLogModal, setShowExpenseLogModal] = useState<boolean>(false);
+  const [filterLogDay, setFilterLogDay] = useState<number | 'all'>('all');
+
+  // Tự động lưu logs và tổng hợp vào localStorage
   useEffect(() => {
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         window.localStorage.setItem(`vivu_budget_logs_${cityName}`, JSON.stringify(expenseLogs));
+        window.localStorage.setItem(`vivu_budget_actual_${cityName}`, JSON.stringify(actualExpenses));
       } catch (e) {}
     }
-  }, [expenseLogs, cityName]);
+  }, [expenseLogs, actualExpenses, cityName]);
 
   // ── REAL POINTER DRAG & DROP STATE ──
   const [pointerDrag, setPointerDrag] = useState<{
@@ -375,14 +465,126 @@ export default function GoogleCalendarWorkspace({
     };
   }, [totalActual, plannedBudget, actualExpenses, budgetStats]);
 
-  // Hàm xử lý lưu chi tiêu mới / cập nhật chi tiêu
+  // Mở modal thêm chi tiêu cho một ngày cụ thể (hoặc một sự kiện cụ thể)
+  const openAddExpenseModal = (
+    day?: number,
+    preselectedEventId?: string,
+    defaultCategory?: 'dining' | 'cafe' | 'hotel' | 'attraction' | 'other'
+  ) => {
+    const targetDay = day || activeDay;
+    setSelectedExpenseDay(targetDay);
+    setEditingLogId(null);
+
+    const dayEvs = events.filter((e) => Number(e.dayNumber) === Number(targetDay));
+    if (preselectedEventId) {
+      const ev = dayEvs.find((e) => e.id === preselectedEventId);
+      if (ev) {
+        setSelectedPlaceId(ev.id);
+        setCustomPlaceName(ev.title);
+        setExpenseAmountInput(ev.cost ? String(ev.cost) : '');
+        const autoCat = autoClassifyCategory(ev.category, ev.title);
+        setManualCategory(autoCat.key);
+      } else {
+        setSelectedPlaceId('custom');
+        setCustomPlaceName('');
+        setExpenseAmountInput('');
+        setManualCategory(defaultCategory || 'dining');
+      }
+    } else if (dayEvs.length > 0) {
+      const match = defaultCategory
+        ? dayEvs.find((e) => autoClassifyCategory(e.category, e.title).key === defaultCategory) || dayEvs[0]
+        : dayEvs[0];
+      setSelectedPlaceId(match.id);
+      setCustomPlaceName(match.title);
+      setExpenseAmountInput(match.cost ? String(match.cost) : '');
+      const autoCat = autoClassifyCategory(match.category, match.title);
+      setManualCategory(autoCat.key);
+    } else {
+      setSelectedPlaceId('custom');
+      setCustomPlaceName('');
+      setExpenseAmountInput('');
+      setManualCategory(defaultCategory || 'dining');
+    }
+
+    setExpenseNoteInput('');
+    setExpenseModalOpen(true);
+  };
+
+  // Mở modal sửa một bản ghi chi tiêu đã có (thích sửa lúc nào cũng được!)
+  const openEditExpenseLog = (log: ExpenseLogItem) => {
+    setEditingLogId(log.id);
+    setSelectedExpenseDay(log.dayNumber);
+    setSelectedPlaceId(log.placeId || 'custom');
+    setCustomPlaceName(log.placeName);
+    setManualCategory(log.category);
+    setExpenseAmountInput(String(log.amount));
+    setExpenseNoteInput(log.note);
+    setExpenseModalOpen(true);
+    setShowExpenseLogModal(false);
+  };
+
+  // Đổi ngày trong modal -> tự động cập nhật danh sách địa điểm của ngày đó
+  const handleChangeExpenseDayInModal = (newDay: number) => {
+    setSelectedExpenseDay(newDay);
+    const dayEvs = events.filter((e) => Number(e.dayNumber) === Number(newDay));
+    if (dayEvs.length > 0) {
+      const first = dayEvs[0];
+      setSelectedPlaceId(first.id);
+      setCustomPlaceName(first.title);
+      const autoCat = autoClassifyCategory(first.category, first.title);
+      setManualCategory(autoCat.key);
+      setExpenseAmountInput(first.cost ? String(first.cost) : '');
+    } else {
+      setSelectedPlaceId('custom');
+      setCustomPlaceName('');
+      setManualCategory('dining');
+      setExpenseAmountInput('');
+    }
+  };
+
+  // Chọn địa điểm trong ngày đó -> TỰ ĐỘNG PHÂN LOẠI
+  const handleSelectPlaceInModal = (placeId: string) => {
+    setSelectedPlaceId(placeId);
+    if (placeId === 'custom') {
+      setCustomPlaceName('');
+      setManualCategory('other');
+    } else {
+      const ev = events.find((e) => e.id === placeId);
+      if (ev) {
+        setCustomPlaceName(ev.title);
+        const autoCat = autoClassifyCategory(ev.category, ev.title);
+        setManualCategory(autoCat.key);
+        if (!expenseAmountInput && ev.cost) {
+          setExpenseAmountInput(String(ev.cost));
+        }
+      }
+    }
+  };
+
+  // Lưu chi tiêu (thêm mới hoặc cập nhật bản ghi đang sửa)
   const handleSaveExpense = () => {
-    if (!editingCategory) return;
-    const num = parseInt(editAmountInput.replace(/\D/g, ''), 10) || 0;
+    const num = parseInt(expenseAmountInput.replace(/\D/g, ''), 10) || 0;
     if (num <= 0) {
-      setToastMsg('Vui lòng nhập số tiền hợp lệ (> 0đ)');
+      setToastMsg('Vui lòng nhập số tiền chi tiêu hợp lệ (> 0đ)');
       setTimeout(() => setToastMsg(null), 3000);
       return;
+    }
+
+    let placeTitle = '';
+    let categoryKey: 'dining' | 'cafe' | 'hotel' | 'attraction' | 'other' = 'dining';
+
+    if (selectedPlaceId && selectedPlaceId !== 'custom') {
+      const ev = events.find((e) => e.id === selectedPlaceId);
+      if (ev) {
+        placeTitle = ev.title;
+        categoryKey = manualCategory || autoClassifyCategory(ev.category, ev.title).key;
+      } else {
+        placeTitle = customPlaceName.trim() || 'Chi phí ngoài lịch';
+        categoryKey = manualCategory || 'other';
+      }
+    } else {
+      placeTitle = customPlaceName.trim() || 'Chi phí ngoài lịch';
+      categoryKey = manualCategory || autoClassifyCategory(undefined, placeTitle).key;
     }
 
     const catLabels: Record<string, string> = {
@@ -396,26 +598,46 @@ export default function GoogleCalendarWorkspace({
     const now = new Date();
     const timeStr = `${now.getHours() < 10 ? '0' + now.getHours() : now.getHours()}:${now.getMinutes() < 10 ? '0' + now.getMinutes() : now.getMinutes()} ${now.getDate()}/${now.getMonth() + 1}`;
 
-    const newLog = {
-      id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      timestamp: timeStr,
-      category: editingCategory,
-      categoryLabel: catLabels[editingCategory] || 'Chi tiêu',
-      amount: num,
-      note: editNoteInput.trim() || `Chi tiêu ${catLabels[editingCategory]}`,
-    };
+    if (editingLogId) {
+      // Cập nhật bản ghi có sẵn (thích sửa lúc nào cũng được)
+      setExpenseLogs((prev) =>
+        prev.map((l) =>
+          l.id === editingLogId
+            ? {
+                ...l,
+                dayNumber: selectedExpenseDay,
+                placeId: selectedPlaceId !== 'custom' ? selectedPlaceId : undefined,
+                placeName: placeTitle,
+                category: categoryKey,
+                categoryLabel: catLabels[categoryKey] || 'Chi tiêu',
+                amount: num,
+                note: expenseNoteInput.trim() || `Chi tiêu tại ${placeTitle}`,
+                timestamp: timeStr,
+              }
+            : l
+        )
+      );
+      setToastMsg(`✓ Đã cập nhật chi tiêu "${placeTitle}" thành ${(num / 1000).toLocaleString('vi-VN')}k!`);
+    } else {
+      // Thêm mới
+      const newLog: ExpenseLogItem = {
+        id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: timeStr,
+        dayNumber: selectedExpenseDay,
+        placeId: selectedPlaceId !== 'custom' ? selectedPlaceId : undefined,
+        placeName: placeTitle,
+        category: categoryKey,
+        categoryLabel: catLabels[categoryKey] || 'Chi tiêu',
+        amount: num,
+        note: expenseNoteInput.trim() || `Chi tiêu tại ${placeTitle}`,
+      };
+      setExpenseLogs((prev) => [newLog, ...prev]);
+      setToastMsg(`✓ Đã ghi Ngày ${selectedExpenseDay}: "${placeTitle}" +${(num / 1000).toLocaleString('vi-VN')}k [${catLabels[categoryKey]}]!`);
+    }
 
-    setActualExpenses((prev) => ({
-      ...prev,
-      [editingCategory]: (prev[editingCategory] || 0) + num,
-    }));
-
-    setExpenseLogs((prev) => [newLog, ...prev]);
-    setEditingCategory(null);
-    setEditAmountInput('');
-    setEditNoteInput('');
-    setToastMsg(`✓ Đã ghi nhận +${(num / 1000).toLocaleString('vi-VN')}k vào "${catLabels[editingCategory]}"!`);
     setTimeout(() => setToastMsg(null), 3500);
+    setExpenseModalOpen(false);
+    setEditingLogId(null);
   };
 
   // Hàm xóa một bản ghi chi tiêu khi phát hiện ghi sai
@@ -423,19 +645,13 @@ export default function GoogleCalendarWorkspace({
     const target = expenseLogs.find((l) => l.id === logId);
     if (!target) return;
 
-    setActualExpenses((prev) => ({
-      ...prev,
-      [target.category]: Math.max(0, (prev[target.category] || 0) - target.amount),
-    }));
-
     setExpenseLogs((prev) => prev.filter((l) => l.id !== logId));
-    setToastMsg(`✓ Đã xóa ghi chép và hoàn lại ${(target.amount / 1000).toLocaleString('vi-VN')}k vào "${target.categoryLabel}"!`);
+    setToastMsg(`✓ Đã xóa ghi chép "${target.placeName}" và hoàn lại ${(target.amount / 1000).toLocaleString('vi-VN')}k!`);
     setTimeout(() => setToastMsg(null), 3500);
   };
 
   // Hàm xóa sạch toàn bộ lịch sử chi tiêu
   const handleClearAllLogs = () => {
-    setActualExpenses({ dining: 0, cafe: 0, hotel: 0, attraction: 0, other: 0 });
     setExpenseLogs([]);
     setToastMsg('✓ Đã xóa sạch toàn bộ lịch sử chi tiêu đã dùng!');
     setTimeout(() => setToastMsg(null), 3000);
@@ -1666,6 +1882,55 @@ export default function GoogleCalendarWorkspace({
                                     <Text style={{ fontSize: 10, fontWeight: '700', color: colors.text }}>
                                       {Number(ev.cost).toLocaleString('vi-VN')}đ
                                     </Text>
+
+                                    {/* Nút / Badge ghi nhận & sửa chi phí thực tế trực tiếp trên thẻ */}
+                                    {eventExpenseMap[ev.id] && eventExpenseMap[ev.id].total > 0 ? (
+                                      <Pressable
+                                        testID={`btn-edit-expense-ev-${ev.id}`}
+                                        onPress={() => openEditExpenseLog(eventExpenseMap[ev.id].logs[0])}
+                                        style={{
+                                          flexDirection: 'row',
+                                          alignItems: 'center',
+                                          gap: 3,
+                                          paddingHorizontal: 6,
+                                          paddingVertical: 2,
+                                          borderRadius: 6,
+                                          backgroundColor: '#E6F4EA',
+                                          borderWidth: 1,
+                                          borderColor: '#A8DAB5',
+                                          cursor: 'pointer' as any,
+                                        }}
+                                        accessibilityLabel="Sửa chi phí thực tế đã ghi nhận"
+                                      >
+                                        <Check size={10} color="#137333" />
+                                        <Text style={{ fontSize: 9, fontWeight: '800', color: '#137333' }}>
+                                          Đã chi: {(eventExpenseMap[ev.id].total / 1000).toLocaleString('vi-VN')}k (Sửa)
+                                        </Text>
+                                      </Pressable>
+                                    ) : (
+                                      <Pressable
+                                        testID={`btn-record-expense-ev-${ev.id}`}
+                                        onPress={() => openAddExpenseModal(ev.dayNumber, ev.id)}
+                                        style={{
+                                          flexDirection: 'row',
+                                          alignItems: 'center',
+                                          gap: 3,
+                                          paddingHorizontal: 6,
+                                          paddingVertical: 2,
+                                          borderRadius: 6,
+                                          backgroundColor: 'rgba(26,115,232,0.08)',
+                                          borderWidth: 1,
+                                          borderColor: 'rgba(26,115,232,0.2)',
+                                          cursor: 'pointer' as any,
+                                        }}
+                                        accessibilityLabel="Ghi nhận số tiền thực tế"
+                                      >
+                                        <DollarSign size={10} color="#1A73E8" />
+                                        <Text style={{ fontSize: 9, fontWeight: '700', color: '#1A73E8' }}>
+                                          + Ghi tiền
+                                        </Text>
+                                      </Pressable>
+                                    )}
                                   </View>
                                 </View>
 
@@ -2018,34 +2283,56 @@ export default function GoogleCalendarWorkspace({
             )}
 
             {/* 2. BẢNG NGÂN SÁCH MA TRẬN (5 HẠNG MỤC: ĂN, CF, NGHỈ NGƠI, VUI CHƠI, KHÁC, TỔNG) */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, flexWrap: 'wrap', gap: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <DollarSign size={15} color="#137333" />
                 <Text style={{ fontSize: 13, fontWeight: '800', color: '#1B2420' }}>
                   Bảng Quản lý & Đối soát Ngân sách
                 </Text>
               </View>
-              <Pressable
-                testID="btn-open-expense-logs-header"
-                onPress={() => setShowExpenseLogModal(true)}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 5,
-                  paddingHorizontal: 9,
-                  paddingVertical: 4,
-                  borderRadius: 8,
-                  backgroundColor: expenseLogs.length > 0 ? '#E8F0FE' : '#F1F3F4',
-                  borderWidth: 1,
-                  borderColor: expenseLogs.length > 0 ? '#C2E7FF' : 'rgba(27,36,32,0.08)',
-                  cursor: 'pointer' as any,
-                }}
-              >
-                <Clock size={12} color={expenseLogs.length > 0 ? '#1A73E8' : '#5F6368'} />
-                <Text style={{ fontSize: 11, fontWeight: '700', color: expenseLogs.length > 0 ? '#1A73E8' : '#5F6368' }}>
-                  📋 Nhật ký chi tiêu ({expenseLogs.length})
-                </Text>
-              </Pressable>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Pressable
+                  testID="btn-record-expense-header"
+                  onPress={() => openAddExpenseModal(activeDay)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 5,
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: 8,
+                    backgroundColor: '#137333',
+                    cursor: 'pointer' as any,
+                  }}
+                >
+                  <Plus size={13} color="#FFFFFF" />
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>
+                    + Ghi chi tiêu theo ngày
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  testID="btn-open-expense-logs-header"
+                  onPress={() => setShowExpenseLogModal(true)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 5,
+                    paddingHorizontal: 9,
+                    paddingVertical: 5,
+                    borderRadius: 8,
+                    backgroundColor: expenseLogs.length > 0 ? '#E8F0FE' : '#F1F3F4',
+                    borderWidth: 1,
+                    borderColor: expenseLogs.length > 0 ? '#C2E7FF' : 'rgba(27,36,32,0.08)',
+                    cursor: 'pointer' as any,
+                  }}
+                >
+                  <Clock size={12} color={expenseLogs.length > 0 ? '#1A73E8' : '#5F6368'} />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: expenseLogs.length > 0 ? '#1A73E8' : '#5F6368' }}>
+                    📋 Nhật ký & Sửa ({expenseLogs.length})
+                  </Text>
+                </Pressable>
+              </View>
             </View>
 
             <View
@@ -2166,7 +2453,7 @@ export default function GoogleCalendarWorkspace({
                 </View>
               </View>
 
-              {/* Hàng 3: Đã dùng (Người dùng nhập chi tiêu thực tế, có ghi log lịch sử) */}
+              {/* Hàng 3: Đã dùng (Người dùng nhập chi tiêu thực tế theo từng ngày & địa điểm) */}
               <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: 'rgba(27,36,32,0.06)', paddingVertical: 7, backgroundColor: '#FFFFFF' }}>
                 <View style={{ width: 85, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: totalActual > 0 ? '#137333' : '#5F6368' }}>
@@ -2192,11 +2479,7 @@ export default function GoogleCalendarWorkspace({
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Pressable
                     testID="btn-expense-dining"
-                    onPress={() => {
-                      setEditingCategory('dining');
-                      setEditAmountInput('');
-                      setEditNoteInput('');
-                    }}
+                    onPress={() => openAddExpenseModal(activeDay, undefined, 'dining')}
                     style={{
                       paddingHorizontal: 6,
                       paddingVertical: 3,
@@ -2223,11 +2506,7 @@ export default function GoogleCalendarWorkspace({
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Pressable
                     testID="btn-expense-cafe"
-                    onPress={() => {
-                      setEditingCategory('cafe');
-                      setEditAmountInput('');
-                      setEditNoteInput('');
-                    }}
+                    onPress={() => openAddExpenseModal(activeDay, undefined, 'cafe')}
                     style={{
                       paddingHorizontal: 6,
                       paddingVertical: 3,
@@ -2254,11 +2533,7 @@ export default function GoogleCalendarWorkspace({
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Pressable
                     testID="btn-expense-hotel"
-                    onPress={() => {
-                      setEditingCategory('hotel');
-                      setEditAmountInput('');
-                      setEditNoteInput('');
-                    }}
+                    onPress={() => openAddExpenseModal(activeDay, undefined, 'hotel')}
                     style={{
                       paddingHorizontal: 6,
                       paddingVertical: 3,
@@ -2285,11 +2560,7 @@ export default function GoogleCalendarWorkspace({
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Pressable
                     testID="btn-expense-attraction"
-                    onPress={() => {
-                      setEditingCategory('attraction');
-                      setEditAmountInput('');
-                      setEditNoteInput('');
-                    }}
+                    onPress={() => openAddExpenseModal(activeDay, undefined, 'attraction')}
                     style={{
                       paddingHorizontal: 6,
                       paddingVertical: 3,
@@ -2316,11 +2587,7 @@ export default function GoogleCalendarWorkspace({
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Pressable
                     testID="btn-expense-other"
-                    onPress={() => {
-                      setEditingCategory('other');
-                      setEditAmountInput('');
-                      setEditNoteInput('');
-                    }}
+                    onPress={() => openAddExpenseModal(activeDay, undefined, 'other')}
                     style={{
                       paddingHorizontal: 6,
                       paddingVertical: 3,
@@ -2441,8 +2708,8 @@ export default function GoogleCalendarWorkspace({
               </Text>
             )}
 
-            {/* ── MODAL NHẬP / SỬA CHI TIÊU CHO HẠNG MỤC ── */}
-            {editingCategory && (
+            {/* ── MODAL GHI / SỬA CHI TIÊU THEO TỪNG NGÀY & ĐỊA ĐIỂM (TỰ ĐỘNG PHÂN LOẠI) ── */}
+            {expenseModalOpen && (
               <View
                 style={{
                   position: 'fixed' as any,
@@ -2460,120 +2727,372 @@ export default function GoogleCalendarWorkspace({
                 <View
                   style={{
                     width: '100%',
-                    maxWidth: 420,
+                    maxWidth: 480,
+                    maxHeight: '90vh' as any,
                     backgroundColor: '#FFFFFF',
                     borderRadius: 20,
                     padding: 20,
                     gap: 14,
                     boxShadow: '0 20px 40px rgba(0,0,0,0.2)' as any,
+                    overflow: 'hidden',
                   }}
                 >
+                  {/* Modal Header */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <DollarSign size={18} color="#137333" />
                       <Text style={{ fontSize: 16, fontWeight: '800', color: '#1B2420' }}>
-                        Ghi chép chi tiêu:{' '}
-                        {editingCategory === 'dining' ? 'Ăn uống' :
-                         editingCategory === 'cafe' ? 'Cà phê' :
-                         editingCategory === 'hotel' ? 'Nghỉ ngơi' :
-                         editingCategory === 'attraction' ? 'Vui chơi' : 'Khác'}
+                        {editingLogId ? '✏️ Chỉnh sửa chi tiêu (Sửa bất cứ lúc nào)' : '💰 Ghi nhận chi tiêu theo ngày'}
                       </Text>
                     </View>
                     <Pressable
                       testID="btn-close-expense-modal"
-                      onPress={() => setEditingCategory(null)}
+                      onPress={() => {
+                        setExpenseModalOpen(false);
+                        setEditingLogId(null);
+                      }}
                       style={{ padding: 4, cursor: 'pointer' as any }}
                     >
                       <X size={18} color="#5F6368" />
                     </Pressable>
                   </View>
 
-                  <View style={{ backgroundColor: '#F8F9FA', borderRadius: 12, padding: 10, gap: 4 }}>
-                    <Text style={{ fontSize: 11, color: '#5F6368' }}>
-                      Đã ghi nhận trước đó:{' '}
-                      <Text style={{ fontWeight: '800', color: '#137333' }}>
-                        {(actualExpenses[editingCategory] || 0).toLocaleString('vi-VN')} đ
+                  <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={true} contentContainerStyle={{ gap: 14 }}>
+                    {/* BƯỚC 1: CLICK VÔ NGÀY NÀO */}
+                    <View style={{ gap: 6 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#1B2420' }}>
+                        📅 Bước 1: Chọn ngày diễn ra chi tiêu:
                       </Text>
-                    </Text>
-                    <Text style={{ fontSize: 11, color: '#5F6368' }}>
-                      Dự trù ban đầu:{' '}
-                      <Text style={{ fontWeight: '800', color: '#202124' }}>
-                        {(plannedBudget[editingCategory] || 0).toLocaleString('vi-VN')} đ
-                      </Text>
-                    </Text>
-                  </View>
-
-                  <View style={{ gap: 6 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#202124' }}>
-                      Số tiền phát sinh (VND):
-                    </Text>
-                    <TextInput
-                      testID="input-expense-amount"
-                      value={editAmountInput}
-                      onChangeText={setEditAmountInput}
-                      placeholder="Ví dụ: 120000"
-                      keyboardType="numeric"
-                      style={{
-                        borderWidth: 1,
-                        borderColor: '#DADCE0',
-                        borderRadius: 10,
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        fontSize: 14,
-                        fontWeight: '700',
-                        color: '#1B2420',
-                        backgroundColor: '#FFFFFF',
-                      }}
-                    />
-                    <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-                      {[20000, 50000, 100000, 200000, 500000].map((amt) => (
-                        <Pressable
-                          key={amt}
-                          onPress={() => setEditAmountInput(String(amt))}
-                          style={{
-                            paddingHorizontal: 8,
-                            paddingVertical: 4,
-                            borderRadius: 6,
-                            backgroundColor: '#F1F3F4',
-                            cursor: 'pointer' as any,
-                          }}
-                        >
-                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#3C4043' }}>
-                            +{amt >= 1000000 ? `${amt / 1000000}tr` : `${amt / 1000}k`}
-                          </Text>
-                        </Pressable>
-                      ))}
+                      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                        {Array.from({ length: daysCount }, (_, i) => i + 1).map((d) => {
+                          const isDaySelected = selectedExpenseDay === d;
+                          const dayExpenseCount = expenseLogs.filter((l) => l.dayNumber === d).length;
+                          return (
+                            <Pressable
+                              key={d}
+                              testID={`btn-select-expense-day-${d}`}
+                              onPress={() => handleChangeExpenseDayInModal(d)}
+                              style={{
+                                paddingHorizontal: 12,
+                                paddingVertical: 6,
+                                borderRadius: 10,
+                                backgroundColor: isDaySelected ? '#1A73E8' : '#F1F3F4',
+                                borderWidth: 1,
+                                borderColor: isDaySelected ? '#1A73E8' : 'rgba(27,36,32,0.08)',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 4,
+                                cursor: 'pointer' as any,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: '800',
+                                  color: isDaySelected ? '#FFFFFF' : '#3C4043',
+                                }}
+                              >
+                                Ngày {d}
+                              </Text>
+                              {dayExpenseCount > 0 && (
+                                <View
+                                  style={{
+                                    paddingHorizontal: 5,
+                                    paddingVertical: 1,
+                                    borderRadius: 6,
+                                    backgroundColor: isDaySelected ? 'rgba(255,255,255,0.25)' : '#E6F4EA',
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      fontSize: 9,
+                                      fontWeight: '800',
+                                      color: isDaySelected ? '#FFFFFF' : '#137333',
+                                    }}
+                                  >
+                                    {dayExpenseCount}
+                                  </Text>
+                                </View>
+                              )}
+                            </Pressable>
+                          );
+                        })}
+                      </View>
                     </View>
-                  </View>
 
-                  <View style={{ gap: 6 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#202124' }}>
-                      Ghi chú / Lý do (để nhớ khi cần sửa sai):
-                    </Text>
-                    <TextInput
-                      testID="input-expense-note"
-                      value={editNoteInput}
-                      onChangeText={setEditNoteInput}
-                      placeholder="Ví dụ: Bữa trưa phở, Sửa lại số tiền..."
-                      style={{
-                        borderWidth: 1,
-                        borderColor: '#DADCE0',
-                        borderRadius: 10,
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        fontSize: 13,
-                        color: '#1B2420',
-                        backgroundColor: '#FFFFFF',
-                      }}
-                    />
-                  </View>
+                    {/* BƯỚC 2: CHỌN ĐỊA ĐIỂM CỦA NGÀY ĐÓ */}
+                    <View style={{ gap: 6 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#1B2420' }}>
+                        📍 Bước 2: Chọn địa điểm trong Ngày {selectedExpenseDay}:
+                      </Text>
+                      {(() => {
+                        const dayEvs = events.filter((e) => Number(e.dayNumber) === Number(selectedExpenseDay));
+                        return (
+                          <View style={{ gap: 6 }}>
+                            {dayEvs.length > 0 ? (
+                              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                                {dayEvs.map((ev) => {
+                                  const isSelected = selectedPlaceId === ev.id;
+                                  const autoCat = autoClassifyCategory(ev.category, ev.title);
+                                  return (
+                                    <Pressable
+                                      key={ev.id}
+                                      testID={`btn-select-place-${ev.id}`}
+                                      onPress={() => handleSelectPlaceInModal(ev.id)}
+                                      style={{
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 7,
+                                        borderRadius: 10,
+                                        backgroundColor: isSelected ? '#E8F0FE' : '#FAFAFA',
+                                        borderWidth: 1.5,
+                                        borderColor: isSelected ? '#1A73E8' : 'rgba(27,36,32,0.1)',
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        gap: 6,
+                                        cursor: 'pointer' as any,
+                                      }}
+                                    >
+                                      <Text style={{ fontSize: 12 }}>{autoCat.emoji}</Text>
+                                      <View>
+                                        <Text
+                                          style={{
+                                            fontSize: 11,
+                                            fontWeight: '800',
+                                            color: isSelected ? '#1A73E8' : '#202124',
+                                          }}
+                                        >
+                                          {ev.title}
+                                        </Text>
+                                        <Text style={{ fontSize: 10, color: '#5F6368' }}>
+                                          {ev.startHour}:00 · Dự kiến: {Number(ev.cost).toLocaleString('vi-VN')}đ
+                                        </Text>
+                                      </View>
+                                      {isSelected && <Check size={14} color="#1A73E8" />}
+                                    </Pressable>
+                                  );
+                                })}
+                              </View>
+                            ) : (
+                              <Text style={{ fontSize: 11, color: '#80868B', fontStyle: 'italic' }}>
+                                Ngày này chưa có địa điểm trên lịch trình. Bạn có thể ghi nhận chi phí phát sinh bên dưới:
+                              </Text>
+                            )}
 
-                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                            {/* Tùy chọn chi phí phát sinh ngoài lịch */}
+                            <Pressable
+                              testID="btn-select-place-custom"
+                              onPress={() => handleSelectPlaceInModal('custom')}
+                              style={{
+                                paddingHorizontal: 10,
+                                paddingVertical: 7,
+                                borderRadius: 10,
+                                backgroundColor: selectedPlaceId === 'custom' ? '#FFF8E1' : '#FAFAFA',
+                                borderWidth: 1.5,
+                                borderColor: selectedPlaceId === 'custom' ? '#FBBC04' : 'rgba(27,36,32,0.1)',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 6,
+                                cursor: 'pointer' as any,
+                              }}
+                            >
+                              <Plus size={14} color="#B06000" />
+                              <Text style={{ fontSize: 11, fontWeight: '800', color: '#B06000' }}>
+                                + Địa điểm / Chi phí phát sinh khác ngoài lịch
+                              </Text>
+                              {selectedPlaceId === 'custom' && <Check size={14} color="#B06000" />}
+                            </Pressable>
+
+                            {selectedPlaceId === 'custom' && (
+                              <TextInput
+                                testID="input-custom-place-name"
+                                value={customPlaceName}
+                                onChangeText={(text) => {
+                                  setCustomPlaceName(text);
+                                  const autoCat = autoClassifyCategory(undefined, text);
+                                  setManualCategory(autoCat.key);
+                                }}
+                                placeholder="Nhập tên địa điểm hoặc dịch vụ (ví dụ: Chè 4 Mùa, Grab sân bay...)"
+                                style={{
+                                  borderWidth: 1,
+                                  borderColor: '#FBBC04',
+                                  borderRadius: 8,
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 7,
+                                  fontSize: 12,
+                                  backgroundColor: '#FFFFFF',
+                                }}
+                              />
+                            )}
+                          </View>
+                        );
+                      })()}
+                    </View>
+
+                    {/* BƯỚC 3: TỰ ĐỘNG PHÂN LOẠI 5 HẠNG MỤC */}
+                    {(() => {
+                      let activeCatKey: 'dining' | 'cafe' | 'hotel' | 'attraction' | 'other' = 'dining';
+                      if (selectedPlaceId && selectedPlaceId !== 'custom') {
+                        const ev = events.find((e) => e.id === selectedPlaceId);
+                        if (ev) {
+                          activeCatKey = manualCategory || autoClassifyCategory(ev.category, ev.title).key;
+                        }
+                      } else {
+                        activeCatKey = manualCategory || autoClassifyCategory(undefined, customPlaceName).key;
+                      }
+
+                      const catMap = {
+                        dining: { label: 'Ăn uống', emoji: '🍽️', color: '#137333', bg: '#E6F4EA' },
+                        cafe: { label: 'Cà phê', emoji: '☕', color: '#B06000', bg: '#FEF7E0' },
+                        hotel: { label: 'Nghỉ ngơi', emoji: '🛏️', color: '#8430CE', bg: '#F3E8FD' },
+                        attraction: { label: 'Vui chơi', emoji: '🎡', color: '#1A73E8', bg: '#E8F0FE' },
+                        other: { label: 'Khác', emoji: '📦', color: '#5F6368', bg: '#F1F3F4' },
+                      };
+
+                      const currentCatInfo = catMap[activeCatKey] || catMap.other;
+
+                      return (
+                        <View style={{ gap: 6 }}>
+                          <View
+                            style={{
+                              backgroundColor: currentCatInfo.bg,
+                              borderRadius: 10,
+                              padding: 8,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                            }}
+                          >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Sparkles size={14} color={currentCatInfo.color} />
+                              <Text style={{ fontSize: 12, fontWeight: '800', color: currentCatInfo.color }}>
+                                ⚡ Tự động phân loại: {currentCatInfo.label} {currentCatInfo.emoji}
+                              </Text>
+                            </View>
+                            <Text style={{ fontSize: 10, color: currentCatInfo.color, fontStyle: 'italic' }}>
+                              (Dựa theo tên & địa điểm)
+                            </Text>
+                          </View>
+
+                          {/* 5 chip đổi hạng mục nhanh nếu muốn */}
+                          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                            {(['dining', 'cafe', 'hotel', 'attraction', 'other'] as const).map((catKey) => {
+                              const info = catMap[catKey];
+                              const isCatActive = activeCatKey === catKey;
+                              return (
+                                <Pressable
+                                  key={catKey}
+                                  testID={`btn-category-${catKey}`}
+                                  onPress={() => setManualCategory(catKey)}
+                                  style={{
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 4,
+                                    borderRadius: 8,
+                                    backgroundColor: isCatActive ? info.bg : '#F8F9FA',
+                                    borderWidth: 1,
+                                    borderColor: isCatActive ? info.color : 'rgba(27,36,32,0.08)',
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    cursor: 'pointer' as any,
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 11 }}>{info.emoji}</Text>
+                                  <Text
+                                    style={{
+                                      fontSize: 11,
+                                      fontWeight: isCatActive ? '800' : '600',
+                                      color: isCatActive ? info.color : '#5F6368',
+                                    }}
+                                  >
+                                    {info.label}
+                                  </Text>
+                                  {isCatActive && <Check size={11} color={info.color} />}
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      );
+                    })()}
+
+                    {/* BƯỚC 4: NHẬP TIỀN VÔ */}
+                    <View style={{ gap: 6 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#1B2420' }}>
+                        💵 Bước 4: Nhập số tiền thực tế (VND):
+                      </Text>
+                      <TextInput
+                        testID="input-expense-amount"
+                        value={expenseAmountInput}
+                        onChangeText={setExpenseAmountInput}
+                        placeholder="Ví dụ: 120000"
+                        keyboardType="numeric"
+                        style={{
+                          borderWidth: 1.5,
+                          borderColor: '#137333',
+                          borderRadius: 10,
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          fontSize: 16,
+                          fontWeight: '800',
+                          color: '#137333',
+                          backgroundColor: '#FFFFFF',
+                        }}
+                      />
+                      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                        {[20000, 50000, 100000, 200000, 500000].map((amt) => (
+                          <Pressable
+                            key={amt}
+                            onPress={() => setExpenseAmountInput(String(amt))}
+                            style={{
+                              paddingHorizontal: 8,
+                              paddingVertical: 4,
+                              borderRadius: 6,
+                              backgroundColor: '#F1F3F4',
+                              cursor: 'pointer' as any,
+                            }}
+                          >
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#3C4043' }}>
+                              +{amt >= 1000000 ? `${amt / 1000000}tr` : `${amt / 1000}k`}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+
+                    {/* BƯỚC 5: GHI CHÚ */}
+                    <View style={{ gap: 6 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#202124' }}>
+                        📝 Ghi chú chi tiết (tùy chọn, để nhớ khi sửa sai):
+                      </Text>
+                      <TextInput
+                        testID="input-expense-note"
+                        value={expenseNoteInput}
+                        onChangeText={setExpenseNoteInput}
+                        placeholder="Ví dụ: 2 bát phở bò tái nạm + quẩy giòn..."
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#DADCE0',
+                          borderRadius: 10,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          fontSize: 13,
+                          color: '#1B2420',
+                          backgroundColor: '#FFFFFF',
+                        }}
+                      />
+                    </View>
+                  </ScrollView>
+
+                  {/* Actions */}
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
                     <Pressable
-                      onPress={() => setEditingCategory(null)}
+                      onPress={() => {
+                        setExpenseModalOpen(false);
+                        setEditingLogId(null);
+                      }}
                       style={{
                         flex: 1,
-                        paddingVertical: 10,
+                        paddingVertical: 11,
                         alignItems: 'center',
                         borderRadius: 10,
                         backgroundColor: '#F1F3F4',
@@ -2587,14 +3106,16 @@ export default function GoogleCalendarWorkspace({
                       onPress={handleSaveExpense}
                       style={{
                         flex: 1.5,
-                        paddingVertical: 10,
+                        paddingVertical: 11,
                         alignItems: 'center',
                         borderRadius: 10,
                         backgroundColor: '#137333',
                         cursor: 'pointer' as any,
                       }}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>Lưu chi tiêu</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>
+                        {editingLogId ? 'Cập nhật chi tiêu' : 'Lưu chi tiêu'}
+                      </Text>
                     </Pressable>
                   </View>
                 </View>
@@ -2620,8 +3141,8 @@ export default function GoogleCalendarWorkspace({
                 <View
                   style={{
                     width: '100%',
-                    maxWidth: 520,
-                    maxHeight: '85vh' as any,
+                    maxWidth: 560,
+                    maxHeight: '88vh' as any,
                     backgroundColor: '#FFFFFF',
                     borderRadius: 20,
                     padding: 20,
@@ -2633,7 +3154,7 @@ export default function GoogleCalendarWorkspace({
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Clock size={18} color="#1A73E8" />
                       <Text style={{ fontSize: 16, fontWeight: '800', color: '#1B2420' }}>
-                        Nhật ký Chi tiêu & Lịch sử chỉnh sửa
+                        Nhật ký Chi tiêu & Sửa sai lúc nào cũng được
                       </Text>
                     </View>
                     <Pressable
@@ -2645,99 +3166,218 @@ export default function GoogleCalendarWorkspace({
                     </Pressable>
                   </View>
 
+                  {/* Thanh lọc theo ngày */}
+                  <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <Pressable
+                      testID="filter-log-all"
+                      onPress={() => setFilterLogDay('all')}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 8,
+                        backgroundColor: filterLogDay === 'all' ? '#1A73E8' : '#F1F3F4',
+                        cursor: 'pointer' as any,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: filterLogDay === 'all' ? '#FFFFFF' : '#5F6368' }}>
+                        Tất cả ({expenseLogs.length})
+                      </Text>
+                    </Pressable>
+                    {Array.from({ length: daysCount }, (_, i) => i + 1).map((d) => {
+                      const count = expenseLogs.filter((l) => l.dayNumber === d).length;
+                      const isFilterActive = filterLogDay === d;
+                      return (
+                        <Pressable
+                          key={d}
+                          testID={`filter-log-day-${d}`}
+                          onPress={() => setFilterLogDay(d)}
+                          style={{
+                            paddingHorizontal: 10,
+                            paddingVertical: 5,
+                            borderRadius: 8,
+                            backgroundColor: isFilterActive ? '#1A73E8' : '#F1F3F4',
+                            cursor: 'pointer' as any,
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: isFilterActive ? '#FFFFFF' : '#5F6368' }}>
+                            Ngày {d} ({count})
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {/* Summary bar */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#E8F0FE', padding: 10, borderRadius: 12 }}>
                     <Text style={{ fontSize: 12, fontWeight: '700', color: '#1A73E8' }}>
-                      Tổng đã dùng: {(totalActual / 1000).toLocaleString('vi-VN')}k ({expenseLogs.length} lần ghi)
+                      Tổng thực tế: {(totalActual / 1000).toLocaleString('vi-VN')}k ({expenseLogs.length} khoản chi)
                     </Text>
-                    {expenseLogs.length > 0 && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Pressable
-                        onPress={handleClearAllLogs}
+                        onPress={() => {
+                          setShowExpenseLogModal(false);
+                          openAddExpenseModal(filterLogDay === 'all' ? activeDay : filterLogDay);
+                        }}
                         style={{
                           paddingHorizontal: 8,
-                          paddingVertical: 3,
+                          paddingVertical: 4,
                           borderRadius: 6,
-                          backgroundColor: '#FCE8E6',
+                          backgroundColor: '#137333',
                           cursor: 'pointer' as any,
                         }}
                       >
-                        <Text style={{ fontSize: 10, fontWeight: '800', color: '#C5221F' }}>Xóa tất cả</Text>
+                        <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>+ Ghi thêm</Text>
                       </Pressable>
-                    )}
+                      {expenseLogs.length > 0 && (
+                        <Pressable
+                          onPress={handleClearAllLogs}
+                          style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                            borderRadius: 6,
+                            backgroundColor: '#FCE8E6',
+                            cursor: 'pointer' as any,
+                          }}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#C5221F' }}>Xóa tất cả</Text>
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
 
-                  <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={true}>
-                    {expenseLogs.length === 0 ? (
-                      <View style={{ paddingVertical: 30, alignItems: 'center', gap: 8 }}>
-                        <ShoppingBag size={28} color="#DADCE0" />
-                        <Text style={{ fontSize: 13, color: '#80868B', fontWeight: '500' }}>
-                          Chưa có nhật ký chi tiêu nào.
-                        </Text>
-                        <Text style={{ fontSize: 11, color: '#9AA0A6' }}>
-                          Bấm vào ô "+ Ghi" tại hàng "đã dùng" để bắt đầu ghi chép.
-                        </Text>
-                      </View>
-                    ) : (
-                      <View style={{ gap: 8 }}>
-                        {expenseLogs.map((log) => (
-                          <View
-                            key={log.id}
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              padding: 10,
-                              borderRadius: 12,
-                              backgroundColor: '#F8F9FA',
-                              borderWidth: 1,
-                              borderColor: 'rgba(27,36,32,0.06)',
-                              gap: 10,
-                            }}
-                          >
-                            <View style={{ flex: 1, gap: 2 }}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                <View
-                                  style={{
-                                    paddingHorizontal: 6,
-                                    paddingVertical: 2,
-                                    borderRadius: 4,
-                                    backgroundColor: '#E6F4EA',
-                                  }}
-                                >
-                                  <Text style={{ fontSize: 9, fontWeight: '800', color: '#137333' }}>
-                                    {log.categoryLabel}
+                  {/* List of items */}
+                  <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={true}>
+                    {(() => {
+                      const displayedLogs = filterLogDay === 'all'
+                        ? expenseLogs
+                        : expenseLogs.filter((l) => l.dayNumber === filterLogDay);
+
+                      if (displayedLogs.length === 0) {
+                        return (
+                          <View style={{ paddingVertical: 30, alignItems: 'center', gap: 8 }}>
+                            <ShoppingBag size={28} color="#DADCE0" />
+                            <Text style={{ fontSize: 13, color: '#80868B', fontWeight: '500' }}>
+                              Chưa có khoản chi tiêu nào{filterLogDay !== 'all' ? ` cho Ngày ${filterLogDay}` : ''}.
+                            </Text>
+                            <Pressable
+                              onPress={() => {
+                                setShowExpenseLogModal(false);
+                                openAddExpenseModal(filterLogDay === 'all' ? activeDay : filterLogDay);
+                              }}
+                              style={{
+                                marginTop: 6,
+                                paddingHorizontal: 12,
+                                paddingVertical: 6,
+                                borderRadius: 8,
+                                backgroundColor: '#137333',
+                                cursor: 'pointer' as any,
+                              }}
+                            >
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>
+                                + Ghi nhận chi tiêu ngay
+                              </Text>
+                            </Pressable>
+                          </View>
+                        );
+                      }
+
+                      return (
+                        <View style={{ gap: 8 }}>
+                          {displayedLogs.map((log) => (
+                            <View
+                              key={log.id}
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: 10,
+                                borderRadius: 12,
+                                backgroundColor: '#F8F9FA',
+                                borderWidth: 1,
+                                borderColor: 'rgba(27,36,32,0.06)',
+                                gap: 10,
+                              }}
+                            >
+                              <View style={{ flex: 1, gap: 3 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                  <View
+                                    style={{
+                                      paddingHorizontal: 6,
+                                      paddingVertical: 2,
+                                      borderRadius: 4,
+                                      backgroundColor: '#E8F0FE',
+                                    }}
+                                  >
+                                    <Text style={{ fontSize: 9, fontWeight: '800', color: '#1A73E8' }}>
+                                      Ngày {log.dayNumber}
+                                    </Text>
+                                  </View>
+                                  <View
+                                    style={{
+                                      paddingHorizontal: 6,
+                                      paddingVertical: 2,
+                                      borderRadius: 4,
+                                      backgroundColor: '#E6F4EA',
+                                    }}
+                                  >
+                                    <Text style={{ fontSize: 9, fontWeight: '800', color: '#137333' }}>
+                                      {log.categoryLabel}
+                                    </Text>
+                                  </View>
+                                  <Text style={{ fontSize: 10, color: '#80868B' }}>
+                                    {log.timestamp}
                                   </Text>
                                 </View>
-                                <Text style={{ fontSize: 10, color: '#80868B' }}>
-                                  {log.timestamp}
+                                <Text style={{ fontSize: 13, fontWeight: '800', color: '#202124' }}>
+                                  {log.placeName}
                                 </Text>
+                                {log.note ? (
+                                  <Text style={{ fontSize: 11, color: '#5F6368' }}>
+                                    {log.note}
+                                  </Text>
+                                ) : null}
                               </View>
-                              <Text style={{ fontSize: 12, fontWeight: '700', color: '#202124' }}>
-                                {log.note}
-                              </Text>
-                            </View>
 
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                              <Text style={{ fontSize: 13, fontWeight: '800', color: '#137333' }}>
-                                +{(log.amount / 1000).toLocaleString('vi-VN')}k
-                              </Text>
-                              <Pressable
-                                testID={`btn-delete-log-${log.id}`}
-                                onPress={() => handleDeleteLog(log.id)}
-                                style={{
-                                  padding: 6,
-                                  borderRadius: 6,
-                                  backgroundColor: '#FCE8E6',
-                                  cursor: 'pointer' as any,
-                                }}
-                                accessibilityLabel="Xóa bản ghi này (sửa sai)"
-                              >
-                                <Trash2 size={12} color="#C5221F" />
-                              </Pressable>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Text style={{ fontSize: 13, fontWeight: '800', color: '#137333' }}>
+                                  +{(log.amount / 1000).toLocaleString('vi-VN')}k
+                                </Text>
+
+                                {/* Nút SỬA (thích sửa lúc nào cũng được) */}
+                                <Pressable
+                                  testID={`btn-edit-log-${log.id}`}
+                                  onPress={() => openEditExpenseLog(log)}
+                                  style={{
+                                    padding: 6,
+                                    borderRadius: 6,
+                                    backgroundColor: '#E8F0FE',
+                                    cursor: 'pointer' as any,
+                                  }}
+                                  accessibilityLabel="Sửa bản ghi này"
+                                >
+                                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>✏️ Sửa</Text>
+                                </Pressable>
+
+                                {/* Nút XÓA (để sửa sai) */}
+                                <Pressable
+                                  testID={`btn-delete-log-${log.id}`}
+                                  onPress={() => handleDeleteLog(log.id)}
+                                  style={{
+                                    padding: 6,
+                                    borderRadius: 6,
+                                    backgroundColor: '#FCE8E6',
+                                    cursor: 'pointer' as any,
+                                  }}
+                                  accessibilityLabel="Xóa bản ghi này"
+                                >
+                                  <Trash2 size={13} color="#C5221F" />
+                                </Pressable>
+                              </View>
                             </View>
-                          </View>
-                        ))}
-                      </View>
-                    )}
+                          ))}
+                        </View>
+                      );
+                    })()}
                   </ScrollView>
 
                   <Pressable
