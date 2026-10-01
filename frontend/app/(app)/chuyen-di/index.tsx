@@ -285,10 +285,34 @@ export default function Dashboard() {
       {/* Navbar */}
       <View className="bg-brand-bg border-b border-brand-line px-6 py-4">
         <View className="flex-row justify-between items-center">
-          <Pressable onPress={() => router.push(APP_ROUTES.LANDING as any)} className="flex-row items-center gap-2">
-            <Compass size={28} color={BRAND_COLORS.primary} />
-            <Text className="font-display font-bold text-xl text-brand-primary">ViVu Planner</Text>
-          </Pressable>
+          <View className="flex-row items-center gap-4">
+            <Pressable onPress={() => router.push(APP_ROUTES.LANDING as any)} className="flex-row items-center gap-2">
+              <Compass size={28} color={BRAND_COLORS.primary} />
+              <Text className="font-display font-bold text-xl text-brand-primary">ViVu Planner</Text>
+            </Pressable>
+
+            <Pressable
+              testID="nav-link-feed"
+              onPress={() => router.push((APP_ROUTES.FEED || '/(app)/bang-tin') as any)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 10,
+                backgroundColor: '#FAF5EA',
+                borderWidth: 1,
+                borderColor: '#E8DECC',
+                cursor: 'pointer' as any,
+              }}
+            >
+              <Text style={{ fontSize: 13 }}>🌟</Text>
+              <Text style={{ color: BRAND_COLORS.primary, fontSize: 12, fontWeight: '800' }}>
+                Bảng Tin Cộng Đồng
+              </Text>
+            </Pressable>
+          </View>
 
           <View className="flex-row items-center gap-2">
             <SystemClock />

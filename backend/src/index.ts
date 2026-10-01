@@ -15,6 +15,7 @@ import paymentRoutes from "./modules/payment/payment.router";
 import partnersRoutes from "./modules/partners/partners.router";
 import weatherRoutes from "./modules/weather/weather.router";
 import placesRoutes  from "./modules/places/places.router";
+import postsRoutes   from "./modules/posts/posts.router";
 
 process.env.TZ = "Asia/Ho_Chi_Minh";
 
@@ -53,6 +54,7 @@ app.use("/api/payment",  paymentRoutes);
 app.use("/api/weather",  weatherRoutes);
 app.use(["/api/partners", "/api/admin/partners"], partnersRoutes);
 app.use("/api/places",   placesRoutes);
+app.use("/api/posts",    postsRoutes);
 app.use("/api/admin",    adminRoutes);
 
 // 404 cho API routes
