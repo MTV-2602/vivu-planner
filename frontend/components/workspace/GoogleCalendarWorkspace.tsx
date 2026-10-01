@@ -172,6 +172,7 @@ export interface GoogleCalendarWorkspaceProps {
   onUpgradePro?: () => void;
   onOpenManualAdd?: () => void;
   onOpenAiAssistant?: () => void;
+  travelerCount?: number;
 }
 
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 07:00 -> 21:00
@@ -217,6 +218,7 @@ export default function GoogleCalendarWorkspace({
   onUpgradePro,
   onOpenManualAdd,
   onOpenAiAssistant,
+  travelerCount = 1,
 }: GoogleCalendarWorkspaceProps) {
   const { width: windowWidth } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && windowWidth >= 960;
@@ -443,7 +445,13 @@ export default function GoogleCalendarWorkspace({
       const c = (ev.category || '').toLowerCase();
       if (c === 'dining' || c.includes('ăn') || c.includes('food')) {
         estimated.dining += Number(ev.cost) || 0;
-      } else if (c === 'cafe' || c.includes('cà phê') || c.includes('coffee') || c.includes('cf')) {
+      } else if (
+        c === 'cafe' || c === 'coffee' ||
+        c.includes('cà phê') || c.includes('cafe') || c.includes('coffee') || c.includes('cf') || c.includes('trà') ||
+        (ev.title || '').toLowerCase().includes('cà phê') ||
+        (ev.title || '').toLowerCase().includes('cafe') ||
+        (ev.title || '').toLowerCase().includes('coffee')
+      ) {
         estimated.cafe += Number(ev.cost) || 0;
       } else if (c === 'hotel' || c === 'accommodation' || c.includes('khách sạn') || c.includes('nghỉ') || c.includes('homestay') || c.includes('resort')) {
         estimated.hotel += Number(ev.cost) || 0;
@@ -738,7 +746,19 @@ export default function GoogleCalendarWorkspace({
     // Tách riêng khách sạn nếu có
     const hotels = uniquePlaces.filter((p) => {
       const c = (p.category || '').toLowerCase();
-      return c === 'hotel' || c === 'accommodation' || c.includes('khách sạn') || c.includes('nghỉ');
+      const n = (p.name || '').toLowerCase();
+      return (
+        c === 'hotel' ||
+        c === 'accommodation' ||
+        c.includes('khách sạn') ||
+        c.includes('nghỉ') ||
+        c.includes('homestay') ||
+        c.includes('resort') ||
+        n.includes('khách sạn') ||
+        n.includes('hotel') ||
+        n.includes('homestay') ||
+        n.includes('resort')
+      );
     });
     const nonHotels = uniquePlaces.filter((p) => !hotels.includes(p));
 
@@ -769,7 +789,7 @@ export default function GoogleCalendarWorkspace({
     }
 
     // Các khung giờ khoa học cho từng ngày (Sáng, Trưa, Chiều, Tối)
-    const timeSlots = [
+    const normalTimeSlots = [
       { hour: 8, minute: 0, dur: 90 },   // 08:00 (Cà phê / Đi dạo)
       { hour: 10, minute: 0, dur: 90 },  // 10:00 (Tham quan / Di tích)
       { hour: 12, minute: 0, dur: 90 },  // 12:00 (Ẩm thực đặc sản)
@@ -779,23 +799,33 @@ export default function GoogleCalendarWorkspace({
       { hour: 20, minute: 30, dur: 75 }, // 20:30 (Chợ đêm / Dạo phố)
     ];
 
+    // Ngày 1 nếu có accommodation thì slot 14:00 - 15:00 đã có khách sạn, các slot trống còn lại:
+    const day1TimeSlotsWithHotel = [
+      { hour: 8, minute: 0, dur: 90 },   // 08:00 (Cà phê / Đi dạo)
+      { hour: 10, minute: 0, dur: 90 },  // 10:00 (Tham quan / Di tích)
+      { hour: 12, minute: 0, dur: 90 },  // 12:00 (Ẩm thực đặc sản)
+      { hour: 16, minute: 0, dur: 90 },  // 16:00 (Vui chơi / Chiều sau check-in)
+      { hour: 18, minute: 30, dur: 90 }, // 18:30 (Ăn tối / Phố ẩm thực)
+      { hour: 20, minute: 30, dur: 75 }, // 20:30 (Chợ đêm / Dạo phố)
+    ];
+
     const newEvents: CalendarEventItem[] = [];
     const totalDays = Math.max(1, daysCount);
 
-    // Nếu có khách sạn, đặt vào Ngày 1 lúc 14:00 (check-in), cost nhân số đêm
+    // 1. Luôn xếp accommodation vào slot 14:00 Ngày 1 (dayIndex=0, dayNumber=1) TRƯỚC KHI xếp các hoạt động khác
     const nightsCount = Math.max(1, totalDays - 1);
     if (hotels.length > 0) {
       hotels.forEach((h, hIdx) => {
         newEvents.push({
-          id: `ev-hotel-${h.id}-${Date.now()}`,
+          id: `ev-hotel-${h.id}-${Date.now()}-${hIdx}`,
           placeId: h.id,
           title: h.name,
           category: 'hotel',
           address: h.address,
           lat: h.lat,
           lng: h.lng,
-          cost: (h.cost || 0) * nightsCount,
-          dayNumber: (hIdx % totalDays) + 1,
+          cost: (Number(h.cost) || 0) * nightsCount,
+          dayNumber: 1,
           startHour: 14,
           startMinute: 0,
           durationMinutes: 60,
@@ -804,11 +834,12 @@ export default function GoogleCalendarWorkspace({
       });
     }
 
-    // Phân bổ đều các địa điểm vào từng ngày
+    // 2. Sau đó xếp các items còn lại vào các slots còn trống
     ordered.forEach((p, idx) => {
       const targetDay = (idx % totalDays) + 1;
       const dayOrder = Math.floor(idx / totalDays);
-      const slot = timeSlots[dayOrder % timeSlots.length] || { hour: 8 + (dayOrder * 2) % 12, minute: 0, dur: 90 };
+      const slotsForDay = (hotels.length > 0 && targetDay === 1) ? day1TimeSlotsWithHotel : normalTimeSlots;
+      const slot = slotsForDay[dayOrder % slotsForDay.length] || { hour: 8 + (dayOrder * 2) % 12, minute: 0, dur: 90 };
 
       newEvents.push({
         id: `ev-opt-${p.id}-${Date.now()}-${idx}`,
@@ -1559,6 +1590,7 @@ export default function GoogleCalendarWorkspace({
 
   return (
     <View
+      testID="google-calendar-workspace"
       style={{
         width: '100%',
         backgroundColor: '#FFFFFF',
@@ -2597,83 +2629,102 @@ export default function GoogleCalendarWorkspace({
             )}
 
             {/* 2. BẢNG NGÂN SÁCH MA TRẬN (5 HẠNG MỤC: ĂN, CF, NGHỈ NGƠI, VUI CHƠI, KHÁC, TỔNG) */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, flexWrap: 'wrap', gap: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <DollarSign size={15} color="#137333" />
-                <Text style={{ fontSize: 13, fontWeight: '800', color: '#1B2420' }}>
-                  Bảng Quản lý & Đối soát Ngân sách
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <Pressable
-                  testID="btn-record-expense-header"
-                  onPress={() => openAddExpenseModal(activeDay)}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 5,
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
-                    borderRadius: 8,
-                    backgroundColor: '#137333',
-                    cursor: 'pointer' as any,
-                  }}
-                >
-                  <Plus size={13} color="#FFFFFF" />
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>
-                    Ghi chi tiêu theo ngày
+            <View testID="budget-matrix-container" style={{ gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, flexWrap: 'wrap', gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <DollarSign size={15} color="#137333" />
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#1B2420' }}>
+                    Bảng Quản lý & Đối soát Ngân sách
                   </Text>
-                </Pressable>
+                  <View
+                    testID="budget-note-travelers"
+                    style={{
+                      backgroundColor: '#E6F4EA',
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#CEEAD6',
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#137333' }}>
+                      👥 {travelerCount || 1} người{travelerCount > 1 ? ` · ${Math.max(1, Math.ceil((travelerCount || 1) / 2))} phòng` : ''}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Pressable
+                    testID="btn-record-expense-header"
+                    onPress={() => openAddExpenseModal(activeDay)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 5,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 8,
+                      backgroundColor: '#137333',
+                      cursor: 'pointer' as any,
+                    }}
+                  >
+                    <Plus size={13} color="#FFFFFF" />
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>
+                      Ghi chi tiêu theo ngày
+                    </Text>
+                  </Pressable>
 
-                <Pressable
-                  testID="btn-open-expense-logs-header"
-                  onPress={() => setShowExpenseLogModal(true)}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 5,
-                    paddingHorizontal: 9,
-                    paddingVertical: 5,
-                    borderRadius: 8,
-                    backgroundColor: expenseLogs.length > 0 ? '#E8F0FE' : '#F1F3F4',
-                    borderWidth: 1,
-                    borderColor: expenseLogs.length > 0 ? '#C2E7FF' : 'rgba(27,36,32,0.08)',
-                    cursor: 'pointer' as any,
-                  }}
-                >
-                  <Clock size={12} color={expenseLogs.length > 0 ? '#1A73E8' : '#5F6368'} />
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: expenseLogs.length > 0 ? '#1A73E8' : '#5F6368' }}>
-                    📋 Nhật ký & Sửa ({expenseLogs.length})
-                  </Text>
-                </Pressable>
+                  <Pressable
+                    testID="btn-open-expense-logs-header"
+                    onPress={() => setShowExpenseLogModal(true)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 5,
+                      paddingHorizontal: 9,
+                      paddingVertical: 5,
+                      borderRadius: 8,
+                      backgroundColor: expenseLogs.length > 0 ? '#E8F0FE' : '#F1F3F4',
+                      borderWidth: 1,
+                      borderColor: expenseLogs.length > 0 ? '#C2E7FF' : 'rgba(27,36,32,0.08)',
+                      cursor: 'pointer' as any,
+                    }}
+                  >
+                    <Clock size={12} color={expenseLogs.length > 0 ? '#1A73E8' : '#5F6368'} />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: expenseLogs.length > 0 ? '#1A73E8' : '#5F6368' }}>
+                      📋 Nhật ký & Sửa ({expenseLogs.length})
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
-            </View>
 
-            <View
-              style={{
-                backgroundColor: '#FFFFFF',
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: 'rgba(27,36,32,0.12)',
-                overflow: 'hidden',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.04)' as any,
-              }}
-            >
-              {/* Header Excel Bar (Yellow #FFF275) */}
               <View
                 style={{
-                  backgroundColor: '#FFF275',
-                  flexDirection: 'row',
-                  borderBottomWidth: 1,
-                  borderBottomColor: '#E6D759',
-                  paddingVertical: 8,
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: 'rgba(27,36,32,0.12)',
+                  overflow: 'hidden',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)' as any,
                 }}
               >
-                <View style={{ width: 85, paddingHorizontal: 8, justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '900', color: '#333333', textTransform: 'uppercase' }}>
-                    Chỉ số
-                  </Text>
-                </View>
+                {/* Header Excel Bar (Yellow #FFF275) */}
+                <View
+                  style={{
+                    backgroundColor: '#FFF275',
+                    flexDirection: 'row',
+                    borderBottomWidth: 1,
+                    borderBottomColor: '#E6D759',
+                    paddingVertical: 8,
+                  }}
+                >
+                  <View style={{ width: 85, paddingHorizontal: 8, justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 11, fontWeight: '900', color: '#333333', textTransform: 'uppercase' }}>
+                      Chỉ số
+                    </Text>
+                    <Text style={{ fontSize: 9, color: '#666', marginTop: 1 }}>
+                      👥 {travelerCount || 1} người{travelerCount > 1 ? ` · ${Math.max(1, Math.ceil((travelerCount || 1) / 2))} phòng` : ''}
+                    </Text>
+                  </View>
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 11, fontWeight: '800', color: '#137333' }}>Ăn uống</Text>
                 </View>
@@ -3021,6 +3072,10 @@ export default function GoogleCalendarWorkspace({
                 *Số dư còn lại đang được tính theo chi phí thực tế đã dùng bạn đã ghi chép.
               </Text>
             )}
+            <Text style={{ fontSize: 9, color: '#5F6368', fontStyle: 'italic', paddingHorizontal: 4, marginTop: 3 }}>
+              💡 Ăn uống & vui chơi tính cho {travelerCount} người · Nghỉ ngơi tính theo phòng ({Math.ceil(travelerCount / 2)} phòng)
+            </Text>
+          </View>
 
             {/* ── MODAL GHI / SỬA CHI TIÊU THEO TỪNG NGÀY & ĐỊA ĐIỂM (TỰ ĐỘNG PHÂN LOẠI) ── */}
             {expenseModalOpen && (

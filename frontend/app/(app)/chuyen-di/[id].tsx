@@ -1070,6 +1070,7 @@ export default function TripDetail() {
 
             <GoogleCalendarWorkspace
               cityName={trip.destination_city}
+              travelerCount={trip.traveler_count}
               totalBudget={trip.budget_total}
               budgetBreakdown={trip.budget_breakdown}
               daysCount={sortedDays.length}
