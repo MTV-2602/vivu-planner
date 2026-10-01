@@ -139,6 +139,7 @@ export const APP_ROUTES = {
   TRIPS: '/(app)/chuyen-di',
   NEW_TRIP: '/(app)/chuyen-di/moi',
   TRIP_DETAIL: (id: string) => `/(app)/chuyen-di/${id}`,
+  FEED: '/(app)/bang-tin',
   ADMIN: '/admin',
   ADMIN_USERS: '/admin/users',
   ADMIN_TRIPS: '/admin/trips',
@@ -146,6 +147,42 @@ export const APP_ROUTES = {
   ADMIN_REVENUE: '/admin/revenue',
   ADMIN_PARTNERS: '/admin/partners',
   ADMIN_PACKAGES: '/admin/packages',
+};
+
+// ─── 63 TỈNH THÀNH VIỆT NAM (TAG BẮT BUỘC BÀI ĐĂNG) ─────────────────────────
+export const VIETNAM_PROVINCES = [
+  'Hà Nội', 'TP. Hồ Chí Minh', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ',
+  'An Giang', 'Bà Rịa - Vũng Tàu', 'Bắc Giang', 'Bắc Kạn', 'Bạc Liêu',
+  'Bắc Ninh', 'Bến Tre', 'Bình Định', 'Bình Dương', 'Bình Phước',
+  'Bình Thuận', 'Cà Mau', 'Cao Bằng', 'Đắk Lắk', 'Đắk Nông',
+  'Điện Biên', 'Đồng Nai', 'Đồng Tháp', 'Gia Lai', 'Hà Giang',
+  'Hà Nam', 'Hà Tĩnh', 'Hải Dương', 'Hậu Giang', 'Hòa Bình',
+  'Hưng Yên', 'Khánh Hòa', 'Kiên Giang', 'Kon Tum', 'Lai Châu',
+  'Lâm Đồng', 'Lạng Sơn', 'Lào Cai', 'Long An', 'Nam Định',
+  'Nghệ An', 'Ninh Bình', 'Ninh Thuận', 'Phú Thọ', 'Phú Yên',
+  'Quảng Bình', 'Quảng Nam', 'Quảng Ngãi', 'Quảng Ninh', 'Quảng Trị',
+  'Sóc Trăng', 'Sơn La', 'Tây Ninh', 'Thái Bình', 'Thái Nguyên',
+  'Thanh Hóa', 'Thừa Thiên Huế', 'Tiền Giang', 'Trà Vinh', 'Tuyên Quang',
+  'Vĩnh Long', 'Vĩnh Phúc', 'Yên Bái'
+];
+
+// ─── DANH MỤC PHÂN LOẠI (TAG BẮT BUỘC BÀI ĐĂNG) ──────────────────────────────
+export const POST_CATEGORIES = [
+  { id: 'stay', label: 'Lưu trú', icon: '🏨', color: '#3B82F6', bg: '#EFF6FF' },
+  { id: 'food_normal', label: 'Ăn uống thông thường', icon: '🍜', color: '#F97316', bg: '#FFF7ED' },
+  { id: 'food_local', label: 'Ăn uống địa phương', icon: '🍲', color: '#EA580C', bg: '#FFEDD5' },
+  { id: 'cafe', label: 'Cà phê', icon: '☕', color: '#92400E', bg: '#FEF3C7' },
+  { id: 'entertainment', label: 'Vui chơi giải trí', icon: '🎡', color: '#8B5CF6', bg: '#F5F3FF' },
+  { id: 'other', label: 'Khác', icon: '🏷️', color: '#6B7280', bg: '#F3F4F6' },
+];
+
+export const POST_ASPECT_OPTIONS = {
+  quality: ['Xuất sắc', 'Rất tốt', 'Tốt', 'Bình thường', 'Kém'],
+  service: ['Chu đáo', 'Nhiệt tình', 'Nhanh nhẹn', 'Bình thường', 'Chậm chạp'],
+  atmosphere: ['Yên tĩnh', 'Sôi động', 'Lãng mạn', 'Ấm cúng', 'Rộng rãi thoáng mát', 'Sang trọng'],
+  waiting_time: ['Không phải chờ', '< 10 phút', '10 - 30 phút', '> 30 phút'],
+  booking_method: ['Không cần đặt trước', 'Đặt qua hotline', 'Đặt qua ứng dụng', 'Bắt buộc đặt trước'],
+  parking: ['Bãi đỗ xe máy miễn phí', 'Bãi đỗ ô tô rộng', 'Có thu phí gửi xe', 'Khó tìm chỗ đỗ'],
 };
 
 // ─── GIAO DIỆN & RESPONSIVE ──────────────────────────────────────────────────
