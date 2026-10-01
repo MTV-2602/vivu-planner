@@ -1901,6 +1901,7 @@ export default function TripWizard() {
 
                         <GoogleCalendarWorkspace
                           cityName={destinationCity}
+                          travelerCount={travelerCount}
                           totalBudget={budgetTotal}
                           budgetBreakdown={budgetBreakdown}
                           daysCount={daysCount}
