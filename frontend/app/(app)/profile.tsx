@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, Image, RefreshControl, Platform, TextInput, Alert, Modal } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Image, RefreshControl, Platform, TextInput, Alert, Modal, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
-import { User, MapPin, Calendar, Heart, ArrowLeft, LogOut, Sparkles, ChevronRight, ChevronLeft, Star, Trash2, Plus, Tag, X } from 'lucide-react-native';
+import { User, MapPin, Calendar, Heart, ArrowLeft, LogOut, Sparkles, ChevronRight, ChevronLeft, Star, Trash2, Plus, Tag, X, ExternalLink, ThumbsUp, MessageSquare } from 'lucide-react-native';
 import { PREFERENCE_OPTIONS, APP_ROUTES, POST_CATEGORIES } from '../../constants';
 import CreatePostModal from '../../components/CreatePostModal';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -714,6 +714,61 @@ export default function ProfileScreen() {
                               />
                             </Pressable>
                           ))}
+                        </View>
+                      )}
+
+                      {/* Google Maps Link Button */}
+                      {post.google_maps_url ? (
+                        <Pressable
+                          onPress={() => {
+                            if (Platform.OS === 'web') {
+                              window.open(post.google_maps_url, '_blank');
+                            } else {
+                              Linking.openURL(post.google_maps_url);
+                            }
+                          }}
+                          style={({ pressed }) => [{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 6,
+                            alignSelf: 'flex-start',
+                            backgroundColor: '#F0FDF4',
+                            borderWidth: 1,
+                            borderColor: '#BBF7D0',
+                            paddingHorizontal: 10,
+                            paddingVertical: 5,
+                            borderRadius: 6,
+                            marginTop: 4,
+                            cursor: 'pointer' as any,
+                            opacity: pressed ? 0.8 : 1,
+                          }]}
+                        >
+                          <ExternalLink size={13} color="#166534" />
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#166534' }}>
+                            Xem trên Google Maps
+                          </Text>
+                        </Pressable>
+                      ) : null}
+
+                      {/* Reaction and Comments Count Summary */}
+                      {((post.reactions?.total || 0) > 0 || (post.comments_count || 0) > 0) && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+                          {(post.reactions?.total || 0) > 0 && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <ThumbsUp size={13} color="#1877F2" />
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B' }}>
+                                {post.reactions.total} cảm xúc
+                              </Text>
+                            </View>
+                          )}
+                          {(post.comments_count || 0) > 0 && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <MessageSquare size={13} color="#64748B" />
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B' }}>
+                                {post.comments_count} bình luận
+                              </Text>
+                            </View>
+                          )}
                         </View>
                       )}
                     </View>
