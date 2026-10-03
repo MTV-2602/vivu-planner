@@ -426,6 +426,7 @@ export default function AuthScreen({ mode }: Props) {
                 <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: '#1B2420' }}>Mật khẩu</Text>
                 {!isSignUp && (
                   <Pressable
+                    testID="btn-forgot-password"
                     onPress={() => {
                       setForgotEmail(email);
                       setForgotError('');

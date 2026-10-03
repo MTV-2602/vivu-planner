@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { supabaseAdmin } from '../../config/supabase';
+import { requireAuth } from '../../middleware/requireAuth';
 import { generateAndStoreOtp, verifyOtp, clearOtp, sendPasswordResetOtpEmail } from './auth.service';
 
 const router = Router();
@@ -32,8 +33,21 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
       });
     }
 
-    // Tạo OTP và gửi email
+    // Tạo mã xác nhận OTP
     const otp = generateAndStoreOtp(normalizedEmail);
+
+    // Kiểm tra cấu hình Gmail SMTP
+    if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+      console.log(`\n======================================================`);
+      console.log(`[AUTH OTP] CHƯA CẤU HÌNH GMAIL SMTP TRONG backend/.env`);
+      console.log(`[AUTH OTP DEV BACKUP] Mã OTP cho ${normalizedEmail}: [ ${otp} ]`);
+      console.log(`======================================================\n`);
+      return res.status(400).json({
+        error: 'Hệ thống chưa cấu hình tài khoản gửi email (thiếu GMAIL_USER hoặc GMAIL_APP_PASSWORD trong file backend/.env). Vui lòng cấu hình để nhận mã OTP qua hòm thư Gmail.',
+      });
+    }
+
+    // Gửi email thực tế qua Gmail SMTP
     await sendPasswordResetOtpEmail(normalizedEmail, otp);
 
     return res.json({
@@ -43,7 +57,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[Auth] forgot-password error:', err.message);
     return res.status(500).json({
-      error: err.message || 'Lỗi gửi mã OTP. Vui lòng kiểm tra cấu hình GMAIL_USER và GMAIL_APP_PASSWORD.',
+      error: err.message || 'Lỗi gửi mã OTP. Vui lòng thử lại sau.',
     });
   }
 });
@@ -120,6 +134,104 @@ router.post('/reset-password', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[Auth] reset-password error:', err.message);
     return res.status(500).json({ error: `Lỗi đặt lại mật khẩu: ${err.message}` });
+  }
+});
+
+/**
+ * PUT /api/auth/profile
+ * Cập nhật thông tin hồ sơ: full_name, avatar_url, preferences
+ */
+router.put('/profile', requireAuth, async (req: any, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { full_name, avatar_url, preferences } = req.body;
+    const profileUpdateData: any = {};
+
+    if (typeof full_name === 'string') profileUpdateData.full_name = full_name.trim();
+    if (typeof avatar_url === 'string') profileUpdateData.avatar_url = avatar_url.trim();
+
+    // 1. Cập nhật bảng profiles (full_name, avatar_url)
+    let profileData: any = {};
+    if (Object.keys(profileUpdateData).length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .update(profileUpdateData)
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        console.warn('[Auth] Update profiles table warning:', error.message);
+      } else {
+        profileData = data || {};
+      }
+    } else {
+      const { data } = await supabaseAdmin.from('profiles').select('*').eq('id', userId).maybeSingle();
+      profileData = data || {};
+    }
+
+    // 2. Lưu preferences và metadata vào Supabase Auth user_metadata
+    const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId);
+    const existingMeta = userData?.user?.user_metadata || {};
+    const newMeta: any = { ...existingMeta };
+
+    if (typeof full_name === 'string') newMeta.full_name = full_name.trim();
+    if (typeof avatar_url === 'string') newMeta.avatar_url = avatar_url.trim();
+    if (Array.isArray(preferences)) newMeta.preferences = preferences;
+
+    await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: newMeta,
+    });
+
+    profileData.preferences = newMeta.preferences || profileData.preferences || [];
+
+    return res.json({
+      success: true,
+      message: 'Cập nhật thông tin hồ sơ thành công!',
+      profile: profileData,
+    });
+  } catch (err: any) {
+    console.error('[Auth] update profile error:', err.message);
+    return res.status(500).json({ error: err.message || 'Lỗi cập nhật hồ sơ' });
+  }
+});
+
+/**
+ * POST /api/auth/upload-avatar
+ * Tải ảnh đại diện lên Supabase Storage bucket `post-media`
+ */
+router.post('/upload-avatar', requireAuth, async (req: any, res: Response) => {
+  try {
+    const { base64, fileName, fileType } = req.body;
+    if (!base64 || typeof base64 !== 'string') {
+      return res.status(400).json({ error: 'Dữ liệu file tải lên không hợp lệ.' });
+    }
+
+    const cleanBase64 = base64.includes('base64,') ? base64.split('base64,')[1] : base64;
+    const buffer = Buffer.from(cleanBase64, 'base64');
+    const ext = (fileName ? fileName.split('.').pop() : 'jpg').toLowerCase();
+    const uniqueName = `avatar_${req.user!.id}_${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from('post-media')
+      .upload(uniqueName, buffer, {
+        contentType: fileType || 'image/jpeg',
+        upsert: true,
+      });
+
+    if (uploadError) throw uploadError;
+
+    const { data: publicUrlData } = supabaseAdmin.storage
+      .from('post-media')
+      .getPublicUrl(uniqueName);
+
+    return res.json({
+      success: true,
+      url: publicUrlData.publicUrl,
+    });
+  } catch (err: any) {
+    console.error('[Auth] upload avatar error:', err.message);
+    return res.status(500).json({ error: err.message || 'Lỗi tải ảnh đại diện' });
   }
 });
 

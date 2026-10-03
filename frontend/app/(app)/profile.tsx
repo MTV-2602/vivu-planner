@@ -4,10 +4,12 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
-import { User, MapPin, Calendar, Heart, ArrowLeft, LogOut, Sparkles, ChevronRight, ChevronLeft, Star, Trash2, Plus, Tag, X, ExternalLink, ThumbsUp, MessageSquare } from 'lucide-react-native';
+import { User, MapPin, Calendar, Heart, ArrowLeft, LogOut, Sparkles, ChevronRight, ChevronLeft, Star, Trash2, Plus, Tag, X, ExternalLink, ThumbsUp, MessageSquare, Camera, Edit3, KeyRound, Lock } from 'lucide-react-native';
 import { PREFERENCE_OPTIONS, APP_ROUTES, POST_CATEGORIES } from '../../constants';
 import CreatePostModal from '../../components/CreatePostModal';
 import ConfirmModal from '../../components/ConfirmModal';
+import EditProfileModal from '../../components/EditProfileModal';
+import ChangePasswordModal from '../../components/ChangePasswordModal';
 
 interface TripItem {
   id: string;
@@ -38,6 +40,10 @@ export default function ProfileScreen() {
   const [userPrefs, setUserPrefs] = useState<string[]>([]);
   const [customPrefInput, setCustomPrefInput] = useState('');
   const [savingPrefs, setSavingPrefs] = useState(false);
+
+  // Edit Profile & Change Password Modals State
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
   useEffect(() => {
     if (profile?.preferences && Array.isArray(profile.preferences)) {
@@ -73,11 +79,7 @@ export default function ProfileScreen() {
     if (!user?.id) return;
     setSavingPrefs(true);
     try {
-      await supabase
-        .from('profiles')
-        .update({ preferences: userPrefs })
-        .eq('id', user.id);
-
+      await api.put('/auth/profile', { preferences: userPrefs });
       await refreshProfile();
     } catch (err) {
       console.error('Lỗi khi lưu sở thích:', err);
@@ -181,6 +183,7 @@ export default function ProfileScreen() {
         </Text>
 
         <Pressable
+          testID="btn-header-signout"
           onPress={signOut}
           style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
         >
@@ -208,28 +211,52 @@ export default function ProfileScreen() {
             marginBottom: 24,
           }}
         >
-          {profile?.avatar_url ? (
-            <Image
-              source={{ uri: profile.avatar_url }}
-              style={{ width: 88, height: 88, borderRadius: 44, marginBottom: 14, borderWidth: 3, borderColor: '#1F6F54' }}
-            />
-          ) : (
-            <View
-              style={{
-                width: 88,
-                height: 88,
-                borderRadius: 44,
-                backgroundColor: 'rgba(31,111,84,0.1)',
+          {/* Avatar Container with Edit Badge */}
+          <View style={{ position: 'relative', marginBottom: 14 }}>
+            {profile?.avatar_url ? (
+              <Image
+                source={{ uri: profile.avatar_url }}
+                style={{ width: 88, height: 88, borderRadius: 44, borderWidth: 3, borderColor: '#1F6F54' }}
+              />
+            ) : (
+              <View
+                style={{
+                  width: 88,
+                  height: 88,
+                  borderRadius: 44,
+                  backgroundColor: 'rgba(31,111,84,0.1)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 2,
+                  borderColor: '#1F6F54',
+                }}
+              >
+                <User size={40} color="#1F6F54" />
+              </View>
+            )}
+
+            <Pressable
+              testID="btn-open-avatar-edit"
+              onPress={() => setShowEditProfileModal(true)}
+              style={({ pressed }) => [{
+                position: 'absolute',
+                bottom: 0,
+                right: 0,
+                width: 28,
+                height: 28,
+                borderRadius: 14,
+                backgroundColor: '#1F6F54',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: 14,
                 borderWidth: 2,
-                borderColor: '#1F6F54',
-              }}
+                borderColor: '#FFFFFF',
+                opacity: pressed ? 0.8 : 1,
+                cursor: 'pointer' as any,
+              }]}
             >
-              <User size={40} color="#1F6F54" />
-            </View>
-          )}
+              <Camera size={13} color="#FFFFFF" />
+            </Pressable>
+          </View>
 
           <Text style={{ fontFamily: 'Lora_700Bold', fontSize: 22, color: '#1B2420', marginBottom: 4 }}>
             {profile?.full_name || 'Người dùng ViVu'}
@@ -244,6 +271,68 @@ export default function ProfileScreen() {
                 {profile?.is_premium ? '⭐ Thành viên Premium' : '🌱 Thành viên Miễn phí'}
               </Text>
             </View>
+          </View>
+
+          {/* Profile Action Buttons */}
+          <View
+            style={{
+              flexDirection: 'row',
+              gap: 12,
+              marginTop: 18,
+              width: '100%',
+              maxWidth: 420,
+              justifyContent: 'center',
+            }}
+          >
+            {/* Nút Chỉnh sửa hồ sơ */}
+            <Pressable
+              testID="btn-open-edit-profile"
+              onPress={() => setShowEditProfileModal(true)}
+              style={({ pressed }) => [{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                backgroundColor: '#1F6F54',
+                paddingVertical: 10,
+                paddingHorizontal: 16,
+                borderRadius: 12,
+                opacity: pressed ? 0.85 : 1,
+                cursor: 'pointer' as any,
+              }]}
+            >
+              <Edit3 size={15} color="#FFFFFF" />
+              <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>
+                Chỉnh sửa hồ sơ
+              </Text>
+            </Pressable>
+
+            {/* Nút Đổi mật khẩu */}
+            <Pressable
+              testID="btn-open-change-password"
+              onPress={() => setShowChangePasswordModal(true)}
+              style={({ pressed }) => [{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1.5,
+                borderColor: '#CBD5E1',
+                paddingVertical: 10,
+                paddingHorizontal: 16,
+                borderRadius: 12,
+                opacity: pressed ? 0.85 : 1,
+                cursor: 'pointer' as any,
+              }]}
+            >
+              <KeyRound size={15} color="#1B2420" />
+              <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#1B2420' }}>
+                Đổi mật khẩu
+              </Text>
+            </Pressable>
           </View>
         </View>
 
@@ -938,6 +1027,22 @@ export default function ProfileScreen() {
           onCancel={() => setPostToDelete(null)}
         />
       )}
+
+      {/* Modal Chỉnh Sửa Hồ Sơ */}
+      <EditProfileModal
+        visible={showEditProfileModal}
+        onClose={() => setShowEditProfileModal(false)}
+        onSuccess={refreshProfile}
+        profile={profile}
+        user={user}
+      />
+
+      {/* Modal Đổi Mật Khẩu với Xác Minh OTP Email */}
+      <ChangePasswordModal
+        visible={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
+        email={user?.email || ''}
+      />
     </View>
   );
 }
