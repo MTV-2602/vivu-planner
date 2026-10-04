@@ -1,12 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, Pressable, Modal, ScrollView,
-  ActivityIndicator, Platform, Linking,
+  ActivityIndicator, Platform, Linking, Image,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useQuery } from '@tanstack/react-query';
 import {
   X, Crown, Sparkles, Check, Clock, AlertTriangle,
-  History, ExternalLink, RefreshCw,
+  History, ExternalLink, RefreshCw, Copy, CheckCircle2,
   ShieldCheck, CreditCard, Gift,
 } from 'lucide-react-native';
 import { api } from '../lib/api';
@@ -49,9 +50,32 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
   const [activated, setActivated] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [timeLeft, setTimeLeft] = useState(900); // 15 phút đếm ngược (khớp PayOS & MoMo)
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const handleCopy = async (text: string, field: string) => {
+    try {
+      if (Clipboard && typeof Clipboard.setStringAsync === 'function') {
+        await Clipboard.setStringAsync(text);
+      } else if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+      }
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {}
+  };
 
   // Lấy trạng thái gói dịch vụ qua hook chung
   const { data: statusData, refetch: refetchStatus, invalidate: invalidateStatus } = usePaymentStatus(visible);
+
+  const onActivatedRef = useRef(onActivated);
+  onActivatedRef.current = onActivated;
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
+  const invalidateStatusRef = useRef(invalidateStatus);
+  invalidateStatusRef.current = invalidateStatus;
+
+  // Snapshot credits trước khi tạo đơn để đối soát thay đổi
+  const initialSnapshotRef = useRef<{ trips: number; single: number; monthly: number }>({ trips: 0, single: 0, monthly: 0 });
 
   // Lấy danh sách gói cước động từ backend
   const { data: rawPlansData, isLoading: plansLoading, refetch: refetchPlans } = useQuery({
@@ -150,36 +174,85 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
     return () => clearInterval(timer);
   }, [orderData, activated]);
 
-  // Polling tự động kiểm tra thanh toán thành công
+  // Polling tự động kiểm tra thanh toán thành công (độc lập hoàn toàn khỏi timer re-render)
   useEffect(() => {
-    if (!orderData || activated) return;
+    if (!visible || !orderData || activated) return;
     const targetCode = orderData.orderId || orderData.orderCode;
 
-    const interval = setInterval(async () => {
+    let isMounted = true;
+
+    const checkSuccess = async () => {
       try {
         if (targetCode) {
           const checkRes = await api.get(`/payment/check-order/${targetCode}`);
-          if (checkRes.data?.paid) {
-            clearInterval(interval);
+          if (checkRes.data?.paid && isMounted) {
             setActivated(true);
-            await invalidateStatus();
-            onActivated?.();
-            onSuccess?.();
-            return;
+            await invalidateStatusRef.current?.();
+            onActivatedRef.current?.();
+            onSuccessRef.current?.();
+            return true;
           }
         }
+
         const { data } = await api.get('/payment/status');
-        if (data?.isPremium && !statusData?.isPremium) {
-          clearInterval(interval);
-          setActivated(true);
-          await invalidateStatus();
-          onActivated?.();
-          onSuccess?.();
+        if (isMounted && data) {
+          const initial = initialSnapshotRef.current;
+          const increased =
+            (data.remainingTrips ?? 0) > initial.trips ||
+            (data.singleCredits ?? 0) > initial.single ||
+            (data.monthlyCredits ?? 0) > initial.monthly ||
+            (data.hasActiveMonthly && !statusData?.hasActiveMonthly);
+
+          if (increased) {
+            setActivated(true);
+            await invalidateStatusRef.current?.();
+            onActivatedRef.current?.();
+            onSuccessRef.current?.();
+            return true;
+          }
         }
       } catch {}
+      return false;
+    };
+
+    // Kiểm tra ngay khi khởi tạo
+    checkSuccess();
+
+    const interval = setInterval(async () => {
+      const done = await checkSuccess();
+      if (done) clearInterval(interval);
     }, 2000);
-    return () => clearInterval(interval);
-  }, [orderData, activated, statusData?.isPremium, invalidateStatus, onActivated, onSuccess]);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [visible, orderData?.orderId, orderData?.orderCode, activated]);
+
+  // Lắng nghe Realtime Broadcast sự kiện cập nhật tài khoản
+  useEffect(() => {
+    if (!visible || !orderData || activated) return;
+
+    let channel: any = null;
+    try {
+      const targetCode = orderData.orderId || orderData.orderCode;
+      channel = supabase
+        .channel(`payment_order_${targetCode}`)
+        .on('broadcast', { event: 'user_updated' }, async () => {
+          setActivated(true);
+          await invalidateStatusRef.current?.();
+          onActivatedRef.current?.();
+          onSuccessRef.current?.();
+        })
+        .subscribe();
+    } catch {}
+
+    return () => {
+      if (channel) {
+        try { supabase.removeChannel(channel); } catch {}
+      }
+    };
+  }, [visible, orderData?.orderId, orderData?.orderCode, activated]);
 
   const handleCreateOrder = async () => {
     if (!selectedPlanObj) return;
@@ -187,6 +260,12 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
     setOrderData(null);
     setErrorMessage('');
     try {
+      initialSnapshotRef.current = {
+        trips: statusData?.remainingTrips ?? 0,
+        single: statusData?.singleCredits ?? 0,
+        monthly: statusData?.monthlyCredits ?? 0,
+      };
+
       const { data } = await api.post('/payment/create-order', {
         method: paymentMethod,
         plan: selectedPlanObj.id,
@@ -264,6 +343,12 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
     );
   }
 
+  // Nội dung chuyển khoản chuẩn: Ưu tiên description do cổng PayOS cấp (chứa mã định danh CS...)
+  const transferContent =
+    orderData?.description ||
+    orderData?.orderId ||
+    (orderData?.orderCode ? `VIVU${orderData.orderCode}` : '');
+
   // Xây dựng QR image URL
   let qrImage = '';
   if (orderData) {
@@ -283,18 +368,22 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
         qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(target)}`;
       }
     } else {
-      // PayOS / VietQR: Ưu tiên ảnh VietQR chuẩn trực tiếp từ img.vietqr.io khi có đủ bin + accountNumber
-      if (orderData.accountNumber && orderData.amount) {
-        const bin = orderData.bin || 'MB';
-        const addInfo = encodeURIComponent(orderData.orderId || `VIVU${orderData.orderCode || ''}`);
-        const accName = encodeURIComponent(orderData.accountName || 'VIVU PLANNER');
-        qrImage = `https://img.vietqr.io/image/${bin}-${orderData.accountNumber}-compact2.png?amount=${orderData.amount}&addInfo=${addInfo}&accountName=${accName}`;
-      } else if (directQr) {
+      // PayOS / VietQR: Ưu tiên mã directQr (chuỗi VietQR chuẩn gốc từ PayOS)
+      if (directQr) {
         const isImageUrl =
           directQr.startsWith('data:image/') ||
           (directQr.startsWith('http') && (directQr.includes('vietqr.io') || directQr.includes('.png') || directQr.includes('.jpg')));
-        if (isImageUrl) qrImage = directQr;
-        else qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(directQr)}`;
+        if (isImageUrl) {
+          qrImage = directQr;
+        } else {
+          qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(directQr)}`;
+        }
+      } else if (orderData.accountNumber && orderData.amount) {
+        // Fallback sang vietqr.io với đúng bin, accountNumber và transferContent chuẩn PayOS
+        const bin = orderData.bin || '970422';
+        const addInfo = encodeURIComponent(transferContent);
+        const accName = encodeURIComponent(orderData.accountName || 'MAI TUAN VINH');
+        qrImage = `https://img.vietqr.io/image/${bin}-${orderData.accountNumber}-compact2.png?amount=${orderData.amount}&addInfo=${addInfo}&accountName=${accName}`;
       } else if (webUrl) {
         qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(webUrl)}`;
       }
@@ -533,50 +622,105 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
 
                     {/* Nút mở trực tiếp cổng thanh toán MoMo / PayOS */}
                     {(orderData.payUrl || orderData.deeplink || orderData.checkoutUrl) && (
-                      <Pressable
-                        onPress={() => {
-                          const targetUrl = orderData.payUrl || orderData.deeplink || orderData.checkoutUrl;
-                          if (Platform.OS === 'web' && typeof window !== 'undefined') {
-                            window.open(targetUrl, '_blank');
-                          } else {
-                            Linking.openURL(targetUrl).catch(() => {});
-                          }
-                        }}
-                        style={{
-                          backgroundColor: orderData.method === 'momo' ? '#A21CAF' : BRAND_COLORS.primary,
-                          paddingVertical: 12,
-                          paddingHorizontal: 20,
-                          borderRadius: 14,
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 8,
-                          width: '100%',
-                          shadowColor: orderData.method === 'momo' ? '#A21CAF' : BRAND_COLORS.primary,
-                          shadowOpacity: 0.25,
-                          shadowRadius: 10,
-                        }}
-                      >
-                        <ExternalLink size={16} color="#fff" />
-                        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
-                          {orderData.method === 'momo' ? 'Mở Cổng / Ứng Dụng MoMo Để Thanh Toán' : 'Mở Trang Thanh Toán Trực Tiếp'}
-                        </Text>
-                      </Pressable>
+                      <View style={{ width: '100%', gap: 6 }}>
+                        <Pressable
+                          onPress={() => {
+                            const targetUrl = orderData.payUrl || orderData.deeplink || orderData.checkoutUrl;
+                            if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                              window.open(targetUrl, '_blank');
+                            } else {
+                              Linking.openURL(targetUrl).catch(() => {});
+                            }
+                          }}
+                          style={{
+                            backgroundColor: orderData.method === 'momo' ? '#A21CAF' : BRAND_COLORS.primary,
+                            paddingVertical: 14,
+                            paddingHorizontal: 20,
+                            borderRadius: 14,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 8,
+                            width: '100%',
+                            shadowColor: orderData.method === 'momo' ? '#A21CAF' : BRAND_COLORS.primary,
+                            shadowOpacity: 0.25,
+                            shadowRadius: 10,
+                          }}
+                        >
+                          <ExternalLink size={16} color="#fff" />
+                          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
+                            {orderData.method === 'momo' ? 'Mở Cổng / Ứng Dụng MoMo Để Thanh Toán' : 'Mở Trang Thanh Toán PayOS Trực Tiếp'}
+                          </Text>
+                        </Pressable>
+                        {orderData.method === 'momo' && (
+                          <Text style={{ fontSize: 11, color: '#64748B', textAlign: 'center' }}>
+                            Khuyên dùng: Bấm nút trên để mở MoMo xác nhận thanh toán tức thì
+                          </Text>
+                        )}
+                      </View>
                     )}
 
-                    {/* Thông tin chuyển khoản */}
-                    <View style={{ width: '100%', backgroundColor: '#fff', borderRadius: 14, padding: 14, gap: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    {/* Chi tiết thông tin chuyển khoản */}
+                    <View style={{ width: '100%', backgroundColor: '#fff', borderRadius: 14, padding: 14, gap: 10, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Text style={{ fontSize: 12, color: '#64748B' }}>Mã đơn hàng:</Text>
                         <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{orderData.orderId || orderData.orderCode}</Text>
                       </View>
-                      {orderData.accountNumber && (
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                          <Text style={{ fontSize: 12, color: '#64748B' }}>Số tài khoản:</Text>
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{orderData.accountNumber} ({orderData.bin || 'MBBank'})</Text>
-                        </View>
+
+                      {orderData.method === 'payos' && (
+                        <>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 12, color: '#64748B' }}>Ngân hàng:</Text>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>MBBank (Quân Đội)</Text>
+                          </View>
+
+                          {orderData.accountNumber && (
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Text style={{ fontSize: 12, color: '#64748B' }}>Số tài khoản:</Text>
+                              <Pressable
+                                onPress={() => handleCopy(orderData.accountNumber, 'acc')}
+                                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}
+                              >
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>{orderData.accountNumber}</Text>
+                                {copiedField === 'acc' ? <CheckCircle2 size={13} color="#10B981" /> : <Copy size={13} color="#64748B" />}
+                              </Pressable>
+                            </View>
+                          )}
+
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 12, color: '#64748B' }}>Chủ tài khoản:</Text>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{orderData.accountName || 'MAI TUAN VINH'}</Text>
+                          </View>
+
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 12, color: '#64748B' }}>Số tiền:</Text>
+                            <Pressable
+                              onPress={() => handleCopy(String(orderData.amount), 'amount')}
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#ECFDF5', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}
+                            >
+                              <Text style={{ fontSize: 12, fontWeight: '800', color: '#047857' }}>{formatVND(orderData.amount)}</Text>
+                              {copiedField === 'amount' ? <CheckCircle2 size={13} color="#10B981" /> : <Copy size={13} color="#047857" />}
+                            </Pressable>
+                          </View>
+
+                          <View style={{ backgroundColor: '#FEF3C7', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A', gap: 4 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E' }}>Nội dung chuyển khoản (bắt buộc):</Text>
+                              <Pressable
+                                onPress={() => handleCopy(transferContent, 'content')}
+                                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FDE68A', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}
+                              >
+                                <Text style={{ fontSize: 11, fontWeight: '800', color: '#78350F' }}>Sao chép</Text>
+                                {copiedField === 'content' ? <CheckCircle2 size={13} color="#047857" /> : <Copy size={13} color="#78350F" />}
+                              </Pressable>
+                            </View>
+                            <Text style={{ fontSize: 13, fontWeight: '900', color: '#B45309', letterSpacing: 0.5 }}>{transferContent}</Text>
+                            <Text style={{ fontSize: 10, color: '#A16207' }}>* Giữ nguyên nội dung này để hệ thống kích hoạt tự động</Text>
+                          </View>
+                        </>
                       )}
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Text style={{ fontSize: 12, color: '#64748B' }}>Phương thức:</Text>
                         <Text style={{ fontSize: 12, fontWeight: '700', color: orderData.method === 'momo' ? '#A21CAF' : '#0F172A' }}>
                           {orderData.method === 'momo' ? 'Ví Điện Tử MoMo 💜' : 'VietQR (Chuyển khoản 24/7)'}

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { api } from '../lib/api';
@@ -109,9 +109,9 @@ export function usePaymentStatus(enabled = true) {
     };
   }, [user?.id, queryClient]);
 
-  const invalidate = async () => {
+  const invalidate = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: PAYMENT_STATUS_QUERY_KEY });
-  };
+  }, [queryClient]);
 
   return {
     ...query,

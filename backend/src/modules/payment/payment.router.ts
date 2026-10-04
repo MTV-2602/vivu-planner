@@ -30,9 +30,9 @@ export { activateOrderById } from './payment.service';
 
 const router = Router();
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://vivu-planner.vercel.app';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://vivuai.vercel.app';
 // SITE_URL = Domain backend (where /api/* routes live)
-const SITE_URL = process.env.SITE_URL || 'https://vivu-planner.vercel.app';
+const SITE_URL = process.env.SITE_URL || 'https://vivuai.vercel.app';
 
 // ─── Premium Plans Model ─────────────────────────────────────────────────────
 export interface PricingPlanItem {
