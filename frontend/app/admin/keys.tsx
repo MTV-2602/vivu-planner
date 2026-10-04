@@ -1,82 +1,121 @@
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Pressable, TextInput } from 'react-native';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, ScrollView, ActivityIndicator, Pressable, Platform } from 'react-native';
 import {
-  Trash2, Key, BarChart3, Eye, Check, AlertTriangle, X,
-  Cpu, Sparkles, RefreshCw, CheckCircle2, Zap, Crown, Shield, Settings2, Sliders
+  Key,
+  Cpu,
+  RefreshCw,
+  Plus,
+  Trash2,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  AlertTriangle,
+  Zap,
+  Sliders,
+  Shield,
+  Copy,
+  Check,
+  Server,
+  Layers,
+  Sparkles,
 } from 'lucide-react-native';
 import { BRAND_COLORS } from '../../constants';
-import { api } from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
-import AdminNav from '../../components/admin/AdminNav';
-import Reveal from '../../components/Reveal';
-
-interface ApiKeyRecord {
-  id: string;
-  key_value: string;
-  is_active: boolean;
-  status: string;
-  last_used_at: string | null;
-  created_at: string;
-  usage_count?: number;
-}
-
-interface AiGatewayConfigData {
-  provider: 'gemini' | 'custom_openai';
-  baseUrl: string;
-  apiKey: string;
-  hasApiKey: boolean;
-  model: string;
-  isActive: boolean;
-  maxTokens?: number;
-  geminiMaxTokens?: number;
-}
+import {
+  PageHeader,
+  Card,
+  Section,
+  StatCard,
+  DataTable,
+  Badge,
+  Button,
+  FilterChips,
+  ConfirmDialog,
+  Field,
+  Input,
+  Select,
+  Switch,
+  Textarea,
+  useAdminToast,
+  formatDate,
+} from '../../components/admin/ui';
+import {
+  useAdminApiKeys,
+  useAddApiKey,
+  useToggleApiKey,
+  useDeleteApiKey,
+  useAdminAiConfig,
+  useUpdateAiConfig,
+  useTestAiConfig,
+  ApiKeyRecord,
+} from '../../lib/adminApi';
 
 function maskKey(v: string) {
+  if (!v) return '';
   if (v.length <= 15) return v;
   return `${v.substring(0, 8)}...${v.substring(v.length - 5)}`;
 }
 
-export default function AdminKeys() {
-  const qc = useQueryClient();
+export default function AdminKeysPage() {
   const { isAdmin } = useAuth();
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [confirmModal, setConfirmModal] = useState<{
-    visible: boolean;
-    title: string;
-    message: string;
-    onConfirm: () => void;
-    confirmText?: string;
-    cancelText?: string;
-    isDestructive?: boolean;
-  } | null>(null);
+  const { showToast } = useAdminToast();
 
-  // Tab chuyển đổi: 'gateway' (AI Bên thứ 3) hoặc 'gemini' (Gemini Direct)
+  // Tab: 'gateway' hoặc 'gemini'
   const [activeTab, setActiveTab] = useState<'gateway' | 'gemini'>('gateway');
 
-  // Cấu hình AI Gateway form state
+  // AI Gateway form state
   const [aiProvider, setAiProvider] = useState<'gemini' | 'custom_openai'>('gemini');
+  const [isAiActive, setIsAiActive] = useState(false);
   const [aiBaseUrl, setAiBaseUrl] = useState('');
   const [aiApiKey, setAiApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
   const [aiModel, setAiModel] = useState('ag/gemini-3-flash');
   const [customMaxTokens, setCustomMaxTokens] = useState('16384');
   const [geminiMaxTokens, setGeminiMaxTokens] = useState('16384');
-  const [pingStatus, setPingStatus] = useState<{ success?: boolean; message?: string; durationMs?: number } | null>(null);
+  const [pingStatus, setPingStatus] = useState<{
+    success?: boolean;
+    message?: string;
+    durationMs?: number;
+    modelUsed?: string;
+    reply?: string;
+    fallbackNotice?: string;
+  } | null>(null);
 
-  // Gemini state
+  // Gemini Direct form state
   const [bulkKeys, setBulkKeys] = useState('');
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
+  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
 
-  // Lấy cấu hình AI hiện tại
-  const { data: aiConfig, isLoading: aiConfigLoading, refetch: refetchAiConfig } = useQuery<{ success: boolean; data: AiGatewayConfigData }>({
-    queryKey: ['adminAiConfig'],
-    queryFn: async () => (await api.get('/admin/ai-config')).data,
-    enabled: !!isAdmin,
-  });
+  // Confirm delete dialog state
+  const [deleteConfirmKey, setDeleteConfirmKey] = useState<{ id: string; masked: string } | null>(null);
 
+  // Queries
+  const {
+    data: aiConfig,
+    isLoading: aiConfigLoading,
+    isFetching: aiConfigFetching,
+    refetch: refetchAiConfig,
+  } = useAdminAiConfig();
+
+  const {
+    data: apiKeys = [],
+    isLoading: keysLoading,
+    isFetching: keysFetching,
+    refetch: refetchKeys,
+  } = useAdminApiKeys();
+
+  // Mutations
+  const updateAiConfig = useUpdateAiConfig();
+  const testAiConfig = useTestAiConfig();
+  const addApiKey = useAddApiKey();
+  const toggleApiKey = useToggleApiKey();
+  const deleteApiKey = useDeleteApiKey();
+
+  // Sync AI Config data to state
   useEffect(() => {
     if (aiConfig?.data) {
       setAiProvider(aiConfig.data.provider || 'gemini');
+      setIsAiActive(Boolean(aiConfig.data.isActive));
       setAiBaseUrl(aiConfig.data.baseUrl || '');
       setAiApiKey(aiConfig.data.apiKey || '');
       setAiModel(aiConfig.data.model || 'ag/gemini-3-flash');
@@ -85,772 +124,637 @@ export default function AdminKeys() {
     }
   }, [aiConfig]);
 
-  const saveAiConfigMutation = useMutation({
-    mutationFn: async (payload: {
-      provider: string;
-      baseUrl: string;
-      apiKey: string;
-      model: string;
-      isActive: boolean;
-      maxTokens?: number;
-      geminiMaxTokens?: number;
-    }) => {
-      return (await api.put('/admin/ai-config', payload)).data;
-    },
-    onSuccess: () => {
-      refetchAiConfig();
-      showToast('Đã lưu cấu hình AI thành công!', 'success');
-    },
-    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
-  });
+  // Keys stats
+  const activeKeysCount = useMemo(
+    () => apiKeys.filter((k) => k.is_active && k.status === 'active').length,
+    [apiKeys]
+  );
+  const issueKeysCount = useMemo(
+    () => apiKeys.filter((k) => !k.is_active || k.status !== 'active').length,
+    [apiKeys]
+  );
 
-  const testAiConfigMutation = useMutation({
-    mutationFn: async (payload: { baseUrl: string; apiKey: string; model: string }) => {
-      return (await api.post('/admin/ai-config/test', payload)).data;
-    },
-    onSuccess: (data: any) => {
-      const notice = data.fallbackNotice ? `\n💡 ${data.fallbackNotice}` : '';
-      setPingStatus({
-        success: true,
-        message: `Kết nối thành công (${data.durationMs}ms)! Model: ${data.modelUsed || 'Chuẩn'}. AI phản hồi: "${data.reply?.substring(0, 80)}..."${notice}`,
-        durationMs: data.durationMs,
-      });
-      showToast(`Ping thành công (${data.durationMs}ms)!`, 'success');
-    },
-    onError: (e: any) => {
-      const msg = e.response?.data?.details || e.response?.data?.error || e.message;
-      setPingStatus({
-        success: false,
-        message: `Lỗi kết nối: ${msg}`,
-      });
-      showToast(`Ping thất bại: ${msg}`, 'error');
-    },
-  });
-
-  const { data: apiKeys, isLoading: keysLoading } = useQuery<ApiKeyRecord[]>({
-    queryKey: ['adminKeys'],
-    queryFn: async () => (await api.get('/admin/keys')).data,
-    enabled: !!isAdmin && activeTab === 'gemini',
-  });
-
-  const addKeys = useMutation({
-    mutationFn: (keyValues: string[]) => api.post('/admin/keys', { key_values: keyValues }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['adminKeys'] });
-      setBulkKeys('');
-      showToast('Đã thêm danh sách API Key thành công!', 'success');
-    },
-    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
-  });
-
-  const updateKey = useMutation({
-    mutationFn: ({ id, is_active, status }: { id: string; is_active: boolean; status: string }) =>
-      api.put(`/admin/keys/${id}`, { is_active, status }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['adminKeys'] });
-      showToast('Đã cập nhật trạng thái API Key!', 'success');
-    },
-    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
-  });
-
-  const deleteKey = useMutation({
-    mutationFn: (id: string) => api.delete(`/admin/keys/${id}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['adminKeys'] });
-      showToast('Đã xóa API Key thành công!', 'success');
-    },
-    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
-  });
-
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
-
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    setToast({ message, type });
+  // Handler: Save AI Gateway Config
+  const handleSaveAiConfig = () => {
+    updateAiConfig.mutate(
+      {
+        provider: aiProvider,
+        baseUrl: aiBaseUrl.trim(),
+        apiKey: aiApiKey.trim(),
+        model: aiModel.trim(),
+        isActive: isAiActive,
+        maxTokens: parseInt(customMaxTokens, 10) || 16384,
+        geminiMaxTokens: parseInt(geminiMaxTokens, 10) || 16384,
+      },
+      {
+        onSuccess: () => {
+          showToast('Đã lưu cấu hình AI Gateway thành công!', 'success');
+        },
+        onError: (err: any) => {
+          showToast(err.response?.data?.error || err.message || 'Lỗi khi lưu cấu hình AI', 'error');
+        },
+      }
+    );
   };
 
-  const showConfirm = (
-    title: string,
-    message: string,
-    onConfirm: () => void,
-    options?: { confirmText?: string; cancelText?: string; isDestructive?: boolean }
-  ) => {
-    setConfirmModal({
-      visible: true,
-      title,
-      message,
-      onConfirm: () => {
-        onConfirm();
-        setConfirmModal(null);
+  // Handler: Ping Test AI Gateway
+  const handleTestAiConfig = () => {
+    setPingStatus(null);
+    testAiConfig.mutate(
+      {
+        baseUrl: aiBaseUrl.trim(),
+        apiKey: aiApiKey.trim(),
+        model: aiModel.trim(),
       },
-      confirmText: options?.confirmText || 'Xác nhận',
-      cancelText: options?.cancelText || 'Hủy',
-      isDestructive: options?.isDestructive ?? false,
+      {
+        onSuccess: (data) => {
+          setPingStatus({
+            success: true,
+            durationMs: data.durationMs,
+            modelUsed: data.modelUsed,
+            reply: data.reply,
+            fallbackNotice: data.fallbackNotice,
+            message: data.message || `Kết nối thành công trong ${data.durationMs}ms`,
+          });
+          showToast(`Ping thành công (${data.durationMs}ms)!`, 'success');
+        },
+        onError: (err: any) => {
+          const details = err.response?.data?.details || err.response?.data?.error || err.message;
+          setPingStatus({
+            success: false,
+            message: details,
+          });
+          showToast(`Ping thất bại: ${details}`, 'error');
+        },
+      }
+    );
+  };
+
+  // Handler: Add Bulk Gemini Keys
+  const handleAddKeys = () => {
+    if (!bulkKeys.trim()) {
+      showToast('Vui lòng nhập ít nhất một API Key', 'error');
+      return;
+    }
+
+    const lines = bulkKeys
+      .split(/[\n,;]+/)
+      .map((k) => k.trim())
+      .filter((k) => k.length > 10);
+
+    if (lines.length === 0) {
+      showToast('Không tìm thấy API Key hợp lệ. Key Gemini thường dài hơn 15 ký tự.', 'error');
+      return;
+    }
+
+    addApiKey.mutate(lines, {
+      onSuccess: (res) => {
+        setBulkKeys('');
+        showToast(res.message || `Đã thêm thành công ${lines.length} key vào bể khóa!`, 'success');
+      },
+      onError: (err: any) => {
+        showToast(err.response?.data?.error || err.message || 'Lỗi thêm API Key', 'error');
+      },
     });
   };
 
-  const confirmDeleteKey = (id: string, value: string) => {
-    const masked = maskKey(value);
-    showConfirm(
-      'Xác nhận xóa API Key',
-      `Bạn có chắc chắn muốn xóa API Key ${masked} khỏi bể khóa xoay vòng không?`,
-      () => deleteKey.mutate(id),
-      { confirmText: 'Xóa', cancelText: 'Hủy', isDestructive: true }
+  // Handler: Toggle key active state
+  const handleToggleKey = (keyRecord: ApiKeyRecord) => {
+    const nextActive = !keyRecord.is_active;
+    const nextStatus = nextActive ? 'active' : 'paused';
+
+    toggleApiKey.mutate(
+      {
+        id: keyRecord.id,
+        is_active: nextActive,
+        status: nextStatus,
+      },
+      {
+        onSuccess: () => {
+          showToast(
+            nextActive
+              ? `Đã kích hoạt khóa ${maskKey(keyRecord.key_value)}!`
+              : `Đã tạm dừng khóa ${maskKey(keyRecord.key_value)}!`,
+            'info'
+          );
+        },
+        onError: (err: any) => {
+          showToast(err.response?.data?.error || err.message || 'Lỗi cập nhật trạng thái', 'error');
+        },
+      }
     );
   };
 
-  const confirmToggleRotation = (id: string, value: string, isActive: boolean, status: string) => {
-    const masked = maskKey(value);
-    const title = isActive ? 'Tắt xoay vòng Key' : 'Bật xoay vòng Key';
-    const message = isActive
-      ? `Bạn có chắc muốn tạm dừng sử dụng key ${masked}?`
-      : `Bạn có chắc muốn kích hoạt lại key ${masked}?`;
-    showConfirm(
-      title,
-      message,
-      () => updateKey.mutate({ id, is_active: !isActive, status }),
-      { confirmText: isActive ? 'Tắt' : 'Bật', cancelText: 'Hủy' }
-    );
+  // Handler: Delete key
+  const handleConfirmDelete = () => {
+    if (!deleteConfirmKey) return;
+    deleteApiKey.mutate(deleteConfirmKey.id, {
+      onSuccess: () => {
+        showToast('Đã xóa API Key khỏi bể khóa thành công!', 'success');
+        setDeleteConfirmKey(null);
+      },
+      onError: (err: any) => {
+        showToast(err.response?.data?.error || err.message || 'Lỗi xóa API Key', 'error');
+      },
+    });
   };
 
-  const handleAddBulkKeys = () => {
-    if (!bulkKeys.trim()) return;
-    const parsed = bulkKeys
-      .split('\n')
-      .map(k => k.trim())
-      .filter(k => k.length > 10 && (k.startsWith('AIzaSy') || k.startsWith('AQ') || k.startsWith('AO')));
-    if (parsed.length === 0) {
-      showToast('Không tìm thấy API Key hợp lệ (bắt đầu bằng AIzaSy, AQ hoặc AO).', 'error');
-      return;
+  // Handler: Copy key to clipboard (Web & Native safe)
+  const handleCopyKey = (id: string, text: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedKeyId(id);
+      showToast('Đã sao chép API Key vào bộ nhớ tạm!', 'success');
+      setTimeout(() => setCopiedKeyId(null), 2000);
+    } else {
+      showToast('Trình duyệt không hỗ trợ tự động sao chép', 'info');
     }
-    addKeys.mutate(parsed);
   };
 
-  if (!isAdmin) {
-    return (
-      <View className="flex-1 bg-brand-bg">
-        <AdminNav />
-        <View className="flex-1 items-center justify-center py-20 gap-3">
-          <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-          <Text className="text-xs font-semibold text-brand-textSoft">Đang tải và xác thực quyền quản trị...</Text>
+  // Column definitions for Gemini Keys DataTable
+  const columns = [
+    {
+      key: 'key_value',
+      title: 'Khóa API (Gemini)',
+      width: 240,
+      render: (row: ApiKeyRecord) => {
+        const isRevealed = !!visibleKeys[row.id];
+        const isCopied = copiedKeyId === row.id;
+
+        return (
+          <View className="flex-row items-center gap-2">
+            <Text
+              className="text-xs font-mono font-medium text-brand-text flex-1"
+              numberOfLines={1}
+            >
+              {isRevealed ? row.key_value : maskKey(row.key_value)}
+            </Text>
+            <Pressable
+              onPress={() =>
+                setVisibleKeys((prev) => ({ ...prev, [row.id]: !prev[row.id] }))
+              }
+              hitSlop={6}
+              className="p-1 rounded-md hover:bg-slate-100"
+            >
+              {isRevealed ? (
+                <EyeOff size={14} color={BRAND_COLORS.textMuted} />
+              ) : (
+                <Eye size={14} color={BRAND_COLORS.textMuted} />
+              )}
+            </Pressable>
+            <Pressable
+              onPress={() => handleCopyKey(row.id, row.key_value)}
+              hitSlop={6}
+              className="p-1 rounded-md hover:bg-slate-100"
+            >
+              {isCopied ? (
+                <Check size={14} color={BRAND_COLORS.primary} />
+              ) : (
+                <Copy size={14} color={BRAND_COLORS.textMuted} />
+              )}
+            </Pressable>
+          </View>
+        );
+      },
+    },
+    {
+      key: 'status',
+      title: 'Trạng thái',
+      width: 140,
+      render: (row: ApiKeyRecord) => {
+        if (!row.is_active) {
+          return <Badge label="Tạm dừng" tone="neutral" dot size="sm" />;
+        }
+        if (row.status === 'active') {
+          return <Badge label="Hoạt động" tone="success" dot size="sm" />;
+        }
+        if (row.status === 'rate_limited') {
+          return <Badge label="Hạ nhiệt (Rate Limit)" tone="warning" dot size="sm" />;
+        }
+        return <Badge label="Sự cố" tone="danger" dot size="sm" />;
+      },
+    },
+    {
+      key: 'usage_count',
+      title: 'Lượt gọi',
+      width: 100,
+      align: 'center' as const,
+      render: (row: ApiKeyRecord) => (
+        <Text className="text-xs font-semibold text-brand-text">
+          {(row.usage_count ?? 0).toLocaleString()}
+        </Text>
+      ),
+    },
+    {
+      key: 'last_used_at',
+      title: 'Lần dùng cuối',
+      width: 150,
+      render: (row: ApiKeyRecord) => (
+        <Text className="text-xs text-brand-textSoft">
+          {row.last_used_at ? formatDate(row.last_used_at) : 'Chưa sử dụng'}
+        </Text>
+      ),
+    },
+    {
+      key: 'created_at',
+      title: 'Ngày thêm',
+      width: 130,
+      render: (row: ApiKeyRecord) => (
+        <Text className="text-xs text-brand-textMuted">
+          {formatDate(row.created_at)}
+        </Text>
+      ),
+    },
+    {
+      key: 'actions',
+      title: 'Thao tác',
+      width: 120,
+      align: 'right' as const,
+      render: (row: ApiKeyRecord) => (
+        <View className="flex-row items-center justify-end gap-2">
+          <Switch
+            value={row.is_active}
+            onValueChange={() => handleToggleKey(row)}
+            disabled={toggleApiKey.isPending}
+          />
+          <Pressable
+            onPress={() =>
+              setDeleteConfirmKey({ id: row.id, masked: maskKey(row.key_value) })
+            }
+            hitSlop={8}
+            className="p-1.5 rounded-lg hover:bg-red-50"
+          >
+            <Trash2 size={15} color={BRAND_COLORS.danger} />
+          </Pressable>
         </View>
-      </View>
-    );
-  }
+      ),
+    },
+  ];
 
   return (
-    <View className="flex-1 bg-brand-bg">
-      <AdminNav />
-
-      {/* Toast Notification */}
-      {toast && (
-        <View className="absolute top-20 left-4 right-4 z-50 items-center pointer-events-none">
-          <View className="flex-row items-center gap-2 px-4 py-3 rounded-xl shadow-lg border border-brand-line/40 max-w-md w-full bg-white">
-            <Text
-              className="text-xs font-bold flex-1"
-              style={{
-                color:
-                  toast.type === 'success'
-                    ? BRAND_COLORS.primaryStrong
-                    : toast.type === 'error'
-                    ? BRAND_COLORS.danger
-                    : BRAND_COLORS.accentStrong,
-              }}
-            >
-              {toast.message}
-            </Text>
+    <ScrollView className="flex-1 bg-brand-bg" contentContainerStyle={{ padding: 24, gap: 24 }}>
+      {/* Page Header */}
+      <PageHeader
+        title="Quản trị AI & API Keys"
+        description="Cấu hình Cổng AI Gateway và quản lý bể khóa Google Gemini Direct xoay vòng tự động"
+        badge={
+          <View className="w-8 h-8 rounded-xl items-center justify-center bg-brand-primary/10">
+            <Key size={18} color={BRAND_COLORS.primary} />
           </View>
-        </View>
-      )}
-
-      {/* Confirm Modal */}
-      {confirmModal && (
-        <View className="absolute inset-0 bg-black/40 z-50 items-center justify-center p-4">
-          <View className="bg-white rounded-2xl max-w-sm w-full p-6 gap-4 border border-brand-line/40 shadow-xl">
-            <Text className="font-display font-extrabold text-base text-brand-text">{confirmModal.title}</Text>
-            <Text className="text-xs text-brand-textSoft leading-relaxed">{confirmModal.message}</Text>
-            <View className="flex-row justify-end gap-2 pt-2">
-              <Pressable
-                onPress={() => setConfirmModal(null)}
-                className="px-4 py-2 rounded-xl border border-brand-line bg-white"
-              >
-                <Text className="text-xs font-bold text-brand-textSoft">{confirmModal.cancelText}</Text>
-              </Pressable>
-              <Pressable
-                onPress={confirmModal.onConfirm}
-                className="px-4 py-2 rounded-xl"
-                style={{ backgroundColor: confirmModal.isDestructive ? BRAND_COLORS.danger : BRAND_COLORS.primary }}
-              >
-                <Text className="text-xs font-bold text-white">{confirmModal.confirmText}</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      )}
-
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 24, gap: 20 }}>
-        <View className="max-w-5xl w-full self-center gap-6">
-          {/* Header Card */}
-          <View className="p-6 rounded-3xl border border-brand-line/40 bg-white shadow-xs flex-row justify-between items-center flex-wrap gap-4">
-            <View className="flex-row items-center gap-3">
-              <View className="w-11 h-11 rounded-2xl bg-brand-primary/10 items-center justify-center">
-                <Cpu size={22} color={BRAND_COLORS.primary} />
-              </View>
-              <View>
-                <Text className="font-display font-black text-xl text-brand-text">Cấu hình & Quản trị AI</Text>
-                <Text className="text-xs text-brand-textSoft">
-                  Tùy biến Cổng AI Gateway (Gói Pro) và Quản lý Bể khóa Google Gemini
-                </Text>
-              </View>
-            </View>
-
-            {/* Trạng thái hiện tại */}
-            <View className="flex-row items-center gap-2 px-3 py-1.5 rounded-full bg-brand-bgAlt border border-brand-line/30">
-              <View
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: aiProvider === 'custom_openai' ? '#2563EB' : BRAND_COLORS.primary }}
+        }
+        action={
+          <Button
+            label="Làm mới"
+            variant="outline"
+            size="sm"
+            icon={
+              <RefreshCw
+                size={14}
+                color={BRAND_COLORS.textSoft}
+                className={aiConfigFetching || keysFetching ? 'animate-spin' : ''}
               />
-              <Text className="text-xs font-bold" style={{ color: aiProvider === 'custom_openai' ? '#2563EB' : BRAND_COLORS.primary }}>
-                {aiProvider === 'custom_openai' ? 'Đang dùng AI Gateway (Pro)' : 'Đang dùng Gemini Direct'}
-              </Text>
-            </View>
-          </View>
+            }
+            onPress={() => {
+              if (activeTab === 'gateway') {
+                refetchAiConfig();
+              } else {
+                refetchKeys();
+              }
+              showToast('Đã làm mới dữ liệu!', 'info');
+            }}
+          />
+        }
+      />
 
-          {/* Thanh Tabs chuyển đổi gọn gàng */}
-          <View className="flex-row p-1.5 bg-brand-bgAlt rounded-2xl border border-brand-line/30 gap-2">
-            <Pressable
-              testID="tab-gateway-btn"
-              onPress={() => setActiveTab('gateway')}
-              className={`flex-1 py-3 px-4 rounded-xl flex-row items-center justify-center gap-2 ${
-                activeTab === 'gateway' ? 'bg-white shadow-xs' : 'bg-transparent'
-              }`}
-            >
-              <Crown size={16} color={activeTab === 'gateway' ? '#2563EB' : BRAND_COLORS.textSoft} />
-              <Text
-                className={`text-xs font-bold ${
-                  activeTab === 'gateway' ? 'text-[#2563EB]' : 'text-brand-textSoft'
-                }`}
-              >
-                Cổng AI Gateway (Gói Pro)
-              </Text>
-            </Pressable>
+      {/* Tab Switcher */}
+      <View className="flex-row items-center justify-between flex-wrap gap-3">
+        <FilterChips
+          options={[
+            {
+              value: 'gateway',
+              label: 'Cổng AI Gateway (Bên thứ 3 / Custom OpenAI)',
+            },
+            {
+              value: 'gemini',
+              label: `Bể khóa Gemini Direct (${apiKeys.length} keys)`,
+            },
+          ]}
+          value={activeTab}
+          onChange={(val) => setActiveTab(val as 'gateway' | 'gemini')}
+          size="md"
+        />
 
-            <Pressable
-              testID="tab-gemini-btn"
-              onPress={() => setActiveTab('gemini')}
-              className={`flex-1 py-3 px-4 rounded-xl flex-row items-center justify-center gap-2 ${
-                activeTab === 'gemini' ? 'bg-white shadow-xs' : 'bg-transparent'
-              }`}
-            >
-              <Zap size={16} color={activeTab === 'gemini' ? BRAND_COLORS.primary : BRAND_COLORS.textSoft} />
-              <Text
-                className={`text-xs font-bold ${
-                  activeTab === 'gemini' ? 'text-brand-primary' : 'text-brand-textSoft'
-                }`}
-              >
-                Google Gemini (Bể Keys Miễn Phí)
-              </Text>
-            </Pressable>
-          </View>
+        {activeTab === 'gateway' ? (
+          <Badge
+            label={isAiActive ? 'Cổng Gateway Đang BẬT' : 'Cổng Gateway Đang TẮT'}
+            tone={isAiActive ? 'success' : 'neutral'}
+            dot
+            size="md"
+          />
+        ) : (
+          <Badge
+            label={`${activeKeysCount}/${apiKeys.length} Khóa Sẵn Sàng`}
+            tone={activeKeysCount > 0 ? 'success' : 'danger'}
+            dot
+            size="md"
+          />
+        )}
+      </View>
 
-          {/* ========================================================= */}
-          {/* TAB 1: CỔNG AI GATEWAY BÊN THỨ 3 (GÓI PRO)               */}
-          {/* ========================================================= */}
-          {activeTab === 'gateway' && (
-            <Reveal>
-              <View className="p-6 rounded-3xl border border-brand-line/40 bg-white shadow-xs gap-5">
-                <View className="flex-row items-center justify-between pb-3 border-b border-brand-line/20">
-                  <View className="flex-row items-center gap-2">
-                    <Crown size={18} color="#2563EB" />
-                    <Text className="font-display font-extrabold text-base text-brand-text">
-                      Thiết lập Cổng AI Gateway (OpenAI-Compatible)
-                    </Text>
-                  </View>
-                  <Pressable
-                    onPress={() => setAiProvider(prev => (prev === 'custom_openai' ? 'gemini' : 'custom_openai'))}
-                    className="flex-row items-center gap-1.5 px-3 py-1 rounded-full border"
-                    style={{
-                      backgroundColor: aiProvider === 'custom_openai' ? '#EFF6FF' : '#F1F5F9',
-                      borderColor: aiProvider === 'custom_openai' ? '#BFDBFE' : '#CBD5E1',
-                    }}
-                  >
-                    <View
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: aiProvider === 'custom_openai' ? '#2563EB' : '#64748B' }}
-                    />
-                    <Text
-                      className="text-[11px] font-bold"
-                      style={{ color: aiProvider === 'custom_openai' ? '#2563EB' : '#64748B' }}
-                    >
-                      {aiProvider === 'custom_openai' ? 'Kích hoạt cho Pro: BẬT' : 'Kích hoạt cho Pro: TẮT'}
-                    </Text>
-                  </Pressable>
+      {/* TAB 1: CỔNG AI GATEWAY */}
+      {activeTab === 'gateway' && (
+        <View className="gap-6">
+          <Card
+            title="Cấu hình Cổng AI Gateway"
+            subtitle="Định tuyến các yêu cầu AI tạo lịch trình qua máy chủ trung gian hoặc nhà cung cấp tùy chọn"
+            icon={<Cpu size={20} color={BRAND_COLORS.primary} />}
+          >
+            {aiConfigLoading ? (
+              <View className="py-12 items-center justify-center gap-3">
+                <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
+                <Text className="text-xs text-brand-textSoft">Đang tải cấu hình AI Gateway...</Text>
+              </View>
+            ) : (
+              <View className="gap-5 mt-2">
+                {/* Switch Active */}
+                <View className="p-4 bg-brand-bgAlt/40 rounded-xl border border-brand-line/40">
+                  <Switch
+                    label="Kích hoạt Cổng AI Gateway"
+                    description="Khi bật, hệ thống ưu tiên gửi mọi yêu cầu tạo lịch trình sang Gateway này thay vì bể khóa Gemini Direct."
+                    value={isAiActive}
+                    onValueChange={setIsAiActive}
+                  />
                 </View>
 
-                {/* Form nhập thông số */}
-                {/* Form nhập thông số */}
-                <View className="gap-5">
-                  {/* Base URL */}
-                  <View className="gap-1.5">
-                    <View className="flex-row items-center justify-between">
-                      <Text className="text-xs font-bold text-brand-text">Đường dẫn Cổng API (Base URL):</Text>
-                      <Text className="text-[10px] text-brand-textSoft">Để trống sẽ dùng URL mặc định từ hệ thống / Vercel</Text>
-                    </View>
-                    <TextInput
-                      testID="ai-base-url-input"
-                      value={aiBaseUrl}
-                      onChangeText={setAiBaseUrl}
-                      placeholder="Mặc định theo cấu hình hệ thống (hoặc nhập URL tùy chỉnh)"
-                      placeholderTextColor={BRAND_COLORS.textMuted}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-brand-line/60 text-xs bg-brand-bg text-brand-text font-mono"
-                    />
+                {/* Form fields */}
+                <View className="flex-row flex-wrap gap-4">
+                  <View className="flex-1 min-w-[280px]">
+                    <Field
+                      label="Nhà cung cấp AI (Provider)"
+                      required
+                      hint="Chọn loại chuẩn giao tiếp API tương thích"
+                    >
+                      <Select
+                        options={[
+                          { value: 'gemini', label: 'Google Gemini (Native Format)' },
+                          { value: 'custom_openai', label: 'Custom OpenAI-compatible (OpenAI / OpenRouter / vLLM)' },
+                        ]}
+                        value={aiProvider}
+                        onChange={(v) => setAiProvider(v as any)}
+                      />
+                    </Field>
                   </View>
 
-                  {/* API Key */}
-                  <View className="gap-1.5">
-                    <View className="flex-row items-center justify-between">
-                      <Text className="text-xs font-bold text-brand-text">Secret API Key / Bearer Token:</Text>
-                      {aiConfig?.data?.hasApiKey && (
-                        <Text className="text-[10px] font-semibold text-brand-primary">✓ Đã lưu token bảo mật</Text>
-                      )}
-                    </View>
-                    <TextInput
-                      testID="ai-api-key-input"
-                      value={aiApiKey}
-                      onChangeText={setAiApiKey}
-                      secureTextEntry
-                      placeholder={
-                        aiConfig?.data?.hasApiKey ? '(Để trống nếu giữ nguyên token đã lưu)' : 'sk-... hoặc Bearer Token'
-                      }
-                      placeholderTextColor={BRAND_COLORS.textMuted}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-brand-line/60 text-xs bg-brand-bg text-brand-text font-mono"
-                    />
-                  </View>
-
-                  {/* Model ID & Max Tokens */}
-                  <View className="flex-row gap-4 flex-wrap">
-                    {/* Model ID */}
-                    <View className="flex-1 min-w-[240px] gap-1.5">
-                      <Text className="text-xs font-bold text-brand-text">Mô hình AI Pro (Model ID):</Text>
-                      <TextInput
-                        testID="ai-model-input"
+                  <View className="flex-1 min-w-[280px]">
+                    <Field
+                      label="Model Name"
+                      required
+                      hint="Ví dụ: ag/gemini-3-flash, gpt-4o-mini, deepseek-chat"
+                    >
+                      <Input
                         value={aiModel}
                         onChangeText={setAiModel}
                         placeholder="ag/gemini-3-flash"
-                        placeholderTextColor={BRAND_COLORS.textMuted}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-brand-line/60 text-xs bg-brand-bg text-brand-text font-mono"
                       />
-                      {/* Chips chọn nhanh mô hình AI Gateway an toàn & ổn định */}
-                      <View className="flex-row flex-wrap gap-1.5 pt-1">
-                        {[
-                          { id: 'ag/gemini-3.8-flash-high', label: '🚀 ag/gemini-3.8-flash-high' },
-                          { id: 'ag/gemini-3-flash', label: '⭐ ag/gemini-3-flash (Chuẩn ổn định 100%)' },
-                          { id: 'ag/gemini-3.7-flash', label: '✨ ag/gemini-3.7-flash (Lý luận sâu)' },
-                          { id: 'ag/gemini-3-flash-agent', label: '🤖 ag/gemini-3-flash-agent' },
-                        ].map(m => (
-                          <Pressable
-                            key={m.id}
-                            onPress={() => setAiModel(m.id)}
-                            className="px-2.5 py-1 rounded-lg border text-[10px]"
-                            style={{
-                              borderColor: aiModel === m.id ? '#059669' : 'rgba(27,36,32,0.15)',
-                              backgroundColor: aiModel === m.id ? '#ECFDF5' : '#FFFFFF',
-                              cursor: 'pointer' as any
-                            }}
-                          >
-                            <Text
-                              className="text-[10px] font-bold"
-                              style={{ color: aiModel === m.id ? '#059669' : BRAND_COLORS.textSoft }}
-                            >
-                              {m.label}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
+                    </Field>
+                  </View>
+                </View>
 
-                    {/* Giới hạn Token (Max Output Tokens) */}
-                    <View className="flex-1 min-w-[240px] gap-1.5">
-                      <View className="flex-row items-center justify-between">
-                        <Text className="text-xs font-bold text-brand-text">Giới hạn Tokens tối đa (Output):</Text>
-                        <Sliders size={12} color={BRAND_COLORS.textSoft} />
-                      </View>
-                      <TextInput
-                        testID="ai-max-tokens-input"
+                {/* Base URL */}
+                <Field
+                  label="Base URL (Endpoint API Gateway)"
+                  required
+                  hint="Ví dụ: https://api.openai.com/v1 hoặc proxy URL nội bộ của bạn"
+                >
+                  <Input
+                    value={aiBaseUrl}
+                    onChangeText={setAiBaseUrl}
+                    placeholder="https://api.openai.com/v1"
+                    prefix={<Server size={14} color={BRAND_COLORS.textMuted} />}
+                  />
+                </Field>
+
+                {/* API Key */}
+                <Field
+                  label="API Key / Bearer Token"
+                  hint={
+                    aiConfig?.data?.hasApiKey
+                      ? `Đang lưu khóa: ${aiConfig.data.apiKey} (để trống nếu giữ nguyên)`
+                      : 'Nhập API key hoặc Bearer token để xác thực với AI Gateway'
+                  }
+                >
+                  <Input
+                    value={aiApiKey}
+                    onChangeText={setAiApiKey}
+                    placeholder={
+                      aiConfig?.data?.hasApiKey
+                        ? `${aiConfig.data.apiKey} (Nhập mới để đổi key)`
+                        : 'sk-...'
+                    }
+                    secureTextEntry={!showApiKey}
+                    prefix={<Shield size={14} color={BRAND_COLORS.textMuted} />}
+                    suffix={
+                      <Pressable
+                        onPress={() => setShowApiKey(!showApiKey)}
+                        hitSlop={8}
+                        className="p-1 rounded-md hover:bg-slate-100"
+                      >
+                        {showApiKey ? (
+                          <EyeOff size={15} color={BRAND_COLORS.textMuted} />
+                        ) : (
+                          <Eye size={15} color={BRAND_COLORS.textMuted} />
+                        )}
+                      </Pressable>
+                    }
+                  />
+                </Field>
+
+                {/* Max Tokens config */}
+                <View className="flex-row flex-wrap gap-4">
+                  <View className="flex-1 min-w-[240px]">
+                    <Field
+                      label="Max Tokens (Custom OpenAI)"
+                      hint="Giới hạn token xuất tối đa (1024 - 65536)"
+                    >
+                      <Input
                         value={customMaxTokens}
                         onChangeText={setCustomMaxTokens}
                         keyboardType="numeric"
-                        placeholder="50000"
-                        placeholderTextColor={BRAND_COLORS.textMuted}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-brand-line/60 text-xs bg-brand-bg text-brand-text font-mono"
+                        placeholder="16384"
                       />
-                      {/* Chips chọn Token nhanh có kỷ luật */}
-                      <View className="flex-row flex-wrap gap-1.5 pt-1">
-                        {[
-                          { val: '4096', label: '4,096 (Cơ bản)' },
-                          { val: '16384', label: '16,384 (Tiêu chuẩn)' },
-                          { val: '50000', label: '🔥 50,000 (Tối đa AI Pro)' }
-                        ].map(t => (
-                          <Pressable
-                            key={t.val}
-                            onPress={() => setCustomMaxTokens(t.val)}
-                            className="px-2.5 py-1 rounded-lg border text-[10px]"
-                            style={{
-                              borderColor: customMaxTokens === t.val ? '#2563EB' : 'rgba(27,36,32,0.15)',
-                              backgroundColor: customMaxTokens === t.val ? '#EFF6FF' : (t.val === '50000' ? '#FFF7ED' : '#FFFFFF'),
-                              cursor: 'pointer' as any
-                            }}
-                          >
-                            <Text
-                              className="text-[10px] font-bold"
-                              style={{
-                                color: customMaxTokens === t.val ? '#2563EB' : (t.val === '50000' ? '#C2410C' : BRAND_COLORS.textSoft),
-                              }}
-                            >
-                              {t.label}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
+                    </Field>
                   </View>
 
-                  {/* Kết quả Ping Test */}
-                  {pingStatus && (
-                    <View
-                      className="p-3.5 rounded-xl border flex-row items-start gap-2.5"
-                      style={{
-                        backgroundColor: pingStatus.success ? '#F0FDF4' : '#FEF2F2',
-                        borderColor: pingStatus.success ? '#BBF7D0' : '#FECACA',
-                      }}
+                  <View className="flex-1 min-w-[240px]">
+                    <Field
+                      label="Gemini Max Tokens"
+                      hint="Giới hạn token xuất cho Google Gemini (1024 - 65536)"
                     >
-                      {pingStatus.success ? (
-                        <CheckCircle2 size={16} color="#16A34A" style={{ marginTop: 2 }} />
-                      ) : (
-                        <AlertTriangle size={16} color="#DC2626" style={{ marginTop: 2 }} />
-                      )}
-                      <View className="flex-1">
-                        <Text
-                          className="text-xs font-bold"
-                          style={{ color: pingStatus.success ? '#15803D' : '#B91C1C' }}
-                        >
-                          {pingStatus.success ? 'Kiểm tra kết nối Gateway: Thành công' : 'Kiểm tra kết nối: Thất bại'}
-                        </Text>
-                        <Text
-                          className="text-[11px] mt-0.5 leading-relaxed"
-                          style={{ color: pingStatus.success ? '#166534' : '#991B1B' }}
-                        >
-                          {pingStatus.message}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-
-                  {/* Actions */}
-                  <View className="flex-row items-center justify-end gap-3 pt-3 border-t border-brand-line/20">
-                    <Pressable
-                      testID="ai-ping-test-btn"
-                      onPress={() =>
-                        testAiConfigMutation.mutate({ baseUrl: aiBaseUrl, apiKey: aiApiKey, model: aiModel })
-                      }
-                      disabled={testAiConfigMutation.isPending || (!aiApiKey && !aiConfig?.data?.hasApiKey)}
-                      className="flex-row items-center gap-1.5 px-4 py-2.5 rounded-xl border border-brand-line bg-white"
-                      style={testAiConfigMutation.isPending || (!aiApiKey && !aiConfig?.data?.hasApiKey) ? { opacity: 0.5 } : undefined}
-                    >
-                      {testAiConfigMutation.isPending ? (
-                        <ActivityIndicator size="small" color={BRAND_COLORS.text} />
-                      ) : (
-                        <Zap size={14} color="#2563EB" />
-                      )}
-                      <Text className="text-xs font-bold text-brand-text">
-                        {testAiConfigMutation.isPending ? 'Đang ping (ước tính 15-25s)...' : 'Kiểm tra kết nối (Ping Test)'}
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      testID="ai-save-config-btn"
-                      onPress={() =>
-                        saveAiConfigMutation.mutate({
-                          provider: aiProvider,
-                          baseUrl: aiBaseUrl,
-                          apiKey: aiApiKey,
-                          model: aiModel,
-                          isActive: aiProvider === 'custom_openai',
-                          maxTokens: parseInt(customMaxTokens, 10) || 16384,
-                          geminiMaxTokens: parseInt(geminiMaxTokens, 10) || 16384,
-                        })
-                      }
-                      disabled={saveAiConfigMutation.isPending}
-                      className="flex-row items-center gap-1.5 px-5 py-2.5 rounded-xl bg-brand-primary"
-                      style={saveAiConfigMutation.isPending ? { opacity: 0.6 } : undefined}
-                    >
-                      {saveAiConfigMutation.isPending ? (
-                        <ActivityIndicator size="small" color="white" />
-                      ) : (
-                        <Sparkles size={14} color="white" />
-                      )}
-                      <Text className="text-white text-xs font-bold">
-                        {saveAiConfigMutation.isPending ? 'Đang lưu...' : 'Lưu cấu hình Gateway'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            </Reveal>
-          )}
-
-          {/* ========================================================= */}
-          {/* TAB 2: GOOGLE GEMINI DIRECT (BỂ KEYS & CẤU HÌNH)         */}
-          {/* ========================================================= */}
-          {activeTab === 'gemini' && (
-            <Reveal>
-              <View className="gap-6">
-                {/* 1. Card Cấu hình Tokens cho Gemini */}
-                <View className="p-5 rounded-3xl border border-brand-line/40 bg-white shadow-xs gap-4">
-                  <View className="flex-row items-center justify-between pb-3 border-b border-brand-line/20">
-                    <View className="flex-row items-center gap-2">
-                      <Zap size={18} color={BRAND_COLORS.primary} />
-                      <Text className="font-display font-extrabold text-base text-brand-text">
-                        Cấu hình Mô hình Gemini
-                      </Text>
-                    </View>
-                    <Pressable
-                      onPress={() =>
-                        saveAiConfigMutation.mutate({
-                          provider: 'gemini',
-                          baseUrl: aiBaseUrl,
-                          apiKey: aiApiKey,
-                          model: aiModel,
-                          isActive: false,
-                          maxTokens: parseInt(customMaxTokens, 10) || 16384,
-                          geminiMaxTokens: parseInt(geminiMaxTokens, 10) || 16384,
-                        })
-                      }
-                      className="px-4 py-2 rounded-xl bg-brand-primary flex-row items-center gap-1.5"
-                    >
-                      <Check size={14} color="white" />
-                      <Text className="text-white text-xs font-bold">Lưu giới hạn Token</Text>
-                    </Pressable>
-                  </View>
-
-                  <View className="flex-row items-center justify-between flex-wrap gap-4">
-                    <View className="flex-1 min-w-[240px] gap-1.5">
-                      <View className="flex-row items-center justify-between">
-                        <Text className="text-xs font-bold text-brand-text">
-                          Giới hạn Tokens của Gemini (Max Output Tokens):
-                        </Text>
-                        <Sliders size={12} color={BRAND_COLORS.textSoft} />
-                      </View>
-                      <TextInput
+                      <Input
                         value={geminiMaxTokens}
                         onChangeText={setGeminiMaxTokens}
                         keyboardType="numeric"
-                        placeholder="8192"
-                        placeholderTextColor={BRAND_COLORS.textMuted}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-brand-line/60 text-xs bg-brand-bg text-brand-text font-mono"
+                        placeholder="16384"
                       />
-                      <View className="flex-row flex-wrap gap-1.5 pt-1">
-                        {[
-                          { val: '4096', label: '4,096 (Nhanh)' },
-                          { val: '8192', label: '8,192 (Khuyến nghị)' },
-                          { val: '16384', label: '16,384 (Trần tối đa)' }
-                        ].map(t => (
-                          <Pressable
-                            key={t.val}
-                            onPress={() => setGeminiMaxTokens(t.val)}
-                            className="px-2.5 py-1 rounded-lg border text-[10px]"
-                            style={{
-                              borderColor: geminiMaxTokens === t.val ? BRAND_COLORS.primary : 'rgba(27,36,32,0.15)',
-                              backgroundColor: geminiMaxTokens === t.val ? `${BRAND_COLORS.primary}15` : '#FFFFFF',
-                            }}
-                          >
-                            <Text
-                              className="text-[10px] font-bold"
-                              style={{ color: geminiMaxTokens === t.val ? BRAND_COLORS.primary : BRAND_COLORS.textSoft }}
-                            >
-                              {t.label}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
-
-                    <View className="flex-1 min-w-[240px] p-3 rounded-2xl bg-brand-bgAlt/50 border border-brand-line/30 gap-1">
-                      <Text className="text-xs font-bold text-brand-text">Cơ chế tự động xoay vòng</Text>
-                      <Text className="text-[11px] text-brand-textSoft leading-relaxed">
-                        Hệ thống tự động xoay tua danh sách API Keys bên dưới khi gửi yêu cầu lập lịch trình. Khi 1 key
-                        chạm ngưỡng giới hạn (Rate Limit), hệ thống lập tức thử key kế tiếp.
-                      </Text>
-                    </View>
+                    </Field>
                   </View>
                 </View>
 
-                {/* 2. Card Thêm Nhanh Gemini API Keys (Chỉ nằm ở tab Gemini!) */}
-                <View className="p-5 rounded-3xl border border-brand-line/40 bg-white shadow-xs gap-4">
-                  <View className="gap-1">
-                    <View className="flex-row items-center gap-2">
-                      <Key size={16} color={BRAND_COLORS.primary} />
-                      <Text className="font-bold text-sm text-brand-text">Thêm nhanh Gemini API Keys</Text>
-                    </View>
-                    <Text className="text-xs text-brand-textSoft">
-                      Dán danh sách API Keys (mỗi key nằm trên một dòng riêng biệt)
-                    </Text>
-                  </View>
-                  <TextInput
-                    value={bulkKeys}
-                    onChangeText={setBulkKeys}
-                    multiline
-                    numberOfLines={3}
-                    placeholder={'AIzaSyBHPaLXoSL8vXh0r0...\nAQ.Ab8RN6KCHEwv9Xa...\nAO.Ab8RN6IIWn40...'}
-                    className="w-full px-4 py-3 rounded-2xl border border-brand-line text-xs bg-brand-bg text-brand-text font-mono"
-                    placeholderTextColor={BRAND_COLORS.textMuted}
-                    style={{ minHeight: 80, textAlignVertical: 'top' }}
-                  />
-                  <View className="items-end">
-                    <Pressable
-                      onPress={handleAddBulkKeys}
-                      disabled={addKeys.isPending || !bulkKeys.trim()}
-                      className="flex-row items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-primary"
-                      style={addKeys.isPending || !bulkKeys.trim() ? { opacity: 0.5 } : undefined}
-                    >
-                      {addKeys.isPending ? (
-                        <ActivityIndicator size="small" color="white" />
-                      ) : (
-                        <Key size={14} color="white" />
-                      )}
-                      <Text className="text-white text-xs font-bold">
-                        {addKeys.isPending ? 'Đang thêm...' : 'Thêm danh sách Keys'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                {/* 3. Bảng Danh sách Keys đang xoay vòng */}
-                <View className="gap-3">
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center gap-2">
-                      <BarChart3 size={16} color={BRAND_COLORS.primary} />
-                      <Text className="font-bold text-sm text-brand-text">Bể API Keys đang xoay vòng</Text>
-                    </View>
-                    <Text className="text-xs text-brand-textSoft">
-                      Tổng số: <Text className="font-bold text-brand-text">{apiKeys?.length || 0}</Text> keys
-                    </Text>
-                  </View>
-
-                  <View className="rounded-2xl border border-brand-line/40 overflow-hidden bg-white shadow-xs">
-                    <View className="flex-row px-4 py-3 border-b border-brand-line/40 bg-brand-bgAlt items-center">
-                      <Text className="flex-[3] text-[10px] font-extrabold text-brand-textMuted uppercase tracking-wider">
-                        API Key
-                      </Text>
-                      <Text className="w-24 text-center text-[10px] font-extrabold text-brand-textMuted uppercase tracking-wider">
-                        Số lượt gọi
-                      </Text>
-                      <Text className="w-32 text-center text-[10px] font-extrabold text-brand-textMuted uppercase tracking-wider">
-                        Trạng thái
-                      </Text>
-                      <Text className="w-20 text-center text-[10px] font-extrabold text-brand-textMuted uppercase tracking-wider">
-                        Xoay
-                      </Text>
-                      <Text className="w-16 text-center text-[10px] font-extrabold text-brand-textMuted uppercase tracking-wider"></Text>
-                    </View>
-
-                    {keysLoading ? (
-                      <View className="py-12 items-center gap-2">
-                        <ActivityIndicator color={BRAND_COLORS.primary} />
-                        <Text className="text-xs text-brand-textSoft">Đang tải bể API Keys...</Text>
-                      </View>
-                    ) : !apiKeys?.length ? (
-                      <Text className="text-center py-10 text-brand-textSoft text-sm px-6">
-                        Chưa có API Key nào trong bể xoay vòng. Hãy dán key vào ô phía trên!
-                      </Text>
+                {/* Ping Result Box */}
+                {pingStatus && (
+                  <View
+                    className={`p-4 rounded-xl border flex-row items-start gap-3 ${
+                      pingStatus.success
+                        ? 'bg-emerald-50/70 border-emerald-200'
+                        : 'bg-red-50/70 border-red-200'
+                    }`}
+                  >
+                    {pingStatus.success ? (
+                      <CheckCircle2 size={20} color="#059669" className="shrink-0 mt-0.5" />
                     ) : (
-                      apiKeys.map(k => {
-                        const statusMeta =
-                          k.status === 'active'
-                            ? {
-                                label: 'Hoạt động',
-                                icon: <Check size={10} color={BRAND_COLORS.primary} />,
-                                bg: `${BRAND_COLORS.primary}1A`,
-                                color: BRAND_COLORS.primary,
-                              }
-                            : k.status === 'rate_limited'
-                            ? {
-                                label: 'Hạn chế',
-                                icon: <AlertTriangle size={10} color={BRAND_COLORS.gold} />,
-                                bg: `${BRAND_COLORS.gold}20`,
-                                color: BRAND_COLORS.gold,
-                              }
-                            : {
-                                label: 'Lỗi',
-                                icon: <X size={10} color={BRAND_COLORS.danger} />,
-                                bg: `${BRAND_COLORS.danger}1A`,
-                                color: BRAND_COLORS.danger,
-                              };
-
-                        return (
-                          <View key={k.id} className="flex-row items-center px-4 py-3 border-b border-brand-line/20">
-                            <View className="flex-[3] flex-row items-center gap-2 pr-4">
-                              <Text className="text-[11px] font-mono text-brand-textSoft flex-1" numberOfLines={1}>
-                                {visibleKeys[k.id] ? k.key_value : maskKey(k.key_value)}
-                              </Text>
-                              <Pressable
-                                onPress={() => setVisibleKeys(p => ({ ...p, [k.id]: !p[k.id] }))}
-                                className="p-1 rounded bg-brand-line/10"
-                              >
-                                <Eye size={13} color={BRAND_COLORS.textSoft} />
-                              </Pressable>
-                            </View>
-
-                            <Text className="w-24 text-center text-[11px] font-bold text-brand-textSoft">
-                              {k.usage_count || 0} lượt
-                            </Text>
-
-                            <View className="w-32 items-center">
-                              <View
-                                className="flex-row items-center gap-1 px-2 py-0.5 rounded-full"
-                                style={{ backgroundColor: statusMeta.bg }}
-                              >
-                                {statusMeta.icon}
-                                <Text className="text-[10px] font-bold" style={{ color: statusMeta.color }}>
-                                  {statusMeta.label}
-                                </Text>
-                              </View>
-                            </View>
-
-                            <View className="w-20 items-center">
-                              <Pressable
-                                onPress={() => confirmToggleRotation(k.id, k.key_value, k.is_active, k.status)}
-                                className={`w-8 h-4 rounded-full p-0.5 justify-center ${
-                                  k.is_active ? 'bg-brand-primary items-end' : 'bg-brand-line items-start'
-                                }`}
-                              >
-                                <View className="w-3 h-3 rounded-full bg-white" />
-                              </Pressable>
-                            </View>
-
-                            <View className="w-16 items-center">
-                              <Pressable
-                                onPress={() => confirmDeleteKey(k.id, k.key_value)}
-                                className="p-1.5 rounded-lg hover:bg-brand-danger/10"
-                              >
-                                <Trash2 size={14} color={BRAND_COLORS.danger} />
-                              </Pressable>
-                            </View>
-                          </View>
-                        );
-                      })
+                      <AlertTriangle size={20} color="#DC2626" className="shrink-0 mt-0.5" />
                     )}
+                    <View className="flex-1 gap-1">
+                      <Text
+                        className={`text-xs font-bold ${
+                          pingStatus.success ? 'text-emerald-900' : 'text-red-900'
+                        }`}
+                      >
+                        {pingStatus.success ? 'Kết nối Gateway thành công!' : 'Kết nối Gateway thất bại!'}
+                      </Text>
+                      <Text
+                        className={`text-xs leading-relaxed ${
+                          pingStatus.success ? 'text-emerald-800' : 'text-red-800'
+                        }`}
+                      >
+                        {pingStatus.message}
+                      </Text>
+                    </View>
                   </View>
+                )}
+
+                {/* Action Buttons */}
+                <View className="flex-row items-center justify-end gap-3 pt-3 border-t border-brand-line/30">
+                  <Button
+                    label="Kiểm tra kết nối (Ping Test)"
+                    variant="outline"
+                    icon={<Zap size={16} color={BRAND_COLORS.accentStrong} />}
+                    loading={testAiConfig.isPending}
+                    onPress={handleTestAiConfig}
+                  />
+
+                  <Button
+                    label="Lưu cấu hình AI"
+                    variant="primary"
+                    icon={<CheckCircle2 size={16} color="#FFFFFF" />}
+                    loading={updateAiConfig.isPending}
+                    onPress={handleSaveAiConfig}
+                  />
                 </View>
               </View>
-            </Reveal>
-          )}
+            )}
+          </Card>
         </View>
-      </ScrollView>
-    </View>
+      )}
+
+      {/* TAB 2: BỂ KHÓA GEMINI DIRECT */}
+      {activeTab === 'gemini' && (
+        <View className="gap-6">
+          {/* Stat Cards */}
+          <View className="flex-row flex-wrap gap-4">
+            <StatCard
+              label="Tổng số Key"
+              value={apiKeys.length}
+              subtext="Trong bể khóa xoay vòng"
+              icon={<Key size={20} color={BRAND_COLORS.primary} />}
+              loading={keysLoading}
+              className="flex-1 min-w-[200px]"
+            />
+            <StatCard
+              label="Đang hoạt động"
+              value={activeKeysCount}
+              subtext="Sẵn sàng phục vụ yêu cầu"
+              icon={<CheckCircle2 size={20} color="#10B981" />}
+              iconBg="rgba(16, 185, 129, 0.12)"
+              loading={keysLoading}
+              className="flex-1 min-w-[200px]"
+            />
+            <StatCard
+              label="Sự cố / Rate Limit"
+              value={issueKeysCount}
+              subtext="Tạm dừng hoặc đang hạ nhiệt"
+              icon={<AlertTriangle size={20} color="#EF4444" />}
+              iconBg="rgba(239, 68, 68, 0.12)"
+              loading={keysLoading}
+              className="flex-1 min-w-[200px]"
+            />
+          </View>
+
+          {/* Add Key Card */}
+          <Card
+            title="Thêm API Key vào bể khóa"
+            subtitle="Hỗ trợ thêm một hoặc nhiều API Key từ Google AI Studio (bắt đầu bằng AIzaSy...)"
+            icon={<Plus size={20} color={BRAND_COLORS.primary} />}
+          >
+            <View className="gap-4 mt-2">
+              <Field
+                label="Danh sách API Key"
+                hint="Nhập mỗi dòng một key hoặc cách nhau bằng dấu phẩy. Hệ thống sẽ tự động loại bỏ các key trùng lặp."
+              >
+                <Textarea
+                  value={bulkKeys}
+                  onChangeText={setBulkKeys}
+                  placeholder={`AIzaSyBHPaLXoSL8vXh0r0u8nYypHngALsO-ARo\nAIzaSyDh0DV2-y4tIjDQOWvisQNWTwfPgDjENeg`}
+                  rows={4}
+                />
+              </Field>
+
+              <View className="flex-row items-center justify-between">
+                <Text className="text-xs text-brand-textMuted">
+                  Khóa được bảo mật trong cơ sở dữ liệu và chỉ gửi trực tiếp đến Google AI.
+                </Text>
+
+                <Button
+                  label="Thêm vào bể khóa"
+                  variant="primary"
+                  icon={<Plus size={16} color="#FFFFFF" />}
+                  loading={addApiKey.isPending}
+                  onPress={handleAddKeys}
+                />
+              </View>
+            </View>
+          </Card>
+
+          {/* Keys DataTable */}
+          <Section
+            title="Danh sách API Key xoay vòng"
+            subtitle="Tự động phân phối tải và làm mát khi gặp lỗi Rate Limit (429)"
+          >
+            <DataTable<ApiKeyRecord>
+              columns={columns}
+              data={apiKeys}
+              keyExtractor={(item) => item.id}
+              loading={keysLoading}
+              emptyTitle="Chưa có API Key nào"
+              emptyMessage="Hãy dán các API Key của Google AI Studio vào ô phía trên để bắt đầu."
+              minWidth={800}
+            />
+          </Section>
+        </View>
+      )}
+
+      {/* Confirm Delete Key Dialog */}
+      <ConfirmDialog
+        visible={!!deleteConfirmKey}
+        title="Xác nhận xóa API Key"
+        message={`Bạn có chắc chắn muốn xóa API Key (${deleteConfirmKey?.masked}) khỏi bể khóa không? Thao tác này không thể hoàn tác.`}
+        confirmText="Xóa vĩnh viễn"
+        cancelText="Hủy"
+        isDestructive
+        loading={deleteApiKey.isPending}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteConfirmKey(null)}
+      />
+    </ScrollView>
   );
 }

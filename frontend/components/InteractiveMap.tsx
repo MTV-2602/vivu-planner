@@ -66,7 +66,8 @@ function buildLeafletHTML(items: MapItem[], centerLat: number, centerLng: number
       const cost = formatCost(item.estimated_cost);
       const time = item.start_time || '';
       const safeTitle = item.title.replace(/'/g, "\\'").replace(/"/g, '\\"');
-      const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title + ' ' + cityName)}`;
+      // Dùng tọa độ lat/lng làm destination — nhất quán 100% với marker đang pin trên bản đồ Leaflet
+      const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${item.location_lat},${item.location_lng}&travelmode=driving`;
 
       return `
         L.circleMarker([${item.location_lat}, ${item.location_lng}], {

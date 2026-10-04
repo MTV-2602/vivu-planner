@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, Pressable, Modal, ScrollView,
   ActivityIndicator, Platform, Linking,
@@ -6,52 +6,29 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import {
   X, Crown, Sparkles, Check, Clock, AlertTriangle,
-  History, ArrowRight, ExternalLink, RefreshCw,
-  ShieldCheck, CreditCard, ChevronRight,
+  History, ExternalLink, RefreshCw,
+  ShieldCheck, CreditCard, Gift,
 } from 'lucide-react-native';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { BRAND_COLORS } from '../constants';
+import {
+  normalizePlans,
+  describePlan,
+  getPlanBadge,
+  getPlanDescription,
+  formatVND,
+  formatWallet,
+  PricingPlan,
+} from '../lib/plans';
+import { usePaymentStatus } from '../hooks/usePaymentStatus';
 
 interface PremiumModalProps {
   visible: boolean;
   onClose: () => void;
   onActivated?: () => void;
+  onSuccess?: () => void;
 }
-
-const PLANS = [
-  {
-    id: 'plus',
-    label: 'Gói Starter',
-    icon: '⚡',
-    price: '29.000đ',
-    quota: '10 lượt tạo / tháng',
-    popular: false,
-    badge: 'TIẾT KIỆM',
-    features: [
-      '10 chuyến đi chi tiết bằng AI',
-      'Bản đồ tương tác OpenStreetMap',
-      'Dự báo thời tiết thông minh',
-      'Đề xuất chi phí dự kiến',
-    ],
-  },
-  {
-    id: 'pro',
-    label: 'Gói Premium',
-    icon: '👑',
-    price: '49.000đ',
-    quota: 'AI Vô hạn',
-    popular: true,
-    badge: 'ƯU VIỆT NHẤT',
-    features: [
-      'Tạo lịch trình AI KHÔNG GIỚI HẠN',
-      'Bản đồ tương tác đầy đủ tính năng',
-      'Xuất file PDF lịch trình du lịch',
-      'Tự động xử lý sự cố & thời tiết xấu',
-      'Trợ lý Chatbot AI đồng hành 24/7',
-    ],
-  },
-];
 
 interface OrderHistoryItem {
   id: string;
@@ -63,44 +40,55 @@ interface OrderHistoryItem {
   created_at: string;
 }
 
-export default function PremiumModal({ visible, onClose, onActivated }: PremiumModalProps) {
+export default function PremiumModal({ visible, onClose, onActivated, onSuccess }: PremiumModalProps) {
   const [activeTab, setActiveTab] = useState<'upgrade' | 'history'>('upgrade');
-  const [selectedPlan, setSelectedPlan] = useState('pro');
+  const [selectedPlan, setSelectedPlan] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'payos' | 'momo'>('payos');
   const [loading, setLoading] = useState(false);
   const [orderData, setOrderData] = useState<any>(null);
   const [activated, setActivated] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [timeLeft, setTimeLeft] = useState(600); // 10 phút đếm ngược
+  const [timeLeft, setTimeLeft] = useState(900); // 15 phút đếm ngược (khớp PayOS & MoMo)
 
-  // Lấy trạng thái gói dịch vụ hiện tại
-  const { data: statusData, refetch: refetchStatus } = useQuery({
-    queryKey: ['paymentStatusModal'],
-    queryFn: async () => {
-      const res = await api.get('/payment/status');
-      return res.data;
-    },
-    enabled: visible,
-  });
+  // Lấy trạng thái gói dịch vụ qua hook chung
+  const { data: statusData, refetch: refetchStatus, invalidate: invalidateStatus } = usePaymentStatus(visible);
 
-  // Lấy giá các gói dịch vụ thời gian thực
-  const { data: plansData, refetch: refetchPlans } = useQuery({
+  // Lấy danh sách gói cước động từ backend
+  const { data: rawPlansData, isLoading: plansLoading, refetch: refetchPlans } = useQuery({
     queryKey: ['paymentPlansModal'],
     queryFn: async () => {
       const res = await api.get('/payment/plans');
       return res.data;
     },
-    staleTime: 10000,
+    staleTime: 0,
+    refetchOnMount: 'always',
     enabled: visible,
   });
 
-  // Lắng nghe thay đổi giá từ Supabase Realtime
+  const plans = useMemo<PricingPlan[]>(() => {
+    return normalizePlans(rawPlansData).filter((p) => p.is_active !== false);
+  }, [rawPlansData]);
+
+  // Tự động chọn plan đầu tiên nếu chưa chọn hoặc plan đang chọn không tồn tại trong danh sách
+  useEffect(() => {
+    if (plans.length > 0) {
+      if (!selectedPlan || !plans.some((p) => p.id === selectedPlan)) {
+        setSelectedPlan(plans[0].id);
+      }
+    }
+  }, [plans, selectedPlan]);
+
+  const selectedPlanObj = useMemo<PricingPlan | null>(() => {
+    if (!plans.length) return null;
+    return plans.find((p) => p.id === selectedPlan) || plans[0] || null;
+  }, [plans, selectedPlan]);
+
+  // Lắng nghe thay đổi giá từ Supabase Realtime qua broadcast channel pricing_realtime
   useEffect(() => {
     let channel: any = null;
     try {
-      const channelName = `pricing_realtime_modal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       channel = supabase
-        .channel(channelName)
+        .channel('pricing_realtime')
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'pricing_plans' },
@@ -121,7 +109,7 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
         if (channel) supabase.removeChannel(channel);
       } catch (err) {}
     };
-  }, []);
+  }, [refetchPlans]);
 
   // Lấy lịch sử giao dịch
   const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery<{ success: boolean; orders: OrderHistoryItem[] }>({
@@ -143,17 +131,17 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
       refetchStatus();
       refetchPlans();
     }
-  }, [visible]);
+  }, [visible, refetchStatus, refetchPlans]);
 
-  // Bộ đếm ngược 10 phút khi có đơn hàng
+  // Bộ đếm ngược 15 phút khi có đơn hàng (khớp hạn PayOS)
   useEffect(() => {
     if (!orderData || activated) return;
-    setTimeLeft(600);
+    setTimeLeft(900);
     const timer = setInterval(() => {
-      setTimeLeft(prev => {
+      setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          setErrorMessage('Đơn thanh toán đã hết hạn 10 phút. Vui lòng tạo lại đơn mới.');
+          setErrorMessage('Đơn thanh toán đã hết hạn (15 phút). Vui lòng tạo lại đơn mới.');
           return 0;
         }
         return prev - 1;
@@ -174,64 +162,64 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
           if (checkRes.data?.paid) {
             clearInterval(interval);
             setActivated(true);
+            await invalidateStatus();
             onActivated?.();
+            onSuccess?.();
             return;
           }
         }
         const { data } = await api.get('/payment/status');
-        if (data.isPremium && !statusData?.isPremium) {
+        if (data?.isPremium && !statusData?.isPremium) {
           clearInterval(interval);
           setActivated(true);
+          await invalidateStatus();
           onActivated?.();
+          onSuccess?.();
         }
       } catch {}
     }, 2000);
     return () => clearInterval(interval);
-  }, [orderData, activated, statusData?.isPremium]);
+  }, [orderData, activated, statusData?.isPremium, invalidateStatus, onActivated, onSuccess]);
 
   const handleCreateOrder = async () => {
+    if (!selectedPlanObj) return;
     setLoading(true);
     setOrderData(null);
     setErrorMessage('');
     try {
       const { data } = await api.post('/payment/create-order', {
         method: paymentMethod,
-        plan: selectedPlan,
+        plan: selectedPlanObj.id,
       });
       setOrderData(data);
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.response?.data?.details || err.message;
+      const msg = err.response?.data?.error || err.response?.data?.details || err.message || 'Không thể tạo đơn thanh toán';
       setErrorMessage(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCancelOrder = () => {
+  const handleCancelOrder = async () => {
+    const targetCode = orderData?.orderId || orderData?.orderCode;
+    if (targetCode) {
+      try {
+        await api.post('/payment/cancel-order', {
+          orderId: orderData?.orderId,
+          orderCode: orderData?.orderCode,
+        });
+      } catch (err: any) {
+        console.warn('[PremiumModal] cancel-order error:', err.response?.data?.error || err.message);
+      }
+    }
     setOrderData(null);
     setErrorMessage('');
   };
 
   const isCurrentPremium = !!statusData?.isPremium;
-  const isCurrentStarter = statusData?.planId === 'starter' || (isCurrentPremium && statusData?.tripsQuota <= 10);
-  const isCurrentPro = isCurrentPremium && !isCurrentStarter;
+  const wallet = formatWallet(statusData);
 
-  const plusAmount = plansData?.plans?.plus?.amount ?? plansData?.plans?.starter?.amount ?? 29000;
-  const proAmount = plansData?.plans?.pro?.amount ?? plansData?.plans?.premium?.amount ?? 49000;
-
-  const formattedPlusPrice = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(plusAmount);
-  const formattedProPrice = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(proAmount);
-
-  const dynamicPlans = PLANS.map(plan => {
-    const isStarter = plan.id === 'plus' || plan.id === 'starter';
-    return {
-      ...plan,
-      price: isStarter ? formattedPlusPrice : formattedProPrice,
-      rawAmount: isStarter ? plusAmount : proAmount,
-    };
-  });
-
-  // Thành công screen
+  // Màn hình thanh toán thành công
   if (activated) {
     return (
       <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -276,7 +264,7 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     );
   }
 
-  // Build QR image URL
+  // Xây dựng QR image URL
   let qrImage = '';
   if (orderData) {
     const directQr = orderData.qrCode || orderData.qrCodeUrl;
@@ -284,23 +272,32 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
     const momoDeeplink = orderData.deeplink;
 
     if (orderData.method === 'momo') {
-      if (momoDeeplink || webUrl) {
-        const target = momoDeeplink || webUrl;
-        qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(target)}`;
-      } else if (directQr) {
-        const isImageUrl = directQr.startsWith('data:image/') || (directQr.startsWith('http') && (directQr.includes('.png') || directQr.includes('.jpg')));
+      if (directQr) {
+        const isImageUrl =
+          directQr.startsWith('data:image/') ||
+          (directQr.startsWith('http') && (directQr.includes('.png') || directQr.includes('.jpg')));
         if (isImageUrl) qrImage = directQr;
         else qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(directQr)}`;
+      } else if (momoDeeplink || webUrl) {
+        const target = momoDeeplink || webUrl;
+        qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(target)}`;
       }
-    } else if (directQr) {
-      const isImageUrl = directQr.startsWith('data:image/') || (directQr.startsWith('http') && (directQr.includes('vietqr.io') || directQr.includes('.png') || directQr.includes('.jpg')));
-      if (isImageUrl) qrImage = directQr;
-      else qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(directQr)}`;
-    } else if (orderData.accountNumber && orderData.amount) {
-      const bin = orderData.bin || 'MB';
-      qrImage = `https://img.vietqr.io/image/${bin}-${orderData.accountNumber}-compact2.png?amount=${orderData.amount}&addInfo=VIVU${orderData.orderCode || ''}&accountName=${encodeURIComponent(orderData.accountName || 'VIVU PLANNER')}`;
-    } else if (webUrl) {
-      qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(webUrl)}`;
+    } else {
+      // PayOS / VietQR: Ưu tiên ảnh VietQR chuẩn trực tiếp từ img.vietqr.io khi có đủ bin + accountNumber
+      if (orderData.accountNumber && orderData.amount) {
+        const bin = orderData.bin || 'MB';
+        const addInfo = encodeURIComponent(orderData.orderId || `VIVU${orderData.orderCode || ''}`);
+        const accName = encodeURIComponent(orderData.accountName || 'VIVU PLANNER');
+        qrImage = `https://img.vietqr.io/image/${bin}-${orderData.accountNumber}-compact2.png?amount=${orderData.amount}&addInfo=${addInfo}&accountName=${accName}`;
+      } else if (directQr) {
+        const isImageUrl =
+          directQr.startsWith('data:image/') ||
+          (directQr.startsWith('http') && (directQr.includes('vietqr.io') || directQr.includes('.png') || directQr.includes('.jpg')));
+        if (isImageUrl) qrImage = directQr;
+        else qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(directQr)}`;
+      } else if (webUrl) {
+        qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(webUrl)}`;
+      }
     }
   }
 
@@ -330,7 +327,7 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
             backgroundColor: '#ffffff',
             borderRadius: 24,
             width: '100%',
-            maxWidth: 680,
+            maxWidth: 780,
             maxHeight: '92%',
             overflow: 'hidden',
             borderWidth: 1,
@@ -396,19 +393,22 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
             {/* TAB 1: NÂNG CẤP GÓI */}
             {activeTab === 'upgrade' && (
               <>
-                {/* Banner trạng thái hiện tại */}
+                {/* Khối "Ví lượt hiện tại" - Tách bạch rõ ràng 2 ví */}
                 <View
                   style={{
                     backgroundColor: isCurrentPremium ? '#FEFCE8' : '#F8FAFC',
                     borderColor: isCurrentPremium ? '#FDE047' : '#E2E8F0',
-                    borderWidth: 1.5, borderRadius: 16, padding: 14, gap: 8,
+                    borderWidth: 1.5,
+                    borderRadius: 16,
+                    padding: 16,
+                    gap: 12,
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       {isCurrentPremium ? <Crown size={20} color="#CA8A04" /> : <Sparkles size={20} color="#64748B" />}
                       <Text style={{ fontSize: 13, fontWeight: '800', color: isCurrentPremium ? '#854D0E' : '#334155' }}>
-                        Gói hiện tại: {statusData?.planName || (isCurrentPremium ? 'Gói Pro' : 'Gói Miễn Phí')}
+                        Tài khoản: {statusData?.planName || (isCurrentPremium ? 'Gói Pro' : 'Gói Miễn Phí')}
                       </Text>
                     </View>
                     <View style={{ backgroundColor: isCurrentPremium ? '#CA8A04' : '#64748B', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 3 }}>
@@ -417,24 +417,93 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                       </Text>
                     </View>
                   </View>
-                  {isCurrentPremium && statusData?.premiumUntil && (
-                    <Text style={{ fontSize: 12, color: '#A16207' }}>
-                      📅 Hạn dùng: <Text style={{ fontWeight: '800', color: '#854D0E' }}>{new Date(statusData.premiumUntil).toLocaleDateString('vi-VN')}</Text> (Còn {Math.max(0, Math.ceil((new Date(statusData.premiumUntil).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} ngày) — Nạp tiếp sẽ được <Text style={{ fontWeight: '800', color: '#854D0E' }}>gia hạn cộng dồn thêm 30 ngày</Text>.
+
+                  {/* 1. Ví Miễn Phí (AI Tiêu Chuẩn) */}
+                  <View style={{ backgroundColor: '#F1F5F9', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', gap: 4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Gift size={16} color="#059669" />
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B' }}>
+                          Ví Miễn Phí (AI Tiêu Chuẩn)
+                        </Text>
+                      </View>
+                      <View style={{ backgroundColor: '#E2E8F0', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>
+                          {wallet.freeRemaining}/{wallet.freeTotal} chuyến
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={{ fontSize: 11, color: '#64748B', paddingLeft: 22 }}>
+                      {wallet.freeLine || `🎁 Lượt miễn phí cơ bản: ${wallet.freeRemaining}/${wallet.freeTotal} chuyến`}
                     </Text>
-                  )}
+                  </View>
+
+                  {/* 2. Ví Pro (AI Pro & Live Map) */}
+                  <View style={{
+                    backgroundColor: (statusData?.remainingTrips ?? 0) > 0 ? '#ECFDF5' : '#FFFBEB',
+                    padding: 12,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: (statusData?.remainingTrips ?? 0) > 0 ? '#A7F3D0' : '#FDE68A',
+                    gap: 6,
+                  }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Crown size={16} color={(statusData?.remainingTrips ?? 0) > 0 ? '#059669' : '#D97706'} />
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: (statusData?.remainingTrips ?? 0) > 0 ? '#065F46' : '#92400E' }}>
+                          Ví Pro (AI Pro & Live Map)
+                        </Text>
+                      </View>
+                      <View style={{
+                        backgroundColor: (statusData?.remainingTrips ?? 0) > 0 ? '#10B981' : '#F59E0B',
+                        paddingHorizontal: 8,
+                        paddingVertical: 2,
+                        borderRadius: 8,
+                      }}>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFFFFF' }}>
+                          {statusData?.remainingTrips ?? 0} lượt khả dụng
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Chi tiết lượt không thời hạn và gói thời hạn */}
+                    <View style={{ gap: 3, paddingLeft: 22 }}>
+                      {wallet.singleLine ? (
+                        <Text style={{ fontSize: 11, color: (statusData?.remainingTrips ?? 0) > 0 ? '#047857' : '#78350F', fontWeight: '600' }}>
+                          {wallet.singleLine}
+                        </Text>
+                      ) : null}
+                      {wallet.monthlyLine ? (
+                        <Text style={{ fontSize: 11, color: (statusData?.remainingTrips ?? 0) > 0 ? '#047857' : '#78350F', fontWeight: '600' }}>
+                          📅 {wallet.monthlyLine}
+                        </Text>
+                      ) : null}
+                      {!wallet.singleLine && !wallet.monthlyLine && (
+                        <Text style={{ fontSize: 11, color: '#B45309' }}>
+                          Chưa có lượt Pro. Nâng cấp gói bên dưới để dùng AI Pro & Không gian Bản đồ Trực quan!
+                        </Text>
+                      )}
+                    </View>
+                  </View>
                 </View>
 
                 {/* Khi Đang Hiển Thị Mã QR Thanh Toán */}
                 {orderData ? (
                   <View style={{ backgroundColor: '#F8FAFC', borderRadius: 20, padding: 20, borderWidth: 1.5, borderColor: orderData.method === 'momo' ? '#E879F9' : '#CBD5E1', alignItems: 'center', gap: 14 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Clock size={16} color="#DC2626" />
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#DC2626' }}>
-                          Mã QR hết hạn sau: {formatTime(timeLeft)}
-                        </Text>
+                      <View style={{ gap: 2 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#EAB308' }} />
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#854D0E' }}>Đang chờ thanh toán</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Clock size={14} color="#DC2626" />
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626' }}>
+                            Hết hạn sau: {formatTime(timeLeft)}
+                          </Text>
+                        </View>
                       </View>
-                      <Pressable onPress={handleCancelOrder} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: '#E2E8F0' }}>
+                      <Pressable onPress={handleCancelOrder} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#E2E8F0' }}>
                         <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569' }}>Hủy / Đổi gói</Text>
                       </Pressable>
                     </View>
@@ -451,8 +520,8 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                         ) : (
                           <Text style={{ fontSize: 12, color: '#64748B' }}>Đang nạp mã QR...</Text>
                         )}
-                        <Text style={{ marginTop: 10, fontSize: 15, fontWeight: '800', color: orderData.method === 'momo' ? '#86198F' : '#065F46' }}>
-                          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(orderData.amount || (selectedPlan === 'plus' ? plusAmount : proAmount))}
+                        <Text style={{ marginTop: 10, fontSize: 16, fontWeight: '800', color: orderData.method === 'momo' ? '#86198F' : '#065F46' }}>
+                          {formatVND(orderData.amount || selectedPlanObj?.amount || 0)}
                         </Text>
                         <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
                           {orderData.method === 'momo' ? 'Mở MoMo quét QR hoặc bấm nút bên dưới' : 'Quét mã VietQR bằng mọi ứng dụng ngân hàng'}
@@ -532,65 +601,131 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                       </View>
                     ) : null}
 
-                    {/* Danh sách các gói */}
+                    {/* Danh sách các gói (Render động từ API plans) */}
                     <View style={{ gap: 12 }}>
                       <Text style={{ fontSize: 13, fontWeight: '800', color: '#1B3A2D', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                         1. Chọn Gói Dịch Vụ
                       </Text>
 
-                      <View style={{ flexDirection: 'row', gap: 14 }}>
-                        {dynamicPlans.map(plan => {
-                          const isSelected = selectedPlan === plan.id;
-                          const isStarter = plan.id === 'plus';
-                          // Chặn mua Starter nếu user đang là Pro
-                          const isDowngradeDisabled = isCurrentPro && isStarter;
+                      {plansLoading ? (
+                        <View style={{ paddingVertical: 36, alignItems: 'center', gap: 8 }}>
+                          <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
+                          <Text style={{ fontSize: 12, color: '#64748B' }}>Đang nạp bảng giá gói cước...</Text>
+                        </View>
+                      ) : plans.length === 0 ? (
+                        <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                          <Text style={{ fontSize: 13, color: '#64748B' }}>Hiện chưa có gói cước nào được kích hoạt.</Text>
+                        </View>
+                      ) : (
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            flexWrap: 'wrap',
+                            gap: 12,
+                          }}
+                        >
+                          {plans.map((plan) => {
+                            const isSelected = selectedPlan === plan.id;
+                            const isDuration = (plan.duration_days ?? 0) > 0;
+                            const badge = isDuration ? '👑 THEO THỜI HẠN' : '⚡ THEO LƯỢT';
+                            const durationLabel = isDuration
+                              ? `Có hạn ${plan.duration_days} ngày`
+                              : 'Không giới hạn thời gian';
+                            const quotaBenefit = isDuration
+                              ? `+${plan.quota_total_grant} lượt Pro trong ${plan.duration_days} ngày`
+                              : `+${plan.quota_total_grant} lượt tạo/nâng cấp chuyến đi Pro vĩnh viễn`;
+                            const desc = getPlanDescription(plan);
+                            const features = plan.features && plan.features.length > 0
+                              ? plan.features
+                              : [
+                                  quotaBenefit,
+                                  'Đầy đủ tính năng AI Pro Live Map & Xếp lịch thông minh',
+                                  durationLabel,
+                                ];
 
-                          return (
-                            <Pressable
-                              key={plan.id}
-                              onPress={() => {
-                                if (!isDowngradeDisabled) setSelectedPlan(plan.id);
-                              }}
-                              disabled={isDowngradeDisabled}
-                              style={{
-                                flex: 1,
-                                borderRadius: 18,
-                                padding: 16,
-                                borderWidth: 2,
-                                borderColor: isSelected ? BRAND_COLORS.primary : (isDowngradeDisabled ? '#E2E8F0' : '#CBD5E1'),
-                                backgroundColor: isSelected ? '#F0FDF4' : (isDowngradeDisabled ? '#F8FAFC' : '#ffffff'),
-                                opacity: isDowngradeDisabled ? 0.55 : 1,
-                                gap: 8,
-                                shadowColor: isSelected ? '#10B981' : 'transparent',
-                                shadowOpacity: 0.1,
-                                shadowRadius: 10,
-                              }}
-                            >
-                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <Text style={{ fontSize: 24 }}>{plan.icon}</Text>
-                                <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: isSelected ? '#10B981' : '#F1F5F9' }}>
-                                  <Text style={{ fontSize: 10, fontWeight: '800', color: isSelected ? '#fff' : '#64748B' }}>
-                                    {isDowngradeDisabled ? 'ĐANG DÙNG GÓI CAO HƠN' : plan.badge}
+                            return (
+                              <Pressable
+                                key={plan.id}
+                                onPress={() => setSelectedPlan(plan.id)}
+                                style={{
+                                  flex: 1,
+                                  minWidth: 210,
+                                  borderRadius: 18,
+                                  padding: 16,
+                                  borderWidth: 2,
+                                  borderColor: isSelected ? BRAND_COLORS.primary : '#CBD5E1',
+                                  backgroundColor: isSelected ? '#F0FDF4' : '#ffffff',
+                                  gap: 8,
+                                  shadowColor: isSelected ? '#10B981' : 'transparent',
+                                  shadowOpacity: 0.1,
+                                  shadowRadius: 10,
+                                }}
+                              >
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Text style={{ fontSize: 24 }}>{plan.icon || (isDuration ? '👑' : '⚡')}</Text>
+                                  <View style={{
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 3,
+                                    borderRadius: 10,
+                                    backgroundColor: isSelected ? '#10B981' : (isDuration ? '#FEF3C7' : '#E0F2FE'),
+                                  }}>
+                                    <Text style={{
+                                      fontSize: 10,
+                                      fontWeight: '800',
+                                      color: isSelected ? '#fff' : (isDuration ? '#B45309' : '#0369A1'),
+                                    }}>
+                                      {badge}
+                                    </Text>
+                                  </View>
+                                </View>
+
+                                <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A' }}>{plan.label}</Text>
+                                <Text style={{ fontSize: 18, fontWeight: '900', color: BRAND_COLORS.primary }}>{formatVND(plan.amount)}</Text>
+
+                                <View style={{
+                                  backgroundColor: isSelected ? '#DCFCE7' : '#F1F5F9',
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 4,
+                                  borderRadius: 8,
+                                  alignSelf: 'flex-start',
+                                }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#166534' : '#475569' }}>
+                                    ⏳ {durationLabel}
                                   </Text>
                                 </View>
-                              </View>
 
-                              <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A' }}>{plan.label}</Text>
-                              <Text style={{ fontSize: 18, fontWeight: '900', color: BRAND_COLORS.primary }}>{plan.price}</Text>
-                              <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600' }}>{plan.quota}</Text>
+                                <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600' }}>{desc}</Text>
 
-                              <View style={{ borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 8, gap: 4 }}>
-                                {plan.features.slice(0, 3).map((f, i) => (
-                                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <View style={{ borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 8, gap: 4 }}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                     <Check size={12} color="#10B981" />
-                                    <Text style={{ fontSize: 11, color: '#475569' }} numberOfLines={1}>{f}</Text>
+                                    <Text style={{ fontSize: 11, color: '#166534', fontWeight: '700' }} numberOfLines={2}>
+                                      {quotaBenefit}
+                                    </Text>
                                   </View>
-                                ))}
-                              </View>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
+                                  {features.slice(1, 3).map((f, i) => (
+                                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                      <Check size={12} color="#10B981" />
+                                      <Text style={{ fontSize: 11, color: '#475569' }} numberOfLines={1}>{f}</Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      )}
+
+                      {/* Chú thích gia hạn chỉ hiện đúng với gói đang chọn */}
+                      {selectedPlanObj && (
+                        <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: '#F1F5F9' }}>
+                          <Text style={{ fontSize: 11, color: '#475569', fontStyle: 'italic' }}>
+                            💡 {selectedPlanObj.duration_days > 0
+                              ? `Mua khi còn hạn sẽ cộng dồn lượt và cộng thêm ${selectedPlanObj.duration_days} ngày.`
+                              : `Cộng dồn ${selectedPlanObj.quota_total_grant} lượt, không thời hạn.`}
+                          </Text>
+                        </View>
+                      )}
                     </View>
 
                     {/* Phương thức thanh toán */}
@@ -635,14 +770,15 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                       </View>
                     </View>
 
-                    {/* Nút hành động */}
+                    {/* Nút thanh toán động theo gói đang chọn */}
                     <Pressable
                       onPress={handleCreateOrder}
-                      disabled={loading || (isCurrentPro && selectedPlan === 'plus')}
+                      disabled={loading || !selectedPlanObj}
                       style={{
-                        backgroundColor: (isCurrentPro && selectedPlan === 'plus') ? '#94A3B8' : BRAND_COLORS.primary,
+                        backgroundColor: BRAND_COLORS.primary,
                         paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
                         flexDirection: 'row', gap: 8, shadowColor: BRAND_COLORS.primary, shadowOpacity: 0.25, shadowRadius: 12,
+                        opacity: loading || !selectedPlanObj ? 0.7 : 1,
                       }}
                     >
                       {loading ? (
@@ -651,13 +787,9 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                         <>
                           <ShieldCheck size={18} color="#fff" />
                           <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>
-                            {isCurrentPro && selectedPlan === 'pro'
-                              ? `Gia Hạn Gói Premium (${formattedProPrice} / +30 ngày)`
-                              : isCurrentStarter && selectedPlan === 'plus'
-                              ? `Gia Hạn Gói Starter (${formattedPlusPrice} / +30 ngày)`
-                              : selectedPlan === 'plus'
-                              ? `Thanh Toán Gói Starter (${formattedPlusPrice})`
-                              : `Thanh Toán Gói Premium (${formattedProPrice})`}
+                            {selectedPlanObj
+                              ? `Thanh toán ${selectedPlanObj.label} — ${formatVND(selectedPlanObj.amount)}`
+                              : 'Chọn gói cước để tiếp tục'}
                           </Text>
                         </>
                       )}
@@ -690,9 +822,19 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                   </View>
                 ) : (
                   <View style={{ gap: 10 }}>
-                    {historyData.orders.map(order => {
+                    {historyData.orders.map((order) => {
                       const isCompleted = order.status === 'completed' || order.status === 'success';
                       const isPending = order.status === 'pending';
+                      const matchingPlan = plans.find((p) => p.id === order.plan);
+                      const orderPlanLabel = matchingPlan?.label || order.plan || 'Gói Pro';
+                      const orderCodeLabel = order.order_code ? `#${order.order_code}` : `#${order.id.slice(0, 8)}`;
+                      const methodLabel = order.method === 'momo' ? 'MoMo' : (order.method === 'payos' ? 'VietQR' : String(order.method || 'VietQR').toUpperCase());
+                      const statusLabel = isCompleted ? 'THÀNH CÔNG' : (isPending ? 'CHỜ THANH TOÁN' : 'ĐÃ HỦY');
+                      const statusBg = isCompleted ? '#DCFCE7' : (isPending ? '#FEF9C3' : '#FEE2E2');
+                      const statusColor = isCompleted ? '#166534' : (isPending ? '#854D0E' : '#991B1B');
+                      const createdDateStr = order.created_at
+                        ? new Date(order.created_at).toLocaleString('vi-VN')
+                        : 'Vừa xong';
 
                       return (
                         <View
@@ -702,29 +844,32 @@ export default function PremiumModal({ visible, onClose, onActivated }: PremiumM
                             flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
                           }}
                         >
-                          <View style={{ gap: 4 }}>
+                          <View style={{ gap: 4, flex: 1, marginRight: 12 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                               <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>
-                                {order.id}
+                                Mã: {orderCodeLabel}
                               </Text>
                               <View style={{
                                 paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10,
-                                backgroundColor: isCompleted ? '#DCFCE7' : (isPending ? '#FEF9C3' : '#F1F5F9'),
+                                backgroundColor: statusBg,
                               }}>
                                 <Text style={{
                                   fontSize: 10, fontWeight: '800',
-                                  color: isCompleted ? '#166534' : (isPending ? '#854D0E' : '#64748B'),
+                                  color: statusColor,
                                 }}>
-                                  {isCompleted ? 'THÀNH CÔNG' : (isPending ? 'CHỜ THANH TOÁN' : 'ĐÃ HỦY')}
+                                  {statusLabel}
                                 </Text>
                               </View>
                             </View>
-                            <Text style={{ fontSize: 12, color: '#64748B' }}>
-                              {order.plan === 'plus' || order.plan === 'starter' ? 'Gói Starter' : 'Gói Premium'} • {order.method === 'momo' ? 'MoMo' : 'VietQR'} • {new Date(order.created_at).toLocaleDateString('vi-VN')}
+                            <Text style={{ fontSize: 12, color: '#334155', fontWeight: '600' }}>
+                              Gói: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{orderPlanLabel}</Text>
+                            </Text>
+                            <Text style={{ fontSize: 11, color: '#64748B' }}>
+                              Phương thức: {methodLabel} • {createdDateStr}
                             </Text>
                           </View>
-                          <Text style={{ fontSize: 14, fontWeight: '800', color: isCompleted ? '#059669' : '#0F172A' }}>
-                            {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.amount)}
+                          <Text style={{ fontSize: 15, fontWeight: '900', color: isCompleted ? '#059669' : '#0F172A' }}>
+                            {formatVND(order.amount)}
                           </Text>
                         </View>
                       );

@@ -1,14 +1,16 @@
 ﻿import { useAuth } from '../../hooks/useAuth';
-import { Redirect, Stack } from 'expo-router';
+import { Redirect, Slot } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
+import { BRAND_COLORS } from '../../constants';
+import { AdminShell } from '../../components/admin/ui';
 
 export default function AdminLayout() {
   const { session, isAdmin, loading } = useAuth();
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
+      <View className="flex-1 items-center justify-center bg-brand-bg">
+        <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
       </View>
     );
   }
@@ -16,5 +18,9 @@ export default function AdminLayout() {
   if (!session) return <Redirect href="/(auth)/dang-nhap" />;
   if (!isAdmin) return <Redirect href="/(app)/chuyen-di" />;
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <AdminShell>
+      <Slot />
+    </AdminShell>
+  );
 }

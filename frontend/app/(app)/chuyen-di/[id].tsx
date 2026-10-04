@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, useContext, useMemo } from 'react';
+import { useState, useEffect, useRef, useContext, useMemo, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   Modal, Alert, ActivityIndicator, Platform, Linking, Share,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Compass, ArrowLeft, AlertTriangle, Calendar, Wallet, MapPin,
   Sparkles, Clock, Map, Utensils, Home, Bike, Check, X,
@@ -22,13 +22,18 @@ import BackToTop from '../../../components/BackToTop';
 import { BRAND_COLORS, ItineraryItemType, APP_ROUTES } from '../../../constants';
 import InteractiveMap, { MapItem } from '../../../components/InteractiveMap';
 import GoogleMapsRoutePlanner, { RouteWaypoint } from '../../../components/map/GoogleMapsRoutePlanner';
-import GoogleCalendarWorkspace, { CalendarEventItem } from '../../../components/workspace/GoogleCalendarWorkspace';
+import GoogleCalendarWorkspace, { CalendarEventItem, CalendarDeltaAction } from '../../../components/workspace/GoogleCalendarWorkspace';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
-import ShareModal from '../../../components/ShareModal';
 import BookingModal, { BookableItem } from '../../../components/BookingModal';
 import PremiumModal from '../../../components/PremiumModal';
 import ConfirmModal from '../../../components/ConfirmModal';
 import AppToast, { AppToastMessage } from '../../../components/AppToast';
+import AvatarStack from '../../../components/AvatarStack';
+import ShareTripModal from '../../../components/ShareTripModal';
+import ActivityFeed from '../../../components/ActivityFeed';
+import { supabase } from '../../../lib/supabase';
+import { usePaymentStatus } from '../../../hooks/usePaymentStatus';
+import { formatHeaderChip } from '../../../lib/plans';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ItineraryItem {
@@ -47,6 +52,8 @@ interface TripDetailData {
   traveler_count: number; traveler_type: string; status: string;
   days: ItineraryDay[]; revisions?: any[]; is_free_tier?: boolean;
   preferences?: any; budget_breakdown?: any;
+  user_id?: string; is_shared?: boolean; member_count?: number;
+  collaborators?: any[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -154,7 +161,8 @@ function ModalShell({ visible, onClose, children }: { visible: boolean; onClose:
 export default function TripDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { isAdmin } = useAuth();
+  const queryClient = useQueryClient();
+  const { isAdmin, user } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [activeTabId, setActiveTabId] = useState('');
@@ -203,10 +211,74 @@ export default function TripDetail() {
   // App Toast state
   const [appToast, setAppToast] = useState<AppToastMessage | null>(null);
 
+  // Collaboration state
+  const [collaborators, setCollaborators] = useState<any[]>([]);
+  const [onlineMembers, setOnlineMembers] = useState<any[]>([]);
+  const [shareTripModalVisible, setShareTripModalVisible] = useState(false);
+  const [activityFeedVisible, setActivityFeedVisible] = useState(false);
+  const [presenceChannel, setPresenceChannel] = useState<any>(null);
+  const presenceChannelRef = useRef<any>(null);
+  const channelSubscribedRef = useRef(false);
+  const refetchRef = useRef<(() => any) | null>(null);
+  const userIdRef = useRef(user?.id);
+  userIdRef.current = user?.id;
+  const [workspaceKey, setWorkspaceKey] = useState(0);
+  const [patchedEvents, setPatchedEvents] = useState<CalendarEventItem[] | null>(null);
+  const [patchTimestamp, setPatchTimestamp] = useState<number>(0);
+  const [externalDelta, setExternalDelta] = useState<CalendarDeltaAction | null>(null);
+  const [lockedItems, setLockedItems] = useState<Record<string, string>>({});
+  const patchCounterRef = useRef<number>(0);
+
+  // Auto-expire locked items after 10s if drag_end wasn't delivered
+  useEffect(() => {
+    if (Object.keys(lockedItems).length === 0) return;
+    const timer = setTimeout(() => {
+      setLockedItems({});
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, [lockedItems]);
+
+  const handleEventDelta = useCallback((delta: CalendarDeltaAction) => {
+    const activeChannel = presenceChannelRef.current || presenceChannel;
+    const currentUserId = userIdRef.current || user?.id;
+    if (activeChannel && currentUserId) {
+      activeChannel.send({
+        type: 'broadcast',
+        event: 'calendar_delta',
+        payload: {
+          delta,
+          updated_by: currentUserId,
+          timestamp: Date.now(),
+        }
+      }).catch((err: any) => {
+        console.warn('[ViVu Sync] calendar_delta broadcast error:', err);
+      });
+    }
+  }, [presenceChannel, user?.id]);
+
+  const handleEventsChange = useCallback((newEvents: CalendarEventItem[]) => {
+    // Broadcast toàn bộ events hiện tại cho members khác
+    const activeChannel = presenceChannelRef.current || presenceChannel;
+    const now = Date.now();
+    const currentUserId = userIdRef.current || user?.id;
+    if (activeChannel && currentUserId) {
+      activeChannel.send({
+        type: 'broadcast',
+        event: 'events_patch',
+        payload: {
+          events: newEvents,
+          updated_by: currentUserId,
+          timestamp: now,
+        }
+      }).catch((err: any) => {
+        console.warn('[ViVu Sync] Broadcast error:', err);
+      });
+    }
+  }, [presenceChannel, user?.id]);
+
   // New features state
   const [showMapView, setShowMapView] = useState(true);
   const [mapMode, setMapMode] = useState<'gmaps' | 'overview'>('gmaps');
-  const [showShareModal, setShowShareModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
@@ -232,19 +304,26 @@ export default function TripDetail() {
       return r.data;
     },
     placeholderData: cachedTrip ?? undefined,
+    retry: 1,
+    retryDelay: 1000,
+    staleTime: 30_000,
   });
+  refetchRef.current = refetch;
 
-  const { data: statusData, refetch: refetchStatus } = useQuery({
-    queryKey: ['paymentStatusTripDetail'],
-    queryFn: async () => {
-      const res = await api.get('/payment/status');
-      return res.data;
-    }
-  });
+  const { paymentStatus: statusData, refetch: refetchStatus } = usePaymentStatus();
 
   const tripData = trip ?? cachedTrip;
-  const isLocked = !statusData?.isPremium;
+  const isTripPro = Boolean((tripData as any)?.is_ai_pro || tripData?.preferences?.is_ai_pro || (tripData as any)?.preferences?.ai_tier === 'pro' || (tripData as any)?.is_pro);
   const isUserPro = Boolean(statusData?.isPremium || isAdmin);
+  const effectivePro = Boolean(isUserPro || isTripPro);
+  const isOwner = tripData?.user_id === user?.id || (!collaborators.length && !tripData?.user_id);
+  const isCollaborator = collaborators.some((c: any) => c.user_id === user?.id) || (tripData?.collaborators || []).some((c: any) => c.user_id === user?.id);
+  // Owner: bị lock nếu họ là Free và trip không phải Pro
+  // Collaborator: được edit (trip đã được Pro owner cho phép chia sẻ)
+  // Khác: bị lock
+  const isLocked = isOwner ? !effectivePro : !isCollaborator;
+  const canShare = isOwner && (effectivePro || isCollaborator);
+  const canEditBudget = Boolean(isOwner || isAdmin);
   const { distanceKm, loading: locLoading } = useDistanceToCity(tripData?.destination_city ?? '');
 
   const { setTripId, registerPreviewTrigger, unregisterPreviewTrigger, openChatbot } = useContext(ChatbotContext);
@@ -275,6 +354,257 @@ export default function TripDetail() {
       });
     }
   }, [aiReplaceOpen, trip?.destination_city, poolPlaces.length]);
+
+  // Fetch collaborators
+  const fetchCollaborators = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await api.get(`/trips/${id}/collaborators`);
+      const data = res.data;
+      setCollaborators(data.members?.filter((m: any) => m.accepted_at) || []);
+    } catch (e) {
+      // silent fail
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (id) {
+      fetchCollaborators();
+    }
+  }, [id, fetchCollaborators]);
+
+  useEffect(() => {
+    if (!tripData?.id || !user?.id) return;
+
+    const CURSOR_COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#3B82F6'];
+    // Assign màu theo thứ tự join
+    const myColor = CURSOR_COLORS[collaborators.length % CURSOR_COLORS.length];
+
+    const channel = supabase.channel(`trip-presence:${tripData.id}`, {
+      config: { presence: { key: user.id } }
+    });
+
+    presenceChannelRef.current = channel;
+    setPresenceChannel(channel);
+
+    channel
+      // Presence sync — ai đang online
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState<{
+          user_id: string;
+          display_name: string;
+          avatar_url: string;
+          current_action: string;
+          cursor_color: string;
+        }>();
+        const rawMembers = Object.values(state).flat() as any[];
+        const seen = new Set();
+        const finalMembers: any[] = [];
+        for (const m of rawMembers) {
+          if (m?.user_id && !seen.has(m.user_id)) {
+            seen.add(m.user_id);
+            finalMembers.push(m);
+          }
+        }
+        setOnlineMembers(finalMembers);
+      })
+      // Presence join
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
+        // Log vào activity khi ai đó join
+        // (tự động qua backend khi join_trip, không cần broadcast thêm)
+      })
+      // Presence leave
+      .on('presence', { event: 'leave' }, ({ leftPresences }: any) => {
+        if (leftPresences && Array.isArray(leftPresences)) {
+          const leftIds = new Set(leftPresences.map((p: any) => p?.user_id));
+          setLockedItems(prev => {
+            const next = { ...prev };
+            Object.keys(next).forEach(k => {
+              if (leftIds.has(next[k])) delete next[k];
+            });
+            return next;
+          });
+        }
+      })
+      // Broadcast — nhận delta realtime từ member khác (không ghi đè toàn bộ)
+      .on('broadcast', { event: 'calendar_delta' }, (msg: any) => {
+        const payload = msg?.payload || msg;
+        const myId = userIdRef.current || user?.id;
+        console.log('[ViVu Sync] Received calendar_delta from:', payload?.updated_by, 'type:', payload?.delta?.type, 'applying:', payload?.updated_by !== myId);
+        if (payload?.updated_by !== myId && payload?.delta) {
+          setExternalDelta({ ...payload.delta });
+        }
+      })
+      // Broadcast — nhận patch realtime từ member khác (không refetch, không re-mount)
+      .on('broadcast', { event: 'events_patch' }, (msg: any) => {
+        const payload = msg?.payload || msg;
+        const myId = userIdRef.current || user?.id;
+        console.log('[ViVu Sync] Received events_patch from:', payload?.updated_by, 'events:', payload?.events?.length, 'applying:', payload?.updated_by !== myId);
+        if (payload?.updated_by !== myId && Array.isArray(payload?.events) && payload.events.length > 0) {
+          patchCounterRef.current += 1;
+          // Tạo array mới để đảm bảo React detect thay đổi reference
+          setPatchedEvents([...payload.events]);
+          setPatchTimestamp(patchCounterRef.current);
+          // Clear lock của user này nếu có
+          setLockedItems(prev => {
+            const next = { ...prev };
+            Object.keys(next).forEach(k => {
+              if (next[k] === payload.updated_by) delete next[k];
+            });
+            return next;
+          });
+        }
+      })
+      // Broadcast — nhận activity từ member khác
+      .on('broadcast', { event: 'user_action' }, (msg: any) => {
+        const payload = msg?.payload || msg;
+        // Cập nhật hoặc thêm member đó trong onlineMembers kèm display_name
+        setOnlineMembers(prev => {
+          const exists = prev.some(m => m.user_id === payload?.user_id);
+          if (exists) {
+            return prev.map(m =>
+              m.user_id === payload?.user_id
+                ? {
+                    ...m,
+                    current_action: payload?.action_label,
+                    display_name: payload?.display_name || m.display_name || 'Thành viên',
+                  }
+                : m
+            );
+          } else if (payload?.user_id) {
+            return [
+              ...prev,
+              {
+                user_id: payload.user_id,
+                display_name: payload.display_name || 'Thành viên',
+                current_action: payload.action_label,
+              }
+            ];
+          }
+          return prev;
+        });
+
+        const lockId = payload?.item_id !== undefined && payload?.item_id !== null ? String(payload.item_id) : undefined;
+        const lockTitle = payload?.item_title ? String(payload.item_title) : undefined;
+        const lockKey = lockId || lockTitle;
+
+        if (payload?.action_type === 'drag_item' && lockKey && payload?.user_id !== (userIdRef.current || user?.id)) {
+          setLockedItems(prev => {
+            const next = { ...prev };
+            if (lockId) next[lockId] = payload.user_id;
+            if (lockTitle) next[lockTitle] = payload.user_id;
+            return next;
+          });
+        } else if (payload?.action_type === 'drag_end' && lockKey) {
+          setLockedItems(prev => {
+            const next = { ...prev };
+            if (lockId) delete next[lockId];
+            if (lockTitle) delete next[lockTitle];
+            delete next[lockKey];
+            return next;
+          });
+        }
+      })
+      // Broadcast — nhận schedule_updated từ member khác để tự động refetch
+      .on('broadcast', { event: 'schedule_updated' }, (payload: any) => {
+        const data = payload?.payload || payload;
+        // Chỉ refetch nếu người khác lưu (không phải mình)
+        if (data?.updated_by && data.updated_by !== (userIdRef.current || user?.id)) {
+          const fetchPromise = refetchRef.current ? refetchRef.current() : refetch();
+          Promise.resolve(fetchPromise).then(() => {
+            // Force re-mount GoogleCalendarWorkspace để reset isInitializedRef
+            setWorkspaceKey(k => k + 1);
+          });
+        }
+      })
+      .subscribe(async (status) => {
+        console.log('[ViVu Sync] Channel status:', status);
+        if (status === 'SUBSCRIBED') {
+          channelSubscribedRef.current = true;
+          // Track presence của user hiện tại
+          await channel.track({
+            user_id: user.id,
+            display_name: user.email?.split('@')[0] || 'Thành viên',
+            avatar_url: null,
+            current_action: 'Đang xem lịch trình',
+            cursor_color: myColor,
+          });
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+      presenceChannelRef.current = null;
+      channelSubscribedRef.current = false;
+      setPresenceChannel(null);
+    };
+  }, [tripData?.id, user?.id]);
+
+  const broadcastAction = useCallback(async (actionLabel: string, actionType: string, itemTitle?: string, itemId?: string) => {
+    try {
+      const activeChannel = presenceChannelRef.current || presenceChannel;
+      const finalTitle = itemTitle || itemId || null;
+      const finalId = itemId || itemTitle || null;
+      const currentUserId = userIdRef.current || user?.id;
+      // Broadcast đến các member khác
+      if (activeChannel) {
+        await activeChannel.send({
+          type: 'broadcast',
+          event: 'user_action',
+          payload: {
+            user_id: currentUserId,
+            display_name: user?.email?.split('@')[0] || 'Thành viên',
+            action_label: actionLabel,
+            action_type: actionType,
+            item_title: finalTitle,
+            item_id: finalId,
+            timestamp: new Date().toISOString(),
+          }
+        });
+      }
+
+      // Cập nhật presence của chính mình
+      if (activeChannel && currentUserId) {
+        await activeChannel.track({
+          user_id: currentUserId,
+          display_name: user?.email?.split('@')[0] || 'Thành viên',
+          avatar_url: null,
+          current_action: actionLabel,
+          cursor_color: '#7C3AED',
+        });
+      }
+
+      // Ghi log vào DB (fire-and-forget) + broadcast qua ActivityFeed channel
+      if (tripData?.id && actionType !== 'view_trip' && actionType !== 'drag_end') {
+        api.post(`/trips/${tripData.id}/activity`, {
+          action_type: actionType,
+          item_title: itemTitle || null,
+        }).then((res) => {
+          const logItem = res.data;
+          if (logItem) {
+            supabase.channel(`trip-activity-${tripData.id}`).send({
+              type: 'broadcast',
+              event: 'new_activity',
+              payload: logItem,
+            }).catch(() => {});
+          }
+        }).catch(() => {}); // silent fail
+      }
+    } catch {
+      // silent fail
+    }
+  }, [presenceChannel, user?.id, tripData?.id]);
+
+  const notifyScheduleUpdated = useCallback(() => {
+    const activePresenceChannel = presenceChannelRef?.current || presenceChannel;
+    if (activePresenceChannel) {
+      activePresenceChannel.send({
+        type: 'broadcast',
+        event: 'schedule_updated',
+        payload: { updated_by: user?.id, trip_id: id }
+      });
+    }
+  }, [presenceChannel, user?.id, id]);
 
   useEffect(() => {
     registerPreviewTrigger((adaptedItinerary, diff, previousSnapshot) => {
@@ -372,6 +702,7 @@ export default function TripDetail() {
       setProposedItinerary(null);
       setSelectedItems([]);
       setAdaptationDiff('Lịch trình đã được điều chỉnh thành công theo lựa chọn của bạn!');
+      notifyScheduleUpdated();
       refetch();
     },
     onError: (err: any) => Alert.alert('Lỗi áp dụng lịch trình', err.response?.data?.error || err.message),
@@ -382,7 +713,12 @@ export default function TripDetail() {
       const r = await api.put(`/trips/items/${editingItem.id}`, payload);
       return r.data;
     },
-    onSuccess: () => { setEditOpen(false); refetch(); },
+    onSuccess: () => {
+      broadcastAction('đã chỉnh sửa hoạt động', 'edit_item', editingItem?.title);
+      setEditOpen(false);
+      notifyScheduleUpdated();
+      refetch();
+    },
     onError: (err: any) => Alert.alert('Lỗi cập nhật', err.response?.data?.error || err.message),
   });
 
@@ -392,7 +728,12 @@ export default function TripDetail() {
       const r = await api.post(`/trips/days/${dayId}/items`, payload);
       return r.data;
     },
-    onSuccess: () => { setEditOpen(false); refetch(); },
+    onSuccess: () => {
+      broadcastAction('đã thêm địa điểm', 'add_item', editTitle);
+      setEditOpen(false);
+      notifyScheduleUpdated();
+      refetch();
+    },
     onError: (err: any) => Alert.alert('Lỗi thêm hoạt động', err.response?.data?.error || err.message),
   });
 
@@ -401,13 +742,22 @@ export default function TripDetail() {
       const r = await api.put(`/trips/items/${itemId}`, payload);
       return r.data;
     },
-    onSuccess: () => { setAiReplaceOpen(false); setAiReplaceItem(null); setAiAlternatives([]); refetch(); },
+    onSuccess: () => {
+      setAiReplaceOpen(false);
+      setAiReplaceItem(null);
+      setAiAlternatives([]);
+      notifyScheduleUpdated();
+      refetch();
+    },
     onError: (err: any) => Alert.alert('Lỗi áp dụng gợi ý AI', err.response?.data?.error || err.message),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (itemId: string) => { await api.delete(`/trips/items/${itemId}`); },
-    onSuccess: () => refetch(),
+    onSuccess: () => {
+      notifyScheduleUpdated();
+      refetch();
+    },
     onError: (err: any) => Alert.alert('Lỗi xóa hoạt động', err.response?.data?.error || err.message),
   });
 
@@ -436,6 +786,7 @@ export default function TripDetail() {
     try {
       const itemIds = newWaypoints.map(w => w.id);
       await api.put(`/trips/days/${dayId}/reorder-items`, { item_ids: itemIds });
+      notifyScheduleUpdated();
       refetch();
       setAppToast({ text: 'Đã lưu thứ tự lộ trình Google Maps thành công!', type: 'success' });
     } catch (err: any) {
@@ -558,7 +909,7 @@ export default function TripDetail() {
   // Danh sách địa điểm gợi ý sẵn sàng cho khay chờ nếu người dùng muốn thêm/thay thế
   const standbySuggestions = useMemo(() => {
     // 1. User thường KHÔNG có giỏ hàng chờ xếp lịch (Giỏ hàng khóa cho Pro)
-    if (!isUserPro) return [];
+    if (!effectivePro && !isCollaborator) return [];
 
     // 2. Chuyến đi tạo nhanh 1-Click (creation_mode === 'ai_auto' hoặc không có giỏ ban đầu)
     const creationMode = trip?.preferences?.creation_mode || 'ai_auto';
@@ -587,13 +938,20 @@ export default function TripDetail() {
     }
 
     return [];
-  }, [isUserPro, trip, calendarEvents]);
+  }, [effectivePro, isCollaborator, trip, calendarEvents]);
 
   const handleSaveCalendarWorkspace = async (newEvents: CalendarEventItem[]) => {
+    if (isLocked) {
+      return;
+    }
     try {
       await api.put(`/trips/${id}/sync-calendar`, { events: newEvents });
       await refetch();
       setAppToast({ text: '✓ Đã lưu lịch trình và đồng bộ thời gian thành công!', type: 'success' });
+      broadcastAction('đã lưu lịch trình', 'save_schedule', trip?.title);
+
+      // Notify các thành viên khác để refetch lịch trình
+      notifyScheduleUpdated();
     } catch (err: any) {
       console.error('Failed to sync calendar:', err);
       setAppToast({
@@ -627,6 +985,10 @@ export default function TripDetail() {
   }
 
   const sortedDays = [...trip.days].sort((a, b) => a.day_number - b.day_number);
+  const badWeatherDays = (sortedDays || []).filter(d => {
+    const note = ((d.weather_summary as any)?.note || '').toLowerCase();
+    return note.includes('mưa') || note.includes('giông') || note.includes('bão') || note.includes('mây');
+  });
   const activeDay = trip.days.find(d => d.id === activeTabId);
   const activeItems = activeDay ? [...activeDay.items].sort((a, b) => a.order_index - b.order_index) : [];
 
@@ -658,6 +1020,51 @@ export default function TripDetail() {
 
   const formatVND = (num: number) => {
     return `${num.toLocaleString('vi-VN')}đ`;
+  };
+
+  const handleUpgradeTripToPro = () => {
+    const totalCredits = (statusData?.pro_credits || 0) + (statusData?.monthly_credits || 0);
+    const remainingTrips = statusData?.remainingTrips ?? totalCredits;
+    const hasCredits = remainingTrips > 0 || (Boolean(statusData?.isPremium) && remainingTrips > 0);
+
+    if (!hasCredits) {
+      setAppToast({ text: 'Bạn cần mua gói Pro để nâng cấp chuyến đi này', type: 'info' });
+      setShowPremiumModal(true);
+      return;
+    }
+
+    setConfirmModal({
+      visible: true,
+      title: 'Nâng cấp lên AI Pro ✨',
+      message: `Nâng cấp chuyến này lên AI Pro sẽ trừ 1 lượt Pro trong tài khoản của bạn (Hiện còn ${remainingTrips} lượt). Bạn có muốn tiếp tục?`,
+      onConfirm: async () => {
+        try {
+          await api.post(`/trips/${id}/upgrade-pro`);
+          queryClient.invalidateQueries({ queryKey: ['trip', id] });
+          queryClient.invalidateQueries({ queryKey: ['payment-status'] });
+          refetch();
+          refetchStatus();
+
+          setAppToast({
+            text: '🎉 Đã nâng cấp chuyến đi lên AI Pro thành công!',
+            type: 'success',
+          });
+          if (Platform.OS !== 'web') {
+            Alert.alert('Thành công', '🎉 Đã nâng cấp chuyến đi lên AI Pro thành công!');
+          }
+        } catch (upgradeErr: any) {
+          const status = upgradeErr.response?.status;
+          const msg = upgradeErr.response?.data?.error || upgradeErr.message || 'Không thể nâng cấp chuyến đi';
+          setAppToast({ text: msg, type: 'error' });
+          if (status === 403 || upgradeErr.response?.data?.code === 'requires_premium') {
+            setShowPremiumModal(true);
+          } else {
+            Alert.alert('Lỗi', msg);
+          }
+        }
+        setConfirmModal(null);
+      },
+    });
   };
 
   const handleExportPDF = async () => {
@@ -844,20 +1251,19 @@ export default function TripDetail() {
         scrollEventThrottle={200}
       >
         {/* Navbar */}
-        <View className="bg-brand-bg border-b border-brand-line px-6 py-4">
+        <View className="bg-brand-bg border-b border-brand-line px-4 md:px-6 py-3 md:py-4">
           <View className="flex-row justify-between items-center">
-            <Pressable onPress={() => router.push(isAdmin ? (APP_ROUTES.ADMIN_TRIPS as any) : (APP_ROUTES.TRIPS as any))} className="flex-row items-center gap-1.5" style={{ cursor: 'pointer' as any }}>
+            <Pressable onPress={() => router.push(isAdmin ? (APP_ROUTES.ADMIN_TRIPS as any) : (APP_ROUTES.TRIPS as any))} className="flex-row items-center gap-1.5 shrink-0" style={{ cursor: 'pointer' as any }}>
               <ArrowLeft size={16} color={BRAND_COLORS.textSoft} />
               <Text className="text-xs font-bold text-brand-textSoft">{isAdmin ? 'Quản lý Chuyến đi' : 'Bảng điều khiển'}</Text>
             </Pressable>
-            <View className="flex-row items-center gap-3">
-              <SystemClock />
+            <View className="flex-row items-center gap-2 md:gap-3">
+              <View className="hidden sm:flex">
+                <SystemClock />
+              </View>
               {(() => {
-                const getRemainingDays = (dateStr: string) => {
-                  if (!dateStr) return 0;
-                  const diff = new Date(dateStr).getTime() - Date.now();
-                  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-                };
+                const chip = formatHeaderChip(statusData);
+                const isProUser = !!statusData?.isPremium || (statusData?.pro_credits || 0) > 0 || (statusData?.monthly_credits || 0) > 0;
 
                 return (
                   <Pressable
@@ -865,39 +1271,34 @@ export default function TripDetail() {
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 6,
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
+                      gap: 5,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
                       borderRadius: 16,
-                      backgroundColor: statusData?.isPremium ? '#D4A017' : '#059669',
+                      backgroundColor: chip.color,
                       cursor: 'pointer' as any,
                     }}
                   >
-                    {statusData?.isPremium ? (
-                      <>
-                        <Crown size={12} color="#fff" />
-                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>
-                          {statusData?.planName || 'ViVu Pro'} ({statusData?.premiumUntil ? `Còn ${getRemainingDays(statusData.premiumUntil)} ngày` : 'Vô hạn'}) ✨
-                        </Text>
-                      </>
+                    {isProUser ? (
+                      <Crown size={12} color="#fff" />
                     ) : (
-                      <>
-                        <Sparkles size={12} color="#fff" />
-                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>
-                          Nâng cấp Pro 👑
-                        </Text>
-                      </>
+                      <Sparkles size={12} color="#fff" />
                     )}
+                    <Text className="text-[10px] md:text-xs font-extrabold text-white" style={{ color: '#fff' }}>
+                      {chip.text}
+                    </Text>
                   </Pressable>
                 );
               })()}
-              <Compass size={24} color={BRAND_COLORS.primary} />
-              <Text className="font-display font-extrabold text-lg text-brand-primary">ViVu Planner</Text>
+              <View className="hidden md:flex flex-row items-center gap-2">
+                <Compass size={24} color={BRAND_COLORS.primary} />
+                <Text className="font-display font-extrabold text-lg text-brand-primary">ViVu Planner</Text>
+              </View>
             </View>
           </View>
         </View>
 
-        <View className="px-6 py-8 gap-8">
+        <View className="px-4 md:px-6 py-5 md:py-8 gap-5 md:gap-8">
           {/* Admin banner */}
           {isAdmin && (
             <View className="p-4 rounded-2xl border border-brand-accent/30 bg-brand-accent/5 flex-row items-center justify-center gap-2">
@@ -924,14 +1325,14 @@ export default function TripDetail() {
 
           {/* Trip header */}
           <View className="gap-4 border-b border-brand-line/30 pb-6">
-            <View className="flex-row justify-between items-start flex-wrap gap-4">
-              <View className="gap-3 flex-1">
+            <View className="flex-col md:flex-row justify-between items-start gap-4">
+              <View className="gap-3 w-full md:flex-1 min-w-0">
                 <View className="flex-row items-center gap-2 flex-wrap">
                   <View className="flex-row items-center gap-1.5 self-start px-3 py-1 rounded-full bg-brand-primary/10">
                     <MapPin size={14} color={BRAND_COLORS.primary} />
                     <Text className="text-brand-primary font-bold text-xs">{trip.destination_city}</Text>
                   </View>
-                  {Boolean(trip.preferences?.is_ai_pro || (trip as any).is_ai_pro || trip.preferences?.ai_tier === 'pro') && (
+                  {isTripPro ? (
                     <View style={{
                       flexDirection: 'row',
                       alignItems: 'center',
@@ -952,6 +1353,27 @@ export default function TripDetail() {
                         LỊCH TRÌNH AI PRO 👑
                       </Text>
                     </View>
+                  ) : (
+                    <Pressable
+                      onPress={handleUpgradeTripToPro}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        paddingHorizontal: 10,
+                        paddingVertical: 3.5,
+                        borderRadius: 999,
+                        backgroundColor: '#FEF3C7',
+                        borderWidth: 1.5,
+                        borderColor: '#F59E0B',
+                        cursor: 'pointer' as any,
+                      }}
+                    >
+                      <Crown size={13} color="#D97706" />
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#B45309', letterSpacing: 0.5 }}>
+                        Nâng cấp Pro 👑
+                      </Text>
+                    </Pressable>
                   )}
                   {!locLoading && distanceKm !== null && (
                     <View className="flex-row items-center gap-1.5 self-start px-3 py-1 rounded-full bg-brand-bgAlt border border-brand-line/40">
@@ -960,7 +1382,7 @@ export default function TripDetail() {
                     </View>
                   )}
                 </View>
-                <Text className="font-display font-extrabold text-3xl text-brand-text">{trip.title}</Text>
+                <Text className="font-display font-extrabold text-2xl md:text-3xl text-brand-text break-words">{trip.title}</Text>
                 <View className="flex-row flex-wrap gap-4">
                   <View className="flex-row items-center gap-1.5">
                     <Calendar size={16} color={BRAND_COLORS.primary} />
@@ -980,33 +1402,103 @@ export default function TripDetail() {
                   </View>
                 </View>
               </View>
-              <View className="flex-row gap-3 items-center flex-wrap">
-                <Pressable onPress={handleExportPDF} className="flex-row items-center gap-2 px-5 py-3.5 rounded-xl bg-brand-primary">
-                  <Share2 size={16} color="white" />
-                  <Text className="text-white font-bold">
+              <View className="w-full md:w-auto flex-row flex-wrap items-center gap-2">
+                {!isTripPro && (
+                  <Pressable
+                    onPress={handleUpgradeTripToPro}
+                    className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-100 border border-amber-400"
+                    style={{ cursor: 'pointer' as any }}
+                  >
+                    <Crown size={15} color="#D97706" />
+                    <Text className="text-xs md:text-sm font-bold text-amber-800">
+                      ✨ Nâng cấp lên AI Pro
+                    </Text>
+                  </Pressable>
+                )}
+                <Pressable
+                  onPress={handleExportPDF}
+                  className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-brand-primary"
+                  style={{ cursor: 'pointer' as any }}
+                >
+                  <Share2 size={15} color="white" />
+                  <Text className="text-xs md:text-sm font-bold text-white">
                     {Platform.OS === 'web' ? 'Tải PDF' : 'Chia sẻ'} {isLocked && '🔒'}
                   </Text>
                 </Pressable>
+                {/* Nút Nhóm - chia sẻ lịch trình cộng tác */}
                 <Pressable
-                  onPress={() => setShowShareModal(true)}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, backgroundColor: '#f0ebe0', borderWidth: 1, borderColor: '#e0dbd0' }}
+                  onPress={() => {
+                    if (canShare || isCollaborator) {
+                      setShareTripModalVisible(true);
+                    } else if (isOwner && !effectivePro) {
+                      setShowPremiumModal(true);
+                    }
+                  }}
+                  className={`flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl border ${collaborators.length > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-100 border-gray-200'}`}
+                  style={{ cursor: 'pointer' as any }}
                 >
-                  <Text style={{ fontSize: 15 }}>🔗</Text>
-                  <Text style={{ fontWeight: '700', color: '#1B3A2D', fontSize: 13 }}>Chia sẻ</Text>
+                  {onlineMembers.length > 0 && (
+                    <AvatarStack members={onlineMembers} max={3} size={18} />
+                  )}
+                  <Text className={`text-xs md:text-sm font-bold ${collaborators.length > 0 ? 'text-emerald-800' : 'text-gray-700'}`}>
+                    {collaborators.length > 0 ? `👥 Nhóm (${collaborators.length + 1})` : '👥 Nhóm'}
+                  </Text>
+                  {!canShare && isOwner && <Text className="text-[10px]">🔒</Text>}
                 </Pressable>
+                {(isOwner || isCollaborator) && (
+                  <Pressable
+                    onPress={() => setActivityFeedVisible(true)}
+                    className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200"
+                    style={{ cursor: 'pointer' as any }}
+                  >
+                    <Text className="text-xs">📋</Text>
+                    <Text className="text-xs md:text-sm font-bold text-emerald-800">Log</Text>
+                  </Pressable>
+                )}
                 {!isAdmin && (
                   <>
-                    <Pressable onPress={() => setDisruptionOpen(true)} className="flex-row items-center gap-2 px-5 py-3.5 rounded-xl bg-brand-danger">
-                      <AlertTriangle size={16} color="white" />
-                      <Text className="text-white font-bold">Báo sự cố</Text>
-                    </Pressable>
                     <Pressable
-                      onPress={handleConfirmDeleteTrip}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' }}
+                      onPress={() => setDisruptionOpen(true)}
+                      className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-brand-danger"
+                      style={{ cursor: 'pointer' as any }}
                     >
-                      <Trash2 size={16} color={BRAND_COLORS.danger} />
-                      <Text style={{ fontWeight: '700', color: BRAND_COLORS.danger, fontSize: 13 }}>Xóa</Text>
+                      <AlertTriangle size={15} color="white" />
+                      <Text className="text-xs md:text-sm font-bold text-white">Báo sự cố</Text>
                     </Pressable>
+                    {isCollaborator && !isOwner && (
+                      <Pressable
+                        onPress={() => setConfirmModal({
+                          visible: true,
+                          title: 'Rời chuyến đi',
+                          message: 'Bạn sẽ không còn quyền truy cập chuyến đi này nữa. Tiếp tục?',
+                          isDestructive: true,
+                          onConfirm: async () => {
+                            try {
+                              await api.delete(`/trips/${id}/collaborators/${user?.id}`);
+                              router.replace(APP_ROUTES.TRIPS as any);
+                            } catch (e) {
+                              Alert.alert('Lỗi', 'Không thể rời chuyến đi');
+                            }
+                            setConfirmModal(null);
+                          }
+                        })}
+                        className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-red-200 bg-red-50"
+                        style={{ cursor: 'pointer' as any }}
+                      >
+                        <X size={15} color="#EF4444" />
+                        <Text className="text-xs md:text-sm font-bold text-red-600">Rời chuyến đi</Text>
+                      </Pressable>
+                    )}
+                    {isOwner && (
+                      <Pressable
+                        onPress={handleConfirmDeleteTrip}
+                        className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-red-200 bg-red-50"
+                        style={{ cursor: 'pointer' as any }}
+                      >
+                        <Trash2 size={15} color={BRAND_COLORS.danger} />
+                        <Text className="text-xs md:text-sm font-bold text-red-600">Xóa</Text>
+                      </Pressable>
+                    )}
                   </>
                 )}
               </View>
@@ -1068,7 +1560,27 @@ export default function TripDetail() {
               </View>
             </View>
 
+            {badWeatherDays.length > 0 && (
+              <View style={{ backgroundColor: '#FEF3C7', borderRadius: 12, padding: 12, marginHorizontal: 16, marginBottom: 8, flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                <Text style={{ fontSize: 18 }}>⛅</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '700', color: '#92400E', fontSize: 13 }}>
+                    Lưu ý thời tiết
+                  </Text>
+                  {badWeatherDays.map(d => (
+                    <Text key={d.id} style={{ color: '#78350F', fontSize: 12, marginTop: 2 }}>
+                      • Ngày {d.day_number}: {(d.weather_summary as any)?.note}
+                    </Text>
+                  ))}
+                  <Text style={{ color: '#92400E', fontSize: 11, marginTop: 4, fontStyle: 'italic' }}>
+                    💡 Nếu thời tiết thay đổi, bấm "Báo sự cố" để AI tự điều chỉnh lịch trình.
+                  </Text>
+                </View>
+              </View>
+            )}
+
             <GoogleCalendarWorkspace
+              key={workspaceKey}
               cityName={trip.destination_city}
               travelerCount={trip.traveler_count}
               totalBudget={trip.budget_total}
@@ -1076,19 +1588,29 @@ export default function TripDetail() {
               daysCount={sortedDays.length}
               initialEvents={calendarEvents}
               standbyPlaces={standbySuggestions}
+              onEventsChange={handleEventsChange}
+              externalPatch={patchedEvents || undefined}
+              patchTimestamp={patchTimestamp}
+              externalDelta={externalDelta}
+              onEventDelta={handleEventDelta}
+              lockedItems={lockedItems}
               onSave={handleSaveCalendarWorkspace}
               readOnly={isLocked}
               isDetailPage={true}
-              isUserPro={isUserPro}
+              isUserPro={effectivePro || isCollaborator}
               tripId={trip.id}
               creationMode={trip?.preferences?.creation_mode || 'ai_auto'}
-              onUpgradePro={() => setShowPremiumModal(true)}
+              onUpgradePro={handleUpgradeTripToPro}
               onOpenManualAdd={openAddItem}
               onOpenAiAssistant={() => {
                 if (openChatbot) {
                   openChatbot();
                 }
               }}
+              isOwner={isOwner}
+              canEditBudget={canEditBudget}
+              onlineMembers={onlineMembers}
+              onUserAction={broadcastAction}
             />
 
             {/* Weather */}
@@ -1136,14 +1658,6 @@ export default function TripDetail() {
 
       {/* Back to top */}
       <BackToTop visible={showBackToTop} onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })} />
-
-      {/* ── SHARE MODAL ─────────────────────────────────────────────────────── */}
-      <ShareModal
-        visible={showShareModal}
-        onClose={() => setShowShareModal(false)}
-        tripId={trip.id}
-        tripTitle={trip.title}
-      />
 
       {/* ── BOOKING MODAL ───────────────────────────────────────────────────── */}
       <BookingModal
@@ -1857,6 +2371,29 @@ export default function TripDetail() {
             );
           })}
         </View>
+      )}
+
+      {/* ShareTripModal — Chia sẻ lịch trình nhóm */}
+      {tripData && (
+        <ShareTripModal
+          visible={shareTripModalVisible}
+          onClose={() => setShareTripModalVisible(false)}
+          tripId={tripData.id}
+          tripTitle={tripData.title}
+          isOwner={isOwner}
+          currentUserId={user?.id}
+          onMemberKicked={fetchCollaborators}
+        />
+      )}
+
+      {/* ActivityFeed — Log hoạt động nhóm */}
+      {tripData && (
+        <ActivityFeed
+          tripId={tripData.id}
+          visible={activityFeedVisible}
+          onClose={() => setActivityFeedVisible(false)}
+          currentUserId={user?.id}
+        />
       )}
 
       {/* Custom In-App Toast Banner */}

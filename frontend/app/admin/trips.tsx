@@ -1,267 +1,502 @@
-import { useState, useEffect, useMemo } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Pressable, TextInput } from 'react-native';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
-import { Trash2, MapPin, Calendar, Wallet, ChevronRight, AlertTriangle, Search, X, RefreshCw } from 'lucide-react-native';
-import { BRAND_COLORS, APP_ROUTES } from '../../constants';
-import { api } from '../../lib/api';
-import { useAuth } from '../../hooks/useAuth';
-import AdminNav from '../../components/admin/AdminNav';
+import React, { useState } from 'react';
+import { View, Text, ScrollView } from 'react-native';
+import {
+  Compass,
+  Sparkles,
+  Calendar,
+  MapPin,
+  Eye,
+  Trash2,
+  RefreshCw,
+  Users2,
+  Wallet,
+} from 'lucide-react-native';
+import { BRAND_COLORS, TripStatus } from '../../constants';
+import {
+  PageHeader,
+  Card,
+  StatCard,
+  DataTable,
+  Badge,
+  Button,
+  SearchInput,
+  FilterChips,
+  ConfirmDialog,
+  Modal,
+  Pagination,
+  useAdminToast,
+  formatVND,
+  formatDate,
+} from '../../components/admin/ui';
+import {
+  useAdminTrips,
+  useDeleteAdminTrip,
+  AdminTripItem,
+} from '../../lib/adminApi';
 import { cancelTripReminder } from '../../lib/notifications';
 import { clearCache } from '../../lib/cache';
 
-interface TripRecord { id: string; title: string; destination_city: string; start_date: string; end_date: string; budget_total: number; status: string; user_email: string; created_at: string; }
-
-function formatDate(s: string) {
-  const d = new Date(s);
-  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+function getTripDuration(startDate?: string, endDate?: string): string {
+  if (!startDate || !endDate) return '';
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return '';
+  const diffTime = end.getTime() - start.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  return diffDays > 0 ? `${diffDays} ngày` : '';
 }
 
-function TableHeader({ cols }: { cols: string[] }) {
-  return (
-    <View className="flex-row px-4 py-3 border-b border-brand-line/40 bg-brand-bgAlt/60">
-      {cols.map((c, i) => (
-        <Text key={i} className="flex-1 text-[10px] font-extrabold text-brand-textMuted uppercase tracking-wider">{c}</Text>
-      ))}
-    </View>
-  );
-}
+export default function AdminTripsPage() {
+  const { showToast } = useAdminToast();
 
-export default function AdminTrips() {
-  const router = useRouter();
-  const qc = useQueryClient();
-  const { isAdmin } = useAuth();
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [confirmModal, setConfirmModal] = useState<{ visible: boolean; title: string; message: string; onConfirm: () => void; confirmText?: string; cancelText?: string; isDestructive?: boolean } | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed' | 'draft'>('all');
+  // Filters & Pagination
+  const [searchTerm, setSearchTerm] = useState('');
+  const [tripType, setTripType] = useState('all');
+  const [page, setPage] = useState(1);
+  const limit = 20;
 
-  const { data: trips, isLoading: tripsLoading, refetch: refetchTrips } = useQuery<TripRecord[]>({
-    queryKey: ['adminTrips'],
-    queryFn: async () => (await api.get('/admin/trips')).data,
-    enabled: !!isAdmin,
+  // Detail Modal state
+  const [viewingTrip, setViewingTrip] = useState<AdminTripItem | null>(null);
+
+  // Query trips
+  const { data, isLoading, isFetching, refetch } = useAdminTrips({
+    search: searchTerm,
+    type: tripType,
+    page,
+    limit,
   });
 
-  const deleteTrip = useMutation({
-    mutationFn: (id: string) => api.delete(`/admin/trips/${id}`),
-    onSuccess: (_, tripId) => {
-      cancelTripReminder(tripId);
-      clearCache(`trip_${tripId}`);
-      qc.invalidateQueries({ queryKey: ['adminTrips'] });
+  const trips = data?.trips || [];
+  const summary = data?.summary;
+  const totalPages = data?.totalPages || 1;
+  const totalItems = data?.total || 0;
+
+  // Delete mutation
+  const deleteTripMutation = useDeleteAdminTrip();
+  const [tripToDelete, setTripToDelete] = useState<AdminTripItem | null>(null);
+
+  const handleDeleteTrip = async () => {
+    if (!tripToDelete) return;
+    try {
+      await deleteTripMutation.mutateAsync(tripToDelete.id);
+      cancelTripReminder(tripToDelete.id);
+      clearCache(`trip_${tripToDelete.id}`);
       showToast('Đã xóa chuyến đi và toàn bộ lịch trình liên quan!', 'success');
-    },
-    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
-  });
-
-  const filteredTrips = useMemo(() => {
-    if (!trips) return [];
-    return trips.filter((t: TripRecord) => {
-      const q = searchQuery.toLowerCase().trim();
-      const matchSearch = !q ||
-        (t.title || '').toLowerCase().includes(q) ||
-        (t.destination_city || '').toLowerCase().includes(q) ||
-        (t.user_email || '').toLowerCase().includes(q);
-
-      if (!matchSearch) return false;
-      if (statusFilter === 'all') return true;
-      return t.status === statusFilter;
-    });
-  }, [trips, searchQuery, statusFilter]);
-
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(timer);
+      setTripToDelete(null);
+    } catch (err: any) {
+      showToast(err.response?.data?.error || err.message || 'Lỗi khi xóa chuyến đi', 'error');
     }
-  }, [toast]);
-
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    setToast({ message, type });
   };
 
-  const showConfirm = (title: string, message: string, onConfirm: () => void, options?: { confirmText?: string; cancelText?: string; isDestructive?: boolean }) => {
-    setConfirmModal({ visible: true, title, message, onConfirm: () => { onConfirm(); setConfirmModal(null); }, confirmText: options?.confirmText || 'Xác nhận', cancelText: options?.cancelText || 'Hủy', isDestructive: options?.isDestructive ?? false });
+  // Helper render status badge
+  const renderStatusBadge = (status: string) => {
+    switch (status) {
+      case TripStatus.COMPLETED:
+      case 'completed':
+        return <Badge size="sm" tone="success" label="Hoàn thành" dot />;
+      case TripStatus.ACTIVE:
+      case 'active':
+        return <Badge size="sm" tone="info" label="Đang diễn ra" dot />;
+      case TripStatus.ARCHIVED:
+      case 'archived':
+        return <Badge size="sm" tone="warning" label="Lưu trữ" />;
+      case 'cancelled':
+        return <Badge size="sm" tone="danger" label="Đã hủy" />;
+      case TripStatus.DRAFT:
+      case 'draft':
+      default:
+        return <Badge size="sm" tone="neutral" label="Lên kế hoạch" />;
+    }
   };
 
-  const confirmDeleteTrip = (id: string, title: string) => {
-    showConfirm(
-      'Xác nhận xóa chuyến đi',
-      `Bạn có chắc chắn muốn xóa chuyến đi "${title}"? Toàn bộ các ngày lịch trình, hoạt động chi tiết, dữ liệu chi tiêu và sự cố liên quan sẽ bị XÓA SẠCH khỏi hệ thống!`,
-      () => deleteTrip.mutate(id),
-      { confirmText: 'Xóa sạch', cancelText: 'Hủy', isDestructive: true }
-    );
-  };
+  // Table columns definition
+  const columns = [
+    {
+      key: 'trip',
+      title: 'Chuyến đi',
+      width: 270,
+      render: (t: AdminTripItem) => (
+        <View className="gap-1 justify-center">
+          <View className="flex-row items-center gap-1.5 flex-wrap">
+            <Text className="font-bold text-xs text-brand-text flex-1" numberOfLines={1}>
+              {t.title || 'Chuyến đi'}
+            </Text>
+            <Badge
+              size="sm"
+              tone={t.isPro ? 'brand' : 'neutral'}
+              label={t.isPro ? 'AI Pro' : 'Thường'}
+            />
+          </View>
+          <View className="flex-row items-center gap-1 text-[11px] text-brand-textSoft">
+            <MapPin size={11} color={BRAND_COLORS.textSoft} />
+            <Text className="text-[11px] text-brand-textSoft font-medium" numberOfLines={1}>
+              {t.destinationCity || 'Chưa xác định điểm đến'}
+            </Text>
+          </View>
+        </View>
+      ),
+    },
+    {
+      key: 'owner',
+      title: 'Người tạo',
+      width: 220,
+      render: (t: AdminTripItem) => (
+        <View className="gap-0.5 justify-center">
+          <Text className="font-bold text-xs text-brand-text" numberOfLines={1}>
+            {t.ownerName || 'Người dùng'}
+          </Text>
+          <Text className="text-[11px] text-brand-textSoft" numberOfLines={1}>
+            {t.ownerEmail || '—'}
+          </Text>
+        </View>
+      ),
+    },
+    {
+      key: 'dates',
+      title: 'Lịch trình',
+      width: 200,
+      render: (t: AdminTripItem) => {
+        const duration = getTripDuration(t.startDate, t.endDate);
+        return (
+          <View className="gap-0.5 justify-center">
+            <Text className="text-xs text-brand-text font-medium">
+              {formatDate(t.startDate)} - {formatDate(t.endDate)}
+            </Text>
+            {duration ? (
+              <Text className="text-[11px] text-brand-primary font-semibold">
+                Thời lượng: {duration}
+              </Text>
+            ) : null}
+          </View>
+        );
+      },
+    },
+    {
+      key: 'budget',
+      title: 'Quy mô & Ngân sách',
+      width: 170,
+      render: (t: AdminTripItem) => (
+        <View className="gap-0.5 justify-center">
+          <View className="flex-row items-center gap-1">
+            <Users2 size={11} color={BRAND_COLORS.textSoft} />
+            <Text className="text-xs font-semibold text-brand-text">
+              {t.travelerCount} thành viên
+            </Text>
+          </View>
+          <View className="flex-row items-center gap-1">
+            <Wallet size={11} color={BRAND_COLORS.primary} />
+            <Text className="text-[11px] font-bold text-brand-primary">
+              {formatVND(t.budgetTotal)}
+            </Text>
+          </View>
+        </View>
+      ),
+    },
+    {
+      key: 'status',
+      title: 'Trạng thái',
+      width: 130,
+      align: 'center' as const,
+      render: (t: AdminTripItem) => renderStatusBadge(t.status),
+    },
+    {
+      key: 'createdAt',
+      title: 'Ngày tạo',
+      width: 120,
+      align: 'center' as const,
+      render: (t: AdminTripItem) => (
+        <Text className="text-xs text-brand-textMuted">
+          {formatDate(t.createdAt)}
+        </Text>
+      ),
+    },
+    {
+      key: 'actions',
+      title: 'Thao tác',
+      width: 170,
+      align: 'right' as const,
+      render: (t: AdminTripItem) => (
+        <View className="flex-row items-center gap-1.5 justify-end">
+          <Button
+            size="sm"
+            variant="outline"
+            icon={<Eye size={12} color={BRAND_COLORS.text} />}
+            label="Xem"
+            onPress={() => setViewingTrip(t)}
+          />
+          <Button
+            size="sm"
+            variant="danger"
+            icon={<Trash2 size={12} color="#FFFFFF" />}
+            label="Xóa"
+            onPress={() => setTripToDelete(t)}
+          />
+        </View>
+      ),
+    },
+  ];
 
-  if (!isAdmin) {
-    return (
-      <View className="flex-1 bg-brand-bg">
-        <AdminNav />
-        <View className="flex-1 items-center justify-center py-20 gap-3">
-          <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-          <Text className="text-xs font-semibold text-brand-textSoft">Đang tải và xác thực quyền quản trị...</Text>
+  return (
+    <ScrollView
+      className="flex-1 bg-brand-bg"
+      contentContainerStyle={{ padding: 20, gap: 20 }}
+    >
+      {/* 1. Header */}
+      <PageHeader
+        title="Quản lý Chuyến đi"
+        description="Theo dõi toàn bộ lịch trình chuyến đi, trạng thái và quy mô kế hoạch trên hệ thống"
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<RefreshCw size={13} color={BRAND_COLORS.primary} />}
+            label="Làm mới"
+            loading={isFetching}
+            onPress={() => refetch()}
+          />
+        }
+      />
+
+      {/* 2. Stat Cards */}
+      <View className="flex-row flex-wrap gap-4">
+        <View className="min-w-[220px] flex-1">
+          <StatCard
+            label="Tổng chuyến đi"
+            value={summary?.total ?? 0}
+            icon={<Compass size={18} color="#1F6F54" />}
+            iconBg="rgba(31, 111, 84, 0.1)"
+            loading={isLoading}
+          />
+        </View>
+        <View className="min-w-[220px] flex-1">
+          <StatCard
+            label="Chuyến đi AI Pro"
+            value={summary?.pro ?? 0}
+            icon={<Sparkles size={18} color="#D97706" />}
+            iconBg="rgba(245, 158, 11, 0.15)"
+            loading={isLoading}
+          />
+        </View>
+        <View className="min-w-[220px] flex-1">
+          <StatCard
+            label="Chuyến đi Miễn phí"
+            value={summary?.free ?? 0}
+            icon={<Calendar size={18} color="#2563EB" />}
+            iconBg="rgba(37, 99, 235, 0.1)"
+            loading={isLoading}
+          />
         </View>
       </View>
-    );
-  }
 
-  return (
-    <View className="flex-1 bg-brand-bg">
-      <AdminNav />
-      {toast && (
-        <View className="absolute top-20 left-4 right-4 z-50 items-center pointer-events-none">
-          <View className="flex-row items-center gap-2 px-4 py-3 rounded-xl shadow-lg border border-brand-line/40 max-w-md w-full bg-white">
-            <Text className="text-xs font-bold flex-1" style={{ color: toast.type === 'success' ? BRAND_COLORS.primaryStrong : toast.type === 'error' ? BRAND_COLORS.danger : BRAND_COLORS.accentStrong }}>
-              {toast.message}
-            </Text>
-          </View>
-        </View>
-      )}
-
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 24, gap: 20 }}>
-        {/* Header Title & Actions */}
-        <View className="flex-row justify-between items-start flex-wrap gap-4">
-          <View className="gap-1">
-            <Text className="font-display font-extrabold text-2xl text-brand-text">Quản Lý Chuyến Đi Toàn Hệ Thống</Text>
-            <Text className="text-xs text-brand-textSoft">
-              Hiển thị {filteredTrips.length} / {trips?.length || 0} chuyến đi của tất cả người dùng
-            </Text>
-          </View>
-          <Pressable
-            onPress={() => refetchTrips()}
-            className="flex-row items-center gap-1.5 px-3.5 py-2 rounded-xl border border-brand-line bg-white hover:bg-brand-bgAlt/50"
-            style={{ cursor: 'pointer' as any }}
-          >
-            <RefreshCw size={13} color={BRAND_COLORS.primary} />
-            <Text className="text-xs font-bold text-brand-primary">Làm mới</Text>
-          </Pressable>
-        </View>
-
-        {/* Search & Filter Bar */}
-        <View className="flex-row items-center gap-3 flex-wrap">
-          {/* Ô tìm kiếm */}
-          <View className="flex-1 min-w-[260px] flex-row items-center px-3.5 py-2.5 rounded-xl border border-brand-line/60 bg-white gap-2">
-            <Search size={15} color={BRAND_COLORS.textSoft} />
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Tìm theo tiêu đề, địa điểm hoặc email người dùng..."
-              placeholderTextColor={BRAND_COLORS.textMuted}
-              className="flex-1 text-xs text-brand-text font-medium"
-              style={{ outline: 'none' as any }}
-            />
-            {!!searchQuery && (
-              <Pressable onPress={() => setSearchQuery('')} style={{ cursor: 'pointer' as any }}>
-                <X size={14} color={BRAND_COLORS.textMuted} />
-              </Pressable>
-            )}
-          </View>
-
-          {/* Filter Status Chips */}
-          <View className="flex-row gap-1.5 flex-wrap">
-            {[
-              { key: 'all', label: 'Tất cả' },
-              { key: 'active', label: 'Hoạt động' },
-              { key: 'completed', label: 'Hoàn thành' },
-              { key: 'draft', label: 'Bản nháp' },
-            ].map(f => (
-              <Pressable
-                key={f.key}
-                onPress={() => setStatusFilter(f.key as any)}
-                className="px-3 py-2 rounded-xl border text-xs font-bold"
-                style={{
-                  backgroundColor: statusFilter === f.key ? BRAND_COLORS.primary : '#FFFFFF',
-                  borderColor: statusFilter === f.key ? BRAND_COLORS.primary : 'rgba(27,36,32,0.15)',
-                  cursor: 'pointer' as any,
+      {/* 3. Main Card with Search, FilterChips, DataTable & Pagination */}
+      <Card padding="none">
+        {/* Search & Filter Header */}
+        <View className="p-4 border-b border-brand-line/20 gap-3">
+          <View className="flex-row items-center justify-between gap-3 flex-wrap">
+            <View className="flex-1 min-w-[280px]">
+              <SearchInput
+                value={searchTerm}
+                onChangeText={(text) => {
+                  setSearchTerm(text);
+                  setPage(1);
                 }}
-              >
-                <Text
-                  className="text-xs font-bold"
-                  style={{ color: statusFilter === f.key ? '#FFFFFF' : BRAND_COLORS.textSoft }}
-                >
-                  {f.label}
-                </Text>
-              </Pressable>
-            ))}
+                placeholder="Tìm theo tiêu đề, địa điểm hoặc email người tạo..."
+              />
+            </View>
           </View>
+
+          <FilterChips
+            options={[
+              { value: 'all', label: 'Tất cả chuyến đi', count: summary?.total },
+              { value: 'pro', label: 'Chuyến đi AI Pro', count: summary?.pro },
+              { value: 'free', label: 'Chuyến đi Miễn phí', count: summary?.free },
+            ]}
+            value={tripType}
+            onChange={(val) => {
+              setTripType(val);
+              setPage(1);
+            }}
+          />
         </View>
 
-        <View className="rounded-2xl border border-brand-line/40 overflow-hidden bg-brand-bgAlt/30">
-          <TableHeader cols={['Chuyến đi', 'Chủ sở hữu', 'Ngân sách', 'Trạng thái', '']} />
-          {tripsLoading ? (
-            <View className="py-12 items-center gap-2">
-              <ActivityIndicator color={BRAND_COLORS.primary} />
-              <Text className="text-xs text-brand-textSoft">Đang tải danh sách chuyến đi...</Text>
+        {/* Data Table */}
+        <DataTable
+          columns={columns}
+          data={trips}
+          keyExtractor={(t) => t.id}
+          loading={isLoading}
+          emptyTitle="Chưa có chuyến đi nào"
+          emptyMessage="Không tìm thấy chuyến đi phù hợp với từ khóa hoặc bộ lọc đã chọn."
+          minWidth={1180}
+        />
+
+        {/* Pagination Footer */}
+        <View className="p-3 border-t border-brand-line/20">
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            limit={limit}
+            onPageChange={(newPage) => setPage(newPage)}
+            disabled={isLoading || isFetching}
+          />
+        </View>
+      </Card>
+
+      {/* 4. Confirm Dialog Delete Trip */}
+      <ConfirmDialog
+        visible={Boolean(tripToDelete)}
+        title="Xác nhận xóa chuyến đi"
+        message={`Bạn có chắc chắn muốn xóa chuyến đi "${tripToDelete?.title}"? Toàn bộ các ngày lịch trình, hoạt động chi tiết, chi tiêu và sự cố liên quan sẽ bị XÓA SẠCH khỏi hệ thống!`}
+        confirmText="Xóa sạch"
+        cancelText="Hủy"
+        isDestructive
+        loading={deleteTripMutation.isPending}
+        onConfirm={handleDeleteTrip}
+        onCancel={() => setTripToDelete(null)}
+      />
+
+      {/* 5. Trip Details Modal (Admin Only Management View) */}
+      <Modal
+        visible={Boolean(viewingTrip)}
+        onClose={() => setViewingTrip(null)}
+        title="Chi tiết Chuyến đi"
+        subtitle={viewingTrip ? `Mã chuyến đi: ${viewingTrip.id}` : undefined}
+        maxWidth={620}
+        footer={
+          <View className="flex-row items-center justify-between w-full">
+            <Button
+              size="sm"
+              variant="danger"
+              icon={<Trash2 size={13} color="#FFFFFF" />}
+              label="Xóa chuyến đi này"
+              onPress={() => {
+                if (viewingTrip) {
+                  const t = viewingTrip;
+                  setViewingTrip(null);
+                  setTripToDelete(t);
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              label="Đóng"
+              onPress={() => setViewingTrip(null)}
+            />
+          </View>
+        }
+      >
+        {viewingTrip && (
+          <View className="gap-4">
+            {/* Header Trip Card */}
+            <View className="p-4 rounded-xl bg-slate-50 border border-brand-line/30 gap-2">
+              <View className="flex-row items-center justify-between flex-wrap gap-2">
+                <Text className="font-display font-bold text-base text-brand-text flex-1" numberOfLines={2}>
+                  {viewingTrip.title || 'Chuyến đi'}
+                </Text>
+                <Badge
+                  size="sm"
+                  tone={viewingTrip.isPro ? 'brand' : 'neutral'}
+                  label={viewingTrip.isPro ? 'AI Pro' : 'Thường'}
+                />
+              </View>
+              <View className="flex-row items-center gap-1.5">
+                <MapPin size={13} color={BRAND_COLORS.primary} />
+                <Text className="text-xs font-semibold text-brand-primary">
+                  {viewingTrip.destinationCity || 'Chưa xác định điểm đến'}
+                </Text>
+              </View>
             </View>
-          ) : !filteredTrips.length ? (
-            <View className="py-12 items-center gap-2">
-              <Text className="text-center text-brand-textSoft text-sm font-semibold">
-                {searchQuery ? 'Không tìm thấy chuyến đi nào khớp với từ khóa tìm kiếm.' : 'Chưa có chuyến đi nào trong hệ thống.'}
-              </Text>
-            </View>
-          ) : filteredTrips.map(t => {
-            const statusMeta = t.status === 'completed'
-              ? { label: 'Hoàn thành', bg: `${BRAND_COLORS.textSoft}20`, color: BRAND_COLORS.textSoft }
-              : t.status === 'active'
-              ? { label: 'Hoạt động', bg: `${BRAND_COLORS.primary}1A`, color: BRAND_COLORS.primary }
-              : { label: 'Bản nháp', bg: `${BRAND_COLORS.gold}20`, color: BRAND_COLORS.primaryStrong };
-            return (
-              <View key={t.id} className="px-4 py-4 border-b border-brand-line/20 gap-2">
-                <View className="flex-row justify-between items-start gap-2">
-                  <View className="flex-1 gap-1">
-                    <Text className="font-bold text-sm text-brand-text" numberOfLines={1}>{t.title}</Text>
-                    <View className="flex-row flex-wrap gap-3">
-                      <View className="flex-row items-center gap-1">
-                        <MapPin size={11} color={BRAND_COLORS.primary} />
-                        <Text className="text-[11px] text-brand-textSoft">{t.destination_city}</Text>
-                      </View>
-                      <View className="flex-row items-center gap-1">
-                        <Calendar size={11} color={BRAND_COLORS.primary} />
-                        <Text className="text-[11px] text-brand-textSoft">{formatDate(t.start_date)} - {formatDate(t.end_date)}</Text>
-                      </View>
-                      <View className="flex-row items-center gap-1">
-                        <Wallet size={11} color={BRAND_COLORS.primary} />
-                        <Text className="text-[11px] text-brand-textSoft">{new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).format(t.budget_total)}</Text>
-                      </View>
-                    </View>
-                  </View>
-                  <View className="flex-row items-center gap-2">
-                    <View className="px-2 py-0.5 rounded" style={{ backgroundColor: statusMeta.bg }}>
-                      <Text className="text-[10px] font-bold uppercase" style={{ color: statusMeta.color }}>{statusMeta.label}</Text>
-                    </View>
-                    <Pressable onPress={() => router.push(APP_ROUTES.TRIP_DETAIL(t.id) as any)} className="p-2 rounded-lg" style={{ backgroundColor: `${BRAND_COLORS.primary}1A` }}>
-                      <ChevronRight size={14} color={BRAND_COLORS.primary} />
-                    </Pressable>
-                    <Pressable onPress={() => confirmDeleteTrip(t.id, t.title)} className="p-2 rounded-lg" style={{ backgroundColor: `${BRAND_COLORS.danger}1A` }}>
-                      <Trash2 size={14} color={BRAND_COLORS.danger} />
-                    </Pressable>
+
+            {/* Info Grid */}
+            <View className="gap-3">
+              {/* Creator Card */}
+              <View className="p-3.5 rounded-xl border border-brand-line/20 bg-white gap-1.5">
+                <Text className="text-[10px] font-bold text-brand-textMuted uppercase tracking-wider">
+                  Người tạo
+                </Text>
+                <Text className="text-sm font-bold text-brand-text">
+                  {viewingTrip.ownerName || 'Người dùng'}
+                </Text>
+                <Text className="text-xs text-brand-textSoft">
+                  Email: {viewingTrip.ownerEmail || '—'}
+                </Text>
+                <Text className="text-[11px] text-brand-textMuted font-mono mt-0.5" numberOfLines={1}>
+                  Mã người dùng (ID): {viewingTrip.ownerId || '—'}
+                </Text>
+              </View>
+
+              {/* Timing & Status Row */}
+              <View className="flex-col sm:flex-row gap-3">
+                {/* Timing */}
+                <View className="flex-1 p-3.5 rounded-xl border border-brand-line/20 bg-white gap-1.5">
+                  <Text className="text-[10px] font-bold text-brand-textMuted uppercase tracking-wider">
+                    Thời gian
+                  </Text>
+                  <Text className="text-xs font-semibold text-brand-text">
+                    {formatDate(viewingTrip.startDate)} - {formatDate(viewingTrip.endDate)}
+                  </Text>
+                  {getTripDuration(viewingTrip.startDate, viewingTrip.endDate) ? (
+                    <Text className="text-xs font-bold text-brand-primary">
+                      Thời lượng: {getTripDuration(viewingTrip.startDate, viewingTrip.endDate)}
+                    </Text>
+                  ) : null}
+                </View>
+
+                {/* Status */}
+                <View className="flex-1 p-3.5 rounded-xl border border-brand-line/20 bg-white gap-1.5">
+                  <Text className="text-[10px] font-bold text-brand-textMuted uppercase tracking-wider">
+                    Trạng thái kế hoạch
+                  </Text>
+                  <View className="flex-row items-center gap-2 mt-0.5">
+                    {renderStatusBadge(viewingTrip.status)}
                   </View>
                 </View>
-                <Text className="text-[11px] text-brand-textSoft">Chủ sở hữu: <Text className="font-semibold">{t.user_email}</Text></Text>
               </View>
-            );
-          })}
-        </View>
-      </ScrollView>
 
-      {confirmModal && confirmModal.visible && (
-        <View className="absolute inset-0 z-50 items-center justify-center bg-black/60 px-4">
-          <View className="bg-brand-bg border border-brand-line/60 rounded-2xl p-6 max-w-md w-full shadow-2xl">
-            <View className="flex-row items-center gap-2 mb-3">
-              <AlertTriangle size={22} color={confirmModal.isDestructive ? BRAND_COLORS.danger : BRAND_COLORS.accent} />
-              <Text className="text-lg font-display font-extrabold text-brand-text">{confirmModal.title}</Text>
-            </View>
-            <Text className="text-xs text-brand-textSoft leading-relaxed mb-6">{confirmModal.message}</Text>
-            <View className="flex-row justify-end gap-3">
-              <Pressable onPress={() => setConfirmModal(null)} className="px-4 py-2.5 rounded-xl border border-brand-line/60 bg-brand-bgAlt/50">
-                <Text className="text-xs font-bold text-brand-textSoft">{confirmModal.cancelText}</Text>
-              </Pressable>
-              <Pressable onPress={confirmModal.onConfirm} className="px-4 py-2.5 rounded-xl" style={{ backgroundColor: confirmModal.isDestructive ? BRAND_COLORS.danger : BRAND_COLORS.primary }}>
-                <Text className="text-xs font-bold text-white">{confirmModal.confirmText}</Text>
-              </Pressable>
+              {/* Scale & Budget Row */}
+              <View className="flex-col sm:flex-row gap-3">
+                {/* Scale */}
+                <View className="flex-1 p-3.5 rounded-xl border border-brand-line/20 bg-white gap-1.5">
+                  <Text className="text-[10px] font-bold text-brand-textMuted uppercase tracking-wider">
+                    Quy mô
+                  </Text>
+                  <View className="flex-row items-center gap-1.5">
+                    <Users2 size={13} color={BRAND_COLORS.textSoft} />
+                    <Text className="text-xs font-bold text-brand-text">
+                      {viewingTrip.travelerCount} thành viên tham gia
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Budget */}
+                <View className="flex-1 p-3.5 rounded-xl border border-brand-line/20 bg-white gap-1.5">
+                  <Text className="text-[10px] font-bold text-brand-textMuted uppercase tracking-wider">
+                    Dự toán ngân sách
+                  </Text>
+                  <View className="flex-row items-center gap-1.5">
+                    <Wallet size={13} color={BRAND_COLORS.primary} />
+                    <Text className="text-xs font-bold text-brand-primary">
+                      {formatVND(viewingTrip.budgetTotal)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* System Created At Row */}
+              <View className="p-3 rounded-xl bg-slate-50 border border-brand-line/20 flex-row items-center justify-between">
+                <Text className="text-xs text-brand-textMuted">
+                  Ngày tạo hệ thống:
+                </Text>
+                <Text className="text-xs font-semibold text-brand-text">
+                  {formatDate(viewingTrip.createdAt)}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
-      )}
-    </View>
+        )}
+      </Modal>
+    </ScrollView>
   );
 }

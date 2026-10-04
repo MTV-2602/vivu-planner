@@ -35,7 +35,7 @@ export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupPr
   const costValue = place.estimated_cost || (place.price_level ? place.price_level * 50000 : 50000);
 
   const handleOpenGoogleMaps = () => {
-    const url = place.google_map_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`;
+    const url = place.google_map_url || (place.lat && place.lng ? `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`);
     if (Platform.OS === 'web') {
       window.open(url, '_blank');
     } else {

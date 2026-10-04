@@ -70,9 +70,13 @@ export async function geocodeOnline(name: string, address?: string, cityName?: s
       const resp = await axios.get('https://photon.komoot.io/api/', {
         params: {
           q: query,
-          limit: 3,
+          limit: 5,
+          lang: 'vi',
+          lat: cityCoords.lat,
+          lon: cityCoords.lng,
+          zoom: 12,
         },
-        timeout: 2500
+        timeout: 3000
       });
 
       const features = resp.data?.features || [];
@@ -82,9 +86,9 @@ export async function geocodeOnline(name: string, address?: string, cityName?: s
           const lng = Number(coords[0]);
           const lat = Number(coords[1]);
 
-          // Kiểm tra tính hợp lý (nằm trong bán kính 40km quanh tâm tỉnh/thành)
+          // Kiểm tra tính hợp lý (nằm trong bán kính ~25km quanh tâm tỉnh/thành)
           const dist = Math.sqrt(Math.pow(lat - cityCoords.lat, 2) + Math.pow(lng - cityCoords.lng, 2));
-          if (dist <= 0.45) {
+          if (dist <= 0.25) {
             const props = feat.properties || {};
             const resolvedAddress = [props.street, props.district, props.city, city]
               .filter(Boolean)
@@ -150,7 +154,7 @@ Yêu cầu:
 
       if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
         const dist = Math.sqrt(Math.pow(lat - cityCoords.lat, 2) + Math.pow(lng - cityCoords.lng, 2));
-        if (dist <= 0.4) {
+        if (dist <= 0.25) {
           const res: GeocodeResult = {
             lat,
             lng,

@@ -1,61 +1,118 @@
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Pressable, TextInput, Platform } from 'react-native';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Trash2, Compass, Plus, MapPin, Star, ChevronRight, AlertTriangle, X, Sparkles } from 'lucide-react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, ScrollView, ActivityIndicator, Pressable, Platform, Linking } from 'react-native';
+import {
+  Handshake,
+  Plus,
+  RefreshCw,
+  Search,
+  Filter,
+  Edit3,
+  Trash2,
+  MapPin,
+  Star,
+  Phone,
+  Mail,
+  Globe,
+  ExternalLink,
+  Eye,
+  MousePointer,
+  Calendar,
+  Percent,
+  CheckCircle2,
+  AlertTriangle,
+  Building2,
+  Utensils,
+  Coffee,
+  Compass,
+  Check,
+  Tag,
+  DollarSign,
+  TrendingUp,
+} from 'lucide-react-native';
 import { BRAND_COLORS, VIETNAMESE_CITIES } from '../../constants';
-import { api } from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
-import AdminNav from '../../components/admin/AdminNav';
-import Reveal from '../../components/Reveal';
+import {
+  PageHeader,
+  Card,
+  Section,
+  StatCard,
+  DataTable,
+  Badge,
+  BadgeTone,
+  Button,
+  SearchInput,
+  FilterChips,
+  Modal,
+  ConfirmDialog,
+  Field,
+  Input,
+  Select,
+  Switch,
+  Textarea,
+  Pagination,
+  EmptyState,
+  useAdminToast,
+  formatDate,
+} from '../../components/admin/ui';
+import {
+  useAdminPartners,
+  usePartnerAnalyticsSummary,
+  useSavePartner,
+  useTogglePartnerActive,
+  useDeletePartner,
+  PartnerRecord,
+} from '../../lib/adminApi';
+import { api } from '../../lib/api';
 
-interface PartnerRecord {
-  id: string;
-  name: string;
-  category: string;
-  address: string;
-  lat: number;
-  lng: number;
-  city: string;
-  district?: string | null;
-  contact_phone?: string | null;
-  contact_email?: string | null;
-  website_url?: string | null;
-  booking_url?: string | null;
-  description?: string | null;
-  image_urls?: string[] | null;
-  price_level: number;
-  cuisine_tags?: string[] | null;
-  amenity_tags?: string[] | null;
-  dietary_safe?: string[] | null;
-  admin_rating: number;
-  admin_notes?: string | null;
-  partner_priority: number;
-  active_status: boolean;
-  impression_count: number;
-  click_count: number;
-  booking_count: number;
-  created_at: string;
+const CITY_COORDS: Record<string, { lat: number; lng: number }> = {
+  'Hà Nội': { lat: 21.0285, lng: 105.8542 },
+  'Đà Nẵng': { lat: 16.0544, lng: 108.2022 },
+  'TP. Hồ Chí Minh': { lat: 10.8231, lng: 106.6297 },
+  'Hội An': { lat: 15.8801, lng: 108.338 },
+  'Huế': { lat: 16.4637, lng: 107.5908 },
+  'Nha Trang': { lat: 12.2388, lng: 109.1967 },
+  'Đà Lạt': { lat: 11.9404, lng: 108.4583 },
+  'Phú Quốc': { lat: 10.2899, lng: 103.984 },
+  'Sa Pa': { lat: 22.3364, lng: 103.8438 },
+  'Ninh Bình': { lat: 20.2506, lng: 105.9745 },
+  'Vũng Tàu': { lat: 10.346, lng: 107.0843 },
+};
+
+function getCategoryMeta(cat: string): { label: string; tone: BadgeTone } {
+  switch (cat) {
+    case 'hotel':
+    case 'homestay':
+    case 'resort':
+      return { label: 'Lưu trú / Khách sạn', tone: 'brand' };
+    case 'restaurant':
+      return { label: 'Nhà hàng', tone: 'warning' };
+    case 'cafe':
+      return { label: 'Quán cafe', tone: 'info' };
+    case 'attraction':
+      return { label: 'Điểm tham quan', tone: 'success' };
+    case 'rental':
+      return { label: 'Dịch vụ thuê xe', tone: 'neutral' };
+    default:
+      return { label: cat, tone: 'neutral' };
+  }
 }
 
-function TableHeader({ cols }: { cols: string[] }) {
-  return (
-    <View className="flex-row px-4 py-3 border-b border-brand-line/40 bg-brand-bgAlt/60">
-      {cols.map((c, i) => (
-        <Text key={i} className="flex-1 text-[10px] font-extrabold text-brand-textMuted uppercase tracking-wider">{c}</Text>
-      ))}
-    </View>
-  );
-}
-
-export default function AdminPartners() {
-  const qc = useQueryClient();
+export default function AdminPartnersPage() {
   const { isAdmin } = useAuth();
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [confirmModal, setConfirmModal] = useState<{ visible: boolean; title: string; message: string; onConfirm: () => void; confirmText?: string; cancelText?: string; isDestructive?: boolean } | null>(null);
+  const { showToast } = useAdminToast();
 
-  const [partnerModalVisible, setPartnerModalVisible] = useState(false);
+  // Filters & Search
+  const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const limit = 10;
+
+  // Modal Add / Edit
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPartner, setEditingPartner] = useState<PartnerRecord | null>(null);
-  const [formSubTab, setFormSubTab] = useState<'basic'|'contact'|'config'|'media'>('basic');
+  const [formSubTab, setFormSubTab] = useState<'basic' | 'contact' | 'config' | 'tags'>('basic');
+
+  // Form Fields
   const [name, setName] = useState('');
   const [category, setCategory] = useState('hotel');
   const [address, setAddress] = useState('');
@@ -69,99 +126,55 @@ export default function AdminPartners() {
   const [bookingUrl, setBookingUrl] = useState('');
   const [description, setDescription] = useState('');
   const [imageUrls, setImageUrls] = useState('');
-  const [priceLevel, setPriceLevel] = useState(2);
+  const [priceLevel, setPriceLevel] = useState('2');
   const [cuisineTags, setCuisineTags] = useState('');
   const [amenityTags, setAmenityTags] = useState('');
   const [dietarySafe, setDietarySafe] = useState('');
-  const [adminRating, setAdminRating] = useState(3);
+  const [adminRating, setAdminRating] = useState('4');
   const [adminNotes, setAdminNotes] = useState('');
   const [partnerPriority, setPartnerPriority] = useState('0');
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [searchingPlaces, setSearchingPlaces] = useState(false);
+  // Google Places Search Helper inside Modal
+  const [placesSearchQuery, setPlacesSearchQuery] = useState('');
+  const [placesSearchResults, setPlacesSearchResults] = useState<any[]>([]);
+  const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
 
-  const { data: partners, isLoading: partnersLoading } = useQuery<PartnerRecord[]>({
-    queryKey: ['adminPartners'],
-    queryFn: async () => (await api.get('/admin/partners')).data,
-    enabled: !!isAdmin,
-  });
+  // Confirm delete dialog
+  const [partnerToDelete, setPartnerToDelete] = useState<PartnerRecord | null>(null);
 
-  const { data: partnerStats, isLoading: partnerStatsLoading } = useQuery<{ totalImpressions: number; totalClicks: number; totalBookings: number; averageCtr: number }>({
-    queryKey: ['adminPartnerStats'],
-    queryFn: async () => (await api.get('/admin/partners/analytics/summary')).data,
-    enabled: !!isAdmin,
-  });
+  // Queries
+  const {
+    data: partners = [],
+    isLoading: partnersLoading,
+    isFetching: partnersFetching,
+    refetch: refetchPartners,
+  } = useAdminPartners();
 
-  const deletePartner = useMutation({
-    mutationFn: (id: string) => api.delete(`/admin/partners/${id}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['adminPartners'] });
-      qc.invalidateQueries({ queryKey: ['adminPartnerStats'] });
-      showToast('Đã xóa đối tác thành công!', 'success');
-    },
-    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
-  });
+  const {
+    data: analyticsSummary,
+    isLoading: summaryLoading,
+    isFetching: summaryFetching,
+    refetch: refetchSummary,
+  } = usePartnerAnalyticsSummary();
 
-  const togglePartnerActive = useMutation({
-    mutationFn: (id: string) => api.put(`/admin/partners/${id}/toggle`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['adminPartners'] });
-      qc.invalidateQueries({ queryKey: ['adminPartnerStats'] });
-      showToast('Đã cập nhật trạng thái hoạt động!', 'success');
-    },
-    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
-  });
+  // Mutations
+  const savePartner = useSavePartner();
+  const togglePartnerActive = useTogglePartnerActive();
+  const deletePartner = useDeletePartner();
 
-  const savePartner = useMutation({
-    mutationFn: ({ id, data }: { id?: string; data: any }) => {
-      if (id) {
-        return api.put(`/admin/partners/${id}`, data);
-      } else {
-        return api.post('/admin/partners', data);
-      }
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['adminPartners'] });
-      setPartnerModalVisible(false);
-      showToast(editingPartner ? 'Đã cập nhật thông tin đối tác!' : 'Đã thêm đối tác mới thành công!', 'success');
-    },
-    onError: (e: any) => showToast(e.response?.data?.error || e.message, 'error'),
-  });
-
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
-
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    setToast({ message, type });
-  };
-
-  const showConfirm = (title: string, message: string, onConfirm: () => void, options?: { confirmText?: string; cancelText?: string; isDestructive?: boolean }) => {
-    setConfirmModal({ visible: true, title, message, onConfirm: () => { onConfirm(); setConfirmModal(null); }, confirmText: options?.confirmText || 'Xác nhận', cancelText: options?.cancelText || 'Hủy', isDestructive: options?.isDestructive ?? false });
-  };
-
-  const confirmDeletePartner = (id: string, name: string) => {
-    showConfirm(
-      'Xác nhận xóa đối tác',
-      `Bạn có chắc chắn muốn xóa đối tác "${name}" không? Toàn bộ dữ liệu cấu hình và thống kê hiệu suất liên quan sẽ bị xóa vĩnh viễn khỏi hệ thống!`,
-      () => deletePartner.mutate(id),
-      { confirmText: 'Xóa đối tác', cancelText: 'Hủy', isDestructive: true }
-    );
-  };
-
+  // Open modal for create or edit
   const openPartnerModal = (partner: PartnerRecord | null = null) => {
     setFormSubTab('basic');
     setEditingPartner(partner);
+    setPlacesSearchQuery('');
+    setPlacesSearchResults([]);
+
     if (partner) {
       setName(partner.name || '');
       setCategory(partner.category || 'hotel');
       setAddress(partner.address || '');
-      setLat(String(partner.lat || ''));
-      setLng(String(partner.lng || ''));
+      setLat(String(partner.lat ?? ''));
+      setLng(String(partner.lng ?? ''));
       setCity(partner.city || 'Hà Nội');
       setDistrict(partner.district || '');
       setContactPhone(partner.contact_phone || '');
@@ -170,455 +183,886 @@ export default function AdminPartners() {
       setBookingUrl(partner.booking_url || '');
       setDescription(partner.description || '');
       setImageUrls(partner.image_urls ? partner.image_urls.join(', ') : '');
-      setPriceLevel(partner.price_level || 2);
+      setPriceLevel(String(partner.price_level ?? 2));
       setCuisineTags(partner.cuisine_tags ? partner.cuisine_tags.join(', ') : '');
       setAmenityTags(partner.amenity_tags ? partner.amenity_tags.join(', ') : '');
       setDietarySafe(partner.dietary_safe ? partner.dietary_safe.join(', ') : '');
-      setAdminRating(partner.admin_rating || 3);
+      setAdminRating(String(partner.admin_rating ?? 4));
       setAdminNotes(partner.admin_notes || '');
-      setPartnerPriority(String(partner.partner_priority || 0));
+      setPartnerPriority(String(partner.partner_priority ?? 0));
     } else {
-      setName(''); setCategory('hotel'); setAddress(''); setLat(''); setLng(''); setCity('Hà Nội');
-      setDistrict(''); setContactPhone(''); setContactEmail(''); setWebsiteUrl(''); setBookingUrl('');
-      setDescription(''); setImageUrls(''); setPriceLevel(2); setCuisineTags(''); setAmenityTags('');
-      setDietarySafe(''); setAdminRating(3); setAdminNotes(''); setPartnerPriority('0');
+      setName('');
+      setCategory('hotel');
+      setAddress('');
+      setLat('');
+      setLng('');
+      setCity('Hà Nội');
+      setDistrict('');
+      setContactPhone('');
+      setContactEmail('');
+      setWebsiteUrl('');
+      setBookingUrl('');
+      setDescription('');
+      setImageUrls('');
+      setPriceLevel('2');
+      setCuisineTags('');
+      setAmenityTags('');
+      setDietarySafe('');
+      setAdminRating('4');
+      setAdminNotes('');
+      setPartnerPriority('0');
     }
-    setPartnerModalVisible(true);
+
+    setIsModalOpen(true);
   };
 
-  const parseTags = (str: string) => str.split(',').map(t => t.trim()).filter(Boolean);
-
-  const handleSavePartner = () => {
-    if (!name.trim()) return showToast('Vui lòng nhập tên đối tác', 'error');
-    if (!address.trim()) return showToast('Vui lòng nhập địa chỉ đối tác', 'error');
-    if (!lat.trim() || isNaN(Number(lat))) return showToast('Vui lòng nhập vĩ độ hợp lệ', 'error');
-    if (!lng.trim() || isNaN(Number(lng))) return showToast('Vui lòng nhập kinh độ hợp lệ', 'error');
-    if (!city) return showToast('Vui lòng chọn thành phố', 'error');
-    
-    const numLat = parseFloat(lat);
-    const numLng = parseFloat(lng);
-    const priorityVal = parseInt(partnerPriority) || 0;
-    
-    if (numLat < -90 || numLat > 90) return showToast('Vĩ độ phải nằm trong khoảng -90 đến 90', 'error');
-    if (numLng < -180 || numLng > 180) return showToast('Kinh độ phải nằm trong khoảng -180 đến 180', 'error');
-    if (priorityVal < 0 || priorityVal > 10) return showToast('Độ ưu tiên phải nằm trong khoảng 0-10', 'error');
-
-    const data = {
-      name: name.trim(), category, address: address.trim(), lat: numLat, lng: numLng,
-      city, district: district.trim() || null, contact_phone: contactPhone.trim() || null,
-      contact_email: contactEmail.trim() || null, website_url: websiteUrl.trim() || null,
-      booking_url: bookingUrl.trim() || null, description: description.trim() || null,
-      image_urls: parseTags(imageUrls), price_level: priceLevel, cuisine_tags: parseTags(cuisineTags),
-      amenity_tags: parseTags(amenityTags), dietary_safe: parseTags(dietarySafe),
-      admin_rating: adminRating, admin_notes: adminNotes.trim() || null, partner_priority: priorityVal,
-    };
-
-    savePartner.mutate({ id: editingPartner?.id, data });
-  };
-
-  const CITY_COORDS: Record<string, { lat: number; lng: number }> = {
-    'Hà Nội': { lat: 21.0285, lng: 105.8542 }, 'Đà Nẵng': { lat: 16.0544, lng: 108.2022 },
-    'TP. Hồ Chí Minh': { lat: 10.8231, lng: 106.6297 }, 'Hội An': { lat: 15.8801, lng: 108.3380 },
-    'Huế': { lat: 16.4637, lng: 107.5908 }, 'Nha Trang': { lat: 12.2388, lng: 109.1967 },
-    'Đà Lạt': { lat: 11.9404, lng: 108.4583 }, 'Phú Quốc': { lat: 10.2899, lng: 103.9840 },
-    'Sa Pa': { lat: 22.3364, lng: 103.8438 }, 'Ninh Bình': { lat: 20.2506, lng: 105.9745 },
-    'Vũng Tàu': { lat: 10.3460, lng: 107.0843 }
-  };
-
-  const mapFormCategoryToPlacesCategory = (formCat: string) => {
-    if (['hotel','homestay','resort'].includes(formCat)) return 'accommodation';
-    if (['restaurant','cafe'].includes(formCat)) return 'dining';
-    if (formCat === 'attraction') return 'attraction';
-    return 'rental';
-  };
-
+  // Google Places search
   const handlePlacesSearch = async () => {
-    if (!searchQuery.trim()) return;
-    setSearchingPlaces(true); setSearchResults([]);
+    if (!placesSearchQuery.trim()) return;
+    setIsSearchingPlaces(true);
+    setPlacesSearchResults([]);
     try {
       const coords = CITY_COORDS[city] || { lat: 16.0544, lng: 108.2022 };
-      const placeCategory = mapFormCategoryToPlacesCategory(category);
-      
-      const response = await api.get('/places/search', {
-        params: { query: searchQuery.trim(), lat: coords.lat, lng: coords.lng, category: placeCategory }
+      let placeCat = 'rental';
+      if (['hotel', 'homestay', 'resort'].includes(category)) placeCat = 'accommodation';
+      else if (['restaurant', 'cafe'].includes(category)) placeCat = 'dining';
+      else if (category === 'attraction') placeCat = 'attraction';
+
+      const res = await api.get('/places/search', {
+        params: {
+          query: placesSearchQuery.trim(),
+          lat: coords.lat,
+          lng: coords.lng,
+          category: placeCat,
+        },
       });
-      const placeList = response.data?.results || (Array.isArray(response.data) ? response.data : []);
-      setSearchResults(placeList);
-      if (placeList.length === 0) showToast('Không tìm thấy địa điểm nào khớp từ Google.', 'info');
+      const list = res.data?.results || (Array.isArray(res.data) ? res.data : []);
+      setPlacesSearchResults(list);
+      if (list.length === 0) {
+        showToast('Không tìm thấy địa điểm nào khớp với từ khóa.', 'info');
+      }
     } catch (e: any) {
       showToast('Lỗi tìm kiếm địa điểm: ' + (e.response?.data?.error || e.message), 'error');
     } finally {
-      setSearchingPlaces(false);
+      setIsSearchingPlaces(false);
     }
   };
 
   const handleSelectPlace = (place: any) => {
-    setName(place.name || ''); setAddress(place.address || ''); setLat(String(place.lat || '')); setLng(String(place.lng || ''));
-    if (place.price_level) setPriceLevel(place.price_level);
-    if (place.rating) setAdminRating(Math.min(5, Math.max(1, Math.round(place.rating))));
-    setSearchResults([]); setSearchQuery('');
+    setName(place.name || '');
+    setAddress(place.address || '');
+    setLat(String(place.lat ?? ''));
+    setLng(String(place.lng ?? ''));
+    if (place.price_level) setPriceLevel(String(place.price_level));
+    if (place.rating) setAdminRating(String(Math.min(5, Math.max(1, Math.round(place.rating)))));
+    setPlacesSearchResults([]);
+    setPlacesSearchQuery('');
     showToast('Đã tự động điền thông tin từ Google Places!', 'success');
   };
 
-  if (!isAdmin) {
-    return (
-      <View className="flex-1 bg-brand-bg">
-        <AdminNav />
-        <View className="flex-1 items-center justify-center py-20 gap-3">
-          <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-          <Text className="text-xs font-semibold text-brand-textSoft">Đang tải và xác thực quyền quản trị...</Text>
-        </View>
-      </View>
-    );
-  }
+  const parseTags = (str: string) =>
+    str
+      .split(/[,;\n]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
 
-  return (
-    <View className="flex-1 bg-brand-bg">
-      <AdminNav />
-      {toast && (
-        <View className="absolute top-20 left-4 right-4 z-50 items-center pointer-events-none">
-          <View className="flex-row items-center gap-2 px-4 py-3 rounded-xl shadow-lg border border-brand-line/40 max-w-md w-full bg-white">
-            <Text className="text-xs font-bold flex-1" style={{ color: toast.type === 'success' ? BRAND_COLORS.primaryStrong : toast.type === 'error' ? BRAND_COLORS.danger : BRAND_COLORS.accentStrong }}>
-              {toast.message}
+  // Save Partner Handler
+  const handleSavePartner = () => {
+    if (!name.trim()) return showToast('Vui lòng nhập tên đối tác', 'error');
+    if (!address.trim()) return showToast('Vui lòng nhập địa chỉ đối tác', 'error');
+    if (!lat.trim() || isNaN(Number(lat))) return showToast('Vui lòng nhập vĩ độ hợp lệ (Lat)', 'error');
+    if (!lng.trim() || isNaN(Number(lng))) return showToast('Vui lòng nhập kinh độ hợp lệ (Lng)', 'error');
+    if (!city) return showToast('Vui lòng chọn thành phố', 'error');
+
+    const numLat = parseFloat(lat);
+    const numLng = parseFloat(lng);
+    const numPriority = parseInt(partnerPriority, 10) || 0;
+    const numPrice = parseInt(priceLevel, 10) || 2;
+    const numRating = parseInt(adminRating, 10) || 4;
+
+    if (numLat < -90 || numLat > 90) return showToast('Vĩ độ phải nằm trong khoảng [-90, 90]', 'error');
+    if (numLng < -180 || numLng > 180) return showToast('Kinh độ phải nằm trong khoảng [-180, 180]', 'error');
+    if (numPriority < 0 || numPriority > 100) return showToast('Độ ưu tiên phải từ 0 đến 100', 'error');
+
+    const payload: Partial<PartnerRecord> = {
+      name: name.trim(),
+      category,
+      address: address.trim(),
+      lat: numLat,
+      lng: numLng,
+      city,
+      district: district.trim() || null,
+      contact_phone: contactPhone.trim() || null,
+      contact_email: contactEmail.trim() || null,
+      website_url: websiteUrl.trim() || null,
+      booking_url: bookingUrl.trim() || null,
+      description: description.trim() || null,
+      image_urls: parseTags(imageUrls),
+      price_level: numPrice,
+      cuisine_tags: parseTags(cuisineTags),
+      amenity_tags: parseTags(amenityTags),
+      dietary_safe: parseTags(dietarySafe),
+      admin_rating: numRating,
+      admin_notes: adminNotes.trim() || null,
+      partner_priority: numPriority,
+    };
+
+    savePartner.mutate(
+      { id: editingPartner?.id, data: payload },
+      {
+        onSuccess: () => {
+          setIsModalOpen(false);
+          showToast(
+            editingPartner
+              ? 'Đã cập nhật thông tin đối tác!'
+              : 'Đã thêm đối tác mới thành công!',
+            'success'
+          );
+        },
+        onError: (err: any) => {
+          showToast(err.response?.data?.error || err.message || 'Lỗi lưu thông tin đối tác', 'error');
+        },
+      }
+    );
+  };
+
+  // Toggle active state
+  const handleToggleActive = (partner: PartnerRecord) => {
+    togglePartnerActive.mutate(partner.id, {
+      onSuccess: () => {
+        showToast(
+          partner.active_status
+            ? `Đã tạm dừng đối tác ${partner.name}!`
+            : `Đã kích hoạt đối tác ${partner.name}!`,
+          'info'
+        );
+      },
+      onError: (err: any) => {
+        showToast(err.response?.data?.error || err.message || 'Lỗi cập nhật trạng thái', 'error');
+      },
+    });
+  };
+
+  // Delete partner
+  const handleDeletePartner = () => {
+    if (!partnerToDelete) return;
+    deletePartner.mutate(partnerToDelete.id, {
+      onSuccess: () => {
+        showToast(`Đã xóa đối tác "${partnerToDelete.name}" thành công!`, 'success');
+        setPartnerToDelete(null);
+      },
+      onError: (err: any) => {
+        showToast(err.response?.data?.error || err.message || 'Lỗi xóa đối tác', 'error');
+      },
+    });
+  };
+
+  // Filtered partners
+  const filteredPartners = useMemo(() => {
+    let list = partners;
+
+    if (categoryFilter === 'active') {
+      list = list.filter((p) => p.active_status);
+    } else if (categoryFilter === 'inactive') {
+      list = list.filter((p) => !p.active_status);
+    } else if (categoryFilter !== 'all') {
+      list = list.filter((p) => p.category === categoryFilter);
+    }
+
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.name?.toLowerCase().includes(q) ||
+          p.city?.toLowerCase().includes(q) ||
+          p.district?.toLowerCase().includes(q) ||
+          p.address?.toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  }, [partners, categoryFilter, searchTerm]);
+
+  // Paginated partners
+  const totalPages = Math.max(1, Math.ceil(filteredPartners.length / limit));
+  const paginatedPartners = useMemo(() => {
+    const start = (page - 1) * limit;
+    return filteredPartners.slice(start, start + limit);
+  }, [filteredPartners, page, limit]);
+
+  // Reset page when filter changes
+  const handleFilterChange = (val: string) => {
+    setCategoryFilter(val);
+    setPage(1);
+  };
+
+  const handleSearchChange = (val: string) => {
+    setSearchTerm(val);
+    setPage(1);
+  };
+
+  // DataTable columns
+  const columns = [
+    {
+      key: 'partner',
+      title: 'Đối tác',
+      width: 260,
+      render: (row: PartnerRecord) => {
+        const meta = getCategoryMeta(row.category);
+        return (
+          <View className="gap-1.5 py-1">
+            <Text className="text-xs font-bold text-brand-text leading-tight" numberOfLines={2}>
+              {row.name}
+            </Text>
+            <View className="flex-row items-center gap-1.5 flex-wrap">
+              <Badge label={meta.label} tone={meta.tone} size="sm" />
+              <View className="flex-row items-center gap-1">
+                <MapPin size={11} color={BRAND_COLORS.textMuted} />
+                <Text className="text-[11px] text-brand-textSoft font-medium">
+                  {row.city || 'Chưa chọn'}
+                </Text>
+              </View>
+            </View>
+          </View>
+        );
+      },
+    },
+    {
+      key: 'contact',
+      title: 'Địa chỉ & Liên hệ',
+      width: 250,
+      render: (row: PartnerRecord) => (
+        <View className="gap-1 py-1">
+          <Text className="text-xs text-brand-textSoft" numberOfLines={1}>
+            {row.address}
+          </Text>
+          <View className="flex-row items-center gap-3 flex-wrap">
+            {row.contact_phone ? (
+              <View className="flex-row items-center gap-1">
+                <Phone size={11} color={BRAND_COLORS.textMuted} />
+                <Text className="text-[11px] text-brand-textMuted font-mono">
+                  {row.contact_phone}
+                </Text>
+              </View>
+            ) : null}
+            {row.website_url ? (
+              <Pressable
+                onPress={() => Linking.openURL(row.website_url!)}
+                hitSlop={4}
+                className="flex-row items-center gap-1"
+              >
+                <Globe size={11} color={BRAND_COLORS.primary} />
+                <Text className="text-[11px] text-brand-primary underline" numberOfLines={1}>
+                  Website
+                </Text>
+              </Pressable>
+            ) : null}
+            {row.booking_url ? (
+              <Pressable
+                onPress={() => Linking.openURL(row.booking_url!)}
+                hitSlop={4}
+                className="flex-row items-center gap-1"
+              >
+                <ExternalLink size={11} color={BRAND_COLORS.accentStrong} />
+                <Text className="text-[11px] text-brand-accentStrong font-semibold underline">
+                  Booking
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      ),
+    },
+    {
+      key: 'rating_priority',
+      title: 'Đánh giá & Ưu tiên',
+      width: 170,
+      render: (row: PartnerRecord) => (
+        <View className="gap-1 py-1">
+          <View className="flex-row items-center gap-1.5">
+            <View className="flex-row items-center">
+              {[...Array(5)].map((_, i) => (
+                <Star
+                  key={i}
+                  size={12}
+                  color={i < (row.admin_rating || 3) ? '#F59E0B' : '#E2E8F0'}
+                  fill={i < (row.admin_rating || 3) ? '#F59E0B' : 'none'}
+                />
+              ))}
+            </View>
+            <Text className="text-[11px] font-bold text-amber-600">
+              {row.admin_rating || 3}/5
             </Text>
           </View>
+          <View className="flex-row items-center gap-2">
+            <Text className="text-[11px] text-brand-textMuted font-mono">
+              {'$'.repeat(row.price_level || 2)}
+            </Text>
+            <Badge
+              label={`Ưu tiên: ${row.partner_priority || 0}`}
+              tone={(row.partner_priority || 0) > 0 ? 'info' : 'neutral'}
+              size="sm"
+            />
+          </View>
         </View>
-      )}
+      ),
+    },
+    {
+      key: 'performance',
+      title: 'Hiệu suất (Hiển thị / Click / Đặt)',
+      width: 200,
+      render: (row: PartnerRecord) => {
+        const ctr =
+          row.impression_count > 0
+            ? ((row.click_count / row.impression_count) * 100).toFixed(1)
+            : '0.0';
 
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 24, gap: 24 }}>
-        <View className="gap-6">
-          {partnerStatsLoading ? (
-            <ActivityIndicator color={BRAND_COLORS.primary} />
-          ) : partnerStats ? (
-            <Reveal>
-              <View className="flex-row flex-wrap gap-4 bg-brand-bgAlt/20 p-5 rounded-2xl border border-brand-line/40">
-                <View className="flex-1 min-w-[120px] items-center py-2">
-                  <Text className="text-[10px] font-bold text-brand-textSoft uppercase tracking-wider">Tổng hiển thị</Text>
-                  <Text className="text-xl font-bold text-brand-text mt-1">{partnerStats.totalImpressions}</Text>
-                </View>
-                <View className="w-[1px] bg-brand-line/40 my-2" style={{ width: Platform.OS === 'web' ? 1 : 0 }} />
-                <View className="flex-1 min-w-[120px] items-center py-2">
-                  <Text className="text-[10px] font-bold text-brand-textSoft uppercase tracking-wider">Tổng Click</Text>
-                  <Text className="text-xl font-bold text-brand-text mt-1">{partnerStats.totalClicks}</Text>
-                </View>
-                <View className="w-[1px] bg-brand-line/40 my-2" style={{ width: Platform.OS === 'web' ? 1 : 0 }} />
-                <View className="flex-1 min-w-[120px] items-center py-2">
-                  <Text className="text-[10px] font-bold text-brand-textSoft uppercase tracking-wider">Tổng Booking</Text>
-                  <Text className="text-xl font-bold text-brand-text mt-1">{partnerStats.totalBookings}</Text>
-                </View>
-                <View className="w-[1px] bg-brand-line/40 my-2" style={{ width: Platform.OS === 'web' ? 1 : 0 }} />
-                <View className="flex-1 min-w-[120px] items-center py-2">
-                  <Text className="text-[10px] font-bold text-brand-textSoft uppercase tracking-wider">CTR trung bình</Text>
-                  <Text className="text-xl font-bold text-brand-primary mt-1">{(partnerStats.averageCtr * 100).toFixed(1)}%</Text>
-                </View>
-              </View>
-            </Reveal>
-          ) : null}
-
-          <View className="flex-row justify-between items-center">
+        return (
+          <View className="gap-1 py-1">
             <View className="flex-row items-center gap-2">
-              <Compass size={18} color={BRAND_COLORS.primary} />
-              <Text className="font-bold text-base text-brand-text">Quản lý Đối tác Tích hợp</Text>
-            </View>
-            <Pressable
-              onPress={() => openPartnerModal(null)}
-              className="flex-row items-center gap-1.5 px-4 py-2.5 rounded-xl bg-brand-primary"
-            >
-              <Plus size={14} color="white" />
-              <Text className="text-white text-xs font-bold">Thêm đối tác</Text>
-            </Pressable>
-          </View>
-
-          <View className="rounded-2xl border border-brand-line/40 overflow-hidden bg-brand-bgAlt/30">
-            <TableHeader cols={['Tên đối tác', 'Danh mục / TP', 'Đánh giá', 'Hiệu suất (H/C/B)', 'Trạng thái', '']} />
-            {partnersLoading ? (
-              <View className="py-12 items-center gap-2">
-                <ActivityIndicator color={BRAND_COLORS.primary} />
-                <Text className="text-xs text-brand-textSoft">Đang tải danh sách đối tác...</Text>
-              </View>
-            ) : !partners?.length ? (
-              <Text className="text-center py-12 text-brand-textSoft text-sm">Chưa có đối tác nào được tích hợp.</Text>
-            ) : partners.map(p => {
-              const categoryLabels: Record<string, string> = { hotel: 'Khách sạn', homestay: 'Homestay', resort: 'Resort', restaurant: 'Nhà hàng', cafe: 'Cà phê', attraction: 'Tham quan', transport: 'Vận chuyển' };
-              return (
-                <View key={p.id} className="flex-row items-center px-4 py-4 border-b border-brand-line/20 gap-2">
-                  <View className="flex-1 gap-0.5">
-                    <Text className="font-bold text-sm text-brand-text" numberOfLines={1}>{p.name}</Text>
-                    <View className="flex-row items-center gap-1">
-                      <MapPin size={10} color={BRAND_COLORS.textSoft} />
-                      <Text className="text-[10px] text-brand-textSoft" numberOfLines={1}>{p.address}</Text>
-                    </View>
-                  </View>
-                  <View className="w-28 justify-center">
-                    <Text className="text-xs font-bold text-brand-textSoft">{categoryLabels[p.category] || p.category}</Text>
-                    <Text className="text-[10px] text-brand-textMuted">{p.city}</Text>
-                  </View>
-                  <View className="w-16 flex-row items-center gap-0.5">
-                    <Star size={12} color={BRAND_COLORS.gold} fill={BRAND_COLORS.gold} />
-                    <Text className="text-xs font-bold text-brand-text">{p.admin_rating}/5</Text>
-                  </View>
-                  <View className="w-32 justify-center">
-                    <Text className="text-xs text-brand-text font-semibold">
-                      H: {p.impression_count || 0} / C: {p.click_count || 0} / B: {p.booking_count || 0}
-                    </Text>
-                    <Text className="text-[10px] text-brand-textMuted font-medium">
-                      CTR: {p.impression_count ? ((p.click_count / p.impression_count) * 100).toFixed(1) : '0.0'}%
-                    </Text>
-                  </View>
-                  <View className="w-20 items-center">
-                    <Pressable onPress={() => togglePartnerActive.mutate(p.id)} className="flex-row items-center gap-1">
-                      <View className="w-9 h-5 rounded-full items-center justify-center" style={{ backgroundColor: p.active_status ? `${BRAND_COLORS.primary}20` : `${BRAND_COLORS.textSoft}20` }}>
-                        <View className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: p.active_status ? BRAND_COLORS.primary : BRAND_COLORS.textSoft, marginLeft: p.active_status ? 6 : -6 }} />
-                      </View>
-                    </Pressable>
-                  </View>
-                  <View className="flex-row items-center gap-1.5">
-                    <Pressable onPress={() => openPartnerModal(p)} className="p-2 rounded-lg bg-brand-primary/10">
-                      <ChevronRight size={14} color={BRAND_COLORS.primary} />
-                    </Pressable>
-                    <Pressable onPress={() => confirmDeletePartner(p.id, p.name)} className="p-2 rounded-lg bg-brand-danger/10">
-                      <Trash2 size={14} color={BRAND_COLORS.danger} />
-                    </Pressable>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-      </ScrollView>
-
-      {/* Partner Modal */}
-      {partnerModalVisible && (
-        <View className="absolute inset-0 z-40 items-center justify-center bg-black/60 px-4 py-8">
-          <View className="bg-brand-bg border border-brand-line/60 rounded-2xl p-6 max-w-2xl w-full max-h-[90%] shadow-2xl flex-col">
-            <View className="flex-row justify-between items-center border-b border-brand-line/40 pb-3 mb-3 shrink-0">
-              <Text className="text-lg font-display font-extrabold text-brand-text">
-                {editingPartner ? 'Cập Nhật Đối Tác' : 'Thêm Đối Tác Mới'}
+              <Text className="text-xs text-brand-text font-semibold">
+                {row.impression_count.toLocaleString()}
               </Text>
-              <Pressable onPress={() => setPartnerModalVisible(false)} className="p-1.5 rounded-lg bg-brand-line/10">
-                <X size={16} color={BRAND_COLORS.textSoft} />
-              </Pressable>
+              <Text className="text-xs text-brand-textMuted">/</Text>
+              <Text className="text-xs text-brand-primary font-semibold">
+                {row.click_count.toLocaleString()}
+              </Text>
+              <Text className="text-xs text-brand-textMuted">/</Text>
+              <Text className="text-xs text-brand-accentStrong font-bold">
+                {row.booking_count.toLocaleString()}
+              </Text>
             </View>
-
-            <View className="flex-row border-b border-brand-line/40 pb-1 mb-4 gap-2 shrink-0">
-              {([{ value: 'basic', label: 'Cơ bản' }, { value: 'contact', label: 'Liên hệ' }, { value: 'config', label: 'Phân loại & Tags' }, { value: 'media', label: 'Mô tả & Ảnh' }] as const).map(tab => {
-                const active = formSubTab === tab.value;
-                return (
-                  <Pressable key={tab.value} onPress={() => setFormSubTab(tab.value)} className="flex-1 py-2 items-center border-b-2" style={{ borderBottomColor: active ? BRAND_COLORS.primary : 'transparent' }}>
-                    <Text className={`font-bold text-[11px] ${active ? 'text-brand-primary' : 'text-brand-textSoft'}`}>{tab.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <ScrollView className="flex-1 pr-1 gap-4" contentContainerStyle={{ paddingBottom: 16 }}>
-              {formSubTab === 'basic' && (
-                <View className="gap-3">
-                  <View className="p-4 rounded-xl border border-brand-primary/20 bg-brand-primary/5 gap-2.5 mb-2">
-                    <View className="flex-row items-center gap-1.5">
-                      <Sparkles size={14} color={BRAND_COLORS.primary} />
-                      <Text className="text-xs font-bold text-brand-primary">Tìm kiếm & Tự động điền dữ liệu Google</Text>
-                    </View>
-                    <Text className="text-[10px] text-brand-textSoft">Nhập tên địa điểm để tự động điền Tên, Địa chỉ, Tọa độ GPS, Giá và Đánh giá từ Google Maps.</Text>
-                    <View className="flex-row gap-2 mt-1">
-                      <TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Nhập tên địa điểm (VD: Metropole Hanoi...)" className="flex-1 px-3 py-2 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} onSubmitEditing={handlePlacesSearch} />
-                      <Pressable onPress={handlePlacesSearch} disabled={searchingPlaces} className="px-4 py-2 rounded-xl bg-brand-primary items-center justify-center">
-                        {searchingPlaces ? <ActivityIndicator size="small" color="white" /> : <Text className="text-white text-xs font-bold">Tìm</Text>}
-                      </Pressable>
-                    </View>
-                    {searchResults.length > 0 && (
-                      <View className="mt-2 bg-brand-bg border border-brand-line rounded-xl overflow-hidden max-h-48">
-                        <ScrollView nestedScrollEnabled>
-                          {searchResults.map((r, idx) => (
-                            <Pressable key={idx} onPress={() => handleSelectPlace(r)} className="px-3 py-2.5 border-b border-brand-line/40 hover:bg-brand-bgAlt/40 active:bg-brand-bgAlt/40">
-                              <Text className="text-xs font-bold text-brand-text">{r.name}</Text>
-                              <Text className="text-[10px] text-brand-textSoft mt-0.5" numberOfLines={1}>{r.address}</Text>
-                            </Pressable>
-                          ))}
-                        </ScrollView>
-                      </View>
-                    )}
-                  </View>
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Tên đối tác *</Text>
-                    <TextInput value={name} onChangeText={setName} placeholder="Ví dụ: Khách sạn Continental Sài Gòn" className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                  </View>
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Danh mục *</Text>
-                    <View className="flex-row flex-wrap gap-2 mt-1">
-                      {[{ value: 'hotel', label: 'Khách sạn' }, { value: 'homestay', label: 'Homestay' }, { value: 'resort', label: 'Resort' }, { value: 'restaurant', label: 'Nhà hàng' }, { value: 'cafe', label: 'Cà phê' }, { value: 'attraction', label: 'Điểm tham quan' }, { value: 'transport', label: 'Vận chuyển' }].map(cat => (
-                        <Pressable key={cat.value} onPress={() => setCategory(cat.value)} className="px-3 py-1.5 rounded-full border" style={{ backgroundColor: category === cat.value ? BRAND_COLORS.primary : 'transparent', borderColor: category === cat.value ? BRAND_COLORS.primary : BRAND_COLORS.textMuted + '40' }}>
-                          <Text className="text-xs font-bold" style={{ color: category === cat.value ? 'white' : BRAND_COLORS.textSoft }}>{cat.label}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Thành phố *</Text>
-                    <View className="flex-row flex-wrap gap-2 mt-1">
-                      {VIETNAMESE_CITIES.map(c => (
-                        <Pressable key={c} onPress={() => setCity(c)} className="px-3 py-1.5 rounded-full border" style={{ backgroundColor: city === c ? BRAND_COLORS.primary : 'transparent', borderColor: city === c ? BRAND_COLORS.primary : BRAND_COLORS.textMuted + '40' }}>
-                          <Text className="text-xs font-bold" style={{ color: city === c ? 'white' : BRAND_COLORS.textSoft }}>{c}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Quận/Huyện</Text>
-                    <TextInput value={district} onChangeText={setDistrict} placeholder="Ví dụ: Quận 1" className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                  </View>
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Địa chỉ chi tiết *</Text>
-                    <TextInput value={address} onChangeText={setAddress} placeholder="Số nhà, tên đường..." className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                  </View>
-                  <View className="flex-row gap-4 mb-1">
-                    <View className="flex-1 gap-1">
-                      <Text className="text-xs font-bold text-brand-textSoft">Vĩ độ (Lat) *</Text>
-                      <TextInput value={lat} onChangeText={setLat} placeholder="10.7769" keyboardType="numeric" className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                    </View>
-                    <View className="flex-1 gap-1">
-                      <Text className="text-xs font-bold text-brand-textSoft">Kinh độ (Lng) *</Text>
-                      <TextInput value={lng} onChangeText={setLng} placeholder="106.7009" keyboardType="numeric" className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                    </View>
-                  </View>
-                </View>
-              )}
-
-              {formSubTab === 'contact' && (
-                <View className="gap-3">
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Số điện thoại liên hệ</Text>
-                    <TextInput value={contactPhone} onChangeText={setContactPhone} placeholder="Ví dụ: 0901234567" keyboardType="phone-pad" className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                  </View>
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Email liên hệ</Text>
-                    <TextInput value={contactEmail} onChangeText={setContactEmail} placeholder="Ví dụ: contact@hotel.com" keyboardType="email-address" className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                  </View>
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Trang web đối tác</Text>
-                    <TextInput value={websiteUrl} onChangeText={setWebsiteUrl} placeholder="Ví dụ: https://continentalhotel.com.vn" className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                  </View>
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Link đặt phòng / đặt chỗ (Booking URL)</Text>
-                    <TextInput value={bookingUrl} onChangeText={setBookingUrl} placeholder="Ví dụ: https://booking.com/hotel/vn/continental..." className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                  </View>
-                </View>
-              )}
-
-              {formSubTab === 'config' && (
-                <View className="gap-3">
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Phân khúc giá</Text>
-                    <View className="flex-row gap-2 mt-1">
-                      {[1, 2, 3, 4].map(level => {
-                        const labels = ['Bình dân ($)', 'Trung cấp ($$)', 'Cao cấp ($$$)', 'Sang trọng ($$$$)'];
-                        return (
-                          <Pressable key={level} onPress={() => setPriceLevel(level)} className="px-3 py-1.5 rounded-full border flex-1 items-center" style={{ backgroundColor: priceLevel === level ? BRAND_COLORS.primary : 'transparent', borderColor: priceLevel === level ? BRAND_COLORS.primary : BRAND_COLORS.textMuted + '40' }}>
-                            <Text className="text-[10px] font-bold" style={{ color: priceLevel === level ? 'white' : BRAND_COLORS.textSoft }}>{labels[level - 1]}</Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
-
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Điểm đánh giá hệ thống</Text>
-                    <View className="flex-row gap-2 mt-1">
-                      {[1, 2, 3, 4, 5].map(rating => (
-                        <Pressable key={rating} onPress={() => setAdminRating(rating)} className="p-2 rounded-xl border flex-row items-center justify-center gap-1 flex-1" style={{ backgroundColor: adminRating === rating ? BRAND_COLORS.gold + '20' : 'transparent', borderColor: adminRating === rating ? BRAND_COLORS.gold : BRAND_COLORS.textMuted + '40' }}>
-                          <Star size={12} color={BRAND_COLORS.gold} fill={adminRating === rating ? BRAND_COLORS.gold : 'transparent'} />
-                          <Text className="text-xs font-bold" style={{ color: BRAND_COLORS.textSoft }}>{rating} Sao</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Độ ưu tiên (0-10) *</Text>
-                    <TextInput value={partnerPriority} onChangeText={setPartnerPriority} placeholder="Ví dụ: 5" keyboardType="numeric" className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                  </View>
-
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Tags Ẩm thực (cho nhà hàng/cafe, cách nhau bởi dấu phẩy)</Text>
-                    <TextInput value={cuisineTags} onChangeText={setCuisineTags} placeholder="vietnamese, seafood, buffet, street_food" className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                  </View>
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Tags Tiện ích (cho khách sạn/resort, cách nhau bởi dấu phẩy)</Text>
-                    <TextInput value={amenityTags} onChangeText={setAmenityTags} placeholder="pool, spa, gym, parking, free_wifi, breakfast" className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                  </View>
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Chế độ ăn uống an toàn (cách nhau bởi dấu phẩy)</Text>
-                    <TextInput value={dietarySafe} onChangeText={setDietarySafe} placeholder="vegetarian, vegan, halal, gluten_free" className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                  </View>
-                </View>
-              )}
-
-              {formSubTab === 'media' && (
-                <View className="gap-3">
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Mô tả ngắn về đối tác</Text>
-                    <TextInput value={description} onChangeText={setDescription} placeholder="Mô tả tóm tắt dịch vụ, điểm nổi bật..." multiline numberOfLines={3} className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} style={{ minHeight: 60, textAlignVertical: 'top' }} />
-                  </View>
-
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">URLs Hình ảnh (Phân cách bởi dấu phẩy)</Text>
-                    <TextInput value={imageUrls} onChangeText={setImageUrls} placeholder="https://image1.jpg, https://image2.jpg" multiline className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} style={{ minHeight: 45 }} />
-                  </View>
-
-                  <View className="gap-1 mb-1">
-                    <Text className="text-xs font-bold text-brand-textSoft">Ghi chú quản lý nội bộ</Text>
-                    <TextInput value={adminNotes} onChangeText={setAdminNotes} placeholder="Thông tin liên hệ phụ, lưu ý riêng..." multiline numberOfLines={2} className="w-full px-4 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} style={{ minHeight: 45, textAlignVertical: 'top' }} />
-                  </View>
-                </View>
-              )}
-            </ScrollView>
-
-            <View className="flex-row justify-between items-center border-t border-brand-line/40 pt-4 mt-2 shrink-0">
-              <View className="flex-row gap-2">
-                {formSubTab !== 'basic' && (
-                  <Pressable onPress={() => { const tabs = ['basic', 'contact', 'config', 'media'] as const; setFormSubTab(tabs[tabs.indexOf(formSubTab) - 1]); }} className="px-4 py-2.5 rounded-xl border border-brand-line/60 bg-brand-bgAlt/50">
-                    <Text className="text-xs font-bold text-brand-textSoft">Quay lại</Text>
-                  </Pressable>
-                )}
-                {formSubTab !== 'media' && (
-                  <Pressable onPress={() => { const tabs = ['basic', 'contact', 'config', 'media'] as const; setFormSubTab(tabs[tabs.indexOf(formSubTab) + 1]); }} className="px-4 py-2.5 rounded-xl bg-brand-primary">
-                    <Text className="text-xs font-bold text-white">Tiếp tục</Text>
-                  </Pressable>
-                )}
-              </View>
-              <View className="flex-row gap-2">
-                <Pressable onPress={() => setPartnerModalVisible(false)} className="px-4 py-2.5 rounded-xl border border-brand-line/60 bg-brand-bgAlt/50">
-                  <Text className="text-xs font-bold text-brand-textSoft">Hủy</Text>
-                </Pressable>
-                <Pressable onPress={handleSavePartner} disabled={savePartner.isPending} className="px-4 py-2.5 rounded-xl bg-brand-primary" style={savePartner.isPending ? { opacity: 0.5 } : undefined}>
-                  <Text className="text-xs font-bold text-white">{savePartner.isPending ? 'Đang lưu...' : 'Lưu lại'}</Text>
-                </Pressable>
-              </View>
-            </View>
+            <Text className="text-[11px] text-brand-textMuted">
+              CTR: <Text className="font-bold text-brand-text">{ctr}%</Text>
+            </Text>
           </View>
+        );
+      },
+    },
+    {
+      key: 'status',
+      title: 'Trạng thái',
+      width: 110,
+      render: (row: PartnerRecord) => (
+        <Switch
+          value={row.active_status}
+          onValueChange={() => handleToggleActive(row)}
+          disabled={togglePartnerActive.isPending}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      title: 'Thao tác',
+      width: 110,
+      align: 'right' as const,
+      render: (row: PartnerRecord) => (
+        <View className="flex-row items-center justify-end gap-1.5">
+          <Pressable
+            onPress={() => openPartnerModal(row)}
+            hitSlop={6}
+            className="p-1.5 rounded-lg hover:bg-slate-100"
+          >
+            <Edit3 size={15} color={BRAND_COLORS.textSoft} />
+          </Pressable>
+          <Pressable
+            onPress={() => setPartnerToDelete(row)}
+            hitSlop={6}
+            className="p-1.5 rounded-lg hover:bg-red-50"
+          >
+            <Trash2 size={15} color={BRAND_COLORS.danger} />
+          </Pressable>
         </View>
-      )}
+      ),
+    },
+  ];
 
-      {/* Confirmation Modal */}
-      {confirmModal && confirmModal.visible && (
-        <View className="absolute inset-0 z-50 items-center justify-center bg-black/60 px-4">
-          <View className="bg-brand-bg border border-brand-line/60 rounded-2xl p-6 max-w-md w-full shadow-2xl">
-            <View className="flex-row items-center gap-2 mb-3">
-              <AlertTriangle size={22} color={confirmModal.isDestructive ? BRAND_COLORS.danger : BRAND_COLORS.accent} />
-              <Text className="text-lg font-display font-extrabold text-brand-text">{confirmModal.title}</Text>
-            </View>
-            <Text className="text-xs text-brand-textSoft leading-relaxed mb-6">{confirmModal.message}</Text>
-            <View className="flex-row justify-end gap-3">
-              <Pressable onPress={() => setConfirmModal(null)} className="px-4 py-2.5 rounded-xl border border-brand-line/60 bg-brand-bgAlt/50">
-                <Text className="text-xs font-bold text-brand-textSoft">{confirmModal.cancelText}</Text>
-              </Pressable>
-              <Pressable onPress={confirmModal.onConfirm} className="px-4 py-2.5 rounded-xl" style={{ backgroundColor: confirmModal.isDestructive ? BRAND_COLORS.danger : BRAND_COLORS.primary }}>
-                <Text className="text-xs font-bold text-white">{confirmModal.confirmText}</Text>
-              </Pressable>
-            </View>
+  return (
+    <ScrollView className="flex-1 bg-brand-bg" contentContainerStyle={{ padding: 24, gap: 24 }}>
+      {/* Page Header */}
+      <PageHeader
+        title="Quản lý Đối tác Dịch vụ"
+        description="Mạng lưới đối tác liên kết lưu trú, ẩm thực, giải trí và hiệu suất chuyển đổi đặt chỗ"
+        badge={
+          <View className="w-8 h-8 rounded-xl items-center justify-center bg-brand-primary/10">
+            <Handshake size={18} color={BRAND_COLORS.primary} />
           </View>
+        }
+        action={
+          <View className="flex-row items-center gap-2">
+            <Button
+              label="Làm mới"
+              variant="outline"
+              size="sm"
+              icon={
+                <RefreshCw
+                  size={14}
+                  color={BRAND_COLORS.textSoft}
+                  className={partnersFetching || summaryFetching ? 'animate-spin' : ''}
+                />
+              }
+              onPress={() => {
+                refetchPartners();
+                refetchSummary();
+                showToast('Đã làm mới dữ liệu đối tác!', 'info');
+              }}
+            />
+            <Button
+              label="Thêm đối tác"
+              variant="primary"
+              size="sm"
+              icon={<Plus size={15} color="#FFFFFF" />}
+              onPress={() => openPartnerModal(null)}
+            />
+          </View>
+        }
+      />
+
+      {/* 4 Stat Cards */}
+      <View className="flex-row flex-wrap gap-4">
+        <StatCard
+          label="Tổng lượt hiển thị"
+          value={analyticsSummary?.totalImpressions?.toLocaleString() ?? 0}
+          subtext="Số lần xuất hiện trong lịch trình"
+          icon={<Eye size={20} color={BRAND_COLORS.primary} />}
+          loading={summaryLoading}
+          className="flex-1 min-w-[200px]"
+        />
+        <StatCard
+          label="Tổng lượt nhấp"
+          value={analyticsSummary?.totalClicks?.toLocaleString() ?? 0}
+          subtext="Số lần người dùng bấm xem link"
+          icon={<MousePointer size={20} color="#3B82F6" />}
+          iconBg="rgba(59, 130, 246, 0.12)"
+          loading={summaryLoading}
+          className="flex-1 min-w-[200px]"
+        />
+        <StatCard
+          label="Tổng lượt đặt chỗ"
+          value={analyticsSummary?.totalBookings?.toLocaleString() ?? 0}
+          subtext="Chuyển đổi booking thành công"
+          icon={<Calendar size={20} color="#10B981" />}
+          iconBg="rgba(16, 185, 129, 0.12)"
+          loading={summaryLoading}
+          className="flex-1 min-w-[200px]"
+        />
+        <StatCard
+          label="Tỷ lệ CTR trung bình"
+          value={`${((analyticsSummary?.averageCtr ?? 0) * 100).toFixed(1)}%`}
+          subtext="Lượt nhấp / Lượt hiển thị"
+          icon={<Percent size={20} color="#F59E0B" />}
+          iconBg="rgba(245, 158, 11, 0.12)"
+          loading={summaryLoading}
+          className="flex-1 min-w-[200px]"
+        />
+      </View>
+
+      {/* Main Partners Table Card */}
+      <Card padding="none">
+        {/* Toolbar */}
+        <View className="p-4 border-b border-brand-line/40 gap-3">
+          <View className="flex-row items-center justify-between flex-wrap gap-3">
+            <SearchInput
+              value={searchTerm}
+              onChangeText={handleSearchChange}
+              placeholder="Tìm theo tên, địa chỉ, quận, thành phố..."
+              className="w-full md:w-80"
+            />
+            <Text className="text-xs text-brand-textMuted font-medium">
+              Tìm thấy <Text className="font-bold text-brand-text">{filteredPartners.length}</Text> đối tác
+            </Text>
+          </View>
+
+          <FilterChips
+            options={[
+              { value: 'all', label: 'Tất cả danh mục' },
+              { value: 'hotel', label: 'Khách sạn / Lưu trú' },
+              { value: 'restaurant', label: 'Nhà hàng' },
+              { value: 'cafe', label: 'Quán cafe' },
+              { value: 'attraction', label: 'Điểm tham quan' },
+              { value: 'active', label: 'Đang hoạt động' },
+              { value: 'inactive', label: 'Tạm dừng' },
+            ]}
+            value={categoryFilter}
+            onChange={handleFilterChange}
+            size="sm"
+          />
         </View>
-      )}
-    </View>
+
+        {/* DataTable */}
+        <DataTable<PartnerRecord>
+          columns={columns}
+          data={paginatedPartners}
+          keyExtractor={(item) => item.id}
+          loading={partnersLoading}
+          emptyTitle="Chưa có đối tác nào"
+          emptyMessage="Không tìm thấy đối tác phù hợp với điều kiện tìm kiếm hoặc bộ lọc."
+          minWidth={950}
+        />
+
+        {/* Pagination Footer */}
+        {filteredPartners.length > 0 && (
+          <View className="px-4 py-2 border-t border-brand-line/30 bg-slate-50/50">
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              totalItems={filteredPartners.length}
+              limit={limit}
+              onPageChange={setPage}
+            />
+          </View>
+        )}
+      </Card>
+
+      {/* Modal Thêm / Chỉnh sửa Đối tác */}
+      <Modal
+        visible={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingPartner ? 'Chỉnh sửa đối tác' : 'Thêm đối tác mới'}
+        subtitle="Quản lý thông tin chi tiết, tọa độ và đường link tiếp thị đối tác"
+        maxWidth={660}
+        footer={
+          <View className="flex-row items-center justify-end gap-2 w-full">
+            <Button
+              label="Hủy"
+              variant="outline"
+              size="md"
+              onPress={() => setIsModalOpen(false)}
+            />
+            <Button
+              label={editingPartner ? 'Cập nhật đối tác' : 'Tạo đối tác mới'}
+              variant="primary"
+              size="md"
+              icon={<CheckCircle2 size={16} color="#FFFFFF" />}
+              loading={savePartner.isPending}
+              onPress={handleSavePartner}
+            />
+          </View>
+        }
+      >
+        {/* Form Subtabs */}
+        <View className="border-b border-brand-line/30 pb-3">
+          <FilterChips
+            options={[
+              { value: 'basic', label: '1. Cơ bản & Địa chỉ' },
+              { value: 'contact', label: '2. Liên hệ & Đặt chỗ' },
+              { value: 'config', label: '3. Đánh giá & Thiết lập' },
+              { value: 'tags', label: '4. Tags & Hình ảnh' },
+            ]}
+            value={formSubTab}
+            onChange={(v) => setFormSubTab(v as any)}
+            size="sm"
+          />
+        </View>
+
+        {/* SUBTAB 1: THÔNG TIN CƠ BẢN */}
+        {formSubTab === 'basic' && (
+          <View className="gap-4">
+            {/* Quick search places tool */}
+            <View className="p-3 bg-brand-primary/5 rounded-xl border border-brand-primary/20 gap-2">
+              <Text className="text-xs font-bold text-brand-primary">
+                Tìm nhanh từ Google Places để tự động điền:
+              </Text>
+              <View className="flex-row items-center gap-2">
+                <View className="flex-1">
+                  <Input
+                    value={placesSearchQuery}
+                    onChangeText={setPlacesSearchQuery}
+                    placeholder="Nhập tên địa điểm (ví dụ: Continental Sài Gòn)..."
+                    onSubmitEditing={handlePlacesSearch}
+                  />
+                </View>
+                <Button
+                  label="Tìm"
+                  variant="primary"
+                  size="sm"
+                  loading={isSearchingPlaces}
+                  onPress={handlePlacesSearch}
+                />
+              </View>
+
+              {/* Place search results */}
+              {placesSearchResults.length > 0 && (
+                <View className="gap-1.5 mt-2 bg-white p-2 rounded-lg border border-brand-line/40">
+                  <Text className="text-[11px] font-bold text-brand-textSoft">
+                    Chọn địa điểm bên dưới:
+                  </Text>
+                  {placesSearchResults.slice(0, 4).map((p, idx) => (
+                    <Pressable
+                      key={idx}
+                      onPress={() => handleSelectPlace(p)}
+                      className="p-2 rounded-md hover:bg-brand-primary/10 border border-brand-line/20"
+                    >
+                      <Text className="text-xs font-bold text-brand-text" numberOfLines={1}>
+                        {p.name}
+                      </Text>
+                      <Text className="text-[11px] text-brand-textMuted" numberOfLines={1}>
+                        {p.address}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <Field label="Tên đối tác" required>
+              <Input
+                value={name}
+                onChangeText={setName}
+                placeholder="Ví dụ: Khách sạn Continental Sài Gòn"
+              />
+            </Field>
+
+            <View className="flex-row flex-wrap gap-4">
+              <View className="flex-1 min-w-[240px]">
+                <Field label="Danh mục đối tác" required>
+                  <Select
+                    options={[
+                      { value: 'hotel', label: 'Khách sạn / Lưu trú' },
+                      { value: 'restaurant', label: 'Nhà hàng ẩm thực' },
+                      { value: 'cafe', label: 'Quán cafe / Giải khát' },
+                      { value: 'attraction', label: 'Điểm tham quan / Vui chơi' },
+                      { value: 'homestay', label: 'Homestay' },
+                      { value: 'resort', label: 'Resort / Khu nghỉ dưỡng' },
+                      { value: 'rental', label: 'Dịch vụ thuê xe' },
+                    ]}
+                    value={category}
+                    onChange={setCategory}
+                  />
+                </Field>
+              </View>
+
+              <View className="flex-1 min-w-[240px]">
+                <Field label="Thành phố" required>
+                  <Select
+                    options={VIETNAMESE_CITIES.map((c) => ({ value: c, label: c }))}
+                    value={city}
+                    onChange={setCity}
+                  />
+                </Field>
+              </View>
+            </View>
+
+            <Field label="Quận / Huyện">
+              <Input
+                value={district}
+                onChangeText={setDistrict}
+                placeholder="Ví dụ: Quận 1, Ba Đình..."
+              />
+            </Field>
+
+            <Field label="Địa chỉ cụ thể" required>
+              <Input
+                value={address}
+                onChangeText={setAddress}
+                placeholder="Ví dụ: 132-134 Đồng Khởi, Bến Nghé, Quận 1, Hồ Chí Minh"
+              />
+            </Field>
+
+            <View className="flex-row flex-wrap gap-4">
+              <View className="flex-1 min-w-[200px]">
+                <Field label="Vĩ độ (Lat)" required hint="Khoảng -90 đến 90">
+                  <Input
+                    value={lat}
+                    onChangeText={setLat}
+                    placeholder="Ví dụ: 10.7760"
+                    keyboardType="numeric"
+                  />
+                </Field>
+              </View>
+
+              <View className="flex-1 min-w-[200px]">
+                <Field label="Kinh độ (Lng)" required hint="Khoảng -180 đến 180">
+                  <Input
+                    value={lng}
+                    onChangeText={setLng}
+                    placeholder="Ví dụ: 106.7010"
+                    keyboardType="numeric"
+                  />
+                </Field>
+              </View>
+            </View>
+
+            <Field label="Mô tả đối tác">
+              <Textarea
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Mô tả nổi bật về dịch vụ, không gian và đặc điểm của đối tác..."
+                rows={3}
+              />
+            </Field>
+          </View>
+        )}
+
+        {/* SUBTAB 2: LIÊN HỆ & ĐẶT CHỖ */}
+        {formSubTab === 'contact' && (
+          <View className="gap-4">
+            <Field label="Số điện thoại liên hệ">
+              <Input
+                value={contactPhone}
+                onChangeText={setContactPhone}
+                placeholder="Ví dụ: 028 3829 9201"
+                prefix={<Phone size={14} color={BRAND_COLORS.textMuted} />}
+              />
+            </Field>
+
+            <Field label="Email liên hệ">
+              <Input
+                value={contactEmail}
+                onChangeText={setContactEmail}
+                placeholder="Ví dụ: booking@hotelcontinental.vn"
+                prefix={<Mail size={14} color={BRAND_COLORS.textMuted} />}
+              />
+            </Field>
+
+            <Field label="Website chính thức">
+              <Input
+                value={websiteUrl}
+                onChangeText={setWebsiteUrl}
+                placeholder="Ví dụ: https://hotelcontinentalsaigon.vn"
+                prefix={<Globe size={14} color={BRAND_COLORS.textMuted} />}
+              />
+            </Field>
+
+            <Field
+              label="Link đặt chỗ (Booking / Affiliate URL)"
+              hint="Đường link dẫn người dùng đến trang đặt phòng, đặt bàn hoặc tiếp thị liên kết"
+            >
+              <Input
+                value={bookingUrl}
+                onChangeText={setBookingUrl}
+                placeholder="Ví dụ: https://www.agoda.com/partners/hotel..."
+                prefix={<ExternalLink size={14} color={BRAND_COLORS.textMuted} />}
+              />
+            </Field>
+          </View>
+        )}
+
+        {/* SUBTAB 3: ĐÁNH GIÁ & THIẾT LẬP */}
+        {formSubTab === 'config' && (
+          <View className="gap-4">
+            <View className="flex-row flex-wrap gap-4">
+              <View className="flex-1 min-w-[200px]">
+                <Field label="Mức giá">
+                  <Select
+                    options={[
+                      { value: '1', label: '💵 Giá rẻ ($)' },
+                      { value: '2', label: '💵💵 Bình dân ($$)' },
+                      { value: '3', label: '💵💵💵 Cao cấp ($$$)' },
+                      { value: '4', label: '💵💵💵💵 Sang trọng ($$$$)' },
+                    ]}
+                    value={priceLevel}
+                    onChange={setPriceLevel}
+                  />
+                </Field>
+              </View>
+
+              <View className="flex-1 min-w-[200px]">
+                <Field label="Đánh giá Admin">
+                  <Select
+                    options={[
+                      { value: '5', label: '⭐⭐⭐⭐⭐ 5 sao xuất sắc' },
+                      { value: '4', label: '⭐⭐⭐⭐ 4 sao tốt' },
+                      { value: '3', label: '⭐⭐⭐ 3 sao tiêu chuẩn' },
+                      { value: '2', label: '⭐⭐ 2 sao cơ bản' },
+                      { value: '1', label: '⭐ 1 sao' },
+                    ]}
+                    value={adminRating}
+                    onChange={setAdminRating}
+                  />
+                </Field>
+              </View>
+            </View>
+
+            <Field
+              label="Độ ưu tiên hiển thị (Priority)"
+              hint="Điểm từ 0 đến 100. Điểm càng cao đối tác càng được AI ưu tiên gợi ý trong lịch trình chuyến đi."
+            >
+              <Input
+                value={partnerPriority}
+                onChangeText={setPartnerPriority}
+                placeholder="0"
+                keyboardType="numeric"
+              />
+            </Field>
+
+            <Field
+              label="Ghi chú nội bộ Admin"
+              hint="Chỉ hiển thị cho người quản trị, người dùng không nhìn thấy."
+            >
+              <Textarea
+                value={adminNotes}
+                onChangeText={setAdminNotes}
+                placeholder="Ghi chú về hợp đồng, tỷ lệ hoa hồng hoặc lưu ý đặc biệt..."
+                rows={3}
+              />
+            </Field>
+          </View>
+        )}
+
+        {/* SUBTAB 4: TAGS & HÌNH ẢNH */}
+        {formSubTab === 'tags' && (
+          <View className="gap-4">
+            <Field
+              label="Tags ẩm thực / Món đặc trưng"
+              hint="Phân cách bằng dấu phẩy, ví dụ: Buffet, Món Âu, Rượu vang"
+            >
+              <Input
+                value={cuisineTags}
+                onChangeText={setCuisineTags}
+                placeholder="Buffet, Món Âu, Rượu vang..."
+              />
+            </Field>
+
+            <Field
+              label="Tags tiện ích & Dịch vụ"
+              hint="Phân cách bằng dấu phẩy, ví dụ: Hồ bơi, Spa, Wifi miễn phí, Phòng gym"
+            >
+              <Input
+                value={amenityTags}
+                onChangeText={setAmenityTags}
+                placeholder="Hồ bơi, Spa, Wifi miễn phí, Phòng gym..."
+              />
+            </Field>
+
+            <Field
+              label="Tiêu chuẩn an toàn thực phẩm & Chế độ ăn"
+              hint="Phân cách bằng dấu phẩy, ví dụ: Halal, Chay, Không gluten, Vệ sinh ATTP"
+            >
+              <Input
+                value={dietarySafe}
+                onChangeText={setDietarySafe}
+                placeholder="Halal, Chay, Vệ sinh ATTP..."
+              />
+            </Field>
+
+            <Field
+              label="Danh sách URLs hình ảnh"
+              hint="Mỗi link một dòng hoặc phân cách bằng dấu phẩy"
+            >
+              <Textarea
+                value={imageUrls}
+                onChangeText={setImageUrls}
+                placeholder="https://example.com/img1.jpg&#10;https://example.com/img2.jpg"
+                rows={3}
+              />
+            </Field>
+          </View>
+        )}
+      </Modal>
+
+      {/* Confirm Dialog Xóa Đối Tác */}
+      <ConfirmDialog
+        visible={!!partnerToDelete}
+        title="Xác nhận xóa đối tác"
+        message={`Bạn có chắc chắn muốn xóa đối tác "${partnerToDelete?.name}" không? Toàn bộ dữ liệu hiển thị và thống kê hiệu suất liên quan sẽ bị xóa vĩnh viễn.`}
+        confirmText="Xóa đối tác"
+        cancelText="Hủy"
+        isDestructive
+        loading={deletePartner.isPending}
+        onConfirm={handleDeletePartner}
+        onCancel={() => setPartnerToDelete(null)}
+      />
+    </ScrollView>
   );
 }
