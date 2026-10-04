@@ -494,7 +494,7 @@ export default function GoogleMapsRoutePlanner({
   const googleMapsDirectionsUrl = useMemo(() => {
     const valid = waypoints.filter(w => w.lat && w.lng);
     if (valid.length === 0) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cityName)}`;
-    if (valid.length === 1) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(valid[0].title + ' ' + cityName)}`;
+    if (valid.length === 1) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${valid[0].lat},${valid[0].lng}`)}`;
 
     const origin = encodeURIComponent(`${valid[0].lat},${valid[0].lng}`);
     const dest = encodeURIComponent(`${valid[valid.length - 1].lat},${valid[valid.length - 1].lng}`);

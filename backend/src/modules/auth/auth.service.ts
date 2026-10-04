@@ -70,7 +70,18 @@ export function clearOtp(email: string) {
   otpStore.delete(email.toLowerCase().trim());
 }
 
-export async function sendPasswordResetOtpEmail(email: string, otp: string): Promise<void> {
+export async function sendPasswordResetOtpEmail(email: string, otp: string): Promise<{ simulated?: boolean }> {
+  const user = (process.env.GMAIL_USER || '').trim();
+  const pass = (process.env.GMAIL_APP_PASSWORD || '').trim().replace(/\s+/g, '');
+
+  if (!user || !pass) {
+    console.log(`\n======================================================`);
+    console.log(`[AUTH OTP DEV MODE] Người nhận: ${email}`);
+    console.log(`[AUTH OTP DEV MODE] MÃ XÁC NHẬN OTP: [ ${otp} ] (Hiệu lực 10 phút)`);
+    console.log(`======================================================\n`);
+    return { simulated: true };
+  }
+
   const { transporter, senderEmail } = getMailTransporter();
 
   const htmlContent = `
@@ -106,4 +117,6 @@ export async function sendPasswordResetOtpEmail(email: string, otp: string): Pro
     subject: `[ViVu Planner] Mã xác nhận đặt lại mật khẩu: ${otp}`,
     html: htmlContent,
   });
+
+  return { simulated: false };
 }

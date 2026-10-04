@@ -29,8 +29,8 @@ const allowedOrigins = process.env.NODE_ENV === "production" && rawOrigin && raw
 
 app.use(cors({
   origin: allowedOrigins,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-invite-token", "invite-token"],
   credentials: true,
 }));
 

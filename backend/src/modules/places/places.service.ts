@@ -33,7 +33,8 @@ const VIETNAM_PROVINCES: Record<string, { lat: number; lng: number }> = {
   'mui ne': { lat: 10.9333, lng: 108.2833 },
   'ha long': { lat: 20.9505, lng: 107.0734 },
   'can tho': { lat: 10.0452, lng: 105.7469 },
-  'hai phong': { lat: 20.8449, lng: 106.6881 }
+  'hai phong': { lat: 20.8449, lng: 106.6881 },
+  'buon ma thuot': { lat: 12.6667, lng: 108.0500 }
 };
 
 export function getCityCoordinates(city: string): { lat: number; lng: number } {
@@ -203,13 +204,19 @@ export async function fetchCandidatePlacesForCity(
   lng: number,
   _preferences: any = {},
   specialRequirements: string = '',
-  title: string = ''
+  title: string = '',
+  budgetTotal?: number,
+  travelerCount?: number
 ): Promise<{
   accommodation: PlaceCandidate[];
   dining: PlaceCandidate[];
   attraction: PlaceCandidate[];
   rental: PlaceCandidate[];
 }> {
+  const budget = Number(budgetTotal) || 5000000;
+  const travelers = Math.max(1, Number(travelerCount) || 1);
+  const budgetPerPax = budget / travelers;
+
   try {
     // Quét nhanh tất cả các địa điểm thuộc khu vực thành phố này từ cơ sở dữ liệu cache (vùng bán kính geoDelta)
     const geoDelta = GEO_CONFIG.DEFAULT_CACHE_GEO_DELTA;
@@ -225,9 +232,9 @@ export async function fetchCandidatePlacesForCity(
     if (!error && cachedItems && cachedItems.length >= 10) {
       console.log(`[placesService] Batch Cache HIT cho thành phố "${city}". Tìm thấy ${cachedItems.length} địa điểm trong DB.`);
       
-      const accommodation: PlaceCandidate[] = [];
-      const dining: PlaceCandidate[] = [];
-      const attraction: PlaceCandidate[] = [];
+      let accommodation: PlaceCandidate[] = [];
+      let dining: PlaceCandidate[] = [];
+      let attraction: PlaceCandidate[] = [];
       const rental: PlaceCandidate[] = [];
 
       cachedItems.forEach(item => {
@@ -247,6 +254,69 @@ export async function fetchCandidatePlacesForCity(
         else if (candidate.category === 'attraction') attraction.push(candidate);
         else if (candidate.category === 'rental') rental.push(candidate);
       });
+
+      // LỌC CHỖ NGHỈ THEO NGÂN SÁCH (LỖI B4): Nếu ngân sách < 8tr/người thì loại bỏ resort 5 sao / luxury price_level 3+
+      if (budgetPerPax < 8000000) {
+        accommodation = accommodation.filter(item => {
+          if (item.price_level && item.price_level >= 3) return false;
+          const lowerName = (item.name || '').toLowerCase();
+          if (
+            lowerName.includes('resort') ||
+            lowerName.includes('5 sao') ||
+            lowerName.includes('five star') ||
+            lowerName.includes('four seasons') ||
+            lowerName.includes('intercontinental') ||
+            lowerName.includes('marriott') ||
+            lowerName.includes('hyatt') ||
+            lowerName.includes('luxury')
+          ) {
+            return false;
+          }
+          return true;
+        });
+      }
+
+      // CÂN BẰNG TỶ LỆ CÁC DANH MỤC CHO LIVE MAP (LỖI B3)
+      const defaultPlaces = getDefaultPlacesForCity(city);
+
+      // 1. attraction: tối thiểu 10-15 địa điểm
+      if (attraction.length < 10) {
+        defaultPlaces.attraction.forEach(defAtt => {
+          if (!attraction.some(a => a.name.toLowerCase() === defAtt.name.toLowerCase())) {
+            attraction.push(defAtt);
+          }
+        });
+      }
+      if (attraction.length > 15) {
+        attraction = attraction.slice(0, 15);
+      }
+
+      // 2. accommodation: tối thiểu 3-5 lựa chọn phù hợp ngân sách
+      if (accommodation.length < 3) {
+        defaultPlaces.accommodation.forEach(defAcc => {
+          if (budgetPerPax < 8000000 && (defAcc.price_level >= 3 || defAcc.name.toLowerCase().includes('resort'))) {
+            return;
+          }
+          if (!accommodation.some(a => a.name.toLowerCase() === defAcc.name.toLowerCase())) {
+            accommodation.push(defAcc);
+          }
+        });
+      }
+      if (accommodation.length > 5) {
+        accommodation = accommodation.slice(0, 5);
+      }
+
+      // 3. dining: giữ 15-20 quán
+      if (dining.length < 15) {
+        defaultPlaces.dining.forEach(defDin => {
+          if (!dining.some(d => d.name.toLowerCase() === defDin.name.toLowerCase())) {
+            dining.push(defDin);
+          }
+        });
+      }
+      if (dining.length > 20) {
+        dining = dining.slice(0, 20);
+      }
 
       const lowerReq = (specialRequirements + ' ' + title).toLowerCase();
       if (lowerReq.trim().length > 2) {
@@ -269,5 +339,11 @@ export async function fetchCandidatePlacesForCity(
 
   // Nếu không có cache hoặc cache ít, trả về kho địa điểm thực tế phong phú của thành phố
   console.log(`[placesService] Sử dụng kho địa điểm thực tế chất lượng cao cho thành phố "${city}"...`);
-  return getDefaultPlacesForCity(city);
+  const fallback = getDefaultPlacesForCity(city);
+  if (budgetPerPax < 8000000) {
+    fallback.accommodation = fallback.accommodation.filter(
+      p => p.price_level < 3 && !p.name.toLowerCase().includes('resort')
+    );
+  }
+  return fallback;
 }

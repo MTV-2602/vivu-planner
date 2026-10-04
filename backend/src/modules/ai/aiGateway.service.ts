@@ -110,13 +110,13 @@ export async function saveAiGatewayConfig(config: AiGatewayConfig): Promise<void
     .eq('notes', 'ai_gateway_config')
     .maybeSingle();
 
-  if (existing) {
+    if (existing) {
     await supabaseAdmin
       .from('gemini_api_keys')
       .update({
         key_value: jsonString,
         is_active: config.isActive,
-        status: config.isActive ? 'active' : 'inactive',
+        status: config.isActive ? 'active' : 'disabled',
         last_used_at: new Date().toISOString()
       })
       .eq('id', existing.id);
@@ -127,7 +127,7 @@ export async function saveAiGatewayConfig(config: AiGatewayConfig): Promise<void
         notes: 'ai_gateway_config',
         key_value: jsonString,
         is_active: config.isActive,
-        status: config.isActive ? 'active' : 'inactive'
+        status: config.isActive ? 'active' : 'disabled'
       });
   }
 }
@@ -288,7 +288,7 @@ export async function callOpenAiCompatibleGateway(options: {
           'Authorization': `Bearer ${config.apiKey.trim()}`,
           'Content-Type': 'application/json'
         },
-        timeout: options.timeout || 25000
+        timeout: options.timeout || 90000
       });
 
       const content = extractContentFromGatewayResponse(response.data);
@@ -301,6 +301,38 @@ export async function callOpenAiCompatibleGateway(options: {
       const status = err.response?.status;
       const errDetail = err.response?.data?.error?.message || err.response?.data || err.message;
       console.warn(`[AiGateway] Model "${targetModel}" gặp lỗi (Lần ${attempt + 1}/${MAX_RETRIES + 1}): Status ${status || 'timeout'} - ${errDetail}`);
+
+      // Nếu proxy OpenAI bên thứ 3 trả về status 400 (ainoname, OneAPI không hỗ trợ response_format: json_object), retry ngay không gửi response_format trong payload
+      if (status === 400 && options.jsonMode) {
+        console.warn(`[AiGateway] Proxy trả về lỗi 400 (có thể không hỗ trợ response_format: json_object). Thử lại ngay không gửi response_format...`);
+        try {
+          const fallbackPayload: any = {
+            model: targetModel,
+            messages: options.messages,
+            temperature: options.temperature ?? AI_CONFIG.DEFAULT_TEMPERATURE,
+            stream: false
+          };
+          if (options.maxTokens) {
+            fallbackPayload.max_tokens = options.maxTokens;
+          }
+
+          const fallbackResponse = await axios.post(url, fallbackPayload, {
+            headers: {
+              'Authorization': `Bearer ${config.apiKey.trim()}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: options.timeout || 90000
+          });
+
+          const fallbackContent = extractContentFromGatewayResponse(fallbackResponse.data);
+          if (fallbackContent) {
+            return fallbackContent;
+          }
+        } catch (retryErr: any) {
+          console.warn(`[AiGateway] Thử lại không gửi response_format vẫn gặp lỗi: Status ${retryErr.response?.status || 'timeout'} - ${retryErr.message}`);
+          lastError = retryErr;
+        }
+      }
 
       // Nếu lỗi 401/403/400 hoặc timeout thì không retry mất thời gian
       if (status === 401 || status === 403 || status === 400 || err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {

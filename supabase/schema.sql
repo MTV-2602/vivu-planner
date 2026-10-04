@@ -154,13 +154,15 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   phone         text,
   role          public.user_role NOT NULL DEFAULT 'user',
   -- Goi dich vu & Han muc
-  is_premium    boolean     NOT NULL DEFAULT false,
-  premium_until timestamptz,
-  quota_total   int         NOT NULL DEFAULT 3 CHECK (quota_total >= 0),
-  quota_used    int         NOT NULL DEFAULT 0 CHECK (quota_used >= 0),
+  is_premium      boolean     NOT NULL DEFAULT false,
+  premium_until   timestamptz,
+  pro_credits     int         NOT NULL DEFAULT 0 CHECK (pro_credits >= 0),
+  monthly_credits int         NOT NULL DEFAULT 0 CHECK (monthly_credits >= 0),
+  quota_total     int         NOT NULL DEFAULT 3 CHECK (quota_total >= 0),
+  quota_used      int         NOT NULL DEFAULT 0 CHECK (quota_used >= 0),
   -- Cot sinh tu dong ho tro tuong thich nguoc (v1 fallback)
-  custom_quota  int         GENERATED ALWAYS AS (quota_total) STORED,
-  trips_used    int         GENERATED ALWAYS AS (quota_used) STORED,
+  custom_quota    int         GENERATED ALWAYS AS (quota_total) STORED,
+  trips_used      int         GENERATED ALWAYS AS (quota_used) STORED,
   -- Timestamps
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now()
@@ -413,11 +415,15 @@ COMMENT ON TABLE public.gemini_api_keys IS 'Be chua key AI Gemini voi co che coo
 CREATE TABLE IF NOT EXISTS public.pricing_plans (
   id                text PRIMARY KEY,
   amount            integer NOT NULL CHECK (amount > 0),
+  price             integer,
   label             text NOT NULL,
-  duration_days     integer NOT NULL DEFAULT 30 CHECK (duration_days > 0),
-  quota_total_grant integer NOT NULL DEFAULT 9999,
+  name              text,
+  duration_days     integer NOT NULL DEFAULT 0 CHECK (duration_days >= 0),
+  quota_total_grant integer NOT NULL DEFAULT 1,
   is_unlimited      boolean NOT NULL DEFAULT false,
   features          text[] NOT NULL DEFAULT '{}',
+  description       text,
+  sort_order        integer NOT NULL DEFAULT 0,
   is_active         boolean NOT NULL DEFAULT true
 );
 
@@ -435,6 +441,26 @@ CREATE TABLE IF NOT EXISTS public.trip_collaborators (
 );
 
 COMMENT ON TABLE public.trip_collaborators IS 'Danh sach thanh vien cung tham gia len ke hoach chuyen di';
+
+-- ── 4.16b trip_activity_log ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.trip_activity_log (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  trip_id      uuid NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
+  user_id      uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  action_type  text NOT NULL,  -- 'drag_item','edit_item','add_item','delete_item','join_trip','leave_trip','save_schedule','apply_ai'
+  item_title   text,           -- tên địa điểm/hoạt động bị tác động
+  item_id      text,           -- ID của itinerary_item nếu có
+  detail       jsonb,          -- chi tiết thêm: { from_time, to_time, day_number, ... }
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_log_trip ON public.trip_activity_log(trip_id, created_at DESC);
+
+ALTER TABLE public.trip_activity_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "activity_log_select" ON public.trip_activity_log
+  FOR SELECT USING (public.can_view_trip(trip_id));
+CREATE POLICY "activity_log_insert" ON public.trip_activity_log
+  FOR INSERT WITH CHECK (public.can_view_trip(trip_id) AND auth.uid() = user_id);
 
 -- ── 4.16 place_reviews ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.place_reviews (
@@ -548,9 +574,12 @@ ALTER TABLE public.pricing_plans
   ADD COLUMN IF NOT EXISTS label text,
   ADD COLUMN IF NOT EXISTS price integer,
   ADD COLUMN IF NOT EXISTS name text,
-  ADD COLUMN IF NOT EXISTS quota_total_grant integer NOT NULL DEFAULT 9999,
+  ADD COLUMN IF NOT EXISTS duration_days integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS quota_total_grant integer NOT NULL DEFAULT 1,
   ADD COLUMN IF NOT EXISTS is_unlimited boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS features text[] NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS description text,
+  ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
 
 ALTER TABLE public.itinerary_items 
@@ -794,6 +823,14 @@ BEGIN
 
   IF NEW.premium_until IS DISTINCT FROM OLD.premium_until THEN
     RAISE EXCEPTION 'Tu choi: Nguoi dung khong co quyen thay doi thoi han premium (premium_until)!';
+  END IF;
+
+  IF NEW.pro_credits IS DISTINCT FROM OLD.pro_credits THEN
+    RAISE EXCEPTION 'Tu choi: Nguoi dung khong co quyen thay doi so luot Pro (pro_credits)!';
+  END IF;
+
+  IF NEW.monthly_credits IS DISTINCT FROM OLD.monthly_credits THEN
+    RAISE EXCEPTION 'Tu choi: Nguoi dung khong co quyen thay doi so luot thang (monthly_credits)!';
   END IF;
 
   IF NEW.quota_total IS DISTINCT FROM OLD.quota_total THEN
@@ -1068,18 +1105,295 @@ SELECT
   (SELECT COALESCE(SUM(amount), 0) FROM public.payment_orders WHERE status = 'completed') AS total_revenue;
 
 -- ---------------------------------------------------------------------------
--- 12. SEED DATA (Bang gia mac dinh & Han muc tap trung)
+-- 12. ATOMIC PRO CREDITS MANAGEMENT FUNCTIONS
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.consume_pro_credit(p_user_id uuid)
+RETURNS int
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_pro_credits int;
+  v_monthly_credits int;
+  v_premium_until timestamptz;
+  v_remaining int;
+BEGIN
+  SELECT pro_credits, monthly_credits, premium_until
+  INTO v_pro_credits, v_monthly_credits, v_premium_until
+  FROM public.profiles
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'USER_NOT_FOUND';
+  END IF;
+
+  IF v_premium_until IS NOT NULL AND v_premium_until > now() AND v_monthly_credits > 0 THEN
+    v_monthly_credits := v_monthly_credits - 1;
+    UPDATE public.profiles
+    SET monthly_credits = v_monthly_credits,
+        updated_at = now()
+    WHERE id = p_user_id;
+  ELSIF v_pro_credits > 0 THEN
+    v_pro_credits := v_pro_credits - 1;
+    UPDATE public.profiles
+    SET pro_credits = v_pro_credits,
+        updated_at = now()
+    WHERE id = p_user_id;
+  ELSE
+    RAISE EXCEPTION 'NO_PRO_CREDIT';
+  END IF;
+
+  v_remaining := v_pro_credits + (CASE WHEN v_premium_until IS NOT NULL AND v_premium_until > now() THEN v_monthly_credits ELSE 0 END);
+
+  IF v_remaining <= 0 THEN
+    UPDATE public.profiles
+    SET is_premium = false
+    WHERE id = p_user_id AND role <> 'admin';
+  END IF;
+
+  RETURN v_remaining;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.grant_plan_credits(
+  p_user_id uuid,
+  p_credits int,
+  p_duration_days int
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_pro_credits int;
+  v_monthly_credits int;
+  v_premium_until timestamptz;
+  v_new_pro_credits int;
+  v_new_monthly_credits int;
+  v_new_premium_until timestamptz;
+BEGIN
+  IF p_credits <= 0 THEN
+    RETURN;
+  END IF;
+
+  SELECT pro_credits, monthly_credits, premium_until
+  INTO v_pro_credits, v_monthly_credits, v_premium_until
+  FROM public.profiles
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'USER_NOT_FOUND';
+  END IF;
+
+  v_pro_credits := COALESCE(v_pro_credits, 0);
+  v_monthly_credits := COALESCE(v_monthly_credits, 0);
+
+  IF p_duration_days <= 0 THEN
+    v_new_pro_credits := v_pro_credits + p_credits;
+    v_new_monthly_credits := CASE WHEN v_premium_until IS NOT NULL AND v_premium_until > now() THEN v_monthly_credits ELSE 0 END;
+    v_new_premium_until := CASE WHEN v_premium_until IS NOT NULL AND v_premium_until > now() THEN v_premium_until ELSE NULL END;
+  ELSE
+    v_new_pro_credits := v_pro_credits;
+    IF v_premium_until IS NOT NULL AND v_premium_until > now() THEN
+      v_new_monthly_credits := v_monthly_credits + p_credits;
+      v_new_premium_until := v_premium_until + (p_duration_days || ' days')::interval;
+    ELSE
+      v_new_monthly_credits := p_credits;
+      v_new_premium_until := now() + (p_duration_days || ' days')::interval;
+    END IF;
+  END IF;
+
+  UPDATE public.profiles
+  SET 
+    pro_credits = v_new_pro_credits,
+    monthly_credits = v_new_monthly_credits,
+    premium_until = v_new_premium_until,
+    is_premium = true,
+    updated_at = now()
+  WHERE id = p_user_id;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.consume_pro_credit(uuid) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.consume_pro_credit(uuid) TO service_role;
+
+REVOKE EXECUTE ON FUNCTION public.grant_plan_credits(uuid, int, int) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.grant_plan_credits(uuid, int, int) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.upgrade_trip_to_pro(
+  p_trip_id uuid,
+  p_user_id uuid
+)
+RETURNS int
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_trip_user_id uuid;
+  v_preferences jsonb;
+  v_pro_credits int;
+  v_monthly_credits int;
+  v_premium_until timestamptz;
+  v_remaining int;
+  v_updated_prefs jsonb;
+BEGIN
+  -- 1. Kiểm tra chuyến đi và khóa dòng trip
+  SELECT user_id, preferences
+  INTO v_trip_user_id, v_preferences
+  FROM public.trips
+  WHERE id = p_trip_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'TRIP_NOT_FOUND';
+  END IF;
+
+  -- 2. Kiểm tra quyền sở hữu
+  IF v_trip_user_id <> p_user_id THEN
+    RAISE EXCEPTION 'NOT_OWNER';
+  END IF;
+
+  -- 3. Kiểm tra chuyến đi đã là Pro chưa
+  IF (v_preferences->>'is_ai_pro') = 'true' OR (v_preferences->>'ai_tier') = 'pro' THEN
+    RAISE EXCEPTION 'ALREADY_PRO';
+  END IF;
+
+  -- 4. Khóa dòng profile FOR UPDATE để kiểm tra và trừ lượt
+  SELECT pro_credits, monthly_credits, premium_until
+  INTO v_pro_credits, v_monthly_credits, v_premium_until
+  FROM public.profiles
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'USER_NOT_FOUND';
+  END IF;
+
+  v_pro_credits := COALESCE(v_pro_credits, 0);
+  v_monthly_credits := COALESCE(v_monthly_credits, 0);
+
+  -- 5. Trừ lượt (monthly_credits trước nếu còn hạn, sau đó pro_credits)
+  IF v_premium_until IS NOT NULL AND v_premium_until > now() AND v_monthly_credits > 0 THEN
+    v_monthly_credits := v_monthly_credits - 1;
+    UPDATE public.profiles
+    SET monthly_credits = v_monthly_credits,
+        updated_at = now()
+    WHERE id = p_user_id;
+  ELSIF v_pro_credits > 0 THEN
+    v_pro_credits := v_pro_credits - 1;
+    UPDATE public.profiles
+    SET pro_credits = v_pro_credits,
+        updated_at = now()
+    WHERE id = p_user_id;
+  ELSE
+    RAISE EXCEPTION 'NO_PRO_CREDIT';
+  END IF;
+
+  -- 6. Tính số lượt còn lại
+  v_remaining := v_pro_credits + (CASE WHEN v_premium_until IS NOT NULL AND v_premium_until > now() THEN v_monthly_credits ELSE 0 END);
+
+  IF v_remaining <= 0 THEN
+    UPDATE public.profiles
+    SET is_premium = false
+    WHERE id = p_user_id AND role <> 'admin';
+  END IF;
+
+  -- 7. Cập nhật preferences của chuyến đi
+  v_updated_prefs := (
+    CASE WHEN jsonb_typeof(v_preferences) = 'object' THEN v_preferences ELSE '{}'::jsonb END
+  ) || jsonb_build_object(
+    'is_ai_pro', true,
+    'ai_tier', 'pro',
+    'pro_credit_consumed', true
+  );
+
+  UPDATE public.trips
+  SET preferences = v_updated_prefs,
+      updated_at = now()
+  WHERE id = p_trip_id;
+
+  RETURN v_remaining;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.refund_pro_credit(
+  p_user_id uuid,
+  p_to_monthly boolean DEFAULT false
+)
+RETURNS int
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_pro_credits int;
+  v_monthly_credits int;
+  v_premium_until timestamptz;
+  v_remaining int;
+BEGIN
+  SELECT pro_credits, monthly_credits, premium_until
+  INTO v_pro_credits, v_monthly_credits, v_premium_until
+  FROM public.profiles
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'USER_NOT_FOUND';
+  END IF;
+
+  v_pro_credits := COALESCE(v_pro_credits, 0);
+  v_monthly_credits := COALESCE(v_monthly_credits, 0);
+
+  IF p_to_monthly AND v_premium_until IS NOT NULL AND v_premium_until > now() THEN
+    v_monthly_credits := v_monthly_credits + 1;
+    UPDATE public.profiles
+    SET monthly_credits = v_monthly_credits,
+        is_premium = true,
+        updated_at = now()
+    WHERE id = p_user_id;
+  ELSE
+    v_pro_credits := v_pro_credits + 1;
+    UPDATE public.profiles
+    SET pro_credits = v_pro_credits,
+        is_premium = true,
+        updated_at = now()
+    WHERE id = p_user_id;
+  END IF;
+
+  v_remaining := v_pro_credits + (CASE WHEN v_premium_until IS NOT NULL AND v_premium_until > now() THEN v_monthly_credits ELSE 0 END);
+  RETURN v_remaining;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.upgrade_trip_to_pro(uuid, uuid) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.upgrade_trip_to_pro(uuid, uuid) TO service_role;
+
+REVOKE EXECUTE ON FUNCTION public.refund_pro_credit(uuid, boolean) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.refund_pro_credit(uuid, boolean) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 13. SEED DATA (Bang gia mac dinh & Han muc tap trung)
 -- ---------------------------------------------------------------------------
 INSERT INTO public.pricing_plans (
-  id, amount, label, duration_days, quota_total_grant, is_unlimited, features, is_active
+  id, amount, price, label, name, duration_days, quota_total_grant, is_unlimited, features, is_active, description, sort_order
 ) VALUES
-  ('starter',   29000, 'Gói Khởi Động',          30, 10,   false, ARRAY['10 chuyến đi / tháng', 'Dự báo thời tiết & OpenStreetMap', 'AI điều chỉnh lịch trình'], true),
-  ('plus',      29000, 'Gói Khởi Động (Alias)',  30, 10,   false, ARRAY['10 chuyến đi / tháng', 'Dự báo thời tiết & OpenStreetMap', 'AI điều chỉnh lịch trình'], true),
-  ('premium',   49000, 'Gói Chuyên Nghiệp',      30, 9999, true,  ARRAY['Không giới hạn chuyến đi', 'Tự động xử lý sự cố thông minh', 'Chatbot AI không giới hạn'], true),
-  ('pro',       49000, 'Gói Chuyên Nghiệp (Pro)',30, 9999, true,  ARRAY['Không giới hạn chuyến đi', 'Tự động xử lý sự cố thông minh', 'Chatbot AI không giới hạn'], true),
-  ('monthly',   49000, 'Gói Hàng Tháng',         30, 9999, true,  ARRAY['Không giới hạn chuyến đi', 'Tự động xử lý sự cố thông minh', 'Chatbot AI không giới hạn'], true),
-  ('quarterly', 119000, 'Gói 3 Tháng Tiết Kiệm', 90, 9999, true,  ARRAY['Không giới hạn chuyến đi 90 ngày', 'Mọi tính năng gói Pro', 'Tiết kiệm 20%'], true)
-ON CONFLICT (id) DO NOTHING;
+  ('single_trip', 19000, 19000, 'Gói Chuyến Đơn', 'Gói Chuyến Đơn', 0, 1, false,
+   ARRAY['1 lượt nâng cấp hoặc tạo mới chuyến đi Pro', 'Lượt dùng vĩnh viễn không hết hạn', 'Đầy đủ tính năng AI Pro & Live Map Pro'],
+   true, '1 lượt nâng cấp hoặc tạo mới chuyến đi Pro (không thời hạn)', 1),
+  ('monthly',     49000, 49000, 'Gói 1 Tháng',    'Gói 1 Tháng',    30, 10, false,
+   ARRAY['10 lượt sử dụng trong 30 ngày', 'Cộng dồn lượt và ngày khi gia hạn', 'Đầy đủ tính năng AI Pro & Live Map Pro'],
+   true, '10 lượt sử dụng trong 30 ngày (hết tháng hết hạn)', 2)
+ON CONFLICT (id) DO UPDATE SET
+  duration_days = EXCLUDED.duration_days,
+  quota_total_grant = EXCLUDED.quota_total_grant,
+  is_active = true,
+  sort_order = EXCLUDED.sort_order;
 
 /*
 -- =============================================================================

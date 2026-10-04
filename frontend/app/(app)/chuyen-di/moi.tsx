@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
-  View, Text, ScrollView, Pressable, TextInput,
+  View, Text, ScrollView, Pressable, TextInput, Image,
   Animated, Platform, KeyboardAvoidingView, ActivityIndicator, Modal, useWindowDimensions,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -8,18 +9,22 @@ import {
   Compass, Sparkles, ArrowLeft, ArrowRight,
   MapPin, DollarSign, Heart, AlertTriangle, Crown, Zap, Lock, ChevronDown,
   Trash2, Edit3, Check, Calendar, Plus, ShoppingBag, X, GripVertical, Clock,
+  Users, Share2, Copy, Link as LinkIcon,
 } from 'lucide-react-native';
 import { api } from '../../../lib/api';
+import { supabase } from '../../../lib/supabase';
 import { clearCache } from '../../../lib/cache';
 import { requestNotificationPermission, scheduleTripReminder } from '../../../lib/notifications';
 import { useAuth } from '../../../hooks/useAuth';
+import { usePaymentStatus } from '../../../hooks/usePaymentStatus';
+import { formatWallet } from '../../../lib/plans';
 import PremiumModal from '../../../components/PremiumModal';
 import Reveal from '../../../components/Reveal';
 import BudgetBreakdown, { BudgetBreakdownData } from '../../../components/cart/BudgetBreakdown';
 import LiveBudgetBar from '../../../components/cart/LiveBudgetBar';
 import CuratedMap, { getCityCenterCoords } from '../../../components/map/CuratedMap';
 import GoogleMapsRoutePlanner, { RouteWaypoint } from '../../../components/map/GoogleMapsRoutePlanner';
-import GoogleCalendarWorkspace, { CalendarEventItem, StandbyPlaceItem } from '../../../components/workspace/GoogleCalendarWorkspace';
+import GoogleCalendarWorkspace, { CalendarEventItem, StandbyPlaceItem, CalendarDeltaAction } from '../../../components/workspace/GoogleCalendarWorkspace';
 import { PlaceItem } from '../../../components/map/PlacePopup';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
 import {
@@ -46,6 +51,14 @@ const CATEGORY_NAMES_VI: Record<string, string> = {
   transport: 'Di chuyển',
   default: 'Địa điểm',
 };
+
+const normalizePlaceKey = (str?: string) =>
+  (str || '')
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
 
 function getTodayString() {
   const today = new Date();
@@ -243,7 +256,14 @@ function LoadingScreen({ stage, onCancel }: { stage: number; onCancel: () => voi
 
 export default function TripWizard() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ city?: string; days?: string; budget?: string; theme?: string }>();
+  const params = useLocalSearchParams<{
+    city?: string;
+    days?: string;
+    budget?: string;
+    theme?: string;
+    draft_id?: string;
+    token?: string;
+  }>();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState(0);
@@ -259,14 +279,15 @@ export default function TripWizard() {
   };
 
   // Form state
-  const { isPremium, isAdmin } = useAuth();
+  const { user, isPremium, isAdmin } = useAuth();
+  const { paymentStatus, refetch: refetchStatus } = usePaymentStatus();
+  const [useProForTrip, setUseProForTrip] = useState(false);
 
   useEffect(() => {
     if (isAdmin) {
       router.replace(APP_ROUTES.ADMIN as any);
     }
   }, [isAdmin]);
-
 
   const [selectedAiProvider, setSelectedAiProvider] = useState<'gemini' | 'custom_openai'>('gemini');
   const [showPremiumModal, setShowPremiumModal] = useState(false);
@@ -295,15 +316,48 @@ export default function TripWizard() {
   const [specialRequirements, setSpecialRequirements] = useState('');
   const [lodgingPreference, setLodgingPreference] = useState<'single' | 'multiple'>('single');
 
+  // ── STATE TẠO NHÓM CHỌN GIỎ HÀNG CHUNG & ĐỒNG BỘ REALTIME ──
+  const [draftTripId, setDraftTripId] = useState<string | null>(params.draft_id || null);
+  const [draftShareToken, setDraftShareToken] = useState<string | null>(params.token || null);
+  const [draftOwnerId, setDraftOwnerId] = useState<string | null>(null);
+  const draftChannelRef = useRef<any>(null);
+  const cartTombstonesRef = useRef<Map<string, number>>(new Map());
+
+  const getPlaceKeys = useCallback((placeOrItem: any): string[] => {
+    const keys: string[] = [];
+    const p = placeOrItem?.place || placeOrItem;
+    if (p?.id) keys.push(String(p.id));
+    if (placeOrItem?.id && placeOrItem.id !== p?.id) keys.push(String(placeOrItem.id));
+    const name = p?.name || placeOrItem?.title || placeOrItem?.name;
+    if (name && typeof name === 'string') {
+      const norm = normalizePlaceKey(name);
+      if (norm) keys.push(`name_${norm}`);
+    }
+    return keys;
+  }, []);
+  const [showGroupModal, setShowGroupModal] = useState<boolean>(false);
+  const [isCreatingDraftGroup, setIsCreatingDraftGroup] = useState<boolean>(false);
+  const [collaboratorCount, setCollaboratorCount] = useState<number>(1);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [groupToastMsg, setGroupToastMsg] = useState<string | null>(null);
+
+  // Phân quyền trưởng nhóm vs thành viên: Chỉ trưởng nhóm mới có quyền chốt danh sách & xếp lịch
+  const isGroupDraftOwner = !draftTripId || !params.draft_id || draftOwnerId === user?.id;
+  const isGroupMember = Boolean(draftTripId && params.draft_id && draftOwnerId && draftOwnerId !== user?.id);
+
   // Pro Workspace state
   const [useProWorkspace, setUseProWorkspace] = useState(false);
+  const totalCredits = (paymentStatus?.pro_credits || 0) + (paymentStatus?.monthly_credits || 0);
+  const remainingTrips = paymentStatus?.remainingTrips ?? totalCredits;
+  const hasCredits = remainingTrips > 0 || (Boolean(paymentStatus?.isPremium) && remainingTrips > 0);
+  const canAccessWorkspace = Boolean(isAdmin || draftTripId || hasCredits);
 
-  // Bảo vệ: Chỉ người dùng Pro mới được phép mở và sử dụng Pro Workspace (Map Live)
+  // Bảo vệ: Chỉ người dùng Pro hoặc thành viên nhóm giỏ hàng chung mới được phép mở và sử dụng Pro Workspace (Map Live)
   useEffect(() => {
-    if (useProWorkspace && !(isPremium || isAdmin)) {
+    if (useProWorkspace && !canAccessWorkspace) {
       setUseProWorkspace(false);
     }
-  }, [useProWorkspace, isPremium, isAdmin]);
+  }, [useProWorkspace, canAccessWorkspace]);
   const [workspaceStage, setWorkspaceStage] = useState<'collecting' | 'scheduling'>('collecting');
   const [pregenPlaces, setPregenPlaces] = useState<any[]>([]);
   const [loadingPregen, setLoadingPregen] = useState(false);
@@ -324,14 +378,27 @@ export default function TripWizard() {
     startHour?: number;
     startMinute?: number;
     durationMinutes?: number;
+    added_by_name?: string;
+    added_by_id?: string;
+    updated_at?: number;
   }[]>([]);
+  const [externalDelta, setExternalDelta] = useState<CalendarDeltaAction | null>(null);
   const [showScheduleOptionModal, setShowScheduleOptionModal] = useState(false);
+  const [showConfirmAiProModal, setShowConfirmAiProModal] = useState<boolean>(false);
+  const [showConfirmLiveMapModal, setShowConfirmLiveMapModal] = useState<boolean>(false);
   const [editingCostPlaceId, setEditingCostPlaceId] = useState<string | null>(null);
   const [editCostInput, setEditCostInput] = useState('');
   const [hoveredPoolPlaceId, setHoveredPoolPlaceId] = useState<string | null>(null);
   const cartMapIframeRef = useRef<any>(null);
   const { width: windowWidth } = useWindowDimensions();
   const isLargeScreen = windowWidth >= 900;
+
+  // ── STATE TỰ NHẬP ĐỊA ĐIỂM THỦ CÔNG (KHÔNG PHỤ THUỘC HARDCODE) ──
+  const [showCustomPlaceModal, setShowCustomPlaceModal] = useState<boolean>(false);
+  const [customPlaceTitle, setCustomPlaceTitle] = useState('');
+  const [customPlaceCategory, setCustomPlaceCategory] = useState<'dining' | 'cafe' | 'hotel' | 'attraction' | 'other'>('dining');
+  const [customPlaceCost, setCustomPlaceCost] = useState('');
+  const [customPlaceAddress, setCustomPlaceAddress] = useState('');
 
   const { minBudget, daysCount, nightsCount } = useMemo(() => {
     return calculateMinimumBudget(startDate, endDate, travelerCount);
@@ -350,8 +417,9 @@ export default function TripWizard() {
     }, 0);
   }, [cartItems, nightsCount]);
 
+  // Không hardcode dữ liệu từ curatedPlaces: Chỉ hiển thị dữ liệu thực tế do AI sinh hoặc người dùng thêm
   const deduplicatedPool = useMemo(() => {
-    const rawPool = pregenPlaces.length > 0 ? pregenPlaces : getCuratedPlacesForCity(destinationCity);
+    const rawPool = pregenPlaces;
     const result: any[] = [];
     const seenKeys: string[] = [];
 
@@ -373,7 +441,7 @@ export default function TripWizard() {
     });
 
     return result;
-  }, [pregenPlaces, destinationCity]);
+  }, [pregenPlaces]);
 
   const filteredPoolPlaces = useMemo(() => {
     return deduplicatedPool.filter((p: any) => {
@@ -415,9 +483,183 @@ export default function TripWizard() {
     return items.sort((a, b) => a.order_index - b.order_index).map(it => it.place);
   }, [cartItems, activeScheduleDay]);
 
-  const fetchPregenPlaces = async () => {
+  // Đồng bộ chi tiết hành động thêm/bớt địa điểm lên Realtime Channel để tránh xung đột lịch sử
+  const broadcastCartAction = useCallback((action: {
+    type: 'cart_item_added' | 'cart_item_removed' | 'cart_cleared';
+    item?: any;
+    placeId?: string;
+    placeName?: string;
+    deletedKeys?: string[];
+    deleted_at?: number;
+    updatedCart?: typeof cartItems;
+  }) => {
+    if (!draftTripId) return;
+    try {
+      const senderName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Thành viên';
+      const senderId = user?.id;
+      const timestamp = Date.now();
+
+      const ch = draftChannelRef.current || supabase.channel(`draft-cart:${draftTripId}`);
+      if (action.type === 'cart_item_added') {
+        ch.send({
+          type: 'broadcast',
+          event: 'cart_item_added',
+          payload: { item: action.item, senderId, senderName, timestamp },
+        }).catch(() => {});
+      } else if (action.type === 'cart_item_removed') {
+        ch.send({
+          type: 'broadcast',
+          event: 'cart_item_removed',
+          payload: {
+            placeId: action.placeId,
+            placeName: action.placeName,
+            deletedKeys: action.deletedKeys || (action.placeId ? [action.placeId] : []),
+            deleted_at: action.deleted_at || timestamp,
+            senderId,
+            senderName,
+            timestamp,
+          },
+        }).catch(() => {});
+      } else if (action.type === 'cart_cleared') {
+        ch.send({
+          type: 'broadcast',
+          event: 'cart_cleared',
+          payload: { senderId, senderName, timestamp },
+        }).catch(() => {});
+      }
+
+      if (action.updatedCart !== undefined) {
+        const tombstonesObj: Record<string, number> = {};
+        cartTombstonesRef.current.forEach((val, key) => {
+          tombstonesObj[key] = val;
+        });
+
+        let deletedPlaceIds: string[] = [];
+        let actionName: string | undefined = undefined;
+        if (action.type === 'cart_item_removed') {
+          deletedPlaceIds = action.deletedKeys && action.deletedKeys.length > 0
+            ? action.deletedKeys
+            : (action.placeId ? [action.placeId] : []);
+          actionName = 'remove';
+        } else if (action.type === 'cart_cleared') {
+          deletedPlaceIds = action.deletedKeys && action.deletedKeys.length > 0
+            ? action.deletedKeys
+            : Array.from(cartTombstonesRef.current.keys());
+          actionName = 'clear';
+        } else if (action.type === 'cart_item_added') {
+          deletedPlaceIds = [];
+          actionName = 'add';
+        }
+
+        api.put(`/trips/${draftTripId}/shared-cart`, {
+          draft_cart: action.updatedCart,
+          deleted_place_ids: deletedPlaceIds,
+          tombstones: tombstonesObj,
+          action: actionName,
+          workspace_stage: workspaceStage,
+        }).catch((err) => {
+          console.warn('Failed to update shared-cart:', err?.message);
+        });
+      }
+    } catch (e) {
+      console.warn('broadcastCartAction error:', e);
+    }
+  }, [draftTripId, user?.id, user?.user_metadata, user?.email, workspaceStage]);
+
+  const handleEventDelta = useCallback((delta: CalendarDeltaAction) => {
+    if (!draftTripId) return;
+    const ch = draftChannelRef.current || supabase.channel(`draft-cart:${draftTripId}`);
+    const currentUserId = user?.id;
+    if (ch && currentUserId) {
+      ch.send({
+        type: 'broadcast',
+        event: 'calendar_delta',
+        payload: {
+          delta,
+          updated_by: currentUserId,
+          timestamp: Date.now(),
+        }
+      }).catch((err: any) => {
+        console.warn('calendar_delta broadcast error in moi.tsx:', err);
+      });
+    }
+  }, [draftTripId, user?.id]);
+
+  // Đồng bộ giỏ hàng lên Realtime Channel và cập nhật ngầm vào trip draft
+  const syncCartToDraft = (updatedCart: typeof cartItems) => {
+    if (!draftTripId) return;
+    try {
+      const senderName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Thành viên';
+      const sendPayload = {
+        cartItems: updatedCart,
+        senderId: user?.id,
+        senderName,
+        timestamp: Date.now(),
+      };
+      if (draftChannelRef.current) {
+        draftChannelRef.current.send({
+          type: 'broadcast',
+          event: 'cart_updated',
+          payload: sendPayload,
+        }).catch(() => {});
+      } else {
+        const channel = supabase.channel(`draft-cart:${draftTripId}`);
+        channel.send({
+          type: 'broadcast',
+          event: 'cart_updated',
+          payload: sendPayload,
+        }).catch(() => {});
+      }
+    } catch (e) {}
+
+    const tombstonesObj: Record<string, number> = {};
+    cartTombstonesRef.current.forEach((val, key) => {
+      tombstonesObj[key] = val;
+    });
+
+    api.put(`/trips/${draftTripId}/shared-cart`, {
+      draft_cart: updatedCart,
+      deleted_place_ids: [],
+      tombstones: tombstonesObj,
+      workspace_stage: workspaceStage,
+    }).catch((err) => {
+      console.warn('Failed to update shared-cart:', err?.message);
+    });
+  };
+
+  // Phát thông báo broadcast chuyển trang đồng bộ cho tất cả thành viên trong nhóm đang cùng chọn giỏ hàng
+  const broadcastTripFinalized = async (targetTripId: string) => {
+    if (!draftTripId) return;
+    try {
+      const payload = {
+        tripId: targetTripId,
+        redirectUrl: APP_ROUTES.TRIP_DETAIL(targetTripId),
+      };
+      if (draftChannelRef.current) {
+        await draftChannelRef.current.send({
+          type: 'broadcast',
+          event: 'trip_finalized',
+          payload,
+        });
+      } else {
+        const channel = supabase.channel(`draft-cart:${draftTripId}`);
+        await channel.send({
+          type: 'broadcast',
+          event: 'trip_finalized',
+          payload,
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to broadcast trip_finalized:', e);
+    }
+  };
+
+  const fetchPregenPlaces = async (overrideProvider?: any) => {
     setLoadingPregen(true);
     setErrorMsg('');
+    let finalPlaces: PlaceItem[] = [];
+    const validOverride = (overrideProvider === 'gemini' || overrideProvider === 'custom_openai') ? overrideProvider : undefined;
+    const providerToUse = validOverride || (useProWorkspace || useProForTrip ? 'custom_openai' : selectedAiProvider);
     try {
       const res = await api.post('/trips/pregen-places', {
         destination_city: destinationCity,
@@ -426,17 +668,42 @@ export default function TripWizard() {
         budget_breakdown: budgetBreakdown,
         preferences: selectedPrefs,
         traveler_type: travelerType,
+        traveler_count: travelerCount,
         special_requirements: specialRequirements,
-        ai_provider: selectedAiProvider
-      }, { timeout: 25000 });
-      if (res.data?.places && Array.isArray(res.data.places)) {
-        setPregenPlaces(res.data.places);
+        ai_provider: providerToUse
+      }, { timeout: 45000 });
+      if (res.data?.places && Array.isArray(res.data.places) && res.data.places.length > 0) {
+        finalPlaces = res.data.places;
+      } else {
+        const fallback = getCuratedPlacesForCity(destinationCity);
+        finalPlaces = fallback.length > 0 ? fallback : [];
       }
     } catch (err: any) {
-      console.warn('Fallback to curated places for city:', destinationCity);
-      const fallback = getCuratedPlacesForCity(destinationCity);
-      setPregenPlaces(fallback.map((p, idx) => ({ ...p, suggested_day: (idx % daysCount) + 1 })));
+      console.warn('Pregen places error:', err?.message);
+      if (err?.response?.data?.places && Array.isArray(err.response.data.places) && err.response.data.places.length > 0) {
+        finalPlaces = err.response.data.places;
+      } else {
+        const fallback = getCuratedPlacesForCity(destinationCity);
+        finalPlaces = fallback && fallback.length > 0 ? fallback : [];
+        setErrorMsg('Chưa thể lấy danh sách mới nhất từ AI. Bạn có thể nhấn Thử lại lấy gợi ý AI hoặc tự thêm địa điểm thủ công!');
+      }
     } finally {
+      if (finalPlaces.length > 0) {
+        setPregenPlaces(finalPlaces);
+        if (draftTripId) {
+          api.put(`/trips/${draftTripId}/shared-cart`, {
+            workspace_stage: workspaceStage,
+            pregen_places: finalPlaces,
+          }).catch(() => {});
+          if (draftChannelRef.current) {
+            draftChannelRef.current.send({
+              type: 'broadcast',
+              event: 'pregen_places_updated',
+              payload: { places: finalPlaces },
+            }).catch(() => {});
+          }
+        }
+      }
       setLoadingPregen(false);
     }
   };
@@ -444,13 +711,622 @@ export default function TripWizard() {
   const handleAddToCart = (place: PlaceItem, option: 'auto' | 'manual' = 'auto', customCost?: number) => {
     const defaultCost = place.estimated_cost || (place.price_level ? place.price_level * 50000 : 50000);
     const finalCost = customCost !== undefined ? customCost : defaultCost;
+    const addedByName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Tôi';
+    const addedById = user?.id;
+
     setCartItems(prev => {
-      const exists = prev.some(item => item.place.id === place.id);
-      if (exists) {
-        return prev.filter(item => item.place.id !== place.id);
+      const match = prev.find(item =>
+        item.place.id === place.id ||
+        (normalizePlaceKey(item.place.name) === normalizePlaceKey(place.name) && item.place.category === place.category)
+      );
+      if (match) {
+        const delTime = Date.now();
+        const delKeys = getPlaceKeys(match);
+        delKeys.forEach(k => cartTombstonesRef.current.set(k, delTime));
+
+        const updated = prev.filter(item => item !== match);
+        broadcastCartAction({
+          type: 'cart_item_removed',
+          placeId: match.place.id,
+          placeName: match.place.name,
+          deletedKeys: delKeys,
+          deleted_at: delTime,
+          updatedCart: updated,
+        });
+        return updated;
+      } else {
+        const now = Date.now();
+        const addKeys = getPlaceKeys(place);
+        addKeys.forEach(k => cartTombstonesRef.current.delete(k));
+
+        const newItem = {
+          place,
+          pricing_option: option,
+          custom_cost: finalCost,
+          day_number: 0,
+          order_index: prev.length + 1,
+          added_by_name: addedByName,
+          added_by_id: addedById,
+          updated_at: now,
+        };
+        const updated = [...prev, newItem];
+        broadcastCartAction({
+          type: 'cart_item_added',
+          item: newItem,
+          placeId: place.id,
+          updatedCart: updated,
+        });
+        return updated;
       }
-      return [...prev, { place, pricing_option: option, custom_cost: finalCost, day_number: 0, order_index: prev.length + 1 }];
     });
+  };
+
+  const handleClearCart = () => {
+    const now = Date.now();
+    const allDeletedKeys: string[] = [];
+    cartItems.forEach(it => {
+      getPlaceKeys(it).forEach(k => {
+        cartTombstonesRef.current.set(k, now);
+        allDeletedKeys.push(k);
+      });
+    });
+    setCartItems([]);
+    broadcastCartAction({
+      type: 'cart_cleared',
+      deletedKeys: allDeletedKeys,
+      updatedCart: [],
+    });
+  };
+
+  // Thêm địa điểm thủ công theo ý muốn (không phụ thuộc vào danh sách mock)
+  const handleAddNewCustomPlace = () => {
+    if (!customPlaceTitle.trim()) return;
+    const costNum = parseInt(customPlaceCost.replace(/\D/g, ''), 10) || 50000;
+    const center = getCityCenterCoords(destinationCity);
+    const newCustomPlace: PlaceItem = {
+      id: `custom-p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: customPlaceTitle.trim(),
+      category: customPlaceCategory,
+      city: destinationCity,
+      address: customPlaceAddress.trim() || destinationCity,
+      estimated_cost: costNum,
+      price_level: Math.min(4, Math.max(1, Math.ceil(costNum / 100000))),
+      lat: center.lat + (Math.random() - 0.5) * 0.02,
+      lng: center.lng + (Math.random() - 0.5) * 0.02,
+    };
+    handleAddToCart(newCustomPlace, 'manual', costNum);
+    setShowCustomPlaceModal(false);
+    setCustomPlaceTitle('');
+    setCustomPlaceCost('');
+    setCustomPlaceAddress('');
+  };
+
+  // Lắng nghe params.draft_id nếu người dùng mở từ link mời nhóm cùng chọn giỏ hàng
+  useEffect(() => {
+    const draftId = params.draft_id;
+    if (!draftId) return;
+
+    setDraftTripId(draftId);
+    setStep(4);
+    setUseProWorkspace(true);
+    setWorkspaceStage('collecting');
+
+    const joinAndFetchDraft = async () => {
+      if (params.token) {
+        setDraftShareToken(params.token);
+        try {
+          await api.put(`/trips/join/${params.token}`);
+        } catch (e) {}
+      }
+
+      try {
+        const res: any = await api.get(`/trips/${draftId}`);
+        const t = res.data;
+        if (t) {
+          if (t.user_id) setDraftOwnerId(t.user_id);
+          if (t.destination_city) setDestinationCity(t.destination_city);
+          if (t.budget_total) setBudgetTotal(Number(t.budget_total));
+          if (t.start_date) setStartDate(t.start_date);
+          if (t.end_date) setEndDate(t.end_date);
+          const remoteCart = t.shared_cart || t.preferences?.draft_cart;
+          if (remoteCart && Array.isArray(remoteCart)) {
+            setCartItems(remoteCart);
+          }
+          const remotePlaces = t.pregen_places || t.preferences?.pregen_places;
+          if (remotePlaces && Array.isArray(remotePlaces) && remotePlaces.length > 0) {
+            setPregenPlaces(remotePlaces);
+          }
+          const remoteStage = t.workspace_stage || t.preferences?.workspace_stage;
+          if (remoteStage === 'scheduling' || remoteStage === 'collecting') {
+            setWorkspaceStage(remoteStage);
+          }
+        }
+      } catch (e) {}
+
+      try {
+        const cartRes: any = await api.get(`/trips/${draftId}/shared-cart`, {
+          params: params.token ? { invite_token: params.token } : undefined,
+          headers: params.token ? { 'x-invite-token': params.token } : undefined,
+        });
+        if (cartRes.data?.tombstones) {
+          for (const [k, v] of Object.entries(cartRes.data.tombstones)) {
+            cartTombstonesRef.current.set(k, Number(v) || Date.now());
+          }
+        }
+        if (cartRes.data?.draft_cart && Array.isArray(cartRes.data.draft_cart)) {
+          const filteredDraftCart = cartRes.data.draft_cart.filter((it: any) => {
+            const itKeys = getPlaceKeys(it);
+            const maxTombTime = Math.max(0, ...itKeys.map(k => cartTombstonesRef.current.get(k) || 0));
+            const itemTime = Number(it.updated_at || 0);
+            return maxTombTime === 0 || itemTime > maxTombTime;
+          });
+          setCartItems(filteredDraftCart);
+        }
+        if (cartRes.data?.pregen_places && Array.isArray(cartRes.data.pregen_places) && cartRes.data.pregen_places.length > 0) {
+          setPregenPlaces(cartRes.data.pregen_places);
+        }
+      } catch (e) {}
+    };
+    joinAndFetchDraft();
+  }, [params.draft_id, params.token]);
+
+  // Tự động lấy danh sách gợi ý địa điểm nếu vào Pro Workspace và chưa có địa điểm
+  useEffect(() => {
+    if (params.token || isGroupMember) return;
+    if (useProWorkspace && canAccessWorkspace && pregenPlaces.length === 0 && !loadingPregen && destinationCity) {
+      fetchPregenPlaces();
+    }
+  }, [useProWorkspace, canAccessWorkspace, destinationCity, isGroupMember, params.token, pregenPlaces.length]);
+
+  // Realtime Channel đồng bộ giỏ hàng và danh sách thành viên online
+  useEffect(() => {
+    if (!draftTripId) return;
+    const channel = supabase.channel(`draft-cart:${draftTripId}`);
+    draftChannelRef.current = channel;
+
+    channel
+      .on('broadcast', { event: 'cart_item_added' }, (msg: any) => {
+        const payload = msg?.payload;
+        if (payload?.item && payload.senderId !== user?.id) {
+          getPlaceKeys(payload.item).forEach(k => cartTombstonesRef.current.delete(k));
+
+          setCartItems(prev => {
+            const exists = prev.some(it =>
+              it.place.id === payload.item.place.id ||
+              (normalizePlaceKey(it.place.name) === normalizePlaceKey(payload.item.place.name) && it.place.category === payload.item.place.category)
+            );
+            if (exists) return prev;
+            return [...prev, payload.item];
+          });
+          const sender = payload.senderName || 'Thành viên';
+          setGroupToastMsg(`👥 ${sender} vừa thêm "${payload.item.place?.name || 'địa điểm'}" vào giỏ hàng!`);
+          setTimeout(() => setGroupToastMsg(null), 3000);
+        }
+      })
+      .on('broadcast', { event: 'cart_item_removed' }, (msg: any) => {
+        const payload = msg?.payload;
+        if ((payload?.placeId || payload?.deletedKeys) && payload.senderId !== user?.id) {
+          const delTime = payload.deleted_at || Date.now();
+          if (Array.isArray(payload.deletedKeys)) {
+            payload.deletedKeys.forEach((k: string) => cartTombstonesRef.current.set(k, delTime));
+          }
+          if (payload.placeId) cartTombstonesRef.current.set(payload.placeId, delTime);
+          if (payload.placeName) cartTombstonesRef.current.set(`name_${normalizePlaceKey(payload.placeName)}`, delTime);
+
+          setCartItems(prev => prev.filter(it => {
+            const itKeys = getPlaceKeys(it);
+            const isMatch = itKeys.some(k =>
+              (payload.deletedKeys && payload.deletedKeys.includes(k)) ||
+              k === payload.placeId ||
+              k === `name_${normalizePlaceKey(payload.placeName || '')}`
+            );
+            return !isMatch;
+          }));
+          const sender = payload.senderName || 'Thành viên';
+          const pName = payload.placeName || 'địa điểm';
+          setGroupToastMsg(`👥 ${sender} vừa bỏ "${pName}" khỏi giỏ hàng!`);
+          setTimeout(() => setGroupToastMsg(null), 3000);
+        }
+      })
+      .on('broadcast', { event: 'cart_cleared' }, (msg: any) => {
+        const payload = msg?.payload;
+        if (payload?.senderId !== user?.id) {
+          const now = Date.now();
+          setCartItems(prev => {
+            prev.forEach(it => {
+              getPlaceKeys(it).forEach(k => cartTombstonesRef.current.set(k, now));
+            });
+            return [];
+          });
+          const sender = payload.senderName || 'Thành viên';
+          setGroupToastMsg(`👥 ${sender} đã làm trống giỏ hàng!`);
+          setTimeout(() => setGroupToastMsg(null), 3000);
+        }
+      })
+      .on('broadcast', { event: 'calendar_delta' }, (msg: any) => {
+        const payload = msg?.payload;
+        if (payload?.delta && payload.updated_by !== user?.id) {
+          setExternalDelta({ ...payload.delta });
+        }
+      })
+      .on('broadcast', { event: 'cart_updated' }, (msg: any) => {
+        const payload = msg?.payload;
+        if (payload?.cartItems && payload.senderId !== user?.id) {
+          setCartItems(prev => {
+            const incomingItems: any[] = payload.cartItems;
+            const validIncoming = incomingItems.filter(it => {
+              const itKeys = getPlaceKeys(it);
+              const maxTombTime = Math.max(0, ...itKeys.map(k => cartTombstonesRef.current.get(k) || 0));
+              const itemTime = Number(it.updated_at || 0);
+              return maxTombTime === 0 || itemTime > maxTombTime;
+            });
+
+            if (!prev || prev.length === 0) return validIncoming;
+
+            const prevMap = new Map(prev.map(it => [it.place.id, it]));
+            const merged: typeof prev = [];
+
+            for (const incoming of validIncoming) {
+              const local = prevMap.get(incoming.place?.id);
+              if (!local) {
+                merged.push(incoming);
+              } else {
+                const incomingTime = Number(incoming.updated_at || 0);
+                const localTime = Number(local.updated_at || 0);
+                if (incomingTime >= localTime) {
+                  merged.push({ ...local, ...incoming });
+                } else {
+                  merged.push(local);
+                }
+                prevMap.delete(incoming.place?.id);
+              }
+            }
+
+            for (const remaining of prevMap.values()) {
+              const remKeys = getPlaceKeys(remaining);
+              const maxTombTime = Math.max(0, ...remKeys.map(k => cartTombstonesRef.current.get(k) || 0));
+              const localTime = Number(remaining.updated_at || 0);
+              const isTombstoned = maxTombTime > 0 && maxTombTime >= localTime;
+              if (isTombstoned) continue;
+
+              merged.push(remaining);
+            }
+            return merged;
+          });
+          const sender = payload.senderName || 'Thành viên';
+          setGroupToastMsg(`👥 ${sender} vừa cập nhật giỏ hàng chung!`);
+          setTimeout(() => setGroupToastMsg(null), 3500);
+        }
+      })
+      .on('broadcast', { event: 'calendar_updated' }, (msg: any) => {
+        const payload = msg?.payload;
+        if (payload?.cartItems && payload.senderId !== user?.id) {
+          setCartItems(prev => {
+            const incomingItems: any[] = payload.cartItems;
+            const validIncoming = incomingItems.filter(it => {
+              const itKeys = getPlaceKeys(it);
+              const maxTombTime = Math.max(0, ...itKeys.map(k => cartTombstonesRef.current.get(k) || 0));
+              const itemTime = Number(it.updated_at || 0);
+              return maxTombTime === 0 || itemTime > maxTombTime;
+            });
+
+            if (!prev || prev.length === 0) return validIncoming;
+
+            const prevMap = new Map(prev.map(it => [it.place.id, it]));
+            const merged: typeof prev = [];
+
+            for (const incoming of validIncoming) {
+              const local = prevMap.get(incoming.place?.id);
+              if (!local) {
+                merged.push(incoming);
+              } else {
+                const incomingTime = Number(incoming.updated_at || 0);
+                const localTime = Number(local.updated_at || 0);
+                if (incomingTime >= localTime) {
+                  merged.push({ ...local, ...incoming });
+                } else {
+                  merged.push(local);
+                }
+                prevMap.delete(incoming.place?.id);
+              }
+            }
+
+            for (const remaining of prevMap.values()) {
+              const remKeys = getPlaceKeys(remaining);
+              const maxTombTime = Math.max(0, ...remKeys.map(k => cartTombstonesRef.current.get(k) || 0));
+              const localTime = Number(remaining.updated_at || 0);
+              const isTombstoned = maxTombTime > 0 && maxTombTime >= localTime;
+              if (isTombstoned) continue;
+
+              merged.push(remaining);
+            }
+            return merged;
+          });
+          const sender = payload.senderName || 'Thành viên';
+          setGroupToastMsg(`📅 ${sender} vừa cập nhật lịch trình!`);
+          setTimeout(() => setGroupToastMsg(null), 3000);
+        }
+      })
+      .on('broadcast', { event: 'pregen_places_updated' }, (msg: any) => {
+        const payload = msg?.payload || msg;
+        if (payload?.places && Array.isArray(payload.places) && payload.places.length > 0) {
+          setPregenPlaces(payload.places);
+        }
+      })
+      .on('broadcast', { event: 'stage_changed' }, (msg: any) => {
+        const payload = msg?.payload;
+        if (payload?.stage) {
+          setWorkspaceStage(payload.stage);
+          if (payload.stage === 'scheduling') {
+            setGroupToastMsg(`🚀 ${payload.senderName || 'Trưởng nhóm'} đã chuyển sang bước Xếp lịch trình!`);
+            setTimeout(() => setGroupToastMsg(null), 3500);
+          } else if (payload.stage === 'collecting') {
+            setGroupToastMsg(`📝 ${payload.senderName || 'Trưởng nhóm'} đã quay lại bước Chọn thêm địa điểm!`);
+            setTimeout(() => setGroupToastMsg(null), 3500);
+          }
+        }
+      })
+      .on('broadcast', { event: 'trip_finalized' }, (msg: any) => {
+        const payload = msg?.payload;
+        if (payload?.tripId) {
+          setGroupToastMsg('🎉 Trưởng nhóm đã chốt lịch trình! Đang cùng bạn chuyển sang chuyến đi...');
+          setTimeout(() => {
+            const redirectUrl = payload.redirectUrl || APP_ROUTES.TRIP_DETAIL(payload.tripId);
+            router.replace(redirectUrl as any);
+          }, 800);
+        }
+      })
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const count = Object.keys(state).length;
+        if (count > 0) setCollaboratorCount(count);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED' && user?.id) {
+          await channel.track({
+            user_id: user.id,
+            online_at: new Date().toISOString(),
+          });
+        }
+      });
+
+    return () => {
+      draftChannelRef.current = null;
+      supabase.removeChannel(channel);
+    };
+  }, [draftTripId, user?.id]);
+
+  // Polling nhẹ mỗi 4 giây khi đang ở phòng chọn giỏ hàng chung để đảm bảo đồng bộ 100%
+  useEffect(() => {
+    if (!draftTripId || step !== 4) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get(`/trips/${draftTripId}/shared-cart`);
+        if (res.data?.tombstones) {
+          for (const [k, v] of Object.entries(res.data.tombstones)) {
+            const t = Number(v) || 0;
+            if (t > (cartTombstonesRef.current.get(k) || 0)) {
+              cartTombstonesRef.current.set(k, t);
+            }
+          }
+        }
+        const remoteCart = res.data?.draft_cart;
+        if (Array.isArray(remoteCart)) {
+          setCartItems((prev) => {
+            const itemMap = new Map<string, any>();
+
+            // 1. Giữ các item local nếu chưa bị tombstone đánh dấu xóa
+            for (const local of prev) {
+              const locKeys = getPlaceKeys(local);
+              const maxTomb = Math.max(0, ...locKeys.map(k => cartTombstonesRef.current.get(k) || 0));
+              const locTime = Number(local.updated_at || 0);
+              if (maxTomb === 0 || locTime > maxTomb) {
+                itemMap.set(local.place.id, local);
+              }
+            }
+
+            // 2. Hợp nhất với remoteCart từ backend
+            for (const remote of remoteCart) {
+              const remKeys = getPlaceKeys(remote);
+              const maxTomb = Math.max(0, ...remKeys.map(k => cartTombstonesRef.current.get(k) || 0));
+              const remTime = Number(remote.updated_at || 0);
+              if (maxTomb === 0 || remTime > maxTomb) {
+                const pId = remote.place?.id || remote.id;
+                const existing = itemMap.get(pId);
+                if (!existing || Number(remote.updated_at || 0) >= Number(existing.updated_at || 0)) {
+                  itemMap.set(pId, remote);
+                }
+              }
+            }
+
+            const mergedList = Array.from(itemMap.values());
+            if (JSON.stringify(prev) !== JSON.stringify(mergedList)) {
+              return mergedList;
+            }
+            return prev;
+          });
+        }
+        const remotePregen = res.data?.pregen_places;
+        if (Array.isArray(remotePregen) && remotePregen.length > 0) {
+          setPregenPlaces(remotePregen);
+        }
+        const remoteStage = res.data?.workspace_stage;
+        if (remoteStage && (remoteStage === 'collecting' || remoteStage === 'scheduling')) {
+          setWorkspaceStage((prev) => {
+            if (prev !== remoteStage) {
+              if (remoteStage === 'scheduling') {
+                setGroupToastMsg('🚀 Trưởng nhóm đã chuyển sang bước Xếp lịch trình!');
+                setTimeout(() => setGroupToastMsg(null), 3500);
+              } else if (remoteStage === 'collecting') {
+                setGroupToastMsg('📝 Trưởng nhóm đã quay lại bước Chọn thêm địa điểm!');
+                setTimeout(() => setGroupToastMsg(null), 3500);
+              }
+              return remoteStage;
+            }
+            return prev;
+          });
+        }
+      } catch (e) {
+        // Im lặng khi polling
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [draftTripId, step]);
+
+  // Mở modal tạo nhóm / mời bạn bè cùng chọn giỏ hàng
+  const handleOpenDraftGroupModal = async () => {
+    if (draftTripId) {
+      setShowGroupModal(true);
+      return;
+    }
+
+    setIsCreatingDraftGroup(true);
+    try {
+      const formattedCartItems = cartItems.map((it, idx) => ({
+        place: it.place,
+        pricing_option: it.pricing_option,
+        custom_cost: it.custom_cost,
+        day_number: it.day_number || 0,
+        order_index: idx + 1,
+      }));
+
+      const res = await api.post('/trips', {
+        title: title || `Chuyến đi ${destinationCity} (Đang chọn địa điểm)`,
+        destination_city: destinationCity,
+        start_date: startDate,
+        end_date: endDate,
+        budget_total: budgetTotal,
+        traveler_count: travelerCount,
+        traveler_type: travelerType,
+        creation_mode: 'manual',
+        use_pro_workspace: true,
+        is_ai_pro: true,
+        is_draft: true,
+        ai_provider: selectedAiProvider || 'custom_openai',
+        preferences: {
+          ...selectedPrefs,
+          selected_prefs: selectedPrefs,
+          special_requirements: specialRequirements,
+          creation_mode: 'manual',
+          draft_cart: cartItems,
+          workspace_stage: workspaceStage,
+          pregen_places: pregenPlaces,
+          is_ai_pro: true,
+          ai_tier: 'pro',
+          use_pro_workspace: true,
+        },
+        cart_items: formattedCartItems,
+      }, { timeout: 120000 });
+
+      const newTrip = res.data;
+      const tripId = newTrip.id;
+      setDraftTripId(tripId);
+      setDraftOwnerId(newTrip.user_id || user?.id || null);
+
+      let token = newTrip.share_token;
+      try {
+        const collabRes = await api.post(`/trips/${tripId}/collaborators`);
+        if (collabRes.data?.invite_token) {
+          token = collabRes.data.invite_token;
+        }
+      } catch (e) {}
+
+      setDraftShareToken(token || tripId);
+      setShowGroupModal(true);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'Không thể khởi tạo nhóm lúc này. Vui lòng kiểm tra lại ngân sách hoặc thông tin!';
+      setErrorMsg(msg);
+    } finally {
+      setIsCreatingDraftGroup(false);
+    }
+  };
+
+  // Đội trưởng chuyển bước sang Xếp lịch trình 4B và đồng bộ cho cả nhóm
+  const handleCaptainAdvanceToScheduling = () => {
+    if (cartItems.length === 0) {
+      setErrorMsg('Vui lòng chọn ít nhất 1 địa điểm vào giỏ hàng trước khi lên lịch!');
+      return;
+    }
+    setErrorMsg('');
+    setWorkspaceStage('scheduling');
+
+    const senderName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Trưởng nhóm';
+    const payload = { stage: 'scheduling', senderName };
+
+    if (draftTripId) {
+      try {
+        if (draftChannelRef.current) {
+          draftChannelRef.current.send({
+            type: 'broadcast',
+            event: 'stage_changed',
+            payload,
+          }).catch(() => {});
+        } else {
+          const channel = supabase.channel(`draft-cart:${draftTripId}`);
+          channel.send({
+            type: 'broadcast',
+            event: 'stage_changed',
+            payload,
+          }).catch(() => {});
+        }
+      } catch (e) {}
+
+      const tombstonesObj: Record<string, number> = {};
+      cartTombstonesRef.current.forEach((val, key) => {
+        tombstonesObj[key] = val;
+      });
+
+      api.put(`/trips/${draftTripId}/shared-cart`, {
+        draft_cart: cartItems,
+        deleted_place_ids: [],
+        tombstones: tombstonesObj,
+        workspace_stage: 'scheduling',
+      }).catch((err) => {
+        console.warn('Failed to update workspace_stage to scheduling:', err?.message);
+      });
+    }
+  };
+
+  // Đội trưởng quay lại bước Chọn địa điểm 4A và đồng bộ cho cả nhóm
+  const handleBackToCollecting = () => {
+    setWorkspaceStage('collecting');
+    const senderName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Trưởng nhóm';
+    const payload = { stage: 'collecting', senderName };
+
+    if (draftTripId) {
+      try {
+        if (draftChannelRef.current) {
+          draftChannelRef.current.send({
+            type: 'broadcast',
+            event: 'stage_changed',
+            payload,
+          }).catch(() => {});
+        } else {
+          const channel = supabase.channel(`draft-cart:${draftTripId}`);
+          channel.send({
+            type: 'broadcast',
+            event: 'stage_changed',
+            payload,
+          }).catch(() => {});
+        }
+      } catch (e) {}
+
+      const tombstonesObj: Record<string, number> = {};
+      cartTombstonesRef.current.forEach((val, key) => {
+        tombstonesObj[key] = val;
+      });
+
+      api.put(`/trips/${draftTripId}/shared-cart`, {
+        draft_cart: cartItems,
+        deleted_place_ids: [],
+        tombstones: tombstonesObj,
+        workspace_stage: 'collecting',
+      }).catch((err) => {
+        console.warn('Failed to update workspace_stage to collecting:', err?.message);
+      });
+    }
   };
 
   // ── LẮNG NGHE SỰ KIỆN CLICK THÊM GIỎ TỪ BẢN ĐỒ BƯỚC 4A ──
@@ -474,7 +1350,14 @@ export default function TripWizard() {
   // ── HTML GOOGLE MAPS TILES CHO BƯỚC 4A (KHO GỢI Ý & GIỎ HÀNG) ──
   const cartMapIframeHTML = useMemo(() => {
     const validPlaces = filteredPoolPlaces.filter((p: any) => p.lat && p.lng);
-    const cartIds = new Set(cartItems.map((it) => it.place.id));
+    const cartIds = new Set<string>();
+    filteredPoolPlaces.forEach((p) => {
+      const match = cartItems.find((it) =>
+        it.place.id === p.id ||
+        (normalizePlaceKey(it.place.name) === normalizePlaceKey(p.name) && it.place.category === p.category)
+      );
+      if (match) cartIds.add(p.id);
+    });
     const center = getCityCenterCoords(destinationCity);
 
     return `<!DOCTYPE html>
@@ -783,7 +1666,23 @@ export default function TripWizard() {
   };
 
   const handleRemoveFromCart = (placeId: string) => {
-    setCartItems(prev => prev.filter(item => item.place.id !== placeId));
+    setCartItems(prev => {
+      const match = prev.find(item => item.place.id === placeId);
+      if (!match) return prev;
+      const delTime = Date.now();
+      const delKeys = getPlaceKeys(match);
+      delKeys.forEach(k => cartTombstonesRef.current.set(k, delTime));
+      const updated = prev.filter(item => item !== match);
+      broadcastCartAction({
+        type: 'cart_item_removed',
+        placeId: match.place.id,
+        placeName: match.place.name,
+        deletedKeys: delKeys,
+        deleted_at: delTime,
+        updatedCart: updated,
+      });
+      return updated;
+    });
   };
 
   const handleUpdateItemCost = (placeId: string, newCost: number) => {
@@ -820,9 +1719,8 @@ export default function TripWizard() {
 
   const calendarStandbyPlaces: StandbyPlaceItem[] = useMemo(() => {
     // Chỉ đưa vào Giỏ chờ những địa điểm người dùng ĐÃ TỰ TAY CHỌN VÀO GIỎ HÀNG (cartItems) và chưa được xếp giờ
-    const assignedIds = new Set(cartItems.filter(it => it.day_number > 0).map(it => it.place.id));
     return cartItems
-      .filter(it => !assignedIds.has(it.place.id))
+      .filter(it => !it.day_number || it.day_number <= 0)
       .map(it => ({
         id: it.place.id,
         name: it.place.name,
@@ -831,15 +1729,21 @@ export default function TripWizard() {
         lat: it.place.lat,
         lng: it.place.lng,
         cost: it.custom_cost,
-        suggestedDuration: 90,
+        suggestedDuration: it.durationMinutes || 90,
       }));
   }, [cartItems]);
 
   const handleCalendarEventsChange = (updatedEvents: CalendarEventItem[]) => {
     setCartItems(prev => {
+      const now = Date.now();
       const updated = prev.map(item => {
         const found = updatedEvents.find(e => e.placeId === item.place.id || e.id === `ev-${item.place.id}`);
         if (found) {
+          const hasChanged = item.day_number !== found.dayNumber ||
+            item.startHour !== found.startHour ||
+            item.startMinute !== found.startMinute ||
+            item.custom_cost !== found.cost ||
+            item.durationMinutes !== found.durationMinutes;
           return {
             ...item,
             day_number: found.dayNumber,
@@ -847,16 +1751,18 @@ export default function TripWizard() {
             startHour: found.startHour,
             startMinute: found.startMinute,
             durationMinutes: found.durationMinutes,
+            updated_at: hasChanged ? now : (item.updated_at || now),
           };
         }
         return {
           ...item,
           day_number: 0,
+          updated_at: item.day_number !== 0 ? now : (item.updated_at || now),
         };
       });
 
       // Nếu có điểm từ Standby thêm vào
-      const pool = pregenPlaces.length > 0 ? pregenPlaces : getCuratedPlacesForCity(destinationCity);
+      const pool = pregenPlaces;
       updatedEvents.forEach(ev => {
         const already = updated.some(it => it.place.id === ev.placeId || `ev-${it.place.id}` === ev.id);
         if (!already) {
@@ -871,32 +1777,101 @@ export default function TripWizard() {
               startMinute: ev.startMinute,
               durationMinutes: ev.durationMinutes,
               order_index: updated.length + 1,
+              updated_at: now,
             });
           }
         }
       });
+
+      if (draftTripId) {
+        const senderName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Thành viên';
+        draftChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'calendar_updated',
+          payload: { cartItems: updated, senderId: user?.id, senderName },
+        }).catch(() => {});
+        const tombstonesObj: Record<string, number> = {};
+        cartTombstonesRef.current.forEach((val, key) => {
+          tombstonesObj[key] = val;
+        });
+
+        api.put(`/trips/${draftTripId}/shared-cart`, {
+          draft_cart: updated,
+          deleted_place_ids: [],
+          tombstones: tombstonesObj,
+          workspace_stage: 'scheduling',
+        }).catch(() => {});
+      }
 
       return updated;
     });
   };
 
   const handleSaveCalendarWorkspace = async (updatedEvents: CalendarEventItem[]) => {
-    handleCalendarEventsChange(updatedEvents);
-    await handleProScheduleSubmit('manual');
+    let updated = cartItems.map(item => {
+      const found = updatedEvents.find(e => e.placeId === item.place.id || e.id === `ev-${item.place.id}`);
+      if (found) {
+        return {
+          ...item,
+          day_number: found.dayNumber,
+          custom_cost: found.cost,
+          startHour: found.startHour,
+          startMinute: found.startMinute,
+          durationMinutes: found.durationMinutes,
+        };
+      }
+      return {
+        ...item,
+        day_number: 0,
+      };
+    });
+
+    // Nếu có điểm từ Standby được xếp vào
+    const pool = pregenPlaces;
+    updatedEvents.forEach(ev => {
+      const already = updated.some(it => it.place.id === ev.placeId || `ev-${it.place.id}` === ev.id);
+      if (!already) {
+        const p = pool.find(place => place.id === ev.placeId);
+        if (p) {
+          updated.push({
+            place: p,
+            pricing_option: 'auto',
+            custom_cost: ev.cost,
+            day_number: ev.dayNumber,
+            startHour: ev.startHour,
+            startMinute: ev.startMinute,
+            durationMinutes: ev.durationMinutes,
+            order_index: updated.length + 1,
+            added_by_name: user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Tôi',
+            added_by_id: user?.id,
+          });
+        }
+      }
+    });
+
+    setCartItems(updated);
+    syncCartToDraft(updated);
+    await handleProScheduleSubmit('manual', updated);
   };
 
-  const handleProScheduleSubmit = async (mode: 'ai_auto' | 'manual') => {
+  const handleProScheduleSubmit = async (mode: 'ai_auto' | 'manual', sourceCartItems?: typeof cartItems) => {
     setShowScheduleOptionModal(false);
     setErrorMsg('');
+
+    const itemsToSubmit = sourceCartItems || cartItems;
 
     const formattedPrefs = PREFERENCE_OPTIONS.reduce((acc, pref) => {
       acc[pref.id] = selectedPrefs.includes(pref.id);
       return acc;
     }, {} as Record<string, any>);
 
-    formattedPrefs.is_ai_pro = true;
-    formattedPrefs.ai_tier = 'pro';
+    const willUsePro = Boolean(useProWorkspace || useProForTrip || selectedAiProvider === 'custom_openai');
+    formattedPrefs.is_ai_pro = willUsePro;
+    formattedPrefs.ai_tier = willUsePro ? 'pro' : 'standard';
     formattedPrefs.creation_mode = mode;
+    if (useProWorkspace) {
+      formattedPrefs.use_pro_workspace = true;
+    }
 
     const fullSpecialRequirements = [
       specialRequirements,
@@ -910,12 +1885,15 @@ export default function TripWizard() {
     const formattedStartDate = parsedStart ? formatToISODate(parsedStart) : startDate;
     const formattedEndDate = parsedEnd ? formatToISODate(parsedEnd) : endDate;
 
-    const formattedCartItems = cartItems.map((it, idx) => ({
+    const formattedCartItems = itemsToSubmit.map((it, idx) => ({
       place: it.place,
-      day_number: it.day_number > 0 ? it.day_number : ((idx % daysCount) + 1),
+      day_number: it.day_number || 0,
       order_index: it.order_index || (idx + 1),
       custom_cost: it.custom_cost,
       pricing_option: it.pricing_option,
+      startHour: it.startHour,
+      startMinute: it.startMinute,
+      durationMinutes: it.durationMinutes,
     }));
 
     if (mode === 'ai_auto') {
@@ -945,25 +1923,35 @@ export default function TripWizard() {
           preferences: formattedPrefs,
           health_conditions: healthConditions,
           special_requirements: fullSpecialRequirements,
-          ai_provider: selectedAiProvider,
+          ai_provider: useProWorkspace ? (selectedAiProvider || 'custom_openai') : selectedAiProvider,
+          is_ai_pro: willUsePro,
+          use_pro_workspace: Boolean(useProWorkspace),
           creation_mode: 'ai_auto',
           cart_items: formattedCartItems,
-        }, { signal: controller.signal });
+          ...(draftTripId ? { draft_id: draftTripId } : {}),
+        }, { signal: controller.signal, timeout: 120000 });
         clearInterval(stageInterval);
         await clearCache('trips');
+        const targetTripId = res.data?.id || draftTripId;
+        if (draftTripId && targetTripId) {
+          await broadcastTripFinalized(targetTripId);
+        }
         const granted = await requestNotificationPermission();
-        if (granted) {
+        if (granted && targetTripId) {
           await scheduleTripReminder(
-            res.data.id,
+            targetTripId,
             title || `Du hí ${destinationCity}`,
             startDate,
           );
         }
-        router.replace(APP_ROUTES.TRIP_DETAIL(res.data.id) as any);
+        router.replace(APP_ROUTES.TRIP_DETAIL(targetTripId) as any);
       } catch (err: any) {
         clearInterval(stageInterval);
         setLoading(false);
         if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') return;
+        if (err.response?.status === 403 || err.response?.data?.code === 'requires_premium') {
+          setShowPremiumModal(true);
+        }
         setErrorMsg(err.response?.data?.error || 'Có lỗi xảy ra khi tạo chuyến đi');
       }
     } else {
@@ -983,12 +1971,24 @@ export default function TripWizard() {
           health_conditions: healthConditions,
           special_requirements: fullSpecialRequirements,
           creation_mode: 'manual',
+          is_finalizing: true,
+          ai_provider: useProWorkspace ? (selectedAiProvider || 'custom_openai') : selectedAiProvider,
+          is_ai_pro: willUsePro,
+          use_pro_workspace: Boolean(useProWorkspace),
           cart_items: formattedCartItems,
-        });
+          ...(draftTripId ? { draft_id: draftTripId } : {}),
+        }, { timeout: 120000 });
         await clearCache('trips');
-        router.replace(APP_ROUTES.TRIP_DETAIL(res.data.id) as any);
+        const targetTripId = res.data?.id || draftTripId;
+        if (draftTripId && targetTripId) {
+          await broadcastTripFinalized(targetTripId);
+        }
+        router.replace(APP_ROUTES.TRIP_DETAIL(targetTripId) as any);
       } catch (err: any) {
         setLoading(false);
+        if (err.response?.status === 403 || err.response?.data?.code === 'requires_premium') {
+          setShowPremiumModal(true);
+        }
         setErrorMsg(err.response?.data?.error || 'Có lỗi xảy ra khi tạo chuyến đi thủ công');
       }
     }
@@ -1164,8 +2164,12 @@ export default function TripWizard() {
       return acc;
     }, {} as Record<string, any>);
 
-    formattedPrefs.is_ai_pro = selectedAiProvider === 'custom_openai' || isPremium;
-    formattedPrefs.ai_tier = (selectedAiProvider === 'custom_openai' || isPremium) ? 'pro' : 'standard';
+    const willUsePro = Boolean(useProWorkspace || useProForTrip || selectedAiProvider === 'custom_openai');
+    formattedPrefs.is_ai_pro = willUsePro;
+    formattedPrefs.ai_tier = willUsePro ? 'pro' : 'standard';
+    if (useProWorkspace) {
+      formattedPrefs.use_pro_workspace = true;
+    }
 
     const fullSpecialRequirements = [
       specialRequirements,
@@ -1191,25 +2195,35 @@ export default function TripWizard() {
         preferences: formattedPrefs,
         health_conditions: healthConditions,
         special_requirements: fullSpecialRequirements,
-        ai_provider: selectedAiProvider,
-      }, { signal: controller.signal });
+        ai_provider: useProWorkspace ? (selectedAiProvider || 'custom_openai') : selectedAiProvider,
+        is_ai_pro: willUsePro,
+        use_pro_workspace: Boolean(useProWorkspace),
+        ...(draftTripId ? { draft_id: draftTripId } : {}),
+      }, { signal: controller.signal, timeout: 120000 });
       clearInterval(stageInterval);
       // Invalidate trips cache + schedule reminder notification
       await clearCache('trips');
+      const targetTripId = res.data?.id || draftTripId;
+      if (draftTripId && targetTripId) {
+        await broadcastTripFinalized(targetTripId);
+      }
       const granted = await requestNotificationPermission();
-      if (granted) {
+      if (granted && targetTripId) {
         await scheduleTripReminder(
-          res.data.id,
+          targetTripId,
           title || `Du hí ${destinationCity}`,
           startDate,
         );
       }
-      router.replace(APP_ROUTES.TRIP_DETAIL(res.data.id) as any);
+      router.replace(APP_ROUTES.TRIP_DETAIL(targetTripId) as any);
     } catch (err: any) {
       clearInterval(stageInterval);
       setLoading(false);
       // Ignore abort errors (user cancelled)
       if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') return;
+      if (err.response?.status === 403 || err.response?.data?.code === 'requires_premium') {
+        setShowPremiumModal(true);
+      }
       setErrorMsg(err.response?.data?.error || 'Có lỗi xảy ra khi tạo chuyến đi');
       setStep(4);
     }
@@ -1272,9 +2286,31 @@ export default function TripWizard() {
           <View className="bg-white rounded-3xl p-8 shadow-sm border border-brand-line/30 gap-6">
             {/* Error banner */}
             {!!errorMsg && (
-              <View className="p-4 rounded-xl bg-brand-danger/10 border border-brand-danger/30 flex-row gap-2 items-start">
-                <AlertTriangle size={18} color={BRAND_COLORS.danger} />
-                <Text className="text-brand-danger text-sm flex-1">{errorMsg}</Text>
+              <View className="p-4 rounded-xl bg-brand-danger/10 border border-brand-danger/30 flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+                <View className="flex-row gap-2 items-start flex-1 min-w-[240px]">
+                  <AlertTriangle size={18} color={BRAND_COLORS.danger} />
+                  <Text className="text-brand-danger text-sm flex-1">{errorMsg}</Text>
+                </View>
+                {useProWorkspace && step === 4 && (
+                  <View className="flex-row items-center gap-2">
+                    <Pressable
+                      testID="btn-retry-pregen-banner"
+                      onPress={fetchPregenPlaces}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 active:opacity-90 flex-row items-center gap-1"
+                    >
+                      <Sparkles size={13} color="#FFFFFF" />
+                      <Text className="text-xs font-bold text-white">🔄 Thử lại lấy gợi ý AI</Text>
+                    </Pressable>
+                    <Pressable
+                      testID="btn-manual-add-place-banner"
+                      onPress={() => setShowCustomPlaceModal(true)}
+                      className="px-3 py-1.5 rounded-lg bg-brand-bgAlt border border-brand-line/60 active:opacity-80 flex-row items-center gap-1"
+                    >
+                      <Plus size={13} color={BRAND_COLORS.text} />
+                      <Text className="text-xs font-bold text-brand-text">+ Thêm địa điểm thủ công</Text>
+                    </Pressable>
+                  </View>
+                )}
               </View>
             )}
 
@@ -1558,8 +2594,8 @@ export default function TripWizard() {
             {step === 4 && (
               <Reveal>
                 <View className="gap-6">
-                  {/* Mode switcher / Banner at the top of Step 4 */}
-                  {!(isPremium || isAdmin) ? (
+                  {/* Mode header / Group Collaboration Bar at the top of Step 4 */}
+                  {!canAccessWorkspace ? (
                     // Banner for Free user
                     <View className="p-4 rounded-2xl bg-[#FFFBF0] border border-[#F5D599] flex-row items-center justify-between gap-3 shadow-sm">
                       <View className="flex-1 gap-1">
@@ -1570,7 +2606,7 @@ export default function TripWizard() {
                           </Text>
                         </View>
                         <Text className="text-xs text-[#7A5210] leading-relaxed">
-                          AI sinh kho 16-22 địa điểm phong phú thực tế theo đúng sở thích và ngân sách vừa chọn. Bạn tự do nhặt vào giỏ, đổi ngày và xem đường đi trực tiếp.
+                          AI sinh kho địa điểm phong phú thực tế theo đúng sở thích và ngân sách vừa chọn. Bạn tự do nhặt vào giỏ, tạo nhóm cùng chọn và xem đường đi trực tiếp.
                         </Text>
                       </View>
                       <Pressable
@@ -1582,49 +2618,75 @@ export default function TripWizard() {
                       </Pressable>
                     </View>
                   ) : useProWorkspace ? (
-                    <View className="flex-row items-center justify-between p-3 rounded-2xl bg-white border border-brand-line/40 shadow-sm">
-                      <View className="flex-row items-center gap-2">
-                        <View className="w-8 h-8 rounded-lg bg-brand-primary items-center justify-center">
-                          <Crown size={16} color="#FFFFFF" />
+                    <View className="p-3.5 rounded-2xl bg-white border border-brand-line/50 shadow-sm gap-2.5">
+                      <View className="flex-row flex-wrap items-center justify-between gap-2">
+                        <View className="flex-row items-center gap-2.5">
+                          <View className="w-9 h-9 rounded-xl bg-brand-primary items-center justify-center shadow-xs">
+                            <Crown size={17} color="#FFFFFF" />
+                          </View>
+                          <View>
+                            <View className="flex-row items-center gap-2 flex-wrap">
+                              <Text className="text-sm font-extrabold text-brand-text">
+                                Không gian Chọn địa điểm & Lập lịch ViVu ({destinationCity})
+                              </Text>
+                              <View className="px-2 py-0.5 rounded-full bg-brand-primary/10 border border-brand-primary/20">
+                                <Text className="text-[10px] font-bold text-brand-primary">
+                                  {`⚡ Còn ${paymentStatus?.remainingTrips ?? 0} lượt Pro`}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text className="text-[11px] text-brand-textSoft">
+                              {draftTripId
+                                ? `🟢 Phòng chọn chung đang hoạt động · ${collaboratorCount} thành viên trực tuyến`
+                                : 'Chọn địa điểm vào giỏ hoặc mời bạn bè cùng chọn đồng bộ tức thì'}
+                            </Text>
+                          </View>
                         </View>
-                        <View>
-                          <Text className="text-xs font-extrabold text-brand-text">Không gian Lập lịch Chuyên sâu (Bản đồ & Lịch trình ViVu)</Text>
-                          <Text className="text-[10px] text-brand-textSoft">AI đã sinh kho địa điểm thực tế tại {destinationCity}</Text>
+
+                        {/* Nút thao tác Nhóm & Thêm địa điểm */}
+                        <View className="flex-row items-center gap-2">
+                          <Pressable
+                            testID="btn-open-custom-place-modal"
+                            onPress={() => setShowCustomPlaceModal(true)}
+                            className="px-3 py-2 rounded-xl bg-brand-bgAlt border border-brand-line/60 flex-row items-center gap-1.5 active:opacity-80"
+                          >
+                            <Plus size={13} color={BRAND_COLORS.primary} />
+                            <Text className="text-xs font-bold text-brand-text">+ Tự thêm điểm</Text>
+                          </Pressable>
+
+                          <Pressable
+                            testID="btn-draft-group-collab"
+                            onPress={handleOpenDraftGroupModal}
+                            disabled={isCreatingDraftGroup}
+                            className={`px-3.5 py-2 rounded-xl flex-row items-center gap-1.5 shadow-xs ${
+                              draftTripId
+                                ? 'bg-emerald-600 active:opacity-90'
+                                : 'bg-brand-primary active:opacity-90'
+                            }`}
+                          >
+                            {isCreatingDraftGroup ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <Users size={14} color="#FFFFFF" />
+                            )}
+                            <Text className="text-xs font-extrabold text-white">
+                              {draftTripId ? `👥 Mời nhóm (${collaboratorCount})` : '👥 Tạo nhóm cùng chọn giỏ'}
+                            </Text>
+                          </Pressable>
                         </View>
                       </View>
-                      <Pressable
-                        onPress={() => setUseProWorkspace(false)}
-                        className="px-3 py-1.5 rounded-lg bg-brand-bgAlt border border-brand-line/40"
-                      >
-                        <Text className="text-xs font-bold text-brand-textSoft">← Đổi sang tạo nhanh</Text>
-                      </Pressable>
-                    </View>
-                  ) : (
-                    <View className="p-4 rounded-2xl bg-[#FFFBF0] border border-[#F5D599] flex-row items-center justify-between gap-3 shadow-sm">
-                      <View className="flex-1 gap-1">
-                        <View className="flex-row items-center gap-1.5">
-                          <Crown size={16} color={BRAND_COLORS.accent} />
-                          <Text className="text-sm font-extrabold text-[#9A5B00]">
-                            🌟 Không gian Lập lịch ViVu (Bản đồ & Lịch trình kéo thả)
-                          </Text>
+
+                      {groupToastMsg && (
+                        <View className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-300 flex-row items-center gap-2">
+                          <Sparkles size={14} color="#059669" />
+                          <Text className="text-xs font-bold text-emerald-800 flex-1">{groupToastMsg}</Text>
                         </View>
-                        <Text className="text-xs text-[#7A5210] leading-relaxed">
-                          Chọn địa điểm trên bản đồ tương tác, tự do kéo thả xếp lịch, phân bổ ngân sách 5 mục và theo dõi chi phí thực tế.
-                        </Text>
-                      </View>
-                      <Pressable
-                        testID="btn-switch-to-pro-workspace"
-                        onPress={() => setUseProWorkspace(true)}
-                        className="px-4 py-2 rounded-xl bg-brand-primary active:opacity-90 flex-row items-center gap-1.5 self-center shadow-sm"
-                      >
-                        <Crown size={13} color="#FFFFFF" />
-                        <Text className="text-xs font-bold text-white whitespace-nowrap">Mở Lịch trình ViVu →</Text>
-                      </Pressable>
+                      )}
                     </View>
-                  )}
+                  ) : null}
 
                   {/* PRO WORKSPACE VIEW */}
-                  {useProWorkspace && (isPremium || isAdmin) ? (
+                  {useProWorkspace && canAccessWorkspace ? (
                     loadingPregen ? (
                       <View className="py-20 items-center justify-center gap-4 bg-brand-bgAlt/50 rounded-3xl border border-dashed border-brand-line/60">
                         <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
@@ -1690,9 +2752,31 @@ export default function TripWizard() {
                               <View className="flex-row items-center gap-2">
                                 <Pressable
                                   onPress={() => {
-                                    filteredPoolPlaces.forEach((p) => {
-                                      const exists = cartItems.some((it) => it.place.id === p.id);
-                                      if (!exists) handleAddToCart(p);
+                                    const addedByName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Tôi';
+                                    const addedById = user?.id;
+                                    setCartItems((prev) => {
+                                      let updated = [...prev];
+                                      filteredPoolPlaces.forEach((p) => {
+                                        const match = updated.find(
+                                          (it) =>
+                                            it.place.id === p.id ||
+                                            (normalizePlaceKey(it.place.name) === normalizePlaceKey(p.name) && it.place.category === p.category)
+                                        );
+                                        if (!match) {
+                                          const cost = p.estimated_cost || (p.price_level ? p.price_level * 50000 : 50000);
+                                          updated.push({
+                                            place: p,
+                                            pricing_option: 'auto',
+                                            custom_cost: cost,
+                                            day_number: 0,
+                                            order_index: updated.length + 1,
+                                            added_by_name: addedByName,
+                                            added_by_id: addedById,
+                                          });
+                                        }
+                                      });
+                                      syncCartToDraft(updated);
+                                      return updated;
                                     });
                                   }}
                                   className="px-2.5 py-1.5 rounded-xl bg-brand-primary/10 border border-brand-primary/30 flex-row items-center gap-1"
@@ -1705,7 +2789,7 @@ export default function TripWizard() {
 
                                 {cartItems.length > 0 && (
                                   <Pressable
-                                    onPress={() => setCartItems([])}
+                                    onPress={handleClearCart}
                                     className="px-2.5 py-1.5 rounded-xl bg-rose-50 border border-rose-200 flex-row items-center gap-1"
                                   >
                                     <Trash2 size={12} color="#E11D48" />
@@ -1733,82 +2817,129 @@ export default function TripWizard() {
                             </View>
 
                             {/* Danh sách địa điểm AI gợi ý (2 cột trên desktop) */}
-                            <View className="flex-row flex-wrap gap-3">
-                              {filteredPoolPlaces.map((place) => {
-                                const isInCart = cartItems.some((it) => it.place.id === place.id);
-                                const cost = place.estimated_cost || 50000;
-                                const isHovered = hoveredPoolPlaceId === place.id;
-
-                                return (
-                                  <View
-                                    key={place.id}
-                                    // @ts-ignore
-                                    onMouseEnter={() => {
-                                      if (Platform.OS === 'web' && cartMapIframeRef.current?.contentWindow) {
-                                        cartMapIframeRef.current.contentWindow.postMessage({
-                                          type: 'PAN_TO_PLACE',
-                                          placeId: place.id
-                                        }, '*');
-                                      }
-                                    }}
-                                    className={`p-3.5 rounded-2xl border bg-white flex-1 min-w-[240px] max-w-[360px] gap-2.5 shadow-sm transition-all ${
-                                      isInCart
-                                        ? 'border-brand-primary bg-emerald-50/20'
-                                        : isHovered
-                                        ? 'border-brand-accent bg-amber-50/30'
-                                        : 'border-brand-line/50'
-                                    }`}
+                            {filteredPoolPlaces.length === 0 ? (
+                              <View className="py-14 px-6 items-center justify-center bg-white rounded-2xl border border-dashed border-brand-line/60 gap-3 w-full">
+                                <View className="w-12 h-12 rounded-2xl bg-brand-primary/10 items-center justify-center">
+                                  <Sparkles size={24} color={BRAND_COLORS.primary} />
+                                </View>
+                                <Text className="text-sm font-extrabold text-brand-text text-center">
+                                  Chưa có địa điểm gợi ý nào trong danh sách
+                                </Text>
+                                <Text className="text-xs text-brand-textSoft text-center max-w-sm">
+                                  Bạn có thể nhấn nút dưới đây để AI phân tích và gợi ý kho địa điểm thực tế theo ngân sách, hoặc tự thêm địa điểm theo sở thích riêng.
+                                </Text>
+                                <View className="flex-row items-center gap-2.5 mt-2">
+                                  <Pressable
+                                    testID="btn-retry-pregen-empty"
+                                    onPress={fetchPregenPlaces}
+                                    className="px-4 py-2.5 rounded-xl bg-brand-primary active:opacity-90 flex-row items-center gap-1.5"
                                   >
-                                    <View className="flex-row items-start justify-between gap-2">
-                                      <View className="flex-1 gap-1">
-                                        <View className="flex-row items-center gap-2">
-                                          <View className="px-2 py-0.5 rounded-md bg-brand-bgAlt border border-brand-line/40">
-                                            <Text className="text-[10px] font-extrabold text-brand-textSoft">
-                                              {CATEGORY_NAMES_VI[String(place.category || '').toLowerCase()] || place.category || 'Địa điểm'}
-                                            </Text>
-                                          </View>
-                                          <Text className="text-xs font-extrabold text-emerald-700">
-                                            {new Intl.NumberFormat('vi-VN').format(cost)} đ
-                                          </Text>
-                                        </View>
-                                        <Text className="text-sm font-extrabold text-brand-text" numberOfLines={1}>
-                                          {place.name}
-                                        </Text>
-                                        {place.address && (
-                                          <Text className="text-[11px] text-brand-textSoft" numberOfLines={1}>
-                                            📍 {place.address}
-                                          </Text>
-                                        )}
-                                      </View>
-                                    </View>
+                                    <Sparkles size={14} color="#FFFFFF" />
+                                    <Text className="text-xs font-bold text-white">🔄 Thử lại lấy gợi ý AI</Text>
+                                  </Pressable>
+                                  <Pressable
+                                    testID="btn-custom-place-empty"
+                                    onPress={() => setShowCustomPlaceModal(true)}
+                                    className="px-4 py-2.5 rounded-xl bg-brand-bgAlt border border-brand-line/60 active:opacity-80 flex-row items-center gap-1.5"
+                                  >
+                                    <Plus size={14} color={BRAND_COLORS.text} />
+                                    <Text className="text-xs font-bold text-brand-text">+ Thêm địa điểm thủ công</Text>
+                                  </Pressable>
+                                </View>
+                              </View>
+                            ) : (
+                              <View className="flex-row flex-wrap gap-3">
+                                {filteredPoolPlaces.map((place) => {
+                                  const cartMatch = cartItems.find((it) =>
+                                    it.place.id === place.id ||
+                                    (normalizePlaceKey(it.place.name) === normalizePlaceKey(place.name) && it.place.category === place.category)
+                                  );
+                                  const isInCart = Boolean(cartMatch);
+                                  const cost = place.estimated_cost || 50000;
+                                  const isHovered = hoveredPoolPlaceId === place.id;
+                                  const addedByText = cartMatch?.added_by_id === user?.id
+                                    ? 'Bạn'
+                                    : (cartMatch?.added_by_name || 'Thành viên');
 
-                                    <Pressable
-                                      testID={`btn-toggle-cart-${place.id}`}
-                                      onPress={() => handleAddToCart(place)}
-                                      className={`w-full py-2 px-3 rounded-xl flex-row items-center justify-center gap-1.5 ${
+                                  return (
+                                    <View
+                                      key={place.id}
+                                      testID={`pool-card-${place.id}`}
+                                      // @ts-ignore
+                                      onMouseEnter={() => {
+                                        if (Platform.OS === 'web' && cartMapIframeRef.current?.contentWindow) {
+                                          cartMapIframeRef.current.contentWindow.postMessage({
+                                            type: 'PAN_TO_PLACE',
+                                            placeId: place.id
+                                          }, '*');
+                                        }
+                                      }}
+                                      className={`p-3.5 rounded-2xl border bg-white flex-1 min-w-[240px] max-w-[360px] gap-2.5 shadow-sm transition-all ${
                                         isInCart
-                                          ? 'bg-brand-primary/10 border border-brand-primary/30'
-                                          : 'bg-brand-primary active:opacity-90'
+                                          ? 'border-2 border-emerald-600 bg-emerald-50/40'
+                                          : isHovered
+                                          ? 'border-brand-accent bg-amber-50/30'
+                                          : 'border-brand-line/50'
                                       }`}
                                     >
-                                      {isInCart ? (
-                                        <>
-                                          <Check size={14} color={BRAND_COLORS.primary} />
-                                          <Text className="text-xs font-bold text-brand-primary">
-                                            ✓ Đã trong giỏ · Bấm để bỏ
+                                      <View className="flex-row items-start justify-between gap-2">
+                                        <View className="flex-1 gap-1">
+                                          <View className="flex-row items-center gap-2 flex-wrap">
+                                            <View className="px-2 py-0.5 rounded-md bg-brand-bgAlt border border-brand-line/40">
+                                              <Text className="text-[10px] font-extrabold text-brand-textSoft">
+                                                {CATEGORY_NAMES_VI[String(place.category || '').toLowerCase()] || place.category || 'Địa điểm'}
+                                              </Text>
+                                            </View>
+                                            <Text className="text-xs font-extrabold text-emerald-700">
+                                              {new Intl.NumberFormat('vi-VN').format(cost)} đ
+                                            </Text>
+                                            {isInCart && (
+                                              <View className="px-1.5 py-0.5 rounded-md bg-emerald-100 border border-emerald-300">
+                                                <Text className="text-[10px] font-bold text-emerald-800">
+                                                  ✓ {addedByText} đã thêm
+                                                </Text>
+                                              </View>
+                                            )}
+                                          </View>
+                                          <Text className="text-sm font-extrabold text-brand-text" numberOfLines={1}>
+                                            {place.name}
                                           </Text>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Plus size={14} color="#FFFFFF" />
-                                          <Text className="text-xs font-bold text-white">+ Thêm vào giỏ</Text>
-                                        </>
-                                      )}
-                                    </Pressable>
-                                  </View>
-                                );
-                              })}
-                            </View>
+                                          {place.address && (
+                                            <Text className="text-[11px] text-brand-textSoft" numberOfLines={1}>
+                                              📍 {place.address}
+                                            </Text>
+                                          )}
+                                        </View>
+                                      </View>
+
+                                      <Pressable
+                                        testID={`btn-toggle-cart-${place.id}`}
+                                        onPress={() => handleAddToCart(place)}
+                                        className={`w-full py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-1.5 transition-all ${
+                                          isInCart
+                                            ? 'bg-emerald-600 active:opacity-90'
+                                            : 'bg-brand-primary active:opacity-90'
+                                        }`}
+                                      >
+                                        {isInCart ? (
+                                          <>
+                                            <Check size={14} color="#FFFFFF" />
+                                            <Text className="text-xs font-bold text-white">
+                                              ✓ {addedByText} đã thêm · Bấm để bỏ
+                                            </Text>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Plus size={14} color="#FFFFFF" />
+                                            <Text className="text-xs font-bold text-white">+ Thêm vào giỏ</Text>
+                                          </>
+                                        )}
+                                      </Pressable>
+                                    </View>
+                                  );
+                                })}
+                              </View>
+                            )}
                           </View>
 
                           {/* CỘT PHẢI: BẢN ĐỒ TƯƠNG TÁC GOOGLE MAPS TILES */}
@@ -1852,26 +2983,36 @@ export default function TripWizard() {
                             </View>
                           </View>
 
-                          <Pressable
-                            testID="btn-open-calendar-from-cart"
-                            disabled={cartItems.length === 0}
-                            onPress={() => {
-                              if (cartItems.length === 0) {
-                                setErrorMsg('Vui lòng chọn ít nhất 1 địa điểm vào giỏ hàng trước khi lên lịch!');
-                                return;
-                              }
-                              setErrorMsg('');
-                              setWorkspaceStage('scheduling');
-                            }}
-                            className={`px-5 py-3 rounded-xl flex-row items-center gap-2 shadow-sm ${
-                              cartItems.length === 0 ? 'bg-gray-300 opacity-60' : 'bg-brand-primary active:opacity-90'
-                            }`}
-                          >
-                            <Calendar size={16} color="#FFFFFF" />
-                            <Text className="text-xs font-extrabold text-white">
-                              🚀 Mở Lịch trình & Xếp lịch ({cartItems.length} điểm) →
-                            </Text>
-                          </Pressable>
+                          {isGroupMember ? (
+                            <View className="flex-col sm:flex-row items-end sm:items-center gap-2">
+                              <Text className="text-[11px] text-gray-500 italic max-w-xs text-right">
+                                ℹ️ Bạn đang tham gia nhóm chọn giỏ hàng. Chỉ trưởng nhóm mới có quyền chốt danh sách và chuyển sang bước xếp lịch trình.
+                              </Text>
+                              <View
+                                testID="btn-open-calendar-member-disabled"
+                                className="px-5 py-3 rounded-xl flex-row items-center gap-2 bg-gray-200 opacity-80"
+                              >
+                                <Clock size={16} color="#6B7280" />
+                                <Text className="text-xs font-extrabold text-gray-500">
+                                  ⏳ Chờ trưởng nhóm chốt danh sách ({cartItems.length} địa điểm)
+                                </Text>
+                              </View>
+                            </View>
+                          ) : (
+                            <Pressable
+                              testID="btn-open-calendar-from-cart"
+                              disabled={cartItems.length === 0}
+                              onPress={handleCaptainAdvanceToScheduling}
+                              className={`px-5 py-3 rounded-xl flex-row items-center gap-2 shadow-sm ${
+                                cartItems.length === 0 ? 'bg-gray-300 opacity-60' : 'bg-brand-primary active:opacity-90'
+                              }`}
+                            >
+                              <Calendar size={16} color="#FFFFFF" />
+                              <Text className="text-xs font-extrabold text-white">
+                                🚀 Chốt danh sách & Sang bước xếp lịch ({cartItems.length} điểm) →
+                              </Text>
+                            </Pressable>
+                          )}
                         </View>
                       </View>
                     ) : (
@@ -1891,11 +3032,11 @@ export default function TripWizard() {
 
                           <Pressable
                             testID="btn-back-to-pick-places"
-                            onPress={() => setWorkspaceStage('collecting')}
-                            className="px-3.5 py-1.5 rounded-xl bg-brand-bgAlt border border-brand-line/50 flex-row items-center gap-1.5"
+                            onPress={handleBackToCollecting}
+                            className="px-3.5 py-1.5 rounded-xl bg-brand-bgAlt border border-brand-line/50 flex-row items-center gap-1.5 active:opacity-80"
                           >
                             <Plus size={13} color={BRAND_COLORS.primary} />
-                            <Text className="text-xs font-bold text-brand-primary">Thêm/bớt địa điểm khác</Text>
+                            <Text className="text-xs font-bold text-brand-primary">← Chọn thêm / bớt địa điểm vào giỏ</Text>
                           </Pressable>
                         </View>
 
@@ -1908,7 +3049,12 @@ export default function TripWizard() {
                           initialEvents={calendarInitialEvents}
                           standbyPlaces={calendarStandbyPlaces}
                           onEventsChange={handleCalendarEventsChange}
+                          onEventDelta={handleEventDelta}
+                          externalDelta={externalDelta}
                           onSave={handleSaveCalendarWorkspace}
+                          onBackToCollecting={handleBackToCollecting}
+                          readOnly={false}
+                          isOwner={isGroupDraftOwner}
                         />
                       </View>
                     )
@@ -1950,34 +3096,35 @@ export default function TripWizard() {
                         />
                       </View>
 
-                      {/* ── LỰA CHỌN AI ENGINE ── */}
-                      <View className="gap-2.5">
-                        <View className="flex-row items-center justify-between">
-                          <Text className="text-sm font-bold text-brand-textSoft">Lựa chọn Mô hình Trí Tuệ Nhân Tạo (AI)</Text>
-                          {(isPremium || isAdmin) ? (
-                            <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-md bg-[#FFF2E0] border border-brand-accent/30">
-                              <Crown size={11} color={BRAND_COLORS.accent} />
-                              <Text className="text-[10px] font-extrabold text-brand-accent">ĐÃ MỞ KHÓA PRO</Text>
-                            </View>
-                          ) : (
-                            <Pressable onPress={() => setShowPremiumModal(true)} className="flex-row items-center gap-1 px-2 py-0.5 rounded-md bg-brand-bgAlt border border-brand-line/40">
-                              <Crown size={11} color={BRAND_COLORS.gold} />
-                              <Text className="text-[10px] font-bold text-brand-textSoft">Nâng cấp Pro</Text>
-                            </Pressable>
-                          )}
+                      {/* ── LỰA CHỌN AI ENGINE & DÙNG LƯỢT PRO ── */}
+                      <View className="gap-3 p-4 rounded-2xl border border-brand-line/60 bg-brand-bgAlt/40">
+                        <View className="flex-row items-center justify-between flex-wrap gap-2">
+                          <Text className="text-sm font-bold text-brand-text">Lựa chọn Mô hình Trí Tuệ Nhân Tạo (AI)</Text>
+                          <Pressable
+                            onPress={() => setShowPremiumModal(true)}
+                            className="flex-row items-center gap-1 px-2.5 py-1 rounded-full bg-brand-bg border border-brand-line/50"
+                          >
+                            <Crown size={12} color={hasCredits ? BRAND_COLORS.accent : BRAND_COLORS.gold} />
+                            <Text className="text-[10px] font-extrabold" style={{ color: hasCredits ? BRAND_COLORS.accent : BRAND_COLORS.textSoft }}>
+                              {hasCredits ? `Còn ${remainingTrips} lượt Pro` : 'Mua thêm lượt Pro'}
+                            </Text>
+                          </Pressable>
                         </View>
 
                         <View className="flex-row gap-3">
                           {/* Option 1: AI Tiêu Chuẩn (Mặc định) */}
                           <Pressable
                             testID="ai-engine-gemini-card"
-                            onPress={() => setSelectedAiProvider('gemini')}
-                            className={`flex-1 p-3.5 rounded-xl border flex-col justify-between gap-2 ${selectedAiProvider === 'gemini' ? 'bg-brand-primary/10 border-brand-primary' : 'bg-brand-bg border-brand-line/50'}`}
+                            onPress={() => {
+                              setSelectedAiProvider('gemini');
+                              setUseProForTrip(false);
+                            }}
+                            className={`flex-1 p-3.5 rounded-xl border flex-col justify-between gap-2 ${(!useProForTrip && selectedAiProvider === 'gemini') ? 'bg-brand-primary/10 border-brand-primary' : 'bg-brand-bg border-brand-line/50'}`}
                           >
                             <View className="flex-row items-center justify-between">
                               <View className="flex-row items-center gap-1.5">
                                 <Zap size={14} color={BRAND_COLORS.primary} />
-                                <Text className={`text-xs font-bold ${selectedAiProvider === 'gemini' ? 'text-brand-primary' : 'text-brand-text'}`}>
+                                <Text className={`text-xs font-bold ${(!useProForTrip && selectedAiProvider === 'gemini') ? 'text-brand-primary' : 'text-brand-text'}`}>
                                   AI Tiêu Chuẩn
                                 </Text>
                               </View>
@@ -1994,29 +3141,31 @@ export default function TripWizard() {
                           <Pressable
                             testID="ai-engine-custom-card"
                             onPress={() => {
-                              if (isPremium || isAdmin) {
-                                setSelectedAiProvider('custom_openai');
+                              if (hasCredits) {
+                                setShowConfirmAiProModal(true);
                               } else {
                                 setShowPremiumModal(true);
                               }
                             }}
-                            className={`flex-1 p-3.5 rounded-xl border flex-col justify-between gap-2 ${selectedAiProvider === 'custom_openai' ? 'bg-brand-accent/10 border-brand-accent' : 'bg-brand-bg border-brand-line/50'}`}
+                            className={`flex-1 p-3.5 rounded-xl border flex-col justify-between gap-2 ${(useProForTrip || selectedAiProvider === 'custom_openai') ? 'bg-brand-accent/10 border-brand-accent' : 'bg-brand-bg border-brand-line/50'}`}
                           >
                             <View className="flex-row items-center justify-between">
                               <View className="flex-row items-center gap-1.5">
                                 <Crown size={14} color={BRAND_COLORS.accent} />
-                                <Text className={`text-xs font-bold ${selectedAiProvider === 'custom_openai' ? 'text-brand-accent' : 'text-brand-text'}`}>
+                                <Text className={`text-xs font-bold ${(useProForTrip || selectedAiProvider === 'custom_openai') ? 'text-brand-accent' : 'text-brand-text'}`}>
                                   AI Pro
                                 </Text>
                               </View>
-                              {(isPremium || isAdmin) ? (
+                              {hasCredits ? (
                                 <View className="px-1.5 py-0.5 rounded bg-brand-accent/20">
-                                  <Text className="text-[9px] font-extrabold text-brand-accent">GÓI PRO</Text>
+                                  <Text className="text-[9px] font-extrabold text-brand-accent">
+                                    {`CÒN ${remainingTrips} LƯỢT`}
+                                  </Text>
                                 </View>
                               ) : (
                                 <View className="flex-row items-center gap-0.5 px-1.5 py-0.5 rounded bg-brand-line/30">
                                   <Lock size={9} color={BRAND_COLORS.textSoft} />
-                                  <Text className="text-[9px] font-extrabold text-brand-textSoft">GÓI PRO</Text>
+                                  <Text className="text-[9px] font-extrabold text-brand-textSoft">CẦN GÓI PRO</Text>
                                 </View>
                               )}
                             </View>
@@ -2073,17 +3222,26 @@ export default function TripWizard() {
                   <ArrowRight size={16} color="white" />
                 </Pressable>
               ) : !useProWorkspace ? (
-                <Pressable
-                  testID="btn-open-create-modal"
-                  onPress={() => setShowScheduleOptionModal(true)}
-                  className="flex-row items-center gap-2 px-6 py-3.5 rounded-xl bg-brand-primary active:opacity-90 shadow-sm"
-                >
-                  <Sparkles size={16} color="white" />
-                  <Text className="text-white text-sm font-bold">
-                    🚀 Tạo lịch trình
-                  </Text>
-                  <ArrowRight size={16} color="white" />
-                </Pressable>
+                isGroupMember ? (
+                  <View className="px-5 py-3 rounded-xl bg-gray-200 opacity-80 flex-row items-center gap-2">
+                    <Clock size={16} color="#6B7280" />
+                    <Text className="text-gray-500 text-sm font-bold">
+                      ⏳ Chờ trưởng nhóm tạo lịch trình
+                    </Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    testID="btn-open-create-modal"
+                    onPress={() => setShowScheduleOptionModal(true)}
+                    className="flex-row items-center gap-2 px-6 py-3.5 rounded-xl bg-brand-primary active:opacity-90 shadow-sm"
+                  >
+                    <Sparkles size={16} color="white" />
+                    <Text className="text-white text-sm font-bold">
+                      🚀 Tạo lịch trình
+                    </Text>
+                    <ArrowRight size={16} color="white" />
+                  </Pressable>
+                )
               ) : null}
             </View>
           </View>
@@ -2097,6 +3255,12 @@ export default function TripWizard() {
         onActivated={() => {
           setShowPremiumModal(false);
           setSelectedAiProvider('custom_openai');
+          refetchStatus();
+        }}
+        onSuccess={() => {
+          setShowPremiumModal(false);
+          setSelectedAiProvider('custom_openai');
+          refetchStatus();
         }}
       />
 
@@ -2178,11 +3342,8 @@ export default function TripWizard() {
                 testID="btn-choose-workspace-live-modal"
                 onPress={() => {
                   setShowScheduleOptionModal(false);
-                  if (isPremium || isAdmin) {
-                    setUseProWorkspace(true);
-                    if (pregenPlaces.length === 0) {
-                      fetchPregenPlaces();
-                    }
+                  if (canAccessWorkspace) {
+                    setShowConfirmLiveMapModal(true);
                   } else {
                     setShowPremiumModal(true);
                   }
@@ -2191,8 +3352,8 @@ export default function TripWizard() {
                   padding: 16,
                   borderRadius: 16,
                   borderWidth: 1.5,
-                  borderColor: (isPremium || isAdmin) ? BRAND_COLORS.primary : '#F5D599',
-                  backgroundColor: (isPremium || isAdmin)
+                  borderColor: canAccessWorkspace ? BRAND_COLORS.primary : '#F5D599',
+                  backgroundColor: canAccessWorkspace
                     ? (pressed ? 'rgba(31,111,84,0.08)' : 'rgba(31,111,84,0.03)')
                     : '#FFFBF0',
                   gap: 8,
@@ -2200,28 +3361,28 @@ export default function TripWizard() {
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: (isPremium || isAdmin) ? 'rgba(31,111,84,0.12)' : 'rgba(212,160,23,0.15)', alignItems: 'center', justifyContent: 'center' }}>
-                      <Crown size={20} color={(isPremium || isAdmin) ? BRAND_COLORS.primary : '#D4A017'} />
+                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: canAccessWorkspace ? 'rgba(31,111,84,0.12)' : 'rgba(212,160,23,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                      <Crown size={20} color={canAccessWorkspace ? BRAND_COLORS.primary : '#D4A017'} />
                     </View>
                     <View>
-                      <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: (isPremium || isAdmin) ? BRAND_COLORS.primary : '#9A5B00' }}>
+                      <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: canAccessWorkspace ? BRAND_COLORS.primary : '#9A5B00' }}>
                         🗺️ Không gian Bản đồ Trực quan & Lập lịch
                       </Text>
-                      <Text style={{ fontSize: 11, color: (isPremium || isAdmin) ? '#1F6F54' : '#7A5210', fontWeight: '500' }}>
+                      <Text style={{ fontSize: 11, color: canAccessWorkspace ? '#1F6F54' : '#7A5210', fontWeight: '500' }}>
                         Bản đồ Trực quan & Lịch trình ViVu
                       </Text>
                     </View>
                   </View>
-                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: (isPremium || isAdmin) ? BRAND_COLORS.primary : '#D4A017', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    {!(isPremium || isAdmin) && <Lock size={10} color="#FFFFFF" />}
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: canAccessWorkspace ? BRAND_COLORS.primary : '#D4A017', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    {!canAccessWorkspace && <Lock size={10} color="#FFFFFF" />}
                     <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>
-                      {(isPremium || isAdmin) ? 'ĐÃ MỞ KHÓA PRO' : 'GÓI PRO 🔒'}
+                      {canAccessWorkspace ? `ĐÃ MỞ KHÓA PRO (${paymentStatus?.remainingTrips ?? 0} lượt)` : 'GÓI PRO 🔒'}
                     </Text>
                   </View>
                 </View>
 
-                <Text style={{ fontSize: 12, color: (isPremium || isAdmin) ? '#3F4F45' : '#7A5210', lineHeight: 17, paddingLeft: 50 }}>
-                  {(isPremium || isAdmin)
+                <Text style={{ fontSize: 12, color: canAccessWorkspace ? '#3F4F45' : '#7A5210', lineHeight: 17, paddingLeft: 50 }}>
+                  {canAccessWorkspace
                     ? 'Tự do kéo thả địa điểm từ Giỏ hàng vào Lịch trình trực quan, xem đường xe chạy OSRM và cân đối Bảng ngân sách ma trận.'
                     : 'Đặc quyền thành viên ViVu Pro. Mở khóa Không gian Bản đồ Trực quan & Lịch trình ViVu để tự tay sắp xếp lịch trình trên bản đồ.'}
                 </Text>
@@ -2238,6 +3399,479 @@ export default function TripWizard() {
           </View>
         </View>
       </Modal>
+
+      {/* Modal Xác nhận sử dụng AI Pro */}
+      <Modal
+        visible={showConfirmAiProModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowConfirmAiProModal(false);
+          setUseProForTrip(false);
+          setSelectedAiProvider('gemini');
+        }}
+      >
+        <View
+          style={(Platform.OS === 'web' ? {
+            position: 'fixed' as any,
+            top: 0, left: 0, right: 0, bottom: 0,
+            width: '100vw' as any, height: '100vh' as any,
+            zIndex: 9999, justifyContent: 'center', alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+            padding: 20,
+          } : {
+            flex: 1, backgroundColor: 'rgba(0,0,0,0.65)',
+            justifyContent: 'center', alignItems: 'center', padding: 20,
+          }) as any}
+        >
+          <View
+            testID="modal-confirm-ai-pro"
+            style={{
+              width: '100%',
+              maxWidth: 440,
+              backgroundColor: '#FFFFFF',
+              borderRadius: 24,
+              padding: 24,
+              gap: 16,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 12 },
+              shadowOpacity: 0.25,
+              shadowRadius: 24,
+              elevation: 12,
+              borderWidth: 1,
+              borderColor: '#E2E8F0',
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(226,112,58,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Crown size={22} color={BRAND_COLORS.accent} />
+                </View>
+                <View>
+                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 16, color: '#1B2420' }}>
+                    Xác nhận sử dụng AI Pro
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#6E7B70', fontWeight: '500' }}>
+                    Đặc quyền mô hình trí tuệ nhân tạo cao cấp
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setShowConfirmAiProModal(false);
+                  setUseProForTrip(false);
+                  setSelectedAiProvider('gemini');
+                }}
+                style={{ padding: 6, borderRadius: 999, backgroundColor: '#F3ECDC' }}
+              >
+                <X size={16} color="#6E7B70" />
+              </Pressable>
+            </View>
+
+            <View style={{ backgroundColor: '#FFFBEB', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#FDE68A', gap: 6 }}>
+              <Text style={{ fontSize: 13, color: '#92400E', fontWeight: '600', lineHeight: 20 }}>
+                Bạn có muốn dùng 1 lượt AI Pro cho chuyến đi này không?
+              </Text>
+              <Text style={{ fontSize: 11, color: '#B45309' }}>
+                ⚡ Lượt Pro khả dụng: {paymentStatus?.remainingTrips ?? 0} lượt
+              </Text>
+            </View>
+
+            <View style={{ gap: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Check size={14} color="#059669" />
+                <Text style={{ fontSize: 12, color: '#334155' }}>Lộ trình sâu sắc, tối ưu kinh phí & đường đi</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Check size={14} color="#059669" />
+                <Text style={{ fontSize: 12, color: '#334155' }}>Gợi ý địa điểm bản địa độc đáo và trải nghiệm trọn vẹn</Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+              <Pressable
+                testID="btn-cancel-use-ai-pro"
+                onPress={() => {
+                  setShowConfirmAiProModal(false);
+                  setUseProForTrip(false);
+                  setSelectedAiProvider('gemini');
+                }}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569' }}>Giữ AI Tiêu Chuẩn</Text>
+              </Pressable>
+              <Pressable
+                testID="btn-confirm-use-ai-pro"
+                onPress={() => {
+                  setShowConfirmAiProModal(false);
+                  setUseProForTrip(true);
+                  setSelectedAiProvider('custom_openai');
+                }}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: BRAND_COLORS.accent, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
+              >
+                <Crown size={15} color="#FFFFFF" />
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>Dùng 1 Lượt Pro</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Xác nhận sử dụng AI Pro cho Live Map */}
+      <Modal
+        visible={showConfirmLiveMapModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowConfirmLiveMapModal(false)}
+      >
+        <View
+          style={(Platform.OS === 'web' ? {
+            position: 'fixed' as any,
+            top: 0, left: 0, right: 0, bottom: 0,
+            width: '100vw' as any, height: '100vh' as any,
+            zIndex: 9999, justifyContent: 'center', alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+            padding: 20,
+          } : {
+            flex: 1, backgroundColor: 'rgba(0,0,0,0.65)',
+            justifyContent: 'center', alignItems: 'center', padding: 20,
+          }) as any}
+        >
+          <View
+            testID="modal-confirm-live-map"
+            style={{
+              width: '100%',
+              maxWidth: 460,
+              backgroundColor: '#FFFFFF',
+              borderRadius: 24,
+              padding: 24,
+              gap: 16,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 12 },
+              shadowOpacity: 0.25,
+              shadowRadius: 24,
+              elevation: 12,
+              borderWidth: 1,
+              borderColor: '#E2E8F0',
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(31,111,84,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Crown size={22} color={BRAND_COLORS.primary} />
+                </View>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 16, color: '#1B2420' }}>
+                    Xác nhận sử dụng AI Pro cho Live Map
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#6E7B70', fontWeight: '500' }}>
+                    Không gian Bản đồ Trực quan & Lập lịch tương tác
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => setShowConfirmLiveMapModal(false)}
+                style={{ padding: 6, borderRadius: 999, backgroundColor: '#F3ECDC' }}
+              >
+                <X size={16} color="#6E7B70" />
+              </Pressable>
+            </View>
+
+            <View style={{ backgroundColor: '#ECFDF5', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#A7F3D0', gap: 6 }}>
+              <Text style={{ fontSize: 13, color: '#065F46', fontWeight: '600', lineHeight: 20 }}>
+                Bạn có muốn dùng 1 lượt AI Pro cho chuyến đi này để mở khóa Không gian Bản đồ Trực quan & Lập lịch tương tác (Live Map) không?
+              </Text>
+              <Text style={{ fontSize: 11, color: '#047857' }}>
+                ⚡ Lượt Pro khả dụng: {paymentStatus?.remainingTrips ?? 0} lượt
+              </Text>
+            </View>
+
+            <View style={{ gap: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Check size={14} color="#059669" />
+                <Text style={{ fontSize: 12, color: '#334155' }}>Kéo thả địa điểm từ giỏ hàng vào từng ngày</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Check size={14} color="#059669" />
+                <Text style={{ fontSize: 12, color: '#334155' }}>Bản đồ số OpenStreetMap & tuyến đường xe chạy OSRM</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Check size={14} color="#059669" />
+                <Text style={{ fontSize: 12, color: '#334155' }}>Cân đối ngân sách chi tiêu chi tiết theo ma trận</Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+              <Pressable
+                testID="btn-cancel-use-live-map"
+                onPress={() => setShowConfirmLiveMapModal(false)}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569' }}>Để sau</Text>
+              </Pressable>
+              <Pressable
+                testID="btn-confirm-use-live-map"
+                onPress={() => {
+                  setShowConfirmLiveMapModal(false);
+                  setUseProWorkspace(true);
+                  setUseProForTrip(true);
+                  setSelectedAiProvider('custom_openai');
+                  if (pregenPlaces.length === 0) {
+                    fetchPregenPlaces('custom_openai');
+                  }
+                }}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: BRAND_COLORS.primary, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
+              >
+                <Crown size={15} color="#FFFFFF" />
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>Mở Khóa Live Map</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Mời bạn bè cùng chọn giỏ hàng qua Supabase Realtime */}
+      <Modal
+        visible={showGroupModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowGroupModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ width: '100%', maxWidth: 500, backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, gap: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(31,111,84,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Users size={20} color={BRAND_COLORS.primary} />
+                </View>
+                <View>
+                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 16, color: '#1B2420' }}>
+                    Mời bạn bè cùng chọn địa điểm
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#6E7B70' }}>
+                    Đồng bộ giỏ hàng theo thời gian thực (Realtime)
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => setShowGroupModal(false)}
+                style={{ padding: 6, borderRadius: 999, backgroundColor: '#F3ECDC' }}
+              >
+                <X size={18} color="#6E7B70" />
+              </Pressable>
+            </View>
+
+            <View style={{ backgroundColor: '#F7F4EA', padding: 14, borderRadius: 16, gap: 8 }}>
+              <Text style={{ fontSize: 12, color: '#3F4F45', lineHeight: 18 }}>
+                👥 Bất kỳ ai có đường link dưới đây đều có thể tham gia vào phòng chọn giỏ hàng này. Mọi thao tác thêm/bớt địa điểm sẽ tức thì hiển thị trên màn hình của nhau!
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#E5DFD3' }}>
+                <LinkIcon size={14} color="#6E7B70" />
+                <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: '#1B2420' }}>
+                  {typeof window !== 'undefined'
+                    ? `${window.location.origin}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`
+                    : `https://vivu.app/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`}
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={async () => {
+                  const shareUrl = typeof window !== 'undefined'
+                    ? `${window.location.origin}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`
+                    : `https://vivu.app/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`;
+                  try {
+                    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                      await navigator.clipboard.writeText(shareUrl);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2500);
+                    }
+                  } catch (e) {}
+                }}
+                style={{ paddingVertical: 11, backgroundColor: copiedLink ? '#059669' : BRAND_COLORS.primary, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
+              >
+                {copiedLink ? <Check size={15} color="#FFFFFF" /> : <Copy size={15} color="#FFFFFF" />}
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+                  {copiedLink ? 'Đã sao chép link mời!' : 'Sao chép link gửi bạn bè'}
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* QR Code preview */}
+            {draftTripId && (
+              <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 8, gap: 6 }}>
+                <Image
+                  source={{
+                    uri: `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
+                      typeof window !== 'undefined'
+                        ? `${window.location.origin}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`
+                        : `https://vivu.app/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`
+                    )}`,
+                  }}
+                  style={{ width: 130, height: 130, borderRadius: 12 }}
+                  resizeMode="contain"
+                />
+                <Text style={{ fontSize: 11, color: '#6E7B70' }}>Quét mã QR để cùng chọn giỏ hàng trên điện thoại</Text>
+              </View>
+            )}
+
+            <Pressable
+              onPress={() => setShowGroupModal(false)}
+              style={{ paddingVertical: 11, borderRadius: 12, backgroundColor: '#F3ECDC', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#1B2420' }}>Hoàn tất</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Tự thêm địa điểm mới vào giỏ hàng */}
+      <Modal
+        visible={showCustomPlaceModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCustomPlaceModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ width: '100%', maxWidth: 460, backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, gap: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(226,112,58,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Plus size={20} color={BRAND_COLORS.accent} />
+                </View>
+                <View>
+                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 16, color: '#1B2420' }}>
+                    Thêm địa điểm tùy chọn
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#6E7B70' }}>
+                    Tự nhập quán ăn, khách sạn hoặc điểm yêu thích
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => setShowCustomPlaceModal(false)}
+                style={{ padding: 6, borderRadius: 999, backgroundColor: '#F3ECDC' }}
+              >
+                <X size={18} color="#6E7B70" />
+              </Pressable>
+            </View>
+
+            <View style={{ gap: 12 }}>
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#1B2420' }}>Tên địa điểm *</Text>
+                <TextInput
+                  value={customPlaceTitle}
+                  onChangeText={setCustomPlaceTitle}
+                  placeholder="VD: Quán Bánh mì Phượng, Khách sạn Mường Thanh..."
+                  placeholderTextColor="#9CA3AF"
+                  style={{ borderWidth: 1, borderColor: '#E5DFD3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: '#1B2420' }}
+                />
+              </View>
+
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#1B2420' }}>Phân loại</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {[
+                    { id: 'dining', label: 'Ẩm thực 🍽️' },
+                    { id: 'cafe', label: 'Cà phê ☕' },
+                    { id: 'hotel', label: 'Khách sạn 🏨' },
+                    { id: 'attraction', label: 'Tham quan 🏔️' },
+                    { id: 'other', label: 'Khác 📍' },
+                  ].map((cat) => (
+                    <Pressable
+                      key={cat.id}
+                      onPress={() => setCustomPlaceCategory(cat.id as any)}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 10,
+                        backgroundColor: customPlaceCategory === cat.id ? BRAND_COLORS.primary : '#F7F4EA',
+                        borderWidth: 1,
+                        borderColor: customPlaceCategory === cat.id ? BRAND_COLORS.primary : '#E5DFD3',
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: customPlaceCategory === cat.id ? '#FFFFFF' : '#3F4F45' }}>
+                        {cat.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#1B2420' }}>Chi phí ước tính (VNĐ)</Text>
+                <TextInput
+                  value={customPlaceCost}
+                  onChangeText={setCustomPlaceCost}
+                  keyboardType="numeric"
+                  placeholder="VD: 50000"
+                  placeholderTextColor="#9CA3AF"
+                  style={{ borderWidth: 1, borderColor: '#E5DFD3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: '#1B2420' }}
+                />
+              </View>
+
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#1B2420' }}>Địa chỉ / Khu vực</Text>
+                <TextInput
+                  value={customPlaceAddress}
+                  onChangeText={setCustomPlaceAddress}
+                  placeholder={`VD: Trung tâm TP ${destinationCity}...`}
+                  placeholderTextColor="#9CA3AF"
+                  style={{ borderWidth: 1, borderColor: '#E5DFD3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: '#1B2420' }}
+                />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+              <Pressable
+                onPress={() => setShowCustomPlaceModal(false)}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#F3ECDC', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#1B2420' }}>Hủy</Text>
+              </Pressable>
+              <Pressable
+                testID="btn-confirm-add-custom-place"
+                onPress={handleAddNewCustomPlace}
+                disabled={!customPlaceTitle.trim()}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: customPlaceTitle.trim() ? BRAND_COLORS.primary : '#D1D5DB', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>+ Thêm vào giỏ</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Floating group sync notification toast */}
+      {groupToastMsg && (
+        <View
+          style={{
+            position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+            top: 24,
+            left: 20,
+            right: 20,
+            maxWidth: 520,
+            alignSelf: 'center',
+            zIndex: 99999,
+            backgroundColor: '#064E3B',
+            borderRadius: 16,
+            paddingHorizontal: 20,
+            paddingVertical: 14,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.25,
+            shadowRadius: 10,
+            elevation: 10,
+          }}
+        >
+          <Sparkles size={20} color="#34D399" />
+          <Text style={{ flex: 1, color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
+            {groupToastMsg}
+          </Text>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }

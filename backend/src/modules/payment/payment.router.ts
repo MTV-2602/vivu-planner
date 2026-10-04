@@ -3,17 +3,30 @@ import crypto from 'crypto';
 import { requireAuth } from '../../middleware/requireAuth';
 import { requireAdmin } from '../../middleware/requireAdmin';
 import { supabaseAdmin } from '../../config/supabase';
-import { createPayOSOrder, verifyPayOSWebhook, getPayOSOrderInfo, createMoMoOrder, verifyMoMoIPN, queryMoMoOrderInfo } from './payment.service';
+import {
+  createPayOSOrder,
+  verifyPayOSWebhook,
+  getPayOSOrderInfo,
+  cancelPayOSOrder,
+  createMoMoOrder,
+  verifyMoMoIPN,
+  queryMoMoOrderInfo,
+  activateOrderById,
+  grantCreditsToUser,
+  ORDER_EXPIRATION_MS,
+} from './payment.service';
 import { generateBookingConfirmationHTML } from '../email/email.service';
 import {
   PaymentStatus,
   PaymentMethod,
   UserRole,
-  ORDER_CONFIG,
   DEFAULT_PLANS_CONFIG,
-  QUOTA_CONFIG,
-  isUserPremium,
+  getProCredits,
+  getFreeQuota,
 } from '../../constants';
+
+// Re-export activateOrderById so other modules can import from router or service
+export { activateOrderById } from './payment.service';
 
 const router = Router();
 
@@ -21,98 +34,178 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'https://vivu-planner.vercel.ap
 // SITE_URL = Domain backend (where /api/* routes live)
 const SITE_URL = process.env.SITE_URL || 'https://vivu-planner.vercel.app';
 
+// ─── Premium Plans Model ─────────────────────────────────────────────────────
+export interface PricingPlanItem {
+  id: string;
+  amount: number;
+  label: string;
+  duration_days: number;
+  quota_total_grant: number;
+  description: string;
+  sort_order: number;
+  is_active: boolean;
+}
 
-// ─── Premium Plans ───────────────────────────────────────────────────────────
-export const PREMIUM_PLANS: Record<string, { amount: number; label: string; duration_days: number; quota_total_grant: number; is_unlimited?: boolean }> = {
-  ...DEFAULT_PLANS_CONFIG
-};
+export let cachedPlans: PricingPlanItem[] = [];
 
-export async function loadPlansFromDb(): Promise<Record<string, { amount: number; label: string; duration_days: number; quota_total_grant: number; is_unlimited?: boolean }>> {
+export async function loadPlansFromDb(): Promise<PricingPlanItem[]> {
   try {
     const { data, error } = await supabaseAdmin
       .from('pricing_plans')
-      .select('*')
-      .eq('is_active', true);
+      .select('id, amount, price, label, name, duration_days, quota_total_grant, description, sort_order, is_active')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true });
 
     if (!error && data && data.length > 0) {
-      data.forEach((p: any) => {
-        const id = p.id;
-        PREMIUM_PLANS[id] = {
-          amount: Number(p.price ?? p.amount ?? 0),
-          label: p.name ?? p.label ?? id,
-          duration_days: Number(p.duration_days || 30),
-          quota_total_grant: Number(p.quota_total_grant ?? 9999),
-          is_unlimited: !!p.is_unlimited
-        };
-      });
+      cachedPlans = data.map((p: any, idx: number) => ({
+        id: String(p.id),
+        amount: Number(p.amount ?? p.price ?? 0),
+        label: String(p.label || p.name || p.id),
+        duration_days: Number(p.duration_days ?? 0),
+        quota_total_grant: Number(p.quota_total_grant ?? 1),
+        description: typeof p.description === 'string' ? p.description : '',
+        sort_order: Number(p.sort_order ?? idx),
+        is_active: p.is_active !== false,
+      }));
+      return cachedPlans;
     }
   } catch (err: any) {
     console.error('[Payment] Error loading plans from DB:', err.message);
   }
-  return PREMIUM_PLANS;
+
+  // Fallback nếu DB chưa có bản ghi: dùng 2 gói chuẩn không hardcode alias
+  if (cachedPlans.length === 0) {
+    cachedPlans = [
+      {
+        id: 'single_trip',
+        amount: DEFAULT_PLANS_CONFIG.single_trip.amount,
+        label: DEFAULT_PLANS_CONFIG.single_trip.label,
+        duration_days: DEFAULT_PLANS_CONFIG.single_trip.duration_days,
+        quota_total_grant: DEFAULT_PLANS_CONFIG.single_trip.quota_total_grant,
+        description: DEFAULT_PLANS_CONFIG.single_trip.description,
+        sort_order: 1,
+        is_active: true,
+      },
+      {
+        id: 'monthly',
+        amount: DEFAULT_PLANS_CONFIG.monthly.amount,
+        label: DEFAULT_PLANS_CONFIG.monthly.label,
+        duration_days: DEFAULT_PLANS_CONFIG.monthly.duration_days,
+        quota_total_grant: DEFAULT_PLANS_CONFIG.monthly.quota_total_grant,
+        description: DEFAULT_PLANS_CONFIG.monthly.description,
+        sort_order: 2,
+        is_active: true,
+      },
+    ];
+  }
+  return cachedPlans;
 }
 
+// Đối tượng tương thích ngược cho các nơi import PREMIUM_PLANS
+export const PREMIUM_PLANS: Record<string, any> = new Proxy({} as any, {
+  get: (_target, prop: string) => {
+    const found = cachedPlans.find((p) => p.id === prop);
+    if (found) return found;
+    return (DEFAULT_PLANS_CONFIG as any)[prop];
+  },
+});
+
 // ─── POST /api/payment/create-order ─────────────────────────────────────────
-// Create payment order for PayOS or MoMo (with robust fallback if API keys are not configured)
 router.post('/create-order', requireAuth, async (req: any, res: Response) => {
   try {
-    await loadPlansFromDb();
-    const { method, plan = 'monthly', buyerName, buyerEmail, buyerPhone } = req.body;
+    const { method, plan, buyerName, buyerEmail, buyerPhone } = req.body;
     const userId = req.user!.id;
 
-    // 1. Kiểm tra trạng thái gói cước hiện tại của user để tránh downgrade sai logic
+    // 1. Validate phương thức thanh toán TRƯỚC KHI ghi đơn vào DB
+    if (!method || ![PaymentMethod.PAYOS, PaymentMethod.MOMO].includes(method)) {
+      return res.status(400).json({
+        error: 'Phương thức thanh toán không hợp lệ (Vui lòng chọn payos hoặc momo).',
+      });
+    }
+
+    if (!plan) {
+      return res.status(400).json({ error: 'Vui lòng chọn gói cước (plan).' });
+    }
+
+    const plans = await loadPlansFromDb();
+    const planConfig = plans.find((p) => p.id === plan && p.is_active);
+    if (!planConfig) {
+      return res.status(400).json({ error: 'Gói cước không hợp lệ hoặc đã ngừng hoạt động.' });
+    }
+
+    // 2. Validate số tiền: số nguyên VND > 0
+    const amount = Number(planConfig.amount);
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'Số tiền gói cước không hợp lệ.' });
+    }
+
+    // 3. Kiểm tra tài khoản admin: admin đã có đặc quyền vô hạn, không cần mua
     const { data: currentProfile } = await supabaseAdmin
       .from('profiles')
-      .select('is_premium, premium_until, quota_total')
+      .select('role')
       .eq('id', userId)
       .maybeSingle();
 
-    const isCurrentlyPremium = isUserPremium(currentProfile);
-    if (isCurrentlyPremium && (currentProfile?.quota_total ?? 0) > 10) {
-      // Đang có gói Premium không giới hạn, không cho phép mua gói Starter
-      if (plan === 'starter' || plan === 'plus') {
-        return res.status(400).json({
-          error: 'Tài khoản của bạn đang sở hữu Gói Premium cao cấp hơn. Bạn không thể hạ cấp xuống gói Starter khi gói hiện tại đang có hiệu lực.',
-        });
-      }
+    if (req.isAdmin || currentProfile?.role === UserRole.ADMIN) {
+      return res.status(400).json({
+        error: 'Tài khoản Quản trị viên đã có toàn quyền truy cập, không cần mua gói.',
+      });
     }
 
-    // 2. Tự động hủy các đơn pending cũ của người dùng để tránh xung đột đơn hàng
-    await supabaseAdmin
+    // 4. Hủy các đơn pending cũ của người dùng (gọi PayOS cancel best-effort)
+    const { data: oldPendingOrders } = await supabaseAdmin
       .from('payment_orders')
-      .update({ status: PaymentStatus.CANCELLED })
+      .select('id, order_code, method')
       .eq('user_id', userId)
       .eq('status', PaymentStatus.PENDING);
 
-    const planConfig = PREMIUM_PLANS[plan as keyof typeof PREMIUM_PLANS] || PREMIUM_PLANS.monthly;
+    if (oldPendingOrders && oldPendingOrders.length > 0) {
+      for (const oldOrd of oldPendingOrders) {
+        if (oldOrd.method === PaymentMethod.PAYOS && oldOrd.order_code) {
+          await cancelPayOSOrder(oldOrd.order_code, 'Khách tạo đơn mới').catch(() => {});
+        }
+      }
+      await supabaseAdmin
+        .from('payment_orders')
+        .update({
+          status: PaymentStatus.CANCELLED,
+          cancelled_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId)
+        .eq('status', PaymentStatus.PENDING);
+    }
+
     const orderCode = Date.now();
     const orderId = `VIVU${orderCode}`;
     const description = `ViVu Pro ${planConfig.label}`;
     const returnUrl = `${FRONTEND_URL}/chuyen-di?payment=success&orderId=${orderId}`;
     const cancelUrl = `${FRONTEND_URL}/chuyen-di?payment=cancelled`;
-    // IPN points to same Vercel domain since backend (/api/*) and frontend share the same origin
     const ipnUrl = `${SITE_URL}/api/payment/momo-ipn`;
 
-    // Save pending order to DB
+    // 5. Lưu đơn pending vào DB kèm snapshot quota_granted
+    const quotaGranted = Number(planConfig.quota_total_grant ?? 1);
     const { error: dbErr } = await supabaseAdmin.from('payment_orders').insert({
-      id: orderId,          // VIVU{orderCode} — primary key
+      id: orderId,
       user_id: userId,
       method,
-      plan,
-      amount: planConfig.amount,
+      plan: planConfig.id,
+      amount,
+      quota_granted: quotaGranted,
       status: PaymentStatus.PENDING,
-      order_code: String(orderCode), // numeric timestamp — for PayOS lookup
+      order_code: String(orderCode),
       created_at: new Date().toISOString(),
     });
+
     if (dbErr) {
       throw new Error(`Database error saving payment order: ${dbErr.message}`);
     }
 
+    // 6. Gọi cổng thanh toán
     if (method === PaymentMethod.PAYOS) {
       try {
         const payosData = await createPayOSOrder({
           orderCode,
-          amount: planConfig.amount,
+          amount,
           description,
           returnUrl,
           cancelUrl,
@@ -120,6 +213,7 @@ router.post('/create-order', requireAuth, async (req: any, res: Response) => {
           buyerEmail,
           buyerPhone,
         });
+
         return res.json({
           success: true,
           method: PaymentMethod.PAYOS,
@@ -128,16 +222,24 @@ router.post('/create-order', requireAuth, async (req: any, res: Response) => {
           accountNumber: payosData.accountNumber,
           accountName: payosData.accountName,
           bin: payosData.bin,
-          orderCode: payosData.orderCode, // numeric — for PayOS polling
-          orderId,                         // VIVU{orderCode} — for DB lookup
-          amount: planConfig.amount,
+          orderCode: payosData.orderCode,
+          orderId,
+          amount,
           plan: planConfig,
         });
       } catch (payosErr: any) {
-        console.error('[Payment] PayOS real API error:', payosErr.message);
-        return res.status(400).json({
-          error: `PayOS Error: ${payosErr.message}`,
-          details: payosErr.message,
+        console.error('[Payment] PayOS call failed:', payosErr.message);
+        // Đánh dấu đơn cancelled để không để pending rác
+        await supabaseAdmin
+          .from('payment_orders')
+          .update({
+            status: PaymentStatus.CANCELLED,
+            cancelled_at: new Date().toISOString(),
+          })
+          .eq('id', orderId);
+
+        return res.status(502).json({
+          error: `Không thể kết nối cổng PayOS: ${payosErr.message}`,
         });
       }
     }
@@ -147,39 +249,43 @@ router.post('/create-order', requireAuth, async (req: any, res: Response) => {
         const requestId = `${orderId}-${Date.now()}`;
         const momoData = await createMoMoOrder({
           orderId,
-          amount: planConfig.amount,
+          amount,
           orderInfo: description,
           redirectUrl: returnUrl,
           ipnUrl,
           requestId,
         });
+
         return res.json({
           success: true,
-          method: 'momo',
+          method: PaymentMethod.MOMO,
           payUrl: momoData.payUrl,
           deeplink: momoData.deeplink,
           qrCodeUrl: momoData.qrCodeUrl,
           orderId: momoData.orderId,
-          amount: planConfig.amount,
+          amount,
           plan: planConfig,
         });
       } catch (momoErr: any) {
-        console.error('[Payment] MoMo real API error:', momoErr.message);
-        return res.status(400).json({
-          error: `MoMo Error: ${momoErr.message}`,
-          details: momoErr.message,
+        console.error('[Payment] MoMo call failed:', momoErr.message);
+        // Đánh dấu đơn cancelled để không để pending rác
+        await supabaseAdmin
+          .from('payment_orders')
+          .update({
+            status: PaymentStatus.CANCELLED,
+            cancelled_at: new Date().toISOString(),
+          })
+          .eq('id', orderId);
+
+        return res.status(502).json({
+          error: `Không thể kết nối cổng MoMo: ${momoErr.message}`,
         });
       }
     }
-
-    return res.status(400).json({
-      error: 'Phương thức thanh toán không hợp lệ (Vui lòng chọn PayOS hoặc MoMo)',
-    });
   } catch (err: any) {
     console.error('[Payment] create-order error:', err.message);
     return res.status(500).json({
       error: `Lỗi hệ thống: ${err.message}`,
-      details: err.message,
     });
   }
 });
@@ -194,6 +300,7 @@ router.post('/payos-webhook', async (req: Request, res: Response) => {
     const { code, desc, data } = req.body;
 
     // Handle PayOS webhook registration & test pings from Dashboard
+    // Khi PAYOS_CHECKSUM_KEY chưa được cấu hình, trả về active mà không kích hoạt
     if (
       (!data && (code === '00' || desc === 'success')) ||
       req.body.webhookUrl ||
@@ -206,17 +313,20 @@ router.post('/payos-webhook', async (req: Request, res: Response) => {
 
     const isValid = verifyPayOSWebhook(req.body);
     if (!isValid) {
-      console.warn('[PayOS Webhook] Signature verification failed');
+      console.warn('[Payment] PayOS Webhook signature verification failed');
       return res.status(400).json({ error: 'Invalid webhook signature' });
     }
 
-    // PayOS webhook: data.orderCode is the numeric code
-    // The DB id = VIVU{orderCode}, so build that
     if (data?.code === '00' || data?.desc === 'success' || data?.status === 'PAID' || code === '00') {
       const numericCode = String(data.orderCode);
       const vivuOrderId = numericCode.startsWith('VIVU') ? numericCode : `VIVU${numericCode}`;
-      await activatePremiumByOrderId(vivuOrderId);
+      await activateOrderById(vivuOrderId, {
+        source: 'gateway',
+        confirmedAmount: Number(data.amount),
+        gatewayPaid: true,
+      });
     }
+
     return res.json({ success: true });
   } catch (err: any) {
     console.error('[Payment] PayOS webhook error:', err);
@@ -228,19 +338,232 @@ router.post('/payos-webhook', async (req: Request, res: Response) => {
 router.post('/momo-ipn', async (req: Request, res: Response) => {
   try {
     const isValid = verifyMoMoIPN(req.body);
-    if (!isValid) return res.status(400).json({ error: 'Invalid IPN signature' });
-
-    const { resultCode, orderId } = req.body;
-    if (resultCode === 0) {
-      await activatePremiumByOrderId(orderId);
+    if (!isValid) {
+      console.warn('[Payment] MoMo IPN signature verification failed');
+      return res.status(400).json({ error: 'Invalid IPN signature' });
     }
-    return res.json({ success: true });
+
+    const { resultCode, orderId, amount } = req.body;
+    if (resultCode === 0 && orderId) {
+      await activateOrderById(orderId, {
+        source: 'gateway',
+        confirmedAmount: Number(amount),
+        gatewayPaid: true,
+      });
+    }
+
+    // MoMo v2 spec: HTTP 204 No Content hoặc 200
+    return res.status(204).send();
   } catch (err: any) {
     console.error('[Payment] MoMo IPN error:', err);
     return res.status(500).json({ error: err.message });
   }
 });
 
+// ─── POST /api/payment/cancel-order ─────────────────────────────────────────
+router.post('/cancel-order', requireAuth, async (req: any, res: Response) => {
+  try {
+    const { orderId, orderCode } = req.body;
+    const target = orderId || orderCode;
+    if (!target) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp orderId hoặc orderCode.' });
+    }
+
+    const vivuId = String(target).startsWith('VIVU') ? String(target) : `VIVU${target}`;
+    const numericCode = String(target).replace(/\D/g, '');
+
+    const { data: order, error: fetchErr } = await supabaseAdmin
+      .from('payment_orders')
+      .select('*')
+      .or(`id.eq.${vivuId},order_code.eq.${numericCode}`)
+      .maybeSingle();
+
+    if (fetchErr || !order) {
+      return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+    }
+
+    if (order.user_id !== req.user?.id && req.user?.role !== UserRole.ADMIN) {
+      return res.status(403).json({ error: 'Bạn không có quyền thao tác với đơn hàng này.' });
+    }
+
+    if (order.status === PaymentStatus.COMPLETED) {
+      return res.status(400).json({ error: 'Đơn hàng đã thanh toán thành công, không thể hủy.' });
+    }
+
+    if (order.status === PaymentStatus.CANCELLED) {
+      return res.json({ success: true, message: 'Đơn hàng đã được hủy trước đó.' });
+    }
+
+    // Kiểm tra cổng trước khi hủy: nếu khách đã thanh toán thành công thì kích hoạt thay vì hủy!
+    let alreadyPaid = false;
+    if (order.method === PaymentMethod.PAYOS) {
+      const info = await getPayOSOrderInfo(order.order_code || numericCode);
+      if (info && (info.status === 'PAID' || info.code === '00')) {
+        alreadyPaid = true;
+      }
+    } else if (order.method === PaymentMethod.MOMO) {
+      const info = await queryMoMoOrderInfo(order.id);
+      if (info && info.resultCode === 0) {
+        alreadyPaid = true;
+      }
+    }
+
+    if (alreadyPaid) {
+      const actResult = await activateOrderById(order.id, { source: 'gateway' });
+      return res.json({
+        success: true,
+        paid: true,
+        activated: actResult.activated,
+        message: 'Đơn hàng đã được thanh toán trước khi hủy! Gói đã được kích hoạt thành công.',
+      });
+    }
+
+    // Best-effort hủy đơn ở cổng PayOS
+    if (order.method === PaymentMethod.PAYOS && order.order_code) {
+      await cancelPayOSOrder(order.order_code, 'Khách hàng bấm hủy trên hệ thống').catch(() => {});
+    }
+
+    const { error: cancelErr } = await supabaseAdmin
+      .from('payment_orders')
+      .update({
+        status: PaymentStatus.CANCELLED,
+        cancelled_at: new Date().toISOString(),
+      })
+      .eq('id', order.id);
+
+    if (cancelErr) {
+      throw cancelErr;
+    }
+
+    console.log(`[Payment] Order ${order.id} cancelled by user ${req.user.id}`);
+    return res.json({ success: true, message: 'Đã hủy đơn hàng thành công.' });
+  } catch (err: any) {
+    console.error('[Payment] cancel-order error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/payment/check-order/:orderCode ────────────────────────────────
+router.get('/check-order/:orderCode', requireAuth, async (req: any, res: Response) => {
+  try {
+    await autoCancelExpiredOrders();
+    const { orderCode } = req.params;
+    const vivuId = orderCode.startsWith('VIVU') ? orderCode : `VIVU${orderCode}`;
+    const numericCode = orderCode.startsWith('VIVU') ? orderCode.replace('VIVU', '') : orderCode;
+
+    // 1. Kiểm tra đơn trong DB
+    const { data: order } = await supabaseAdmin
+      .from('payment_orders')
+      .select('id, status, user_id, plan, method, order_code, amount')
+      .or(`id.eq.${vivuId},order_code.eq.${numericCode}`)
+      .maybeSingle();
+
+    if (order && order.user_id !== req.user?.id && req.user?.role !== UserRole.ADMIN) {
+      return res.status(403).json({ success: false, paid: false, error: 'Không có quyền kiểm tra đơn hàng này.' });
+    }
+
+    if (order?.status === PaymentStatus.COMPLETED) {
+      return res.json({ success: true, paid: true, status: 'PAID' });
+    }
+
+    // 2. Chỉ gọi cổng thanh toán tương ứng với phương thức của đơn
+    if (order?.method === PaymentMethod.PAYOS) {
+      const payosInfo = await getPayOSOrderInfo(order.order_code || numericCode);
+      if (payosInfo && (payosInfo.status === 'PAID' || payosInfo.code === '00')) {
+        const actRes = await activateOrderById(order.id, { source: 'gateway' });
+        if (actRes.activated || actRes.reason === 'already_completed') {
+          return res.json({ success: true, paid: true, status: 'PAID' });
+        }
+      }
+    } else if (order?.method === PaymentMethod.MOMO) {
+      const momoInfo = await queryMoMoOrderInfo(order.id);
+      if (momoInfo && momoInfo.resultCode === 0) {
+        const actRes = await activateOrderById(order.id, { source: 'gateway' });
+        if (actRes.activated || actRes.reason === 'already_completed') {
+          return res.json({ success: true, paid: true, status: 'PAID' });
+        }
+      }
+    }
+
+    return res.json({ success: true, paid: false, status: order?.status || 'PENDING' });
+  } catch (err: any) {
+    return res.json({ success: false, paid: false, error: err.message });
+  }
+});
+
+// ─── GET /api/payment/verify-return ──────────────────────────────────────────
+router.get('/verify-return', async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.query;
+
+    if (!orderId) {
+      return res.json({ success: false, message: 'Thiếu orderId.' });
+    }
+
+    const vivuId = String(orderId).startsWith('VIVU') ? String(orderId) : `VIVU${orderId}`;
+    const numericCode = String(orderId).replace(/\D/g, '');
+
+    const { data: order } = await supabaseAdmin
+      .from('payment_orders')
+      .select('id, status, user_id, plan, method, order_code, amount')
+      .or(`id.eq.${vivuId},order_code.eq.${numericCode}`)
+      .maybeSingle();
+
+    if (!order) {
+      return res.json({ success: false, message: 'Không tìm thấy đơn hàng.' });
+    }
+
+    if (order.status === PaymentStatus.COMPLETED) {
+      return res.json({ success: true, message: 'Đã kích hoạt trước đó. Lượt AI đã sẵn sàng!' });
+    }
+
+    // Chỉ gọi cổng thanh toán tương ứng
+    let isVerifiedPaid = false;
+    if (order.method === PaymentMethod.PAYOS) {
+      const payosInfo = await getPayOSOrderInfo(order.order_code || numericCode);
+      if (payosInfo && (payosInfo.status === 'PAID' || payosInfo.code === '00')) {
+        isVerifiedPaid = true;
+      }
+    } else if (order.method === PaymentMethod.MOMO) {
+      const momoInfo = await queryMoMoOrderInfo(order.id);
+      if (momoInfo && momoInfo.resultCode === 0) {
+        isVerifiedPaid = true;
+      }
+    }
+
+    if (!isVerifiedPaid) {
+      // Kiểm tra xem webhook có kích hoạt completed song song chưa
+      const { data: refreshed } = await supabaseAdmin
+        .from('payment_orders')
+        .select('status')
+        .eq('id', order.id)
+        .maybeSingle();
+
+      if (refreshed?.status === PaymentStatus.COMPLETED) {
+        return res.json({ success: true, message: 'Đã kích hoạt trước đó. Lượt AI đã sẵn sàng!' });
+      }
+
+      return res.json({
+        success: false,
+        message: 'Thanh toán chưa hoàn tất hoặc chưa được cổng thanh toán xác nhận.',
+      });
+    }
+
+    // Kích hoạt qua nguồn duy nhất activateOrderById
+    const actRes = await activateOrderById(order.id, { source: 'gateway' });
+    if (actRes.activated || actRes.reason === 'already_completed') {
+      return res.json({ success: true, message: 'Đã kích hoạt gói thành công! Lượt AI đã được cộng vào tài khoản.' });
+    }
+
+    return res.json({
+      success: false,
+      message: actRes.reason || 'Kích hoạt không thành công.',
+    });
+  } catch (err: any) {
+    console.error('[Payment] verify-return error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // ─── GET /api/payment/diagnose ────────────────────────────────────────────────
 router.get('/diagnose', requireAuth, requireAdmin, async (req: Request, res: Response) => {
@@ -251,34 +574,32 @@ router.get('/diagnose', requireAuth, requireAdmin, async (req: Request, res: Res
       return res.status(400).json({ error: 'Vui lòng cung cấp email query parameter (?email=...)' });
     }
 
-    // 1. Tìm user trong Auth Supabase bằng email
     const { data: listData, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
     if (listErr) {
       return res.status(500).json({ error: 'Lỗi lấy danh sách user từ auth: ' + listErr.message });
     }
 
-    const userObj = (listData.users as any[]).find((u: any) => u.email?.toLowerCase().trim() === String(email).toLowerCase().trim());
+    const userObj = (listData.users as any[]).find(
+      (u: any) => u.email?.toLowerCase().trim() === String(email).toLowerCase().trim()
+    );
     if (!userObj) {
       return res.status(404).json({ error: `Không tìm thấy user nào với email: ${email} trong auth.users` });
     }
 
     const userId = userObj.id;
 
-    // 2. Lấy profile
     const { data: profile, error: profileErr } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
 
-    // 3. Lấy các đơn hàng
     const { data: orders, error: ordersErr } = await supabaseAdmin
       .from('payment_orders')
       .select('*')
       .eq('user_id', userId);
 
-    // 4. Diagnose only — không tự động kích hoạt premium, tránh side effect không mong muốn
-    const latestOrder = orders?.find(o => o.status === 'completed' || o.status === 'success');
+    const latestOrder = orders?.find((o) => o.status === 'completed' || o.status === 'success');
     const activationSuccess = false;
     const activationError: string | null = null;
 
@@ -303,10 +624,10 @@ router.get('/diagnose', requireAuth, requireAdmin, async (req: Request, res: Res
 // ─── GET /api/payment/plans ───────────────────────────────────────────────────
 router.get('/plans', async (_req: Request, res: Response) => {
   try {
-    await loadPlansFromDb();
+    const plans = await loadPlansFromDb();
     return res.json({
       success: true,
-      plans: PREMIUM_PLANS,
+      plans,
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -316,14 +637,8 @@ router.get('/plans', async (_req: Request, res: Response) => {
 // ─── GET /api/payment/status ─────────────────────────────────────────────────
 router.get('/status', requireAuth, async (req: any, res: Response) => {
   try {
-    await loadPlansFromDb();
     await autoCancelExpiredOrders();
     const userId = req.user!.id;
-
-    const { count: dbTripsCount } = await supabaseAdmin
-      .from('trips')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId);
 
     let profile: any = null;
     let dbWarning: string | null = null;
@@ -336,89 +651,121 @@ router.get('/status', requireAuth, async (req: any, res: Response) => {
 
       if (error) {
         console.error('[Payment Status] Supabase select error:', error.message);
+        dbWarning = error.message;
       } else {
         profile = data;
       }
     } catch (err: any) {
       console.error('[Payment Status] Supabase query crashed:', err.message);
+      dbWarning = err.message;
     }
-
-    // Lấy đơn hàng thành công gần nhất để tham chiếu tên gói khi user đang là Premium
-    const { data: latestOrder } = await supabaseAdmin
-      .from('payment_orders')
-      .select('plan, created_at, status')
-      .eq('user_id', userId)
-      .in('status', ['completed', 'success'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
 
     const isAdmin = req.isAdmin === true || profile?.role === UserRole.ADMIN;
-
-    if (isAdmin) {
-      return res.json({
-        isPremium: true,
-        premiumUntil: '2099-12-31T23:59:59.000Z',
-        planName: 'Gói Admin Đặc Quyền (Vô hạn)',
-        tripsUsed: dbTripsCount || 0,
-        tripsQuota: 9999,
-        remainingTrips: 9999,
-        dbWarning,
-      });
-    }
-
-    const isPremium = isUserPremium(profile);
-
-    const tripsQuota = isPremium 
-      ? (profile?.quota_total ?? 9999) 
-      : (profile?.quota_total ?? (profile?.custom_quota ?? QUOTA_CONFIG.DEFAULT_FREE_TRIPS));
-    const tripsUsed = Math.max(profile?.quota_used ?? 0, profile?.trips_used ?? 0, dbTripsCount || 0);
-    const remainingTrips = isPremium && tripsQuota >= 9999 ? 9999 : Math.max(0, tripsQuota - tripsUsed);
+    const now = new Date();
+    const proInfo = getProCredits(profile, now);
+    const freeQuota = getFreeQuota(profile);
 
     let planName = 'Gói Miễn Phí';
     let planId = 'free';
 
-    if (isPremium) {
-      const orderPlan = latestOrder?.plan;
-      if (orderPlan === 'plus' || orderPlan === 'starter') {
-        planId = 'starter';
-        planName = 'Gói Starter';
-      } else if (orderPlan === 'monthly' || orderPlan === 'pro' || orderPlan === 'premium' || orderPlan === 'quarterly' || orderPlan === 'vip') {
-        planId = 'pro';
-        planName = 'Gói Premium Pro';
-      } else if (profile?.quota_total && profile.quota_total <= 10) {
-        planId = 'starter';
-        planName = 'Gói Starter';
-      } else {
-        planId = 'pro';
-        planName = 'Gói Premium Pro';
+    if (isAdmin) {
+      planName = 'Gói Admin Đặc Quyền (Vô hạn)';
+      planId = 'admin';
+    } else if (proInfo.proCredits > 0 && proInfo.monthlyCredits > 0) {
+      planName = 'Gói theo lượt + Gói theo ngày';
+      planId = 'combo';
+    } else if (proInfo.proCredits > 0 && proInfo.monthlyCredits === 0) {
+      planId = 'single_trip';
+      try {
+        const { data: latestOrder } = await supabaseAdmin
+          .from('payment_orders')
+          .select('plan')
+          .eq('user_id', userId)
+          .in('status', ['completed', 'success'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (latestOrder?.plan) {
+          const plans = await loadPlansFromDb();
+          const matchedPlan = plans.find((p) => p.id === latestOrder.plan);
+          planName = matchedPlan?.label || 'Gói Chuyến Đơn';
+          planId = matchedPlan?.id || 'single_trip';
+        } else {
+          planName = 'Gói Chuyến Đơn';
+        }
+      } catch {
+        planName = 'Gói Chuyến Đơn';
+      }
+    } else if (proInfo.proCredits === 0 && proInfo.monthlyCredits > 0) {
+      planId = 'monthly';
+      try {
+        const { data: latestOrder } = await supabaseAdmin
+          .from('payment_orders')
+          .select('plan')
+          .eq('user_id', userId)
+          .in('status', ['completed', 'success'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (latestOrder?.plan) {
+          const plans = await loadPlansFromDb();
+          const matchedPlan = plans.find((p) => p.id === latestOrder.plan);
+          planName = matchedPlan?.label || 'Gói 1 Tháng';
+          planId = matchedPlan?.id || 'monthly';
+        } else {
+          planName = 'Gói 1 Tháng';
+        }
+      } catch {
+        planName = 'Gói 1 Tháng';
       }
     }
 
+    const isPremium = isAdmin || proInfo.total > 0;
+    const hasActiveMonthly = !isAdmin && proInfo.hasActiveMonthly && proInfo.monthlyCredits > 0;
+
     return res.json({
       isPremium,
-      premiumUntil: isPremium ? (profile?.premium_until || null) : null,
+      remainingTrips: isAdmin ? 9999 : proInfo.total,
+      singleCredits: isAdmin ? 9999 : proInfo.proCredits,
+      monthlyCredits: isAdmin ? 0 : (hasActiveMonthly ? proInfo.monthlyCredits : 0),
+      monthlyUntil: hasActiveMonthly ? proInfo.monthlyUntil : null,
+      monthlyRemainingDays: hasActiveMonthly ? proInfo.monthlyRemainingDays : null,
+      freeRemaining: isAdmin ? 9999 : freeQuota.remaining,
+      freeTotal: isAdmin ? 9999 : freeQuota.total,
       planName,
       planId,
-      tripsUsed,
-      tripsQuota,
-      remainingTrips,
       dbWarning,
+      premiumUntil: hasActiveMonthly ? proInfo.monthlyUntil : null,
+      remainingDays: hasActiveMonthly ? proInfo.monthlyRemainingDays : null,
+      tripsQuota: isAdmin ? 9999 : freeQuota.total,
+      tripsUsed: isAdmin ? 0 : freeQuota.used,
+      hasActiveMonthly,
     });
   } catch (err: any) {
     return res.json({
       isPremium: false,
-      premiumUntil: null,
-      planName: 'Gói Miễn Phí (3 lượt)',
-      tripsUsed: 0,
-      tripsQuota: 3,
       remainingTrips: 3,
+      singleCredits: 0,
+      monthlyCredits: 0,
+      monthlyUntil: null,
+      monthlyRemainingDays: null,
+      freeRemaining: 3,
+      freeTotal: 3,
+      planName: 'Gói Miễn Phí',
+      planId: 'free',
+      dbWarning: err.message,
+      premiumUntil: null,
+      remainingDays: null,
+      tripsQuota: 3,
+      tripsUsed: 0,
+      hasActiveMonthly: false,
     });
   }
 });
 
 // ─── GET /api/payment/my-orders ─────────────────────────────────────────────
-// Lấy danh sách lịch sử giao dịch nạp gói của người dùng hiện tại
 router.get('/my-orders', requireAuth, async (req: any, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -437,171 +784,41 @@ router.get('/my-orders', requireAuth, async (req: any, res: Response) => {
   }
 });
 
-// ─── GET /api/payment/check-order/:orderCode ────────────────────────────────
-// orderCode can be: numeric (PayOS orderCode) OR full VIVU-prefixed string
-router.get('/check-order/:orderCode', requireAuth, async (req: any, res: Response) => {
-  try {
-    await autoCancelExpiredOrders();
-    const { orderCode } = req.params;
-    // Normalize to both formats
-    const vivuId = orderCode.startsWith('VIVU') ? orderCode : `VIVU${orderCode}`;
-    const numericCode = orderCode.startsWith('VIVU') ? orderCode.replace('VIVU', '') : orderCode;
-
-    // 1. Check DB by primary key (VIVU-prefixed)
-    const { data: order } = await supabaseAdmin
-      .from('payment_orders')
-      .select('id, status, user_id, plan, method')
-      .eq('id', vivuId)
-      .maybeSingle();
-
-    if (order && order.user_id !== req.user?.id && req.user?.role !== UserRole.ADMIN) {
-      return res.status(403).json({ success: false, paid: false, error: 'Không có quyền kiểm tra đơn hàng này' });
-    }
-
-    if (order?.status === PaymentStatus.COMPLETED) {
-      return res.json({ success: true, paid: true, status: 'PAID' });
-    }
-
-    // 2. Query PayOS directly using numeric orderCode
-    try {
-      const payosInfo = await getPayOSOrderInfo(numericCode);
-      if (payosInfo && (payosInfo.status === 'PAID' || payosInfo.code === '00')) {
-        await activatePremiumByOrderId(vivuId);
-        return res.json({ success: true, paid: true, status: 'PAID' });
-      }
-    } catch (_) {}
-
-    // 3. Query MoMo directly using VIVU-prefixed orderId
-    try {
-      const momoInfo = await queryMoMoOrderInfo(vivuId, vivuId);
-      if (momoInfo && momoInfo.resultCode === 0) {
-        await activatePremiumByOrderId(vivuId);
-        return res.json({ success: true, paid: true, status: 'PAID' });
-      }
-    } catch (_) {}
-
-    return res.json({ success: true, paid: false, status: order?.status || 'PENDING' });
-  } catch (err: any) {
-    return res.json({ success: false, paid: false, error: err.message });
-  }
-});
-
-// ─── GET /api/payment/verify-return ──────────────────────────────────────────
-// Called by frontend after payment provider redirects back to the app.
-// For MoMo: resultCode=0 means success. For PayOS: code=00 or status=PAID.
-router.get('/verify-return', async (req: Request, res: Response) => {
-  try {
-    const { orderId, resultCode, status } = req.query;
-
-    if (!orderId) {
-      return res.json({ success: false, message: 'Thiếu orderId.' });
-    }
-
-    const vivuId = String(orderId);
-    const numericCode = vivuId.replace(/\D/g, '');
-
-    // Check existing order record in DB
-    const { data: order } = await supabaseAdmin
-      .from('payment_orders')
-      .select('id, status, user_id, plan, method, order_code')
-      .eq('id', vivuId)
-      .maybeSingle();
-
-    if (!order) {
-      return res.json({ success: false, message: 'Không tìm thấy đơn hàng.' });
-    }
-
-    // If order is already completed (e.g. IPN arrived first), return success idempotently
-    if (order.status === PaymentStatus.COMPLETED) {
-      return res.json({ success: true, message: 'Đã kích hoạt trước đó. Lượt AI đã sẵn sàng!' });
-    }
-
-    // Check cancellation
-    const isCancelled =
-      String(resultCode) === '1006' ||
-      String(resultCode) === '49' ||
-      String(status) === 'CANCELLED' ||
-      order.status === PaymentStatus.CANCELLED;
-
-    if (isCancelled) {
-      return res.json({ success: false, message: 'Giao dịch đã bị hủy.' });
-    }
-
-    // Verify transaction status securely with payment gateways
-    let isVerifiedPaid = false;
-
-    // 1. PayOS verification
-    if (order.method === PaymentMethod.PAYOS || !order.method) {
-      try {
-        const queryCode = order.order_code || numericCode;
-        if (queryCode) {
-          const payosInfo = await getPayOSOrderInfo(queryCode);
-          if (payosInfo && (payosInfo.status === 'PAID' || payosInfo.code === '00')) {
-            isVerifiedPaid = true;
-          }
-        }
-      } catch (_) {}
-    }
-
-    // 2. MoMo verification
-    if (!isVerifiedPaid && (order.method === PaymentMethod.MOMO || !order.method)) {
-      try {
-        const momoInfo = await queryMoMoOrderInfo(vivuId, vivuId);
-        if (momoInfo && momoInfo.resultCode === 0) {
-          isVerifiedPaid = true;
-        }
-      } catch (_) {}
-    }
-
-    if (!isVerifiedPaid) {
-      // Check if order was marked completed concurrently by IPN webhook
-      const { data: refreshedOrder } = await supabaseAdmin
-        .from('payment_orders')
-        .select('status')
-        .eq('id', vivuId)
-        .maybeSingle();
-
-      if (refreshedOrder?.status === PaymentStatus.COMPLETED) {
-        return res.json({ success: true, message: 'Đã kích hoạt trước đó. Lượt AI đã sẵn sàng!' });
-      }
-
-      return res.json({
-        success: false,
-        message: 'Thanh toán chưa hoàn tất hoặc chưa được cổng thanh toán xác nhận.'
-      });
-    }
-
-    // Activate now with verified status
-    await activatePremiumByOrderId(vivuId);
-    return res.json({ success: true, message: 'Đã kích hoạt gói thành công! Lượt AI đã được cộng vào tài khoản.' });
-  } catch (err: any) {
-    console.error('[Payment] verify-return error:', err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
 // ─── POST /api/payment/bookings ──────────────────────────────────────────────
-// Create a bulk booking request and return confirmation HTML/token
 router.post('/bookings', requireAuth, async (req: any, res: Response) => {
   try {
     const userId = req.user!.id;
     const {
-      tripId, tripTitle, destinationCity, startDate, endDate,
-      guestName, guestEmail, guestPhone, guestCount,
-      selectedItems, totalCost
+      tripId,
+      tripTitle,
+      destinationCity,
+      startDate,
+      endDate,
+      guestName,
+      guestEmail,
+      guestPhone,
+      guestCount,
+      selectedItems,
+      totalCost,
     } = req.body;
 
     const bookingCode = `BK${Date.now().toString(36).toUpperCase()}`;
     const token = crypto.randomBytes(24).toString('hex');
     const confirmUrl = `${FRONTEND_URL}/api/payment/bookings/confirm/${token}`;
 
-    // Generate HTML email
     const emailHTML = generateBookingConfirmationHTML({
-      guestName, tripTitle, destinationCity, startDate, endDate,
-      guestCount, items: selectedItems, totalCost, confirmUrl, bookingCode,
+      guestName,
+      tripTitle,
+      destinationCity,
+      startDate,
+      endDate,
+      guestCount,
+      items: selectedItems,
+      totalCost,
+      confirmUrl,
+      bookingCode,
     });
 
-    // Save booking record
     const { error } = await supabaseAdmin
       .from('bookings')
       .insert({
@@ -625,12 +842,11 @@ router.post('/bookings', requireAuth, async (req: any, res: Response) => {
       throw new Error(`Database error saving booking: ${error.message}`);
     }
 
-    // If table doesn't exist, still return demo email HTML
     return res.status(201).json({
       success: true,
       bookingCode,
       confirmUrl,
-      emailHTML, // Frontend uses this to show demo email inbox modal
+      emailHTML,
       message: `Đã tạo yêu cầu đặt dịch vụ! Mã: ${bookingCode}`,
     });
   } catch (err: any) {
@@ -652,11 +868,9 @@ router.get('/bookings/confirm/:token', async (req: Request, res: Response) => {
       .single();
 
     if (error || !booking) {
-      // Redirect with error message
       return res.redirect(`${FRONTEND_URL}/?booking_error=invalid_or_expired`);
     }
 
-    // Redirect to success page
     return res.redirect(`${FRONTEND_URL}/chuyen-di/${booking.trip_id}?booking_confirmed=${booking.id}`);
   } catch (err: any) {
     return res.redirect(`${FRONTEND_URL}/?booking_error=server_error`);
@@ -664,108 +878,75 @@ router.get('/bookings/confirm/:token', async (req: Request, res: Response) => {
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-async function activatePremiumByOrderId(orderId: string) {
-  try {
-    // Build both possible id formats: VIVU-prefixed and numeric
-    const vivuId = orderId.startsWith('VIVU') ? orderId : `VIVU${orderId}`;
-    const numericId = orderId.startsWith('VIVU') ? orderId.replace('VIVU', '') : orderId;
-
-    // Try VIVU-prefixed first, then numeric (atomic — prevents double-activation)
-    let updatedOrders: any[] | null = null;
-    const { data: d1 } = await supabaseAdmin
-      .from('payment_orders')
-      .update({ status: 'completed' })
-      .eq('id', vivuId)
-      .eq('status', 'pending')
-      .select('user_id, plan');
-    updatedOrders = d1;
-
-    if (!updatedOrders || updatedOrders.length === 0) {
-      const { data: d2 } = await supabaseAdmin
-        .from('payment_orders')
-        .update({ status: 'completed' })
-        .eq('id', numericId)
-        .eq('status', 'pending')
-        .select('user_id, plan');
-      updatedOrders = d2;
-    }
-
-    if (updatedOrders && updatedOrders.length > 0) {
-      const order = updatedOrders[0];
-      await activatePremiumForUser(order.user_id, order.plan || 'pro');
-      console.log(`[Payment] ✅ Activated premium for user ${order.user_id} plan ${order.plan}`);
-    } else {
-      console.log(`[Payment] ℹ️ Order ${orderId} already completed or not found`);
-    }
-  } catch (err) {
-    console.error('[Payment] activatePremiumByOrderId error:', err);
-  }
-}
-
-async function activatePremiumForUser(userId: string, planKey: string = 'pro') {
-  // Lấy cấu hình gói cước trực tiếp từ Database (Single Source of Truth)
-  const { data: dbPlan } = await supabaseAdmin
+export async function activatePremiumForUser(userId: string, planKey: string = 'monthly') {
+  // Đọc cấu hình gói cước từ Database (KHÔNG lọc is_active để gói bị ẩn vẫn kích hoạt được)
+  const { data: dbPlan, error: planErr } = await supabaseAdmin
     .from('pricing_plans')
     .select('*')
     .eq('id', planKey)
     .maybeSingle();
 
-  const plan = dbPlan || PREMIUM_PLANS[planKey as keyof typeof PREMIUM_PLANS] || PREMIUM_PLANS.pro;
-  const newQuota = Number(plan?.quota_total_grant ?? 9999);
-  const durationDays = Number(plan?.duration_days || 30);
-
-  // Lấy thông tin tài khoản hiện tại để hỗ trợ gia hạn cộng dồn (Cumulative Renewal)
-  const { data: currentProfile } = await supabaseAdmin
-    .from('profiles')
-    .select('premium_until, quota_total, quota_used')
-    .eq('id', userId)
-    .maybeSingle();
-
-  let baseTime = Date.now();
-  if (currentProfile?.premium_until && new Date(currentProfile.premium_until).getTime() > Date.now()) {
-    // Nếu đang còn hạn thì cộng dồn thêm số ngày vào hạn hiện tại
-    baseTime = new Date(currentProfile.premium_until).getTime();
+  if (planErr || !dbPlan) {
+    throw new Error(`Gói cước không tồn tại trong hệ thống: ${planKey}`);
   }
 
-  const premiumUntil = new Date(baseTime + durationDays * 24 * 60 * 60 * 1000).toISOString();
+  const grantCredits = Number(dbPlan.quota_total_grant ?? 1);
+  const durationDays = Number(dbPlan.duration_days ?? 0);
 
-  // Try Schema v2 update first (quota_total)
-  const { error: updateV2Err } = await supabaseAdmin
-    .from('profiles')
-    .update({
-      is_premium: true,
-      premium_until: premiumUntil,
-      quota_total: newQuota,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', userId);
+  await grantCreditsToUser(userId, grantCredits, durationDays);
 
-  if (updateV2Err) {
-    // Fallback to legacy schema v1 column if quota_total column does not exist
-    const { error: updateV1Err } = await supabaseAdmin
-      .from('profiles')
-      .update({
-        is_premium: true,
-        premium_until: premiumUntil,
-        custom_quota: newQuota,
-      })
-      .eq('id', userId);
-    if (updateV1Err) {
-      console.error('[Payment] Profile quota update error:', updateV1Err.message);
-    }
+  try {
+    const channel = supabaseAdmin.channel(`user_channel_${userId}`);
+    await channel.send({
+      type: 'broadcast',
+      event: 'user_updated',
+      payload: {
+        userId,
+        timestamp: Date.now(),
+      },
+    });
+  } catch (e: any) {
+    console.warn('[Payment] Realtime broadcast error:', e.message);
   }
+
+  return { success: true };
 }
 
 export async function autoCancelExpiredOrders() {
   try {
-    const tenMinutesAgo = new Date(Date.now() - ORDER_CONFIG.EXPIRATION_MS).toISOString();
-    const { error } = await supabaseAdmin
+    const expiredThreshold = new Date(Date.now() - ORDER_EXPIRATION_MS).toISOString();
+    const { data: expiredOrders, error: fetchErr } = await supabaseAdmin
       .from('payment_orders')
-      .update({ status: PaymentStatus.CANCELLED })
+      .select('id, order_code, method')
       .eq('status', PaymentStatus.PENDING)
-      .lt('created_at', tenMinutesAgo);
-    if (error) {
-      console.error('[Payment] Error auto-cancelling expired orders:', error.message);
+      .lt('created_at', expiredThreshold);
+
+    if (fetchErr) {
+      console.error('[Payment] Error fetching expired orders:', fetchErr.message);
+      return;
+    }
+
+    if (expiredOrders && expiredOrders.length > 0) {
+      for (const ord of expiredOrders) {
+        if (ord.method === PaymentMethod.PAYOS && ord.order_code) {
+          await cancelPayOSOrder(ord.order_code, 'Đơn hàng hết hạn thanh toán').catch(() => {});
+        }
+      }
+
+      const { error: updateErr } = await supabaseAdmin
+        .from('payment_orders')
+        .update({
+          status: PaymentStatus.CANCELLED,
+          cancelled_at: new Date().toISOString(),
+        })
+        .eq('status', PaymentStatus.PENDING)
+        .lt('created_at', expiredThreshold);
+
+      if (updateErr) {
+        console.error('[Payment] Error auto-cancelling expired orders:', updateErr.message);
+      } else {
+        console.log(`[Payment] Auto-cancelled ${expiredOrders.length} expired orders`);
+      }
     }
   } catch (err: any) {
     console.error('[Payment] Exception auto-cancelling expired orders:', err.message);

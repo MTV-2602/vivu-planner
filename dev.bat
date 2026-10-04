@@ -31,8 +31,8 @@ start "ViVu Backend Server" cmd /k "cd /d "%ROOT_DIR%backend" && npm run dev"
 
 timeout /t 3 /nobreak > nul
 
-echo [2/2] Dang chay Frontend Expo tren cong 8081...
-start "ViVu Frontend Expo" cmd /k "cd /d "%ROOT_DIR%frontend" && npx expo start --web"
+echo [2/2] Dang chay Frontend Expo tren cong 8081 (clear cache)...
+start "ViVu Frontend Expo" cmd /k "cd /d "%ROOT_DIR%frontend" && npx expo start --web --clear"
 
 echo.
 echo DA KHOI CHAY XONG!

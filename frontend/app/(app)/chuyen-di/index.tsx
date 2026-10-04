@@ -20,6 +20,8 @@ import { BRAND_COLORS, APP_ROUTES } from '../../../constants';
 import PremiumModal from '../../../components/PremiumModal';
 import ConfirmModal from '../../../components/ConfirmModal';
 import ProfileModal from '../../../components/ProfileModal';
+import { usePaymentStatus } from '../../../hooks/usePaymentStatus';
+import { formatHeaderChip } from '../../../lib/plans';
 
 interface Trip {
   id: string;
@@ -33,6 +35,8 @@ interface Trip {
   traveler_type: string;
   status: string;
   preferences?: any;
+  is_shared?: boolean;
+  member_count?: number;
 }
 
 function formatDate(dateStr: string) {
@@ -141,62 +145,7 @@ export default function Dashboard() {
     retry: 1,
   });
 
-  const { data: paymentStatus, refetch: refetchStatus } = useQuery({
-    queryKey: ['payment-status'],
-    queryFn: async () => {
-      const r = await api.get('/payment/status');
-      return r.data;
-    },
-    enabled: !!user?.id,
-  });
-
-  // ─── LẮNG NGHE SUPABASE REALTIME ĐỒNG BỘ GÓI CƯỚC THỜI GIAN THỰC ───────
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let userChannel: any = null;
-    let profileChannel: any = null;
-
-    try {
-      // 1. Kênh Broadcast trực tiếp từ Admin (dùng unique name chống trùng lặp channel sau khi re-mount)
-      const userChanName = `user_channel_${user.id}_${Date.now()}`;
-      userChannel = supabase.channel(userChanName);
-      userChannel
-        .on('broadcast', { event: 'user_updated' }, () => {
-          refetchStatus();
-        })
-        .subscribe();
-
-      // 2. Kênh PostgreSQL Changes lắng nghe thay đổi trên bảng profiles
-      const profileChanName = `profile_realtime_${user.id}_${Date.now()}`;
-      profileChannel = supabase
-        .channel(profileChanName)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'profiles',
-            filter: `id=eq.${user.id}`,
-          },
-          () => {
-            refetchStatus();
-          }
-        )
-        .subscribe();
-    } catch (realtimeErr) {
-      console.warn('[Realtime] Failed to setup realtime subscription:', realtimeErr);
-    }
-
-    return () => {
-      try {
-        if (userChannel) supabase.removeChannel(userChannel);
-        if (profileChannel) supabase.removeChannel(profileChannel);
-      } catch (cleanupErr) {
-        console.warn('[Realtime] Cleanup error:', cleanupErr);
-      }
-    };
-  }, [user?.id]);
+  const { paymentStatus, refetch: refetchStatus } = usePaymentStatus();
 
   useEffect(() => {
     if (paymentStatus?.dbWarning) {
@@ -317,11 +266,8 @@ export default function Dashboard() {
           <View className="flex-row items-center gap-2">
             <SystemClock />
             {(() => {
-              const getRemainingDays = (dateStr: string) => {
-                if (!dateStr) return 0;
-                const diff = new Date(dateStr).getTime() - Date.now();
-                return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-              };
+              const chip = formatHeaderChip(paymentStatus);
+              const isProUser = !!paymentStatus?.isPremium || (paymentStatus?.pro_credits || 0) > 0 || (paymentStatus?.monthly_credits || 0) > 0;
 
               return (
                 <Pressable
@@ -333,25 +279,18 @@ export default function Dashboard() {
                     paddingHorizontal: 14,
                     paddingVertical: 7,
                     borderRadius: 20,
-                    backgroundColor: paymentStatus?.isPremium ? '#D4A017' : '#059669',
+                    backgroundColor: chip.color,
                     cursor: 'pointer' as any,
                   }}
                 >
-                  {paymentStatus?.isPremium ? (
-                    <>
-                      <Crown size={14} color="#fff" />
-                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>
-                        {paymentStatus?.planName || 'ViVu Pro'} ({paymentStatus?.premiumUntil ? `Còn ${getRemainingDays(paymentStatus.premiumUntil)} ngày` : 'Vô hạn'}) ✨
-                      </Text>
-                    </>
+                  {isProUser ? (
+                    <Crown size={14} color="#fff" />
                   ) : (
-                    <>
-                      <Sparkles size={14} color="#fff" />
-                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>
-                        Nâng cấp Gói Pro 👑
-                      </Text>
-                    </>
+                    <Sparkles size={14} color="#fff" />
                   )}
+                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>
+                    {chip.text}
+                  </Text>
                 </Pressable>
               );
             })()}
@@ -571,6 +510,11 @@ export default function Dashboard() {
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2.5, borderRadius: 999, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B' }}>
                               <Crown size={11} color="#D97706" />
                               <Text style={{ fontSize: 10, fontWeight: '900', color: '#B45309', letterSpacing: 0.5 }}>AI PRO 👑</Text>
+                            </View>
+                          )}
+                          {trip.is_shared && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2.5, borderRadius: 999, backgroundColor: '#E8F5E9', borderWidth: 1, borderColor: '#A7F3D0' }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: '#1F6F54' }}>👥 {trip.member_count ? `${trip.member_count} người` : 'Nhóm'}</Text>
                             </View>
                           )}
                         </View>

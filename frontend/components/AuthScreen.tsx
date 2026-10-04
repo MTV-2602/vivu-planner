@@ -4,6 +4,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions,
   Modal,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { Compass, Sparkles, AlertCircle, ArrowRight, Check, KeyRound, Mail, X, CheckCircle2, Lock } from 'lucide-react-native';
@@ -128,6 +129,22 @@ export default function AuthScreen({ mode }: Props) {
     }
   };
 
+  const handleNavigateAfterAuth = async (isAdminUser: boolean) => {
+    if (isAdminUser) {
+      router.replace(APP_ROUTES.ADMIN as any);
+      return;
+    }
+    try {
+      const redirectUrl = await AsyncStorage.getItem('redirect_after_login');
+      if (redirectUrl) {
+        await AsyncStorage.removeItem('redirect_after_login');
+        router.replace(redirectUrl as any);
+        return;
+      }
+    } catch {}
+    router.replace(APP_ROUTES.TRIPS as any);
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {
@@ -136,7 +153,7 @@ export default function AuthScreen({ mode }: Props) {
           const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
           if (p?.role === UserRole.ADMIN) isAdmin = true;
         }
-        router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
+        await handleNavigateAfterAuth(isAdmin);
       }
     });
   }, []);
@@ -169,7 +186,7 @@ export default function AuthScreen({ mode }: Props) {
             const { data: p } = await supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
             if (p?.role === UserRole.ADMIN) isAdmin = true;
           }
-          router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
+          await handleNavigateAfterAuth(isAdmin);
           return;
         }
 
@@ -188,7 +205,7 @@ export default function AuthScreen({ mode }: Props) {
           if (p?.role === UserRole.ADMIN) isAdmin = true;
         }
         
-        router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
+        await handleNavigateAfterAuth(isAdmin);
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Có lỗi xảy ra trong quá trình xử lý');
@@ -426,6 +443,7 @@ export default function AuthScreen({ mode }: Props) {
                 <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: '#1B2420' }}>Mật khẩu</Text>
                 {!isSignUp && (
                   <Pressable
+                    testID="btn-forgot-password"
                     onPress={() => {
                       setForgotEmail(email);
                       setForgotError('');

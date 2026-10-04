@@ -82,9 +82,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   - Toàn bộ việc đẩy mã nguồn lên remote repository do NGƯỜI DÙNG TỰ THỰC HIỆN khi người dùng muốn.
 - **Chỉ Commit ở Local và Gom lại thành 1 Commit duy nhất:**
   - Khi hoàn thành một task, đợt sửa lỗi hoặc tính năng, gom toàn bộ các thay đổi vào 1 COMMIT DUY NHẤT tại local (`git add -A && git commit -m "..."`).
-  - Tránh tạo nhiều commit lắt nhắt, vụn vặt làm bẩn lịch sử git,commit tiếng việt có dấu gắn gọn đầy đủ.
+  - Tránh tạo nhiều commit lắt nhắt, vụn vặt làm bẩn lịch sử git, commit tiếng Việt có dấu ngắn gọn đầy đủ.
 - **Commit Message BẮT BUỘC dùng Tiếng Việt CÓ DẤU:**
-  - Tiêu đề và nội dung commit phải viết bằng **Tiếng Việt có dấu**, diễn đạt chuẩn xác, rõ ràng, phản ánh đúng bản chất các thay đổi, gắn gọn đủ ý.
+  - Tiêu đề và nội dung commit phải viết bằng **Tiếng Việt có dấu**, diễn đạt chuẩn xác, rõ ràng, phản ánh đúng bản chất các thay đổi, ngắn gọn đủ ý.
 
 ## 7. Quy tắc Quản Lý Media & Dọn Dẹp File Kiểm Thử (Bắt buộc tuân thủ)
 
@@ -109,22 +109,51 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   - Mọi ảnh chụp kết quả kiểm thử hoặc video quay lại quá trình chạy BẮT BUỘC phải lưu vào thư mục `test/` (đã khai báo trong `.gitignore`) để người dùng xem trực quan.
   - Sau khi hoàn thành kiểm thử, xóa sạch file script test tạm bợ theo Quy tắc 7 và báo cáo kết quả kèm ảnh/video cho người dùng nghiệm thu.
 
-## 9. Quy trình Rà Soát Lỗi Hình Ảnh Độc Lập Qua Subagent (Visual Inspection & Bug Dispatch Loop)
+## 9. Quy tắc Phân Công AI Team — 5 Vai Trò Chuẩn & Luồng 6 Phase Bắt Buộc
 
-- **Bắt buộc chuyển giao ảnh kiểm thử cho Agent thứ hai (Inspector Agent) thẩm định:**
-  - Ngay sau khi Playwright chụp ảnh màn hình lưu vào thư mục `test/`, Agent kiểm thử KHÔNG ĐƯỢC tự ý kết luận đạt yêu cầu chỉ dựa trên việc code không bị crash.
-  - BẮT BUỘC phải chuyển giao (delegate) ảnh chụp cho một **Agent chuyên trách rà soát thị giác** (Inspector Worker - dùng `task` với model có khả năng Vision/multimodal, ưu tiên `gemini-3.8-flash-high`) để đọc và soi xét trực tiếp từng ảnh trong `test/`.
-- **Nhiệm vụ của Inspector Agent khi soi hình ảnh:**
-  - Soi xét kỹ lưỡng toàn bộ bố cục (layout): Tràn viền, vỡ khung, đè chữ, chữ bị cắt cụt (clipping/ellipsis), khoảng cách (spacing/padding) bất hợp lý.
-  - Kiểm tra tính đúng đắn của dữ liệu trên màn hình: Giá tiền, định dạng ngày tháng, số lượng hoạt động, danh sách địa điểm, trạng thái badge/tag, lỗi hiển thị ảnh/icon (broken image/icon).
-  - Tìm kiếm các điều bất thường (anomalies): Cảnh báo đỏ, lỗi toast, popup kẹt, trạng thái loading treo, màu sắc tương phản kém, giao diện bị méo mó trên các tỷ lệ màn hình khác nhau.
-- **Báo cáo về Manager và Điều phối khắc phục (Manager Dispatch Loop):**
-  - Inspector Agent lập báo cáo cô đọng gửi về **Manager** với cấu trúc chuẩn:
-    * `VISUAL_STATUS`: PASS / FAIL / WARNING
-    * `EVIDENCE`: Tên file ảnh trong `test/` + mô tả chính xác vị trí/thành phần bị lỗi trên màn hình.
-    * `ISSUES_FOUND`: Danh sách lỗi cụ thể kèm mức độ nghiêm trọng (Blocker, High, Medium, Low).
-    * `RECOMMENDATION`: Gợi ý vị trí mã nguồn hoặc thành phần cần chỉnh sửa (frontend / backend / style).
-  - **Manager chịu trách nhiệm điều phối**:
-    * Manager tiếp nhận báo cáo, đánh giá và lập tức phân công Agent phù hợp (Frontend Worker hoặc Backend Worker) để fix triệt để từng lỗi được phát hiện.
-    * Sau khi fix xong, kích hoạt lại quy trình kiểm thử Playwright và chụp ảnh mới để Inspector Agent rà soát lại (vòng lặp lặp lại cho đến khi `VISUAL_STATUS: PASS` 100%).
+### Bảng phân vai & Model bắt buộc:
+| Vai trò | Tên hiển thị (`description`) | Model | Trách nhiệm bắt buộc |
+|---|---|---|---|
+| **Manager** | (Phiên làm việc hiện tại) | Model hiện tại | Phân tích yêu cầu → Lập plan → Dispatch các worker → Thu thập kết quả → Duyệt cuối |
+| **Developer Worker** | `Vinh Dev FE` / `Vinh Dev BE` / `Vinh Dev` | `gemini-3.8-flash-high` | Implement code, fix bug, refactor. Gọi song song khi có ≥2 task độc lập |
+| **Test Case Writer** | `Vinh TestWriter` | `gemini-3.8-flash-high` | Phân tích tính năng vừa implement → Viết test case chi tiết (happy path + edge + error) |
+| **Test Runner** | `Vinh Runner` | `gemini-3.8-flash-high` | Chạy Playwright E2E theo test case, chụp ảnh vào `test/`, báo cáo KHÁCH QUAN (KHÔNG tự kết luận PASS/FAIL) |
+| **Test Reviewer / Visual Inspector** | `Vinh Reviewer` / `Vinh Tester` | `gemini-3.8-flash-high` | Độc lập soi ảnh `test/` (layout, data, anomaly), đối chiếu test case → Kết luận OVERALL_STATUS (PASS/FAIL) |
+| **Fix Worker** | `Vinh Fixer` | `gemini-3.8-flash-high` | Fix lỗi cụ thể được Reviewer nêu ra |
 
+### Luồng 6 Phase bắt buộc cho mọi task có code mới hoặc thay đổi giao diện:
+```
+PHASE 1 — PHÂN TÍCH (Manager tự làm):
+  → Hiểu yêu cầu, xác định scope, lập kế hoạch
+
+PHASE 2 — PHÁT TRIỂN (Dev Workers, song song khi có thể):
+  → Vinh Dev FE: implement frontend
+  → Vinh Dev BE: implement backend
+  (Dispatch song song trong 1 message nếu không phụ thuộc nhau)
+
+PHASE 3 — VIẾT TEST CASE:
+  → Vinh TestWriter: viết test case đầy đủ (happy path + edge + negative)
+
+PHASE 4 — CHẠY TEST:
+  → Vinh Runner: nhận test case → chạy Playwright → chụp ảnh vào test/ → báo cáo khách quan → xóa script tạm
+
+PHASE 5 — RÀ SOÁT ĐỘC LẬP:
+  → Vinh Reviewer / Vinh Tester: đối chiếu từng TC, soi ảnh layout/data/anomaly → kết luận OVERALL_STATUS
+
+PHASE 6 — MANAGER DUYỆT CUỐI (BẮT BUỘC):
+  → Đọc toàn bộ chain, cross-check evidence với yêu cầu ban đầu
+  → Quyết định: APPROVED | FIX_REQUIRED | RETEST_NEEDED
+  → Nếu FIX_REQUIRED: điều phối Vinh Fixer → lặp lại Phase 4-5-6 đến khi PASS 100%
+```
+
+### ❌ CẤM TUYỆT ĐỐI:
+- **Manager KHÔNG tự implement code**, dù chỉ 1 file nhỏ (trừ khi user chỉ hỏi đáp hoặc sửa ≤2 dòng nhỏ đơn giản).
+- **Manager KHÔNG tự chạy Playwright** và **KHÔNG tự soi ảnh**.
+- **KHÔNG để 1 agent làm tất cả** (tự code → tự test → tự soi ảnh).
+- **Runner KHÔNG tự kết luận PASS/FAIL** (chỉ Reviewer làm).
+- **Reviewer KHÔNG tự sửa code**.
+
+### Cách gọi worker chuẩn bằng `task` tool:
+- Luôn truyền `model: "gemini-3.8-flash-high"`.
+- Luôn truyền `description: "Vinh [Vai trò]"` (ví dụ: `"Vinh Dev FE"`, `"Vinh Runner"`, `"Vinh Tester"`).
+- Khi có ≥2 task độc lập, dispatch đồng thời trong cùng 1 message (`parallel first`).

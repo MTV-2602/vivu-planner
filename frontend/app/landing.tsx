@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, Pressable, Platform, Animated, useWindowDimensions, TextInput, ImageBackground } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { normalizePlans, describePlan, getPlanBadge, getPlanDescription, formatVND } from '../lib/plans';
 import Reveal from '../components/Reveal';
 import HeroAISearch from '../components/HeroAISearch';
 import LocalizedBentoGrid from '../components/LocalizedBentoGrid';
@@ -57,70 +58,6 @@ const NAV_ITEMS = [
   { id: 1, label: 'Tính năng' },
   { id: 2, label: 'Bảng giá' },
   { id: 3, label: 'Hỗ trợ' },
-];
-
-const PRICING_PACKAGES = [
-  {
-    id: 'basis',
-    title: 'Gói Basis',
-    price: '0 VNĐ',
-    priceSub: 'Mặc định',
-    isPremium: false,
-    tag: 'Basis',
-    tagBg: '#1F6F5415',
-    tagText: '#1F6F54',
-    desc: 'Lập kế hoạch du lịch cơ bản, trực quan và quản lý ngân sách chuyến đi hiệu quả.',
-    features: [
-      { text: 'Personalized planning (Lên lịch cá nhân hóa)', enabled: true },
-      { text: 'Popular destination suggesting (Gợi ý điểm đến phổ biến)', enabled: true },
-      { text: 'Budget Managements (Quản lý ngân sách chuyến đi)', enabled: true },
-      { text: 'Synchronized directly booking (Đặt dịch vụ đồng bộ trực tiếp)', enabled: true },
-      { text: 'Drag-and-drop schedule (Kéo thả sắp xếp lịch trình)', enabled: true },
-      { text: 'Shared Iterative Maps (Bản đồ tương tác chia sẻ)', enabled: false },
-      { text: 'Download offline schedule (Tải lịch trình xem ngoại tuyến)', enabled: false }
-    ]
-  },
-  {
-    id: 'starter',
-    title: 'Gói Starter',
-    price: '29.000 VNĐ',
-    priceSub: '/ tháng',
-    isPremium: false,
-    tag: 'Starter',
-    tagBg: '#E2703A15',
-    tagText: '#E2703A',
-    desc: 'Tận hưởng trọn vẹn chuyến đi không quảng cáo và khám phá bộ sưu tập Hidden gems độc quyền.',
-    features: [
-      { text: 'Shared Iterative Maps (Bản đồ tương tác chia sẻ)', enabled: true },
-      { text: 'Download offline schedule (Tải lịch trình xem ngoại tuyến)', enabled: true },
-      { text: 'Get rid of ads (Loại bỏ hoàn toàn quảng cáo)', enabled: true },
-      { text: 'Hidden gems tại 15 tỉnh/thành phố phổ biến nhất', enabled: true },
-      { text: 'Exclusive Scenic Score (Điểm số cảnh quan độc quyền)', enabled: true },
-      { text: 'Optimal path (Tối ưu hóa lộ trình giữa các điểm ẩn)', enabled: true },
-      { text: 'Tối ưu hóa thời gian di chuyển và tham quan', enabled: true },
-      { text: 'Exclusive budget management (Quản lý ngân sách nâng cao)', enabled: true }
-    ]
-  },
-  {
-    id: 'premium',
-    title: 'Gói Premium',
-    price: '49.000 VNĐ',
-    priceSub: '/ tháng',
-    isPremium: true,
-    tag: 'Premium',
-    tagBg: '#D4A01715',
-    tagText: '#D4A017',
-    desc: 'Bao gồm toàn bộ tính năng Starter và mở khóa bộ công cụ đồng bộ, du lịch bền vững cao cấp nhất.',
-    features: [
-      { text: 'Bao gồm toàn bộ tính năng của gói Starter', enabled: true },
-      { text: 'Shared Iterative Maps (Bản đồ tương tác chia sẻ)', enabled: true },
-      { text: 'Download offline schedule (Tải lịch trình xem ngoại tuyến)', enabled: true },
-      { text: '"Carbon footprint" calculation (Tính toán dấu chân carbon)', enabled: true },
-      { text: '"Super hidden gems" cho 10+ tỉnh vùng núi & vùng biển độc lạ', enabled: true },
-      { text: 'Tuyển chọn Chỗ nghỉ, Thuê xe, và Quán ăn địa phương độc đáo', enabled: true },
-      { text: 'Cho phép thành viên nhóm cùng truy cập & sửa đổi lịch trình', enabled: true }
-    ]
-  }
 ];
 
 export default function Landing() {
@@ -255,25 +192,31 @@ export default function Landing() {
     };
   }, []);
 
-  const getPlanPrice = (planId: string, defaultPrice: string) => {
-    if (!plansData?.plans) return defaultPrice;
-    const plan = (planId === 'starter' ? (plansData.plans.starter || plansData.plans.plus) : (plansData.plans.premium || plansData.plans.pro)) || plansData.plans[planId];
-    if (plan?.amount != null) {
-      return `${plan.amount.toLocaleString('vi-VN')} VNĐ`;
-    }
-    return defaultPrice;
-  };
+  const plans = useMemo(() => {
+    return normalizePlans(plansData).filter((p) => p.is_active !== false);
+  }, [plansData]);
   const [scrolled, setScrolled] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [quickDestination, setQuickDestination] = useState('');
 
-  const handleQuickSearchSubmit = () => {
-    const dest = quickDestination.trim();
-    if (isLoggedIn) {
-      router.push(`${APP_ROUTES.NEW_TRIP}${dest ? `?destination=${encodeURIComponent(dest)}` : ''}` as any);
-    } else {
-      router.push(`${APP_ROUTES.SIGN_UP}${dest ? `?destination=${encodeURIComponent(dest)}` : ''}` as any);
+  const handleStartTrip = (destinationOrPrompt?: string, isPrompt = false) => {
+    if (isAdmin) {
+      router.push(APP_ROUTES.ADMIN as any);
+      return;
     }
+    const val = destinationOrPrompt?.trim();
+    const query = val
+      ? `?${isPrompt ? 'prompt' : 'destination'}=${encodeURIComponent(val)}`
+      : '';
+    if (isLoggedIn) {
+      router.push(`${APP_ROUTES.NEW_TRIP}${query}` as any);
+    } else {
+      router.push(`${APP_ROUTES.SIGN_UP}${query}` as any);
+    }
+  };
+
+  const handleQuickSearchSubmit = () => {
+    handleStartTrip(quickDestination);
   };
 
   const handleSignOut = async () => {
@@ -637,7 +580,7 @@ export default function Landing() {
                 </View>
 
                 <Pressable
-                  onPress={() => router.push(APP_ROUTES.NEW_TRIP as any)}
+                  onPress={() => handleStartTrip()}
                   style={({ pressed }) => [{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
                     paddingVertical: 8, borderRadius: 100,
@@ -717,13 +660,7 @@ export default function Landing() {
               {/* Dribbble Standalone Interactive Component: HeroAISearch */}
               <Animated.View style={{ transform: [{ translateY: ctaY }], width: '100%', marginTop: 12 }}>
                 <Reveal delay={220}>
-                  <HeroAISearch onGenerate={(prompt) => {
-                    if (isLoggedIn) {
-                      router.push(`${APP_ROUTES.NEW_TRIP}${prompt ? `?prompt=${encodeURIComponent(prompt)}` : ''}` as any);
-                    } else {
-                      router.push(`${APP_ROUTES.SIGN_UP}${prompt ? `?prompt=${encodeURIComponent(prompt)}` : ''}` as any);
-                    }
-                  }} />
+                  <HeroAISearch onGenerate={(prompt) => handleStartTrip(prompt, true)} />
                 </Reveal>
               </Animated.View>
 
@@ -734,13 +671,7 @@ export default function Landing() {
                     {VIETNAMESE_CITIES.map((city) => (
                       <Pressable
                         key={city}
-                        onPress={() => {
-                          if (isLoggedIn) {
-                            router.push(`${APP_ROUTES.NEW_TRIP}?destination=${encodeURIComponent(city)}` as any);
-                          } else {
-                            router.push(`${APP_ROUTES.SIGN_UP}?destination=${encodeURIComponent(city)}` as any);
-                          }
-                        }}
+                        onPress={() => handleStartTrip(city)}
                         style={({ pressed }) => [{
                           flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingHorizontal: 13, paddingVertical: 7, borderRadius: 100,
@@ -1095,85 +1026,105 @@ export default function Landing() {
             </Reveal>
           </View>
 
-          <View style={{ flexDirection: isMobile ? 'column' : 'row', gap: 16 }}>
-            {PRICING_PACKAGES.map((pkg, i) => (
-              <Reveal key={i} delay={i * 100} style={isMobile ? undefined : { flex: 1 }}>
-                <View style={{
-                  flex: isMobile ? undefined : 1,
-                  backgroundColor: pkg.isPremium ? (isDarkMode ? 'rgba(249, 158, 117, 0.08)' : '#FFFBF8') : T.cardBg,
-                  borderWidth: pkg.isPremium ? 2 : 1,
-                  borderColor: pkg.isPremium ? T.accent : T.cardBorder,
-                  borderRadius: 20,
-                  padding: 28,
-                  gap: 16,
-                  shadowColor: T.cardShadow, shadowOffset: { width: 0, height: pkg.isPremium ? 8 : 4 }, shadowOpacity: 0.1, shadowRadius: 16,
-                  ...(isWeb ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' } as any : {}),
-                }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(224, 122, 95, 0.12)' }}>
-                      <Text style={{ fontFamily: F.bold, fontSize: 10, color: T.text, letterSpacing: 0.5 }}>
-                        {pkg.tag}
+          <View style={{ flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: 16 }}>
+            {plans.map((pkg, i) => {
+              const isPopular = pkg.duration_days > 0;
+              const badge = getPlanBadge(pkg);
+              const desc = getPlanDescription(pkg);
+              const priceText = formatVND(pkg.amount);
+              const priceSub = pkg.duration_days > 0 ? `/ ${pkg.duration_days} ngày` : 'Không thời hạn';
+              const featuresList: { text: string; enabled: boolean }[] = pkg.features && pkg.features.length > 0
+                ? pkg.features.map((f: any) => typeof f === 'string' ? { text: f, enabled: true } : f)
+                : [
+                    { text: describePlan(pkg), enabled: true },
+                    { text: 'Đầy đủ tính năng AI Pro Live Map & Xếp lịch thông minh', enabled: true },
+                    { text: pkg.duration_days > 0 ? 'Hiệu lực trong thời hạn gói' : 'Cộng dồn lượt không giới hạn thời gian', enabled: true },
+                    { text: 'Bản đồ tương tác đầy đủ tính năng & Kéo thả lịch trình', enabled: true },
+                    { text: 'Quản lý ngân sách dự kiến & Xuất PDF lịch trình', enabled: true },
+                  ];
+
+              return (
+                <Reveal key={pkg.id || i} delay={i * 100} style={isMobile ? undefined : { flex: 1, minWidth: 280 }}>
+                  <View style={{
+                    flex: isMobile ? undefined : 1,
+                    backgroundColor: isPopular ? (isDarkMode ? 'rgba(249, 158, 117, 0.08)' : '#FFFBF8') : T.cardBg,
+                    borderWidth: isPopular ? 2 : 1,
+                    borderColor: isPopular ? T.accent : T.cardBorder,
+                    borderRadius: 20,
+                    padding: 28,
+                    gap: 16,
+                    shadowColor: T.cardShadow, shadowOffset: { width: 0, height: isPopular ? 8 : 4 }, shadowOpacity: 0.1, shadowRadius: 16,
+                    ...(isWeb ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' } as any : {}),
+                  }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={{ fontSize: 20 }}>{pkg.icon || (pkg.duration_days > 0 ? '👑' : '🎫')}</Text>
+                        <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(224, 122, 95, 0.12)' }}>
+                          <Text style={{ fontFamily: F.bold, fontSize: 10, color: T.text, letterSpacing: 0.5 }}>
+                            {badge}
+                          </Text>
+                        </View>
+                      </View>
+                      {isPopular && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Star size={12} color={T.accent} fill={T.accent} />
+                          <Text style={{ fontFamily: F.bold, fontSize: 10, color: T.accent, textTransform: 'uppercase' }}>Phổ biến nhất</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <View style={{ gap: 4 }}>
+                      <Text style={{ fontFamily: F.bold, fontSize: 18, color: T.text }}>{pkg.label}</Text>
+                      <Text style={{ fontFamily: F.regular, fontSize: 12, color: T.textMuted, lineHeight: 18 }}>
+                        {desc}
                       </Text>
                     </View>
-                    {pkg.isPremium && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Star size={12} color={T.accent} fill={T.accent} />
-                        <Text style={{ fontFamily: F.bold, fontSize: 10, color: T.accent, textTransform: 'uppercase' }}>Phổ biến nhất</Text>
-                      </View>
-                    )}
-                  </View>
 
-                  <View style={{ gap: 4 }}>
-                    <Text style={{ fontFamily: F.bold, fontSize: 18, color: T.text }}>{pkg.title}</Text>
-                    <Text style={{ fontFamily: F.regular, fontSize: 12, color: T.textMuted, lineHeight: 18 }}>
-                      {pkg.desc}
-                    </Text>
-                  </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: T.cardBorder }}>
+                      <Text style={{ fontFamily: F.loraBold, fontSize: 26, color: T.accent }}>
+                        {priceText}
+                      </Text>
+                      <Text style={{ fontFamily: F.regular, fontSize: 12, color: T.textSoft }}>
+                        {priceSub}
+                      </Text>
+                    </View>
 
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: T.cardBorder }}>
-                    <Text style={{ fontFamily: F.loraBold, fontSize: 26, color: T.accent }}>
-                      {getPlanPrice(pkg.id, pkg.price)}
-                    </Text>
-                    <Text style={{ fontFamily: F.regular, fontSize: 12, color: T.textSoft }}>
-                      {pkg.priceSub}
-                    </Text>
-                  </View>
-
-                  <View style={{ gap: 10, flex: 1 }}>
-                    {pkg.features.map((feat: any, fi) => (
-                      <View key={fi} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                        <View style={{ 
-                          width: 14, 
-                          height: 14, 
-                          borderRadius: 7, 
-                          backgroundColor: feat.enabled ? (isDarkMode ? 'rgba(249, 158, 117, 0.2)' : 'rgba(224, 122, 95, 0.15)') : 'rgba(239, 68, 68, 0.15)', 
-                          alignItems: 'center', 
-                          justifyContent: 'center', 
-                          marginTop: 3, 
-                          flexShrink: 0 
-                        }}>
-                          {feat.enabled ? (
-                            <Check size={8} color={T.accent} strokeWidth={4} />
-                          ) : (
-                            <Lock size={8} color="#EF4444" strokeWidth={3} />
-                          )}
+                    <View style={{ gap: 10, flex: 1 }}>
+                      {featuresList.map((feat: any, fi: number) => (
+                        <View key={fi} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                          <View style={{ 
+                            width: 14, 
+                            height: 14, 
+                            borderRadius: 7, 
+                            backgroundColor: feat.enabled ? (isDarkMode ? 'rgba(249, 158, 117, 0.2)' : 'rgba(224, 122, 95, 0.15)') : 'rgba(239, 68, 68, 0.15)', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            marginTop: 3, 
+                            flexShrink: 0 
+                          }}>
+                            {feat.enabled ? (
+                              <Check size={8} color={T.accent} strokeWidth={4} />
+                            ) : (
+                              <Lock size={8} color="#EF4444" strokeWidth={3} />
+                            )}
+                          </View>
+                          <Text style={{ 
+                            fontFamily: F.regular, 
+                            fontSize: 12, 
+                            lineHeight: 18, 
+                            color: feat.enabled ? T.text : T.textSoft, 
+                            textDecorationLine: feat.enabled ? 'none' : 'line-through',
+                            flex: 1 
+                          }}>
+                            {feat.text}
+                          </Text>
                         </View>
-                        <Text style={{ 
-                          fontFamily: F.regular, 
-                          fontSize: 12, 
-                          lineHeight: 18, 
-                          color: feat.enabled ? T.text : T.textSoft, 
-                          textDecorationLine: feat.enabled ? 'none' : 'line-through',
-                          flex: 1 
-                        }}>
-                          {feat.text}
-                        </Text>
-                      </View>
-                    ))}
+                      ))}
+                    </View>
                   </View>
-                </View>
-              </Reveal>
-            ))}
+                </Reveal>
+              );
+            })}
           </View>
         </View>
 

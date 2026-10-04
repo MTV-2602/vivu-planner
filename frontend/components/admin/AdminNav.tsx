@@ -1,27 +1,40 @@
+import React, { useContext } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { Shield, Compass, LogOut } from 'lucide-react-native';
 import { BRAND_COLORS, APP_ROUTES } from '../../constants';
 import { useAuth } from '../../hooks/useAuth';
+import { AdminShellContext } from './ui/AdminShell';
 
+/**
+ * AdminNav cũ - Giữ tương thích ngược cho các trang đợt 2 (users, trips, keys, partners).
+ * Khi trang được render bên trong AdminShell (thông qua context inShell), component này
+ * tự động trả về null để tránh trùng lặp 2 thanh điều hướng.
+ */
 export default function AdminNav() {
+  const { inShell } = useContext(AdminShellContext);
   const router = useRouter();
   const pathname = usePathname();
   const { signOut } = useAuth();
 
+  // Đã nằm trong AdminShell thì ẩn thanh nav cũ để không bị hiển thị đôi
+  if (inShell) {
+    return null;
+  }
+
   const TABS = [
-    { key: 'dashboard', path: APP_ROUTES.ADMIN, label: 'Dashboard' },
+    { key: 'dashboard', path: APP_ROUTES.ADMIN, label: 'Tổng quan' },
+    { key: 'revenue', path: APP_ROUTES.ADMIN_REVENUE, label: 'Doanh thu' },
+    { key: 'packages', path: APP_ROUTES.ADMIN_PACKAGES, label: 'Gói cước' },
     { key: 'users', path: APP_ROUTES.ADMIN_USERS, label: 'Người dùng' },
-    { key: 'packages', path: APP_ROUTES.ADMIN_PACKAGES, label: 'Gói thành viên & Giá 👑' },
-    { key: 'revenue', path: APP_ROUTES.ADMIN_REVENUE, label: 'Doanh thu 📊' },
     { key: 'trips', path: APP_ROUTES.ADMIN_TRIPS, label: 'Chuyến đi' },
-    { key: 'keys', path: APP_ROUTES.ADMIN_KEYS, label: 'Quản trị AI' },
+    { key: 'keys', path: APP_ROUTES.ADMIN_KEYS, label: 'AI & Keys' },
     { key: 'partners', path: APP_ROUTES.ADMIN_PARTNERS, label: 'Đối tác' },
   ];
 
   return (
     <View className="bg-brand-bg">
-      <View className="border-b border-brand-line/40 px-6 py-4 flex-row justify-between items-center">
+      <View className="border-b border-brand-line/40 px-6 py-4 flex-row justify-between items-center bg-white">
         <Pressable onPress={() => router.push(APP_ROUTES.ADMIN as any)} className="flex-row items-center gap-2">
           <Compass size={26} color={BRAND_COLORS.primary} />
           <View className="flex-row items-baseline gap-1.5">
@@ -44,11 +57,18 @@ export default function AdminNav() {
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} className="border-b border-brand-line/40 bg-brand-bg">
         <View className="flex-row px-4">
-          {TABS.map(tab => {
+          {TABS.map((tab) => {
             const active = pathname === tab.path;
             return (
-              <Pressable key={tab.key} onPress={() => router.replace(tab.path as any)} className="px-5 py-3 border-b-2" style={{ borderBottomColor: active ? BRAND_COLORS.primary : 'transparent' }}>
-                <Text className={`font-bold text-sm ${active ? 'text-brand-primary' : 'text-brand-textSoft'}`}>{tab.label}</Text>
+              <Pressable
+                key={tab.key}
+                onPress={() => router.replace(tab.path as any)}
+                className="px-5 py-3 border-b-2"
+                style={{ borderBottomColor: active ? BRAND_COLORS.primary : 'transparent' }}
+              >
+                <Text className={`font-bold text-sm ${active ? 'text-brand-primary' : 'text-brand-textSoft'}`}>
+                  {tab.label}
+                </Text>
               </Pressable>
             );
           })}
