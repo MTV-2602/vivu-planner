@@ -44,11 +44,15 @@ export function useAuth(): AuthState {
         .eq('id', userId)
         .maybeSingle();
 
+      const { data: userData } = await supabase.auth.getUser();
+      const meta = userData?.user?.user_metadata || {};
+
       if (data) {
-        setProfile(data);
+        setProfile({
+          ...data,
+          preferences: data.preferences || meta.preferences || [],
+        });
       } else {
-        // Neu chua co profile (VD: dang nhap Google lan dau), tu dong tao profile moi
-        const { data: userData } = await supabase.auth.getUser();
         const user = userData.user;
         if (user) {
           const newProfile: UserProfile = {

@@ -60,7 +60,7 @@ export default function CreatePostModal({
   const [openingHours, setOpeningHours] = useState('');
   const [placeStatus, setPlaceStatus] = useState<'operating' | 'closed'>('operating');
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
-  const [inputUrl, setInputUrl] = useState('');
+  const [googleMapsUrl, setGoogleMapsUrl] = useState('');
 
   // Selected Aspects
   const [aspectQuality, setAspectQuality] = useState('Rất tốt');
@@ -97,7 +97,7 @@ export default function CreatePostModal({
       setOpeningHours('07:00 - 22:00');
       setPlaceStatus('operating');
       setMediaUrls([]);
-      setInputUrl('');
+      setGoogleMapsUrl('');
       setErrorMsg('');
       setSuccessMsg('');
       setUploadProgressText('');
@@ -162,16 +162,6 @@ export default function CreatePostModal({
     if (place.item_type === 'accommodation') setCategory('stay');
     else if (place.item_type === 'dining') setCategory('food_local');
     else if (place.item_type === 'attraction') setCategory('entertainment');
-  };
-
-  // Add media URL
-  const handleAddUrl = () => {
-    if (!inputUrl.trim()) return;
-    const clean = inputUrl.trim();
-    if (!mediaUrls.includes(clean)) {
-      setMediaUrls((prev) => [...prev, clean]);
-    }
-    setInputUrl('');
   };
 
   const handleRemoveMedia = (index: number) => {
@@ -255,6 +245,7 @@ export default function CreatePostModal({
       rating,
       content: content.trim(),
       media_urls: mediaUrls,
+      google_maps_url: googleMapsUrl.trim(),
       aspects: {
         quality: aspectQuality,
         service: aspectService,
@@ -342,18 +333,6 @@ export default function CreatePostModal({
                 >
                   Đăng Bài Đánh Giá Địa Điểm
                 </Text>
-                <View
-                  style={{
-                    backgroundColor: '#E8F5E9',
-                    paddingHorizontal: 8,
-                    paddingVertical: 2,
-                    borderRadius: 6,
-                  }}
-                >
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#2E7D32' }}>
-                    Google Maps Style
-                  </Text>
-                </View>
               </View>
               <Text style={{ fontSize: 12, color: BRAND_COLORS.textMuted }}>
                 Chia sẻ cảm nhận, tiêu chí phụ, chi phí và hình ảnh thực tế tới cộng đồng
@@ -506,6 +485,7 @@ export default function CreatePostModal({
 
               {/* Place Name Input */}
               <TextInput
+                testID="modal-input-place-name"
                 value={placeName}
                 onChangeText={setPlaceName}
                 placeholder="Nhập tên quán ăn, cà phê, khách sạn hoặc điểm đến (VD: Phở Bát Đàn, Khách sạn Mường Thanh...)"
@@ -539,6 +519,7 @@ export default function CreatePostModal({
                 </Text>
                 {Platform.OS === 'web' ? (
                   <select
+                    data-testid="modal-select-province"
                     value={province}
                     onChange={(e: any) => setProvince(e.target.value)}
                     style={{
@@ -659,6 +640,7 @@ export default function CreatePostModal({
 
               {/* Detail Content */}
               <TextInput
+                testID="modal-input-content"
                 value={content}
                 onChangeText={setContent}
                 placeholder="Mô tả trải nghiệm chi tiết của bạn tại đây: Chất lượng món ăn / phòng ốc, thái độ nhân viên, không gian, những điều cần lưu ý..."
@@ -680,10 +662,10 @@ export default function CreatePostModal({
               />
             </View>
 
-            {/* Bước 4: Tiêu chí phụ (Google Maps Style) */}
+            {/* Bước 4: Tiêu chí trải nghiệm chi tiết */}
             <View style={{ gap: 12, backgroundColor: '#F8FAFC', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' }}>
               <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E293B' }}>
-                4. Tiêu Chí Phụ (Đặc trưng theo Google Maps)
+                4. Tiêu Chí Trải Nghiệm Chi Tiết
               </Text>
 
               {/* Chất lượng & Dịch vụ */}
@@ -1002,42 +984,32 @@ export default function CreatePostModal({
                 </View>
               )}
 
-              {/* URL Input */}
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              {/* Google Maps Link Input */}
+              <View style={{ gap: 6, marginTop: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <MapPin size={15} color="#EA4335" />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND_COLORS.text }}>
+                    Đường dẫn Google Maps của địa điểm:
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#64748B' }}>(Tùy chọn)</Text>
+                </View>
                 <TextInput
-                  value={inputUrl}
-                  onChangeText={setInputUrl}
-                  placeholder="Hoặc dán liên kết URL ảnh/video (https://...)"
+                  testID="modal-input-gmaps-url"
+                  value={googleMapsUrl}
+                  onChangeText={setGoogleMapsUrl}
+                  placeholder="Dán liên kết Google Maps của địa điểm (VD: https://maps.app.goo.gl/...)"
                   placeholderTextColor="#94A3B8"
                   style={{
-                    flex: 1,
                     backgroundColor: '#FFFFFF',
                     borderWidth: 1.5,
                     borderColor: 'rgba(27,36,32,0.15)',
                     borderRadius: 10,
                     paddingHorizontal: 12,
-                    paddingVertical: 8,
+                    paddingVertical: 9,
                     fontSize: 13,
                     color: BRAND_COLORS.text,
                   }}
                 />
-                <Pressable
-                  onPress={handleAddUrl}
-                  disabled={!inputUrl.trim()}
-                  style={{
-                    backgroundColor: BRAND_COLORS.primary,
-                    paddingHorizontal: 16,
-                    borderRadius: 10,
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    opacity: inputUrl.trim() ? 1 : 0.6,
-                    cursor: 'pointer' as any,
-                  }}
-                >
-                  <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>
-                    Thêm
-                  </Text>
-                </Pressable>
               </View>
 
               {/* Previews with index badges */}
@@ -1122,6 +1094,7 @@ export default function CreatePostModal({
             </Pressable>
 
             <Pressable
+              testID="btn-submit-post"
               onPress={handleSubmit}
               disabled={submitting}
               style={{
