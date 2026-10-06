@@ -14,6 +14,7 @@ import {
   Package,
   Users,
   Compass,
+  FileText,
   Key,
   Handshake,
   LogOut,
@@ -41,6 +42,7 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   { key: 'packages', label: 'Gói cước', path: APP_ROUTES.ADMIN_PACKAGES, icon: Package },
   { key: 'users', label: 'Người dùng', path: APP_ROUTES.ADMIN_USERS, icon: Users },
   { key: 'trips', label: 'Chuyến đi', path: APP_ROUTES.ADMIN_TRIPS, icon: Compass },
+  { key: 'posts', label: 'Bài đăng', path: APP_ROUTES.ADMIN_POSTS, icon: FileText },
   { key: 'keys', label: 'AI & API Keys', path: APP_ROUTES.ADMIN_KEYS, icon: Key },
   { key: 'partners', label: 'Đối tác', path: APP_ROUTES.ADMIN_PARTNERS, icon: Handshake },
 ];

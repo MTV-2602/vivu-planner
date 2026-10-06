@@ -147,6 +147,7 @@ export const APP_ROUTES = {
   ADMIN_REVENUE: '/admin/revenue',
   ADMIN_PARTNERS: '/admin/partners',
   ADMIN_PACKAGES: '/admin/packages',
+  ADMIN_POSTS: '/admin/posts',
 };
 
 // ─── 63 TỈNH THÀNH VIỆT NAM (TAG BẮT BUỘC BÀI ĐĂNG) ─────────────────────────
@@ -205,4 +206,11 @@ export function isUserPremium(profile?: { is_premium?: boolean; premium_until?: 
   if (profile.premium_until) return new Date(profile.premium_until) > new Date();
   return false;
 }
+
+export const BLACKLIST_KEYWORD_PATTERNS = [
+  /(?:^|[^\p{L}\p{N}])(đụ|địt|đm|đkm|vcl|đcl|clgt|lồn|buồi|cặc|chó đẻ|óc chó|mẹ mày|bà mẹ mày|đồ ngu)(?=[^\p{L}\p{N}]|$)/iu,
+  /(?:^|[^\p{L}\p{N}])(cá độ|đánh bạc|lô đề|tài xỉu|casino|kubet|thabet|nổ hũ|bắn cá đổi thưởng|cho vay nặng lãi|bốc bát họ|tiền ảo lừa đảo)(?=[^\p{L}\p{N}]|$)/iu,
+  /(?:liên hệ|zalo|hotline|sđt|call|inbox)\s*(?:ngay|qua|số)?\s*:?\s*(?:0|\+84)[3|5|7|8|9]\d{8}\b/iu,
+  /(?:t\.me\/|bit\.ly\/|cacuoc|gamebai|kiemtiennhanh|nhacai)/i,
+];
 

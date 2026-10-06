@@ -2,8 +2,18 @@ import { Router, Response } from 'express';
 import { randomBytes, randomUUID } from 'crypto';
 import { requireAuth } from '../../middleware/requireAuth';
 import { supabaseAdmin } from '../../config/supabase';
+import { checkContentViolation, getUserPenaltyStatus } from './moderation.service';
 
 const router = Router();
+
+export interface PostReportItem {
+  user_id: string;
+  user_name: string;
+  user_email?: string | null;
+  reason: string;
+  details?: string;
+  created_at: string;
+}
 
 export interface PostCommentItem {
   id: string;
@@ -40,6 +50,9 @@ export interface PostDetails {
   trip_id?: string | null;
   reactions?: Record<string, string>; // { [userId]: 'like' | 'love' | 'care' | 'haha' | 'wow' | 'sad' | 'angry' }
   comments?: PostCommentItem[];
+  status?: 'approved' | 'rejected' | 'pending';
+  rejection_reason?: string | null;
+  reports?: PostReportItem[];
 }
 
 export function formatPostRow(row: any, profile?: any, currentUserId?: string) {
@@ -110,6 +123,10 @@ export function formatPostRow(row: any, profile?: any, currentUserId?: string) {
     reactions_raw: reactionsMap,
     comments: commentsList,
     comments_count: commentsList.length,
+    status: details.status || 'approved',
+    rejection_reason: details.rejection_reason || null,
+    reports: Array.isArray(details.reports) ? details.reports : [],
+    reports_count: Array.isArray(details.reports) ? details.reports.length : 0,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -155,6 +172,9 @@ router.get('/', async (req: any, res: Response) => {
 
     // Format và lọc theo tiêu chí
     let formatted = rows.map((r: any) => formatPostRow(r, profileMap[r.user_id], req.user?.id));
+
+    // Chỉ hiển thị bài viết hợp lệ lên bảng tin cộng đồng (ẩn bài bị từ chối)
+    formatted = formatted.filter((p: any) => p.status !== 'rejected');
 
     // 1. Lọc theo Tỉnh thành (tag bắt buộc 1)
     if (province && typeof province === 'string' && province.trim() && province !== 'all') {
@@ -283,6 +303,15 @@ router.post('/', requireAuth, async (req: any, res: Response) => {
       trip_id = null,
     } = req.body;
 
+    // Kiểm tra tài khoản có đang bị phạt cấm đăng bài do vi phạm 5 lần không
+    const penalty = await getUserPenaltyStatus(userId);
+    if (penalty.isBanned) {
+      const formattedDate = penalty.bannedUntil ? new Date(penalty.bannedUntil).toLocaleDateString('vi-VN') : '';
+      return res.status(403).json({
+        error: `Tài khoản của bạn đã vi phạm tiêu chuẩn cộng đồng 5 lần và đang bị tạm khóa quyền đăng bài đến ngày ${formattedDate} (còn ${penalty.remainingDays} ngày).`,
+      });
+    }
+
     // Validate 2 tag bắt buộc và các trường bắt buộc
     if (!place_name || typeof place_name !== 'string' || !place_name.trim()) {
       return res.status(400).json({ error: 'Vui lòng nhập tên địa điểm bạn muốn đánh giá' });
@@ -308,6 +337,14 @@ router.post('/', requireAuth, async (req: any, res: Response) => {
       return res.status(400).json({ error: 'Vui lòng nhập nội dung đánh giá chi tiết' });
     }
 
+    // Quét từ ngữ tục tĩu, quảng cáo, cờ bạc, lừa đảo (không giới hạn độ dài ngắn)
+    const violation = checkContentViolation(`${place_name} ${content}`);
+    if (violation.isViolated) {
+      return res.status(400).json({
+        error: `Bài viết chứa nội dung hoặc từ ngữ vi phạm tiêu chuẩn cộng đồng ViVu (${violation.reason}: "${violation.matchedWord}"). Vui lòng kiểm tra và chỉnh sửa lại.`,
+      });
+    }
+
     const postPayload: PostDetails = {
       place_name: place_name.trim(),
       province: province.trim(),
@@ -329,6 +366,9 @@ router.post('/', requireAuth, async (req: any, res: Response) => {
       trip_id: trip_id || null,
       reactions: {},
       comments: [],
+      status: 'approved',
+      rejection_reason: null,
+      reports: [],
     };
 
     const insertPayload: any = {
@@ -639,6 +679,101 @@ router.delete('/:id/comments/:commentId', requireAuth, async (req: any, res: Res
     });
   } catch (err: any) {
     return res.status(500).json({ error: 'Lỗi server khi xóa bình luận', details: err.message });
+  }
+});
+
+// ── POST /api/posts/:id/report ────────────────────────────────────────────────
+// Báo cáo bài viết vi phạm tiêu chuẩn cộng đồng
+router.post('/:id/report', requireAuth, async (req: any, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const { reason, details: reportNote = '' } = req.body;
+
+    if (!reason || typeof reason !== 'string' || !reason.trim()) {
+      return res.status(400).json({ error: 'Vui lòng chọn lý do báo cáo vi phạm' });
+    }
+
+    const { data: row, error: findError } = await supabaseAdmin
+      .from('place_reviews')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findError || !row) {
+      return res.status(404).json({ error: 'Không tìm thấy bài viết cần báo cáo' });
+    }
+
+    if (row.user_id === userId) {
+      return res.status(400).json({ error: 'Bạn không thể tự báo cáo bài viết của chính mình' });
+    }
+
+    let postDetails: PostDetails = {
+      place_name: 'Địa điểm',
+      province: '',
+      category: 'other',
+      content: '',
+    };
+
+    try {
+      if (typeof row.comment === 'string' && row.comment.trim().startsWith('{')) {
+        postDetails = JSON.parse(row.comment);
+      } else if (typeof row.comment === 'object' && row.comment) {
+        postDetails = row.comment;
+      }
+    } catch {
+      postDetails.content = row.comment || '';
+    }
+
+    const reportsList: PostReportItem[] = Array.isArray(postDetails.reports) ? postDetails.reports : [];
+
+    // Kiểm tra xem người dùng đã báo cáo bài này trước đó chưa
+    const alreadyReported = reportsList.some((r) => r.user_id === userId);
+    if (alreadyReported) {
+      return res.status(400).json({
+        error: 'Bạn đã gửi báo cáo cho bài viết này trước đó. Ban quản trị đang trong quá trình xem xét!',
+      });
+    }
+
+    // Lấy tên người báo cáo
+    const { data: reporterProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('full_name, email')
+      .eq('id', userId)
+      .maybeSingle();
+
+    const newReport: PostReportItem = {
+      user_id: userId,
+      user_name: reporterProfile?.full_name || 'Người dùng ViVu',
+      user_email: reporterProfile?.email || null,
+      reason: reason.trim(),
+      details: typeof reportNote === 'string' ? reportNote.trim() : '',
+      created_at: new Date().toISOString(),
+    };
+
+    reportsList.push(newReport);
+    postDetails.reports = reportsList;
+
+    const { error: updateError } = await supabaseAdmin
+      .from('place_reviews')
+      .update({
+        comment: JSON.stringify(postDetails),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (updateError) {
+      return res.status(500).json({ error: 'Lỗi ghi nhận báo cáo', details: updateError.message });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Báo cáo vi phạm đã được gửi đến Ban quản trị ViVu. Cảm ơn bạn đã chung tay bảo vệ cộng đồng!',
+      report_count: reportsList.length,
+    });
+  } catch (err: any) {
+    console.error('[ReportPost] Error:', err);
+    return res.status(500).json({ error: 'Lỗi hệ thống khi gửi báo cáo', details: err.message });
   }
 });
 

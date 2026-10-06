@@ -42,12 +42,14 @@ import {
   ImageIcon,
   Heart,
   SmilePlus,
+  Flag,
 } from 'lucide-react-native';
 import { useAuth } from '../../../hooks/useAuth';
 import { api } from '../../../lib/api';
 import SystemClock from '../../../components/SystemClock';
 import CreatePostModal from '../../../components/CreatePostModal';
 import ConfirmModal from '../../../components/ConfirmModal';
+import ReportModal from '../../../components/ReportModal';
 import {
   BRAND_COLORS,
   APP_ROUTES,
@@ -122,6 +124,7 @@ export default function CommunityFeedScreen() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [previewGallery, setPreviewGallery] = useState<{ images: string[]; activeIndex: number } | null>(null);
   const [postToDelete, setPostToDelete] = useState<{ id: string; place_name: string } | null>(null);
+  const [postToReport, setPostToReport] = useState<{ id: string; place_name: string } | null>(null);
 
   // Facebook Reactions Hover & Popover States
   const [hoverReactionPostId, setHoverReactionPostId] = useState<string | null>(null);
@@ -996,7 +999,8 @@ export default function CommunityFeedScreen() {
           ) : (
             posts.map((post: any) => {
               const catMeta = getCategoryMeta(post.category);
-              const isOwner = user?.id === post.user_id || isAdmin;
+              const isAuthor = user?.id === post.user_id;
+              const canDelete = isAuthor || isAdmin;
 
               return (
                 <View
@@ -1052,15 +1056,36 @@ export default function CommunityFeedScreen() {
                       </View>
                     </View>
 
-                    {/* Delete action for owner/admin */}
-                    {isOwner && (
-                      <Pressable
-                        onPress={() => setPostToDelete({ id: post.id, place_name: post.place_name })}
-                        style={{ padding: 6, cursor: 'pointer' as any }}
-                      >
-                        <Trash2 size={16} color="#DC2626" />
-                      </Pressable>
-                    )}
+                    {/* Actions: Report (for non-author) & Delete (for author/admin) */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {!isAuthor && (
+                        <Pressable
+                          testID={`btn-report-post-${post.id}`}
+                          onPress={() => setPostToReport({ id: post.id, place_name: post.place_name })}
+                          style={{
+                            padding: 6,
+                            borderRadius: 8,
+                            backgroundColor: '#F8FAFC',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer' as any,
+                          }}
+                          accessibilityLabel="Báo cáo vi phạm"
+                        >
+                          <Flag size={15} color="#94A3B8" />
+                        </Pressable>
+                      )}
+
+                      {canDelete && (
+                        <Pressable
+                          onPress={() => setPostToDelete({ id: post.id, place_name: post.place_name })}
+                          style={{ padding: 6, cursor: 'pointer' as any }}
+                          accessibilityLabel="Xóa bài viết"
+                        >
+                          <Trash2 size={16} color="#DC2626" />
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
 
                   {/* Place Title & 2 Tags Bắt Buộc */}
@@ -1485,7 +1510,7 @@ export default function CommunityFeedScreen() {
                       {post.comments && post.comments.length > 0 ? (
                         <View style={{ gap: 12 }}>
                           {post.comments.map((cmt: any) => {
-                            const canDeleteCmt = user?.id === cmt.user_id || isOwner;
+                            const canDeleteCmt = user?.id === cmt.user_id || canDelete;
                             const isLikedCmt = !!commentLikes[cmt.id];
 
                             return (
@@ -2172,6 +2197,19 @@ export default function CommunityFeedScreen() {
             if (postToDelete) deleteMutation.mutate(postToDelete.id);
           }}
           onCancel={() => setPostToDelete(null)}
+        />
+      )}
+
+      {/* ── Modal Báo Cáo Vi Phạm Bài Viết ───────────────────────────────── */}
+      {postToReport && (
+        <ReportModal
+          visible={!!postToReport}
+          postId={postToReport.id}
+          placeName={postToReport.place_name}
+          onClose={() => setPostToReport(null)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['community-posts'] });
+          }}
         />
       )}
     </View>
