@@ -4,6 +4,7 @@ import { requireAdmin } from '../../middleware/requireAdmin';
 import { supabaseAdmin, isDbMocked } from '../../config/supabase';
 
 import { autoCancelExpiredOrders, loadPlansFromDb } from '../payment/payment.router';
+import { formatPostRow } from '../posts/posts.router';
 import {
   UserRole,
   USER_BAN_CONFIG,
@@ -989,6 +990,229 @@ router.post('/ai-config/test', async (req: any, res: Response) => {
       error: 'Không thể kết nối đến API Gateway',
       details: errMsg
     });
+  }
+});
+
+// ── GET /api/admin/posts ──────────────────────────────────────────────────────
+// Lấy danh sách toàn bộ bài đăng cộng đồng cho Quản trị viên
+import { getUserPenaltyStatus, addStrikeToUser } from '../posts/moderation.service';
+
+router.get('/posts', async (req: any, res: Response) => {
+  try {
+    const { search, province, category, statusFilter = 'all' } = req.query;
+
+    const { data: rows, error } = await supabaseAdmin
+      .from('place_reviews')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      return res.status(500).json({ error: 'Lỗi lấy danh sách bài viết', details: error.message });
+    }
+
+    // Lấy thông tin profiles của các tác giả
+    const userIds = Array.from(new Set((rows || []).map((r) => r.user_id).filter(Boolean)));
+    const profilesMap = new Map<string, any>();
+    const penaltiesMap = new Map<string, any>();
+
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabaseAdmin
+        .from('profiles')
+        .select('id, full_name, avatar_url, is_premium, email')
+        .in('id', userIds);
+
+      (profiles || []).forEach((p) => profilesMap.set(p.id, p));
+
+      // Lấy thông tin vi phạm (strikes, cấm đăng bài) cho từng tác giả
+      await Promise.all(
+        userIds.map(async (uid: any) => {
+          const pen = await getUserPenaltyStatus(uid);
+          penaltiesMap.set(uid, pen);
+        })
+      );
+    }
+
+    let posts = (rows || []).map((row) => {
+      const profile = profilesMap.get(row.user_id);
+      const formatted = formatPostRow(row, profile);
+      const penalty = penaltiesMap.get(row.user_id) || {
+        strikeCount: 0,
+        isBanned: false,
+        bannedUntil: null,
+        remainingDays: 0,
+      };
+
+      return {
+        ...formatted,
+        author: {
+          ...formatted.author,
+          email: profile?.email || null,
+        },
+        author_penalty: penalty,
+      };
+    });
+
+    // 1. Lọc theo trạng thái kiểm duyệt (all | approved | reported | rejected)
+    if (statusFilter && statusFilter !== 'all') {
+      if (statusFilter === 'reported') {
+        posts = posts.filter((p) => p.reports_count > 0);
+      } else if (statusFilter === 'approved') {
+        posts = posts.filter((p) => p.status === 'approved');
+      } else if (statusFilter === 'rejected') {
+        posts = posts.filter((p) => p.status === 'rejected');
+      }
+    }
+
+    // 2. Tìm kiếm từ khóa
+    if (search && typeof search === 'string') {
+      const q = search.toLowerCase().trim();
+      posts = posts.filter(
+        (p) =>
+          (p.place_name || '').toLowerCase().includes(q) ||
+          (p.content || '').toLowerCase().includes(q) ||
+          (p.author.full_name || '').toLowerCase().includes(q) ||
+          (p.author.email && p.author.email.toLowerCase().includes(q))
+      );
+    }
+
+    // 3. Lọc theo tỉnh thành
+    if (province && typeof province === 'string') {
+      posts = posts.filter((p) => p.province === province);
+    }
+
+    // 4. Lọc theo danh mục
+    if (category && typeof category === 'string') {
+      posts = posts.filter((p) => p.category === category);
+    }
+
+    return res.json({
+      success: true,
+      total: posts.length,
+      posts,
+    });
+  } catch (err: any) {
+    console.error('[Admin] get posts error:', err);
+    return res.status(500).json({ error: 'Lỗi hệ thống khi lấy bài viết', details: err.message });
+  }
+});
+
+// ── PUT /api/admin/posts/:id/moderate ─────────────────────────────────────────
+// Kiểm duyệt bài viết: Duyệt bài ('approve'), Từ chối/gỡ bài ('reject'), hoặc Bỏ qua cờ báo cáo ('dismiss_reports')
+router.put('/posts/:id/moderate', async (req: any, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { action, reason = '' } = req.body;
+
+    if (!['approve', 'reject', 'dismiss_reports'].includes(action)) {
+      return res.status(400).json({ error: 'Hành động kiểm duyệt không hợp lệ (approve, reject, dismiss_reports)' });
+    }
+
+    const { data: row, error: findError } = await supabaseAdmin
+      .from('place_reviews')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findError || !row) {
+      return res.status(404).json({ error: 'Không tìm thấy bài viết' });
+    }
+
+    let details: any = {};
+    try {
+      if (typeof row.comment === 'string' && row.comment.trim().startsWith('{')) {
+        details = JSON.parse(row.comment);
+      } else if (typeof row.comment === 'object' && row.comment) {
+        details = row.comment;
+      }
+    } catch {
+      details = { content: row.comment || '' };
+    }
+
+    let penaltyResult: any = null;
+    let message = '';
+
+    if (action === 'approve') {
+      details.status = 'approved';
+      details.rejection_reason = null;
+      details.reports = [];
+      message = 'Đã duyệt bài viết thành công. Bài viết đang hiển thị trên Bảng tin!';
+    } else if (action === 'dismiss_reports') {
+      details.reports = [];
+      message = 'Đã gỡ bỏ toàn bộ cờ báo cáo. Bài viết tiếp tục hiển thị bình thường!';
+    } else if (action === 'reject') {
+      details.status = 'rejected';
+      details.rejection_reason = reason.trim() || 'Nội dung vi phạm tiêu chuẩn cộng đồng ViVu';
+
+      // Tính +1 strike vi phạm cho tác giả. Nếu đủ 5 strikes -> tự động ban 7 ngày!
+      penaltyResult = await addStrikeToUser(row.user_id, details.rejection_reason);
+
+      if (penaltyResult?.justBanned) {
+        const banUntilDate = new Date(penaltyResult.bannedUntil).toLocaleDateString('vi-VN');
+        message = `Đã gỡ bài viết. Tác giả đã tích lũy đủ 5 lần vi phạm và bị HỆ THỐNG TỰ ĐỘNG KHÓA ĐĂNG BÀI 7 NGÀY (đến ${banUntilDate})!`;
+      } else {
+        message = `Đã gỡ bài viết vi phạm và ghi nhận 1 lần vi phạm cho tác giả (${penaltyResult?.newStrikes || 1}/5 lần).`;
+      }
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('place_reviews')
+      .update({
+        comment: JSON.stringify(details),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (updateError) {
+      return res.status(500).json({ error: 'Lỗi cập nhật bài viết', details: updateError.message });
+    }
+
+    return res.json({
+      success: true,
+      message,
+      action,
+      post_status: details.status,
+      penalty: penaltyResult,
+    });
+  } catch (err: any) {
+    console.error('[Admin] moderate post error:', err);
+    return res.status(500).json({ error: 'Lỗi hệ thống khi xử lý kiểm duyệt', details: err.message });
+  }
+});
+
+// ── DELETE /api/admin/posts/:id ───────────────────────────────────────────────
+// Xóa bài đăng vi phạm (Quyền Admin, có tùy chọn cộng strike nếu vi phạm nặng)
+router.delete('/posts/:id', async (req: any, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { countStrike, reason } = req.body || {};
+
+    const { data: post, error: findError } = await supabaseAdmin
+      .from('place_reviews')
+      .select('id, user_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findError || !post) {
+      return res.status(404).json({ error: 'Không tìm thấy bài viết cần xóa' });
+    }
+
+    if (countStrike && post.user_id) {
+      await addStrikeToUser(post.user_id, reason || 'Xóa bài viết do vi phạm nghiêm trọng');
+    }
+
+    const { error: deleteError } = await supabaseAdmin
+      .from('place_reviews')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      return res.status(500).json({ error: 'Lỗi khi xóa bài viết', details: deleteError.message });
+    }
+
+    return res.json({ success: true, message: 'Đã xóa bài đăng vi phạm thành công!' });
+  } catch (err: any) {
+    console.error('[Admin] delete post error:', err);
+    return res.status(500).json({ error: 'Lỗi hệ thống khi xóa bài viết', details: err.message });
   }
 });
 

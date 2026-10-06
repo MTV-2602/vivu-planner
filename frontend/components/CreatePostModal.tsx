@@ -31,6 +31,7 @@ import {
   POST_CATEGORIES,
   POST_ASPECT_OPTIONS,
   BRAND_COLORS,
+  BLACKLIST_KEYWORD_PATTERNS,
 } from '../constants';
 
 interface CreatePostModalProps {
@@ -233,6 +234,16 @@ export default function CreatePostModal({
     if (!content.trim()) {
       setErrorMsg('Vui lòng viết mô tả đánh giá chi tiết về địa điểm');
       return;
+    }
+
+    // Quét từ ngữ tục tĩu, quảng cáo, cờ bạc, lừa đảo (không giới hạn độ dài ngắn)
+    const combinedText = `${placeName.trim()} ${content.trim()}`.toLowerCase();
+    for (const pattern of BLACKLIST_KEYWORD_PATTERNS) {
+      const match = pattern.exec(combinedText);
+      if (match) {
+        setErrorMsg(`Bài viết chứa nội dung hoặc từ ngữ vi phạm tiêu chuẩn cộng đồng ViVu: "${match[0]}". Vui lòng kiểm tra và chỉnh sửa lại.`);
+        return;
+      }
     }
 
     setSubmitting(true);

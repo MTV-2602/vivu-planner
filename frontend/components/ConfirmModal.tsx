@@ -9,6 +9,7 @@ interface ConfirmModalProps {
   confirmText?: string;
   cancelText?: string;
   isDestructive?: boolean;
+  iconColor?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -20,6 +21,7 @@ export default function ConfirmModal({
   confirmText = 'Xác nhận',
   cancelText = 'Hủy',
   isDestructive = false,
+  iconColor,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -38,7 +40,7 @@ export default function ConfirmModal({
         }}
       >
         <View className="flex-row items-center gap-2.5 mb-3">
-          <AlertTriangle size={22} color={isDestructive ? BRAND_COLORS.danger : BRAND_COLORS.accent} />
+          <AlertTriangle size={22} color={iconColor || '#F59E0B'} />
           <Text className="text-lg font-display font-extrabold text-brand-text" style={{ color: '#1B2420' }}>
             {title}
           </Text>

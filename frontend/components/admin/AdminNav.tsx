@@ -15,6 +15,7 @@ export default function AdminNav() {
     { key: 'packages', path: APP_ROUTES.ADMIN_PACKAGES, label: 'Gói thành viên & Giá 👑' },
     { key: 'revenue', path: APP_ROUTES.ADMIN_REVENUE, label: 'Doanh thu 📊' },
     { key: 'trips', path: APP_ROUTES.ADMIN_TRIPS, label: 'Chuyến đi' },
+    { key: 'posts', path: APP_ROUTES.ADMIN_POSTS, label: 'Bài đăng 📝' },
     { key: 'keys', path: APP_ROUTES.ADMIN_KEYS, label: 'Quản trị AI' },
     { key: 'partners', path: APP_ROUTES.ADMIN_PARTNERS, label: 'Đối tác' },
   ];
