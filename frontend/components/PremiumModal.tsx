@@ -3,7 +3,6 @@ import {
   View, Text, Pressable, Modal, ScrollView,
   ActivityIndicator, Platform, Linking, Image,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { useQuery } from '@tanstack/react-query';
 import {
   X, Crown, Sparkles, Check, Clock, AlertTriangle,
@@ -54,9 +53,7 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
 
   const handleCopy = async (text: string, field: string) => {
     try {
-      if (Clipboard && typeof Clipboard.setStringAsync === 'function') {
-        await Clipboard.setStringAsync(text);
-      } else if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(text);
       }
       setCopiedField(field);

@@ -3,7 +3,6 @@ import {
   Modal, View, Text, TouchableOpacity, FlatList,
   ActivityIndicator, StyleSheet, Alert, Platform, ScrollView,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { X, Users, Crown, Clock, Trash2, Link, RefreshCw } from 'lucide-react-native';
 import { api } from '../lib/api';
 
@@ -92,9 +91,7 @@ export default function ShareTripModal({
   const handleCopy = async () => {
     if (!inviteUrl) return;
     try {
-      if (Clipboard && typeof Clipboard.setStringAsync === 'function') {
-        await Clipboard.setStringAsync(inviteUrl);
-      } else if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(inviteUrl);
       }
       setCopied(true);

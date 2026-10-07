@@ -283,6 +283,69 @@ router.get('/:id', async (req: any, res: Response) => {
   }
 });
 
+// ── GET /api/posts/:id/reactions ──────────────────────────────────────────────
+// Lấy danh sách người dùng đã thả cảm xúc vào bài viết
+router.get('/:id/reactions', async (req: any, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { data: row, error } = await supabaseAdmin
+      .from('place_reviews')
+      .select('comment')
+      .eq('id', id)
+      .single();
+
+    if (error || !row) {
+      return res.status(404).json({ error: 'Không tìm thấy bài viết' });
+    }
+
+    let details: any = {};
+    try {
+      if (typeof row.comment === 'string' && row.comment.trim().startsWith('{')) {
+        details = JSON.parse(row.comment);
+      } else if (typeof row.comment === 'object' && row.comment) {
+        details = row.comment;
+      }
+    } catch {
+      // Bỏ qua lỗi parse
+    }
+
+    const reactions = (details.reactions && typeof details.reactions === 'object') ? details.reactions : {};
+    const userIds = Object.keys(reactions);
+
+    if (userIds.length === 0) {
+      return res.json({ success: true, reactions: [], total: 0 });
+    }
+
+    const { data: profiles, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', userIds);
+
+    const profileMap: Record<string, any> = {};
+    if (!profileError && profiles) {
+      profiles.forEach((p: any) => {
+        profileMap[p.id] = p;
+      });
+    }
+
+    const formattedList = userIds.map((uId: string) => {
+      const profile = profileMap[uId];
+      const rType = String(reactions[uId] || 'like').toUpperCase();
+      return {
+        user_id: uId,
+        full_name: profile?.full_name || 'Người dùng ViVu',
+        avatar_url: profile?.avatar_url || null,
+        reaction: reactions[uId],
+        reaction_type: rType,
+      };
+    });
+
+    return res.json({ success: true, reactions: formattedList, total: formattedList.length });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Lỗi máy chủ', details: err.message });
+  }
+});
+
 // ── POST /api/posts ───────────────────────────────────────────────────────────
 // Đăng bài đánh giá mới (Bắt buộc 2 tag: Tỉnh thành + Phân loại)
 router.post('/', requireAuth, async (req: any, res: Response) => {

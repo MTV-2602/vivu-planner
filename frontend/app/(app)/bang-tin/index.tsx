@@ -50,6 +50,8 @@ import SystemClock from '../../../components/SystemClock';
 import CreatePostModal from '../../../components/CreatePostModal';
 import ConfirmModal from '../../../components/ConfirmModal';
 import ReportModal from '../../../components/ReportModal';
+import PhotoTheaterModal from '../../../components/PhotoTheaterModal';
+import ReactionsListModal from '../../../components/ReactionsListModal';
 import {
   BRAND_COLORS,
   APP_ROUTES,
@@ -122,9 +124,10 @@ export default function CommunityFeedScreen() {
 
   // Modal States
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [previewGallery, setPreviewGallery] = useState<{ images: string[]; activeIndex: number } | null>(null);
+  const [photoTheater, setPhotoTheater] = useState<{ post: any; activeIndex: number } | null>(null);
   const [postToDelete, setPostToDelete] = useState<{ id: string; place_name: string } | null>(null);
   const [postToReport, setPostToReport] = useState<{ id: string; place_name: string } | null>(null);
+  const [showReactionsModalFor, setShowReactionsModalFor] = useState<{ id: string; total: number } | null>(null);
 
   // Facebook Reactions Hover & Popover States
   const [hoverReactionPostId, setHoverReactionPostId] = useState<string | null>(null);
@@ -143,28 +146,33 @@ export default function CommunityFeedScreen() {
   const [isUploadingCommentMedia, setIsUploadingCommentMedia] = useState<Record<string, boolean>>({});
   const [commentLikes, setCommentLikes] = useState<Record<string, boolean>>({});
 
-  const renderMediaGallery = (mediaUrls: string[]) => {
+  const renderMediaGallery = (post: any) => {
+    const mediaUrls = post?.media_urls;
     if (!mediaUrls || mediaUrls.length === 0) return null;
     const count = mediaUrls.length;
 
+    // 1 ảnh: 1 ảnh lớn bo góc 14px
     if (count === 1) {
       return (
         <Pressable
-          onPress={() => setPreviewGallery({ images: mediaUrls, activeIndex: 0 })}
-          style={{ width: '100%', height: 260, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
+          testID={`post-img-${post.id}-0`}
+          onPress={() => setPhotoTheater({ post, activeIndex: 0 })}
+          style={{ width: '100%', height: 280, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
         >
           <Image source={{ uri: mediaUrls[0] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
         </Pressable>
       );
     }
 
+    // 2 ảnh: 2 cột bằng nhau (hàng ngang cao 220px)
     if (count === 2) {
       return (
         <View style={{ flexDirection: 'row', gap: 8, height: 220 }}>
-          {mediaUrls.map((url, i) => (
+          {mediaUrls.map((url: string, i: number) => (
             <Pressable
               key={i}
-              onPress={() => setPreviewGallery({ images: mediaUrls, activeIndex: i })}
+              testID={`post-img-${post.id}-${i}`}
+              onPress={() => setPhotoTheater({ post, activeIndex: i })}
               style={{ flex: 1, height: '100%', borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
             >
               <Image source={{ uri: url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
@@ -174,24 +182,28 @@ export default function CommunityFeedScreen() {
       );
     }
 
+    // 3 ảnh: 1 ảnh bên trái, 2 ảnh bên phải (hàng ngang cao 240px)
     if (count === 3) {
       return (
         <View style={{ flexDirection: 'row', gap: 8, height: 240 }}>
           <Pressable
-            onPress={() => setPreviewGallery({ images: mediaUrls, activeIndex: 0 })}
+            testID={`post-img-${post.id}-0`}
+            onPress={() => setPhotoTheater({ post, activeIndex: 0 })}
             style={{ flex: 1.3, height: '100%', borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
           >
             <Image source={{ uri: mediaUrls[0] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
           </Pressable>
           <View style={{ flex: 1, gap: 8, height: '100%' }}>
             <Pressable
-              onPress={() => setPreviewGallery({ images: mediaUrls, activeIndex: 1 })}
+              testID={`post-img-${post.id}-1`}
+              onPress={() => setPhotoTheater({ post, activeIndex: 1 })}
               style={{ flex: 1, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
             >
               <Image source={{ uri: mediaUrls[1] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
             </Pressable>
             <Pressable
-              onPress={() => setPreviewGallery({ images: mediaUrls, activeIndex: 2 })}
+              testID={`post-img-${post.id}-2`}
+              onPress={() => setPhotoTheater({ post, activeIndex: 2 })}
               style={{ flex: 1, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
             >
               <Image source={{ uri: mediaUrls[2] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
@@ -201,37 +213,95 @@ export default function CommunityFeedScreen() {
       );
     }
 
-    // 4 or more photos (2x2 grid with overlay)
+    // 4 ảnh: lưới 2x2
+    if (count === 4) {
+      return (
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 8, height: 160 }}>
+            <Pressable
+              testID={`post-img-${post.id}-0`}
+              onPress={() => setPhotoTheater({ post, activeIndex: 0 })}
+              style={{ flex: 1, height: '100%', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
+            >
+              <Image source={{ uri: mediaUrls[0] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            </Pressable>
+            <Pressable
+              testID={`post-img-${post.id}-1`}
+              onPress={() => setPhotoTheater({ post, activeIndex: 1 })}
+              style={{ flex: 1, height: '100%', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
+            >
+              <Image source={{ uri: mediaUrls[1] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            </Pressable>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 8, height: 160 }}>
+            <Pressable
+              testID={`post-img-${post.id}-2`}
+              onPress={() => setPhotoTheater({ post, activeIndex: 2 })}
+              style={{ flex: 1, height: '100%', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
+            >
+              <Image source={{ uri: mediaUrls[2] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            </Pressable>
+            <Pressable
+              testID={`post-img-${post.id}-3`}
+              onPress={() => setPhotoTheater({ post, activeIndex: 3 })}
+              style={{ flex: 1, height: '100%', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
+            >
+              <Image source={{ uri: mediaUrls[3] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            </Pressable>
+          </View>
+        </View>
+      );
+    }
+
+    // >= 5 ảnh (Chuẩn Facebook như Hình 1):
+    // Chia thành 2 cột:
+    // - Cột trái (chiếm ~55% chiều rộng): 2 ảnh lớn xếp dọc, bo góc đẹp mắt (tổng chiều cao ~380px).
+    // - Cột phải (chiếm ~45% chiều rộng): 3 ảnh xếp dọc.
+    // - Ảnh thứ 5 (dưới cùng cột phải): Có lớp phủ mờ tối rgba(0,0,0,0.6) và chữ hiển thị số ảnh còn lại +{mediaUrls.length - 4} (như +9 trong Hình 1).
     return (
-      <View style={{ gap: 8 }}>
-        <View style={{ flexDirection: 'row', gap: 8, height: 160 }}>
+      <View style={{ flexDirection: 'row', gap: 8, height: 380 }}>
+        {/* Cột trái: 2 ảnh lớn xếp dọc (~55% chiều rộng) */}
+        <View style={{ flex: 1.22, gap: 8, height: '100%' }}>
           <Pressable
-            onPress={() => setPreviewGallery({ images: mediaUrls, activeIndex: 0 })}
-            style={{ flex: 1, height: '100%', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
+            testID={`post-img-${post.id}-0`}
+            onPress={() => setPhotoTheater({ post, activeIndex: 0 })}
+            style={{ flex: 1, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
           >
             <Image source={{ uri: mediaUrls[0] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
           </Pressable>
           <Pressable
-            onPress={() => setPreviewGallery({ images: mediaUrls, activeIndex: 1 })}
-            style={{ flex: 1, height: '100%', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
+            testID={`post-img-${post.id}-1`}
+            onPress={() => setPhotoTheater({ post, activeIndex: 1 })}
+            style={{ flex: 1, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
           >
             <Image source={{ uri: mediaUrls[1] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
           </Pressable>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8, height: 160 }}>
+        {/* Cột phải: 3 ảnh xếp dọc (~45% chiều rộng) */}
+        <View style={{ flex: 1, gap: 8, height: '100%' }}>
           <Pressable
-            onPress={() => setPreviewGallery({ images: mediaUrls, activeIndex: 2 })}
-            style={{ flex: 1, height: '100%', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
+            testID={`post-img-${post.id}-2`}
+            onPress={() => setPhotoTheater({ post, activeIndex: 2 })}
+            style={{ flex: 1, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
           >
             <Image source={{ uri: mediaUrls[2] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
           </Pressable>
           <Pressable
-            onPress={() => setPreviewGallery({ images: mediaUrls, activeIndex: 3 })}
-            style={{ flex: 1, height: '100%', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', position: 'relative', cursor: 'pointer' as any }}
+            testID={`post-img-${post.id}-3`}
+            onPress={() => setPhotoTheater({ post, activeIndex: 3 })}
+            style={{ flex: 1, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer' as any }}
           >
             <Image source={{ uri: mediaUrls[3] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-            {count > 4 && (
+          </Pressable>
+          <Pressable
+            testID={`post-img-${post.id}-4`}
+            onPress={() => setPhotoTheater({ post, activeIndex: 4 })}
+            style={{ flex: 1, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', position: 'relative', cursor: 'pointer' as any }}
+          >
+            <Image source={{ uri: mediaUrls[4] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            {count > 5 && (
               <View
                 style={{
                   position: 'absolute',
@@ -239,13 +309,13 @@ export default function CommunityFeedScreen() {
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  backgroundColor: 'rgba(0,0,0,0.55)',
+                  backgroundColor: 'rgba(0,0,0,0.6)',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Text style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '800' }}>
-                  +{count - 3}
+                <Text style={{ color: '#FFFFFF', fontSize: 24, fontWeight: '800' }}>
+                  +{count - 4}
                 </Text>
               </View>
             )}
@@ -283,6 +353,9 @@ export default function CommunityFeedScreen() {
   });
 
   const posts = postsData?.posts || [];
+  const currentTheaterPost = photoTheater
+    ? (posts.find((p: any) => p.id === photoTheater.post.id) || photoTheater.post)
+    : null;
 
   // Delete Mutation
   const deleteMutation = useMutation({
@@ -1245,7 +1318,7 @@ export default function CommunityFeedScreen() {
                   )}
 
                   {/* Media Gallery */}
-                  {renderMediaGallery(post.media_urls)}
+                  {renderMediaGallery(post)}
 
                   {/* Nút Xem trên Google Maps */}
                   {post.google_maps_url ? (
@@ -1294,7 +1367,14 @@ export default function CommunityFeedScreen() {
                     >
                       {/* Left: Reactions Counter */}
                       {(post.reactions?.total || 0) > 0 ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Pressable
+                          onPress={() => setShowReactionsModalFor({ id: post.id, total: post.reactions.total })}
+                          style={({ pressed }) => [{
+                            flexDirection: 'row', alignItems: 'center', gap: 6,
+                            opacity: pressed ? 0.7 : 1,
+                            cursor: 'pointer' as any,
+                          }]}
+                        >
                           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             {getTopReactionEmojis(post.reactions?.by_type).map((emoji, idx) => (
                               <Text key={idx} style={{ fontSize: 14, marginLeft: idx > 0 ? -4 : 0 }}>
@@ -1305,7 +1385,7 @@ export default function CommunityFeedScreen() {
                           <Text style={{ fontSize: 13, color: '#64748B', fontWeight: '600' }}>
                             {post.reactions.total}
                           </Text>
-                        </View>
+                        </Pressable>
                       ) : <View />}
 
                       {/* Right: Comments Counter */}
@@ -2056,134 +2136,27 @@ export default function CommunityFeedScreen() {
         }}
       />
 
-      {/* ── Modal Phóng To & Xem Bộ Sưu Tập Ảnh ─────────────────────────── */}
-      {previewGallery && (
-        <Modal visible={!!previewGallery} transparent animationType="fade" onRequestClose={() => setPreviewGallery(null)}>
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: 'rgba(0,0,0,0.92)',
-              justifyContent: 'center',
-              alignItems: 'center',
-              padding: 16,
-            }}
-          >
-            {/* Top Toolbar */}
-            <View
-              style={{
-                position: 'absolute',
-                top: 20,
-                left: 20,
-                right: 20,
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                zIndex: 10,
-              }}
-            >
-              <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 }}>
-                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
-                  Ảnh {previewGallery.activeIndex + 1} / {previewGallery.images.length}
-                </Text>
-              </View>
-
-              <Pressable
-                testID="btn-close-gallery"
-                onPress={() => setPreviewGallery(null)}
-                style={{
-                  backgroundColor: 'rgba(255,255,255,0.25)',
-                  borderRadius: 20,
-                  padding: 8,
-                  cursor: 'pointer' as any,
-                }}
-              >
-                <X size={20} color="#FFFFFF" />
-              </Pressable>
-            </View>
-
-            {/* Main Image with Navigation Arrows */}
-            <View style={{ width: '100%', maxWidth: 900, height: '70%', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
-              <Image
-                source={{ uri: previewGallery.images[previewGallery.activeIndex] }}
-                style={{ width: '100%', height: '100%', borderRadius: 12 }}
-                resizeMode="contain"
-              />
-
-              {/* Prev Button */}
-              {previewGallery.images.length > 1 && (
-                <Pressable
-                  testID="btn-prev-gallery"
-                  onPress={() =>
-                    setPreviewGallery((prev) =>
-                      prev ? { ...prev, activeIndex: (prev.activeIndex - 1 + prev.images.length) % prev.images.length } : null
-                    )
-                  }
-                  style={{
-                    position: 'absolute',
-                    left: 12,
-                    backgroundColor: 'rgba(0,0,0,0.6)',
-                    borderRadius: 30,
-                    padding: 10,
-                    cursor: 'pointer' as any,
-                  }}
-                >
-                  <ChevronLeft size={24} color="#FFFFFF" />
-                </Pressable>
-              )}
-
-              {/* Next Button */}
-              {previewGallery.images.length > 1 && (
-                <Pressable
-                  testID="btn-next-gallery"
-                  onPress={() =>
-                    setPreviewGallery((prev) =>
-                      prev ? { ...prev, activeIndex: (prev.activeIndex + 1) % prev.images.length } : null
-                    )
-                  }
-                  style={{
-                    position: 'absolute',
-                    right: 12,
-                    backgroundColor: 'rgba(0,0,0,0.6)',
-                    borderRadius: 30,
-                    padding: 10,
-                    cursor: 'pointer' as any,
-                  }}
-                >
-                  <ChevronRight size={24} color="#FFFFFF" />
-                </Pressable>
-              )}
-            </View>
-
-            {/* Bottom Thumbnail Strip */}
-            {previewGallery.images.length > 1 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 8, paddingHorizontal: 16, marginTop: 16 }}
-                style={{ maxHeight: 70 }}
-              >
-                {previewGallery.images.map((img, i) => (
-                  <Pressable
-                    key={i}
-                    onPress={() => setPreviewGallery((prev) => (prev ? { ...prev, activeIndex: i } : null))}
-                    style={{
-                      width: 60,
-                      height: 60,
-                      borderRadius: 8,
-                      overflow: 'hidden',
-                      borderWidth: 2,
-                      borderColor: previewGallery.activeIndex === i ? '#3B82F6' : 'transparent',
-                      opacity: previewGallery.activeIndex === i ? 1 : 0.6,
-                      cursor: 'pointer' as any,
-                    }}
-                  >
-                    <Image source={{ uri: img }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                  </Pressable>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        </Modal>
+      {/* ── Photo Theater Modal / Rạp Hát Xem Ảnh Facebook ──────────────── */}
+      {photoTheater && currentTheaterPost && (
+        <PhotoTheaterModal
+          visible={!!photoTheater}
+          post={currentTheaterPost}
+          initialIndex={photoTheater.activeIndex}
+          onClose={() => setPhotoTheater(null)}
+          currentUser={user}
+          userProfile={profile}
+          isAdmin={isAdmin}
+          onReact={(postId, reaction) => {
+            reactMutation.mutate({ postId, reaction });
+          }}
+          onAddComment={async ({ postId, content, media_url, media_type }) => {
+            await addCommentMutation.mutateAsync({ postId, content, media_url, media_type });
+          }}
+          onDeleteComment={async (postId, commentId) => {
+            await deleteCommentMutation.mutateAsync({ postId, commentId });
+          }}
+          onShare={handleSharePost}
+        />
       )}
 
       {/* ── Modal Xác Nhận Xóa Bài ──────────────────────────────────────── */}
@@ -2212,6 +2185,14 @@ export default function CommunityFeedScreen() {
           }}
         />
       )}
+
+      {/* ── Modal Danh Sách Người Đã Thả Cảm Xúc ─────────────────────────── */}
+      <ReactionsListModal
+        visible={!!showReactionsModalFor}
+        onClose={() => setShowReactionsModalFor(null)}
+        postId={showReactionsModalFor?.id || null}
+        totalReactions={showReactionsModalFor?.total}
+      />
     </View>
   );
 }
