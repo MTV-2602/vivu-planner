@@ -10,6 +10,7 @@ import CreatePostModal from '../../components/CreatePostModal';
 import ConfirmModal from '../../components/ConfirmModal';
 import EditProfileModal from '../../components/EditProfileModal';
 import ChangePasswordModal from '../../components/ChangePasswordModal';
+import ReactionsListModal from '../../components/ReactionsListModal';
 
 interface TripItem {
   id: string;
@@ -21,6 +22,19 @@ interface TripItem {
   status: string;
   preferences?: any;
 }
+
+const formatRelativeTime = (dateString: string) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  
+  if (diffInSeconds < 60) return 'Vừa xong';
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} phút trước`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} giờ trước`;
+  if (diffInSeconds < 172800) return 'Hôm qua';
+  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -36,6 +50,7 @@ export default function ProfileScreen() {
   const [showCreatePostModal, setShowCreatePostModal] = useState(false);
   const [previewGallery, setPreviewGallery] = useState<{ images: string[]; activeIndex: number } | null>(null);
   const [postToDelete, setPostToDelete] = useState<{ id: string; place_name: string } | null>(null);
+  const [showReactionsModalFor, setShowReactionsModalFor] = useState<{ id: string, total: number } | null>(null);
 
   const [userPrefs, setUserPrefs] = useState<string[]>([]);
   const [customPrefInput, setCustomPrefInput] = useState('');
@@ -116,7 +131,8 @@ export default function ProfileScreen() {
       setLoadingPosts(true);
       const res = await api.get('/posts/my-posts');
       if (res.data?.posts) {
-        setMyPosts(res.data.posts);
+        const sorted = res.data.posts.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setMyPosts(sorted);
       }
     } catch (err) {
       console.error('Lỗi lấy bài viết của tôi:', err);
@@ -693,6 +709,11 @@ export default function ProfileScreen() {
                           <Text style={{ fontFamily: 'Lora_700Bold', fontSize: 17, color: '#1B2420' }}>
                             {post.place_name}
                           </Text>
+                          {post.created_at && (
+                            <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 12, color: '#94A3B8' }}>
+                              {formatRelativeTime(post.created_at)}
+                            </Text>
+                          )}
 
                           {/* 2 Tags Bắt Buộc */}
                           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
@@ -843,12 +864,19 @@ export default function ProfileScreen() {
                       {((post.reactions?.total || 0) > 0 || (post.comments_count || 0) > 0) && (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
                           {(post.reactions?.total || 0) > 0 && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Pressable 
+                              onPress={() => setShowReactionsModalFor({ id: post.id, total: post.reactions.total })}
+                              style={({ pressed }) => [{
+                                flexDirection: 'row', alignItems: 'center', gap: 4,
+                                opacity: pressed ? 0.6 : 1,
+                                cursor: 'pointer' as any
+                              }]}
+                            >
                               <ThumbsUp size={13} color="#1877F2" />
                               <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B' }}>
                                 {post.reactions.total} cảm xúc
                               </Text>
-                            </View>
+                            </Pressable>
                           )}
                           {(post.comments_count || 0) > 0 && (
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -1042,6 +1070,14 @@ export default function ProfileScreen() {
         visible={showChangePasswordModal}
         onClose={() => setShowChangePasswordModal(false)}
         email={user?.email || ''}
+      />
+
+      {/* Modal Danh sách cảm xúc */}
+      <ReactionsListModal
+        visible={!!showReactionsModalFor}
+        onClose={() => setShowReactionsModalFor(null)}
+        postId={showReactionsModalFor?.id || null}
+        totalReactions={showReactionsModalFor?.total}
       />
     </View>
   );
