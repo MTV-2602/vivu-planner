@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, Pressable, TextInput } from 'react-native';
+import { View, Text, Pressable, TextInput, Platform, useWindowDimensions } from 'react-native';
 import { Truck, Home, Utensils, Coffee, Ticket } from 'lucide-react-native';
 
 export interface BudgetBreakdownData {
@@ -41,6 +41,8 @@ const calcInitialPercentages = (b: BudgetBreakdownData, total: number) => {
 };
 
 export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: BudgetBreakdownProps) {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 640;
   const [percentages, setPercentages] = useState<{ [key: string]: number }>(() =>
     calcInitialPercentages(breakdown, totalBudget)
   );
@@ -147,7 +149,8 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
       style={{
         backgroundColor: '#FFFFFF',
         borderRadius: 16,
-        padding: 18,
+        padding: 14,
+        overflow: 'hidden',
         borderWidth: 1,
         borderColor: 'rgba(27,36,32,0.08)',
         gap: 16,
@@ -181,7 +184,10 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
 
       {/* Allocated progress bar */}
       <View style={{ gap: 6 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <View
+          className="flex-col sm:flex-row sm:justify-between gap-1"
+          style={isMobile ? { flexDirection: 'column', gap: 4 } : { flexDirection: 'row', justifyContent: 'space-between' }}
+        >
           <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: isOverBudget ? '#B23B3B' : '#1F6F54' }}>
             Đã phân bổ: {formatCurrency(allocatedTotal)} ({totalPercentAllocated.toFixed(0)}%)
           </Text>
@@ -217,68 +223,138 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
             <View
               key={cat.key}
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingVertical: 8,
-                paddingHorizontal: 10,
+                padding: 12,
                 borderRadius: 12,
-                backgroundColor: 'rgba(243,236,220,0.4)',
+                backgroundColor: 'rgba(243,236,220,0.35)',
+                borderWidth: 1,
+                borderColor: 'rgba(27,36,32,0.05)',
+                overflow: 'hidden',
               }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: `${cat.color}15`, alignItems: 'center', justifyContent: 'center' }}>
-                  <IconComp size={15} color={cat.color} />
+              {/* DÒNG 1 (Ở trên cùng): Icon + Tiêu chí bên trái, Khung % bên phải */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 8,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      backgroundColor: `${cat.color}20`,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <IconComp size={16} color={cat.color} />
+                  </View>
+                  <Text
+                    style={{
+                      fontFamily: 'BeVietnamPro_700Bold',
+                      fontSize: 14,
+                      color: '#1B2420',
+                    }}
+                  >
+                    {cat.label}
+                  </Text>
                 </View>
-                <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 13, color: '#1B2420' }}>
-                  {cat.label}
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+
+                {/* Cụm chỉnh % nhỏ gọn */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: `${cat.color}40`,
+                    borderRadius: 8,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                  }}
+                >
                   <TextInput
                     value={String(pct)}
                     onChangeText={(text) => handlePercentChange(cat.key, text)}
                     placeholder="0"
                     keyboardType="numeric"
                     style={{
-                      fontFamily: 'BeVietnamPro_700Bold',
-                      fontSize: 12,
-                      color: '#1F6F54',
-                      backgroundColor: '#FFFFFF',
-                      borderWidth: 1,
-                      borderColor: 'rgba(31,111,84,0.3)',
-                      borderRadius: 6,
-                      paddingHorizontal: 6,
-                      paddingVertical: 4,
-                      width: 42,
+                      width: 32,
                       textAlign: 'center',
+                      fontFamily: 'BeVietnamPro_700Bold',
+                      fontSize: 13,
+                      color: cat.color,
+                      padding: 0,
                     }}
                   />
-                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#1F6F54' }}>%</Text>
+                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: cat.color }}>%</Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <TextInput
-                    value={val > 0 ? new Intl.NumberFormat('vi-VN').format(val) : ''}
-                    onChangeText={(text) => handleMoneyChange(cat.key, text)}
-                    placeholder="0"
-                    keyboardType="numeric"
+              </View>
+
+              {/* DÒNG 2 (Phần chỉnh tiền nằm ngay phía dưới, chiếm trọn chiều ngang) */}
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 10,
+                  borderWidth: 1.5,
+                  borderColor: 'rgba(27,36,32,0.12)',
+                  paddingLeft: 12,
+                  paddingRight: 16,
+                  paddingVertical: Platform.OS === 'ios' ? 8 : 6,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginBottom: 8,
+                }}
+              >
+                <TextInput
+                  value={val > 0 ? new Intl.NumberFormat('vi-VN').format(val) : ''}
+                  onChangeText={(text) => handleMoneyChange(cat.key, text)}
+                  placeholder="0"
+                  keyboardType="numeric"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontFamily: 'BeVietnamPro_700Bold',
+                    fontSize: 15,
+                    color: '#1B2420',
+                    paddingVertical: 2,
+                    paddingHorizontal: 0,
+                  }}
+                />
+                <View style={{ width: 20, alignItems: 'flex-end', justifyContent: 'center', flexShrink: 0 }}>
+                  <Text
                     style={{
                       fontFamily: 'BeVietnamPro_700Bold',
                       fontSize: 13,
-                      color: '#1B2420',
-                      backgroundColor: '#FFFFFF',
-                      borderWidth: 1,
-                      borderColor: 'rgba(27,36,32,0.12)',
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      minWidth: 105,
-                      textAlign: 'right',
+                      color: '#6E7B70',
                     }}
-                  />
-                  <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 12, color: '#6E7B70' }}>đ</Text>
+                  >
+                    đ
+                  </Text>
                 </View>
+              </View>
+
+              {/* DÒNG 3 (Thanh tiến độ mini trực quan) */}
+              <View
+                style={{
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: 'rgba(27,36,32,0.06)',
+                  overflow: 'hidden',
+                }}
+              >
+                <View
+                  style={{
+                    width: `${Math.min(Math.max(pct, 0), 100)}%`,
+                    height: '100%',
+                    backgroundColor: cat.color,
+                    borderRadius: 2,
+                  }}
+                />
               </View>
             </View>
           );

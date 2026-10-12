@@ -2,15 +2,20 @@ import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView,
   ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions,
-  Modal,
+  Modal, StyleSheet,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import Svg, { Path } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { Compass, Sparkles, AlertCircle, ArrowRight, Check, KeyRound, Mail, X, CheckCircle2, Lock } from 'lucide-react-native';
 import { supabase, decodeJwtRole } from '../lib/supabase';
 import { api } from '../lib/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BRAND_COLORS, APP_ROUTES, UI_BREAKPOINTS, UserRole } from '../constants';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const GoogleIcon = () => (
   <Svg width="18" height="18" viewBox="0 0 24 24">
@@ -29,12 +34,59 @@ const F = {
   bold: 'BeVietnamPro_700Bold' as const,
 };
 
+const styles = StyleSheet.create({
+  submitBtn: {
+    marginTop: 24,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    backgroundColor: BRAND_COLORS.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    elevation: 3,
+    shadowColor: BRAND_COLORS.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  submitBtnText: {
+    fontFamily: F.bold,
+    fontSize: 15,
+    color: '#FFFFFF',
+  },
+  googleBtn: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    elevation: 2,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+  },
+  googleBtnText: {
+    fontFamily: F.semiBold,
+    fontSize: 14,
+    color: '#1B2420',
+  },
+});
+
 interface Props {
   mode: 'signin' | 'signup';
 }
 
 export default function AuthScreen({ mode }: Props) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= UI_BREAKPOINTS.DESKTOP;
 
@@ -146,16 +198,98 @@ export default function AuthScreen({ mode }: Props) {
   };
 
   useEffect(() => {
+    let isMounted = true;
+
+    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!isMounted || !session) return;
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          let isAdmin = decodeJwtRole(session.access_token) === UserRole.ADMIN;
+          if (!isAdmin && session.user?.id) {
+            const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+            if (p?.role === UserRole.ADMIN) isAdmin = true;
+          }
+          if (isMounted) {
+            await handleNavigateAfterAuth(isAdmin);
+          }
+        }
+      }
+    );
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      const access_token = params.get('access_token');
+      const refresh_token = params.get('refresh_token');
+      if (access_token && refresh_token) {
+        supabase.auth.setSession({ access_token, refresh_token }).then(async ({ data, error }) => {
+          if (isMounted && !error && data.session) {
+            let isAdmin = decodeJwtRole(data.session.access_token) === UserRole.ADMIN;
+            await handleNavigateAfterAuth(isAdmin);
+          }
+        });
+      }
+    }
+
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
+      if (isMounted && session) {
         let isAdmin = decodeJwtRole(session.access_token) === UserRole.ADMIN;
         if (!isAdmin && session.user?.id) {
           const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
           if (p?.role === UserRole.ADMIN) isAdmin = true;
         }
-        await handleNavigateAfterAuth(isAdmin);
+        if (isMounted) {
+          await handleNavigateAfterAuth(isAdmin);
+        }
       }
     });
+
+    const handleDeepLink = async (event: { url: string }) => {
+      if (!isMounted || !event.url) return;
+      try {
+        if (event.url.includes('access_token')) {
+          const hash = event.url.split('#')[1];
+          if (hash) {
+            const params = new URLSearchParams(hash);
+            const access_token = params.get('access_token');
+            const refresh_token = params.get('refresh_token');
+            if (access_token && refresh_token) {
+              const { data, error } = await supabase.auth.setSession({ access_token, refresh_token });
+              if (isMounted && !error && data.session) {
+                let isAdmin = decodeJwtRole(data.session.access_token) === UserRole.ADMIN;
+                await handleNavigateAfterAuth(isAdmin);
+              }
+            }
+          }
+        } else if (event.url.includes('code=')) {
+          const parsed = Linking.parse(event.url);
+          if (parsed.queryParams?.code) {
+            const { data, error } = await supabase.auth.exchangeCodeForSession(parsed.queryParams.code as string);
+            if (isMounted && !error && data.session) {
+              let isAdmin = decodeJwtRole(data.session.access_token) === UserRole.ADMIN;
+              await handleNavigateAfterAuth(isAdmin);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[DeepLink] OAuth callback error:', err);
+      }
+    };
+
+    const sub = Linking.addEventListener('url', handleDeepLink);
+    Linking.getInitialURL().then((url) => {
+      if (isMounted && url) {
+        setTimeout(() => {
+          if (isMounted) handleDeepLink({ url });
+        }, 50);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      sub.remove();
+      authSub.unsubscribe();
+    };
   }, []);
 
   const handleSubmit = async () => {
@@ -195,7 +329,6 @@ export default function AuthScreen({ mode }: Props) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw new Error('Email hoặc mật khẩu không chính xác!');
         
-        // Kiểm tra quyền admin thông qua claim trong JWT hoặc bảng profiles
         let isAdmin = data.session?.access_token
           ? decodeJwtRole(data.session.access_token) === UserRole.ADMIN
           : false;
@@ -223,24 +356,83 @@ export default function AuthScreen({ mode }: Props) {
     setErrorMsg('');
     setInfoMsg('');
     try {
-      const redirectTo = Platform.OS === 'web' && typeof window !== 'undefined'
-        ? `${window.location.origin}/dang-nhap`
-        : 'vivuplanner://';
-
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const redirectTo = `${window.location.origin}/dang-nhap`;
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+            },
           },
-        },
-      });
+        });
+        if (error) throw error;
+      } else {
+        // Mobile (Android / iOS / Expo Go)
+        const redirectUrl = Linking.createURL('dang-nhap');
+        console.log('[Google Auth] Mobile redirectUrl:', redirectUrl);
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: true,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+            },
+          },
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+
+        if (data?.url) {
+          console.log('[Google Auth] Opening auth session with url:', data.url);
+          const res = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+          console.log('[Google Auth] WebBrowser result:', res.type, res);
+
+          if (res.type === 'cancel' || res.type === 'dismiss') {
+            console.log('[Google Auth] Sign-in cancelled or dismissed by user');
+            setGoogleLoading(false);
+            return;
+          }
+
+          if (res.type === 'success' && res.url) {
+            if (res.url.includes('access_token')) {
+              const hash = res.url.split('#')[1];
+              if (hash) {
+                const params = new URLSearchParams(hash);
+                const access_token = params.get('access_token');
+                const refresh_token = params.get('refresh_token');
+                if (access_token && refresh_token) {
+                  const { data: sData, error: sErr } = await supabase.auth.setSession({ access_token, refresh_token });
+                  if (sErr) throw sErr;
+                  if (sData.session) {
+                    let isAdmin = decodeJwtRole(sData.session.access_token) === UserRole.ADMIN;
+                    await handleNavigateAfterAuth(isAdmin);
+                    return;
+                  }
+                }
+              }
+            } else if (res.url.includes('code=')) {
+              const parsed = Linking.parse(res.url);
+              if (parsed.queryParams?.code) {
+                const { data: sData, error: sErr } = await supabase.auth.exchangeCodeForSession(parsed.queryParams.code as string);
+                if (sErr) throw sErr;
+                if (sData.session) {
+                  let isAdmin = decodeJwtRole(sData.session.access_token) === UserRole.ADMIN;
+                  await handleNavigateAfterAuth(isAdmin);
+                  return;
+                }
+              }
+            }
+          }
+        }
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'Không thể đăng nhập bằng Google. Vui lòng thử lại sau.');
+    } finally {
       setGoogleLoading(false);
     }
   };
@@ -344,7 +536,8 @@ export default function AuthScreen({ mode }: Props) {
             flexGrow: 1,
             justifyContent: 'center',
             paddingHorizontal: isDesktop ? 48 : 24,
-            paddingVertical: isDesktop ? 52 : 56,
+            paddingTop: isDesktop ? 52 : Math.max(insets.top + 24, 60),
+            paddingBottom: isDesktop ? 52 : Math.max(insets.bottom + 24, 40),
           }}
           keyboardShouldPersistTaps="handled"
         >
@@ -508,25 +701,22 @@ export default function AuthScreen({ mode }: Props) {
             testID="submit-auth-btn"
             onPress={handleSubmit}
             disabled={loading || googleLoading}
-            style={({ pressed }) => [{
-              marginTop: 24,
-              paddingVertical: 16, borderRadius: 12,
-              backgroundColor: BRAND_COLORS.accent,
-              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+            style={({ pressed }) => ({
               opacity: (loading || googleLoading) ? 0.65 : (pressed ? 0.9 : 1),
-              transform: [{ scale: pressed ? 0.98 : 1 }],
-              ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease' } as any : {}),
-            }]}
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
           >
-            {loading
-              ? <ActivityIndicator color="#fff" size="small" />
-              : <>
-                  <Text style={{ fontFamily: F.bold, fontSize: 15, color: '#fff' }}>
-                    {isSignUp ? 'Tạo tài khoản' : 'Đăng nhập'}
-                  </Text>
-                  <ArrowRight size={16} color="#fff" />
-                </>
-            }
+            <View style={styles.submitBtn}>
+              {loading
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <>
+                    <Text style={styles.submitBtnText}>
+                      {isSignUp ? 'Tạo tài khoản' : 'Đăng nhập'}
+                    </Text>
+                    <ArrowRight size={16} color="#fff" />
+                  </>
+              }
+            </View>
           </Pressable>
 
           {/* OR Divider */}
@@ -547,37 +737,23 @@ export default function AuthScreen({ mode }: Props) {
             testID="google-auth-btn"
             onPress={handleGoogleSignIn}
             disabled={googleLoading || loading}
-            style={({ pressed }) => [{
-              paddingVertical: 14,
-              paddingHorizontal: 16,
-              borderRadius: 12,
-              backgroundColor: '#FFFFFF',
-              borderWidth: 1.5,
-              borderColor: 'rgba(27,36,32,0.14)',
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              opacity: (googleLoading || loading) ? 0.65 : (pressed ? 0.85 : 1),
-              transform: [{ scale: pressed ? 0.98 : 1 }],
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.04,
-              shadowRadius: 6,
-              elevation: 2,
-              ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease' } as any : {}),
-            }]}
+            style={({ pressed }) => ({
+              opacity: (googleLoading || loading) ? 0.65 : (pressed ? 0.9 : 1),
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
           >
-            {googleLoading ? (
-              <ActivityIndicator color={BRAND_COLORS.primary} size="small" />
-            ) : (
-              <>
-                <GoogleIcon />
-                <Text style={{ fontFamily: F.bold, fontSize: 14, color: '#1B2420' }}>
-                  {isSignUp ? 'Đăng ký nhanh bằng Google' : 'Đăng nhập nhanh bằng Google'}
-                </Text>
-              </>
-            )}
+            <View style={styles.googleBtn}>
+              {googleLoading ? (
+                <ActivityIndicator color={BRAND_COLORS.primary} size="small" />
+              ) : (
+                <>
+                  <GoogleIcon />
+                  <Text style={styles.googleBtnText}>
+                    {isSignUp ? 'Đăng ký nhanh bằng Google' : 'Đăng nhập nhanh bằng Google'}
+                  </Text>
+                </>
+              )}
+            </View>
           </Pressable>
 
           {/* Toggle */}

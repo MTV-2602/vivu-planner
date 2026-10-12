@@ -1,11 +1,25 @@
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+const getNotifications = () => {
+  if (Platform.OS === 'web' || (Platform.OS === 'android' && isExpoGo)) {
+    return null;
+  }
+  try {
+    return require('expo-notifications');
+  } catch {
+    return null;
+  }
+};
 
 const NOTIF_KEY = (tripId: string) => `vivu_notif_${tripId}`;
 
 export async function requestNotificationPermission(): Promise<boolean> {
-  if (Platform.OS === 'web') return false;
+  const Notifications = getNotifications();
+  if (!Notifications) return false;
   try {
     const { status } = await Notifications.requestPermissionsAsync();
     return status === 'granted';
@@ -19,7 +33,8 @@ export async function scheduleTripReminder(
   tripTitle: string,
   startDate: string,
 ): Promise<void> {
-  if (Platform.OS === 'web') return;
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   try {
     const triggerDate = new Date(startDate);
     triggerDate.setDate(triggerDate.getDate() - 1);
@@ -41,7 +56,8 @@ export async function scheduleTripReminder(
 }
 
 export async function cancelTripReminder(tripId: string): Promise<void> {
-  if (Platform.OS === 'web') return;
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   try {
     const notifId = await AsyncStorage.getItem(NOTIF_KEY(tripId));
     if (notifId) {

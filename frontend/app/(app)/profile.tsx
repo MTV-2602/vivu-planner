@@ -208,7 +208,7 @@ export default function ProfileScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 24, maxWidth: 800, alignSelf: 'center', width: '100%' }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 100, maxWidth: 800, alignSelf: 'center', width: '100%' }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#1F6F54']} />}
       >
         {/* Profile Card */}
@@ -312,14 +312,14 @@ export default function ProfileScreen() {
                 gap: 6,
                 backgroundColor: '#1F6F54',
                 paddingVertical: 10,
-                paddingHorizontal: 16,
+                paddingHorizontal: 12,
                 borderRadius: 12,
                 opacity: pressed ? 0.85 : 1,
                 cursor: 'pointer' as any,
               }]}
             >
-              <Edit3 size={15} color="#FFFFFF" />
-              <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>
+              <Edit3 size={14} color="#FFFFFF" />
+              <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12.5, color: '#FFFFFF' }}>
                 Chỉnh sửa hồ sơ
               </Text>
             </Pressable>
@@ -338,14 +338,14 @@ export default function ProfileScreen() {
                 borderWidth: 1.5,
                 borderColor: '#CBD5E1',
                 paddingVertical: 10,
-                paddingHorizontal: 16,
+                paddingHorizontal: 12,
                 borderRadius: 12,
                 opacity: pressed ? 0.85 : 1,
                 cursor: 'pointer' as any,
               }]}
             >
-              <KeyRound size={15} color="#1B2420" />
-              <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#1B2420' }}>
+              <KeyRound size={14} color="#1B2420" />
+              <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12.5, color: '#1B2420' }}>
                 Đổi mật khẩu
               </Text>
             </Pressable>

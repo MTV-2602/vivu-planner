@@ -29,11 +29,17 @@ import {
   User,
   Globe,
   Trash2,
+  Tag,
+  MoreHorizontal,
+  Download,
+  Heart,
+  Flag,
 } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { BRAND_COLORS, POST_CATEGORIES } from '../constants';
 import ReactionsListModal from './ReactionsListModal';
+import ReportModal from './ReportModal';
 
 export const FB_REACTIONS: { id: string; label: string; emoji: string; color: string }[] = [
   { id: 'like', label: 'Thích', emoji: '👍', color: '#1877F2' },
@@ -205,6 +211,21 @@ export default function PhotoTheaterModal({
 
   const commentInputRef = useRef<any>(null);
 
+  // Mobile Fullscreen Viewer States
+  const [showMobileMoreMenu, setShowMobileMoreMenu] = useState(false);
+  const [showMobileCommentsSheet, setShowMobileCommentsSheet] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [isExpandedCaption, setIsExpandedCaption] = useState(false);
+  const [showDoubleTapHeart, setShowDoubleTapHeart] = useState(false);
+  const [overlayVisible, setOverlayVisible] = useState(true);
+  const [showTagInfo, setShowTagInfo] = useState(false);
+
+  // Gesture refs for swipe & double tap
+  const touchStartXRef = useRef<number>(0);
+  const touchStartYRef = useRef<number>(0);
+  const touchStartTimeRef = useRef<number>(0);
+  const lastTapTimeRef = useRef<number>(0);
+
   // Navigation handlers
   const handleNext = () => {
     if (mediaUrls.length <= 1) return;
@@ -214,6 +235,87 @@ export default function PhotoTheaterModal({
   const handlePrev = () => {
     if (mediaUrls.length <= 1) return;
     setActiveIndex((prev) => (prev - 1 + mediaUrls.length) % mediaUrls.length);
+  };
+
+  const handleDownloadImage = () => {
+    setShowMobileMoreMenu(false);
+    const targetUrl = mediaUrls[activeIndex] || '';
+    if (!targetUrl) return;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const a = document.createElement('a');
+      a.href = targetUrl;
+      a.download = `vivu-photo-${post?.id || 'image'}-${activeIndex + 1}.jpg`;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else {
+      Linking.openURL(targetUrl).catch(() => {});
+    }
+  };
+
+  const handleShareImage = () => {
+    setShowMobileMoreMenu(false);
+    if (onShare) {
+      onShare(post);
+    } else {
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && navigator.clipboard) {
+        navigator.clipboard.writeText(window.location.href);
+      }
+      Alert.alert('Chia sẻ thành công', `Đã sao chép liên kết bài viết "${post?.place_name}"!`);
+    }
+  };
+
+  const handleTouchStart = (e: any) => {
+    const touch = e.nativeEvent.touches?.[0] || e.nativeEvent;
+    if (touch) {
+      touchStartXRef.current = touch.pageX ?? touch.clientX ?? 0;
+      touchStartYRef.current = touch.pageY ?? touch.clientY ?? 0;
+      touchStartTimeRef.current = Date.now();
+    }
+  };
+
+  const handleTouchEnd = (e: any) => {
+    const touch = e.nativeEvent.changedTouches?.[0] || e.nativeEvent;
+    const now = Date.now();
+    const duration = now - touchStartTimeRef.current;
+
+    if (touch) {
+      const endX = touch.pageX ?? touch.clientX ?? 0;
+      const endY = touch.pageY ?? touch.clientY ?? 0;
+      const deltaX = endX - touchStartXRef.current;
+      const deltaY = endY - touchStartYRef.current;
+
+      // Vuốt ngang (Swipe Left / Swipe Right) để chuyển ảnh trước/sau
+      if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
+        if (deltaX < 0) {
+          handleNext();
+        } else {
+          handlePrev();
+        }
+        return;
+      }
+
+      // Nhấp / Double tap
+      if (Math.abs(deltaX) < 15 && Math.abs(deltaY) < 15 && duration < 320) {
+        const timeSinceLastTap = now - lastTapTimeRef.current;
+        if (timeSinceLastTap < 320) {
+          // Double tap -> Thả tim ❤️ ngay lập tức
+          handleSelectReaction('love');
+          setShowDoubleTapHeart(true);
+          setTimeout(() => setShowDoubleTapHeart(false), 850);
+          lastTapTimeRef.current = 0;
+        } else {
+          lastTapTimeRef.current = now;
+          // Chờ xem có tap thứ 2 không; nếu không thì toggle ẩn/hiện overlay
+          setTimeout(() => {
+            if (Date.now() - lastTapTimeRef.current >= 300 && lastTapTimeRef.current !== 0) {
+              setOverlayVisible((prev) => !prev);
+            }
+          }, 320);
+        }
+      }
+    }
   };
 
   // Keyboard navigation on Web (ArrowLeft, ArrowRight, Escape)
@@ -413,6 +515,460 @@ export default function PhotoTheaterModal({
       return found ? found.emoji : '👍';
     });
 
+  const renderCommentsList = () => (
+    <View style={{ gap: 12, marginTop: 4 }}>
+      {localComments && localComments.length > 0 ? (
+        localComments.map((cmt: any) => {
+          const canDeleteCmt = currentUser?.id === cmt.user_id || canDeletePost;
+          const isLikedCmt = !!likedCommentIds[cmt.id];
+
+          return (
+            <View key={cmt.id} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+              {cmt.author?.avatar_url ? (
+                <Image
+                  source={{ uri: cmt.author.avatar_url }}
+                  style={{ width: 32, height: 32, borderRadius: 16, marginTop: 2 }}
+                />
+              ) : (
+                <View
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    backgroundColor: 'rgba(31,111,84,0.1)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginTop: 2,
+                  }}
+                >
+                  <User size={15} color={BRAND_COLORS.primary} />
+                </View>
+              )}
+
+              <View style={{ flex: 1 }}>
+                {/* Bong bóng bình luận */}
+                <View
+                  style={{
+                    backgroundColor: '#F0F2F5',
+                    borderRadius: 16,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    alignSelf: 'flex-start',
+                    maxWidth: '95%',
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: BRAND_COLORS.text }}>
+                    {cmt.author?.full_name || 'Người dùng ViVu'}
+                  </Text>
+
+                  {!!cmt.content && (
+                    <Text style={{ fontSize: 13, color: '#1B2420', marginTop: 2, lineHeight: 18 }}>
+                      {cmt.content}
+                    </Text>
+                  )}
+
+                  {/* Media đính kèm (Ảnh / GIF / Sticker) */}
+                  {cmt.media_url && (
+                    <View style={{ marginTop: 6, borderRadius: 8, overflow: 'hidden' }}>
+                      {cmt.media_type === 'sticker' ? (
+                        <Image
+                          source={{ uri: cmt.media_url }}
+                          style={{ width: 80, height: 80 }}
+                          resizeMode="contain"
+                        />
+                      ) : cmt.media_type === 'gif' ? (
+                        <Image
+                          source={{ uri: cmt.media_url }}
+                          style={{ width: 200, height: 130, borderRadius: 8 }}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Image
+                          source={{ uri: cmt.media_url }}
+                          style={{ width: 220, height: 140, borderRadius: 8 }}
+                          resizeMode="cover"
+                        />
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                {/* Thanh tác vụ dưới bình luận */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 3, marginLeft: 8 }}>
+                  <Pressable
+                    onPress={() => setLikedCommentIds((prev) => ({ ...prev, [cmt.id]: !prev[cmt.id] }))}
+                    style={{ cursor: 'pointer' as any }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '700',
+                        color: isLikedCmt ? '#1877F2' : '#64748B',
+                      }}
+                    >
+                      Thích
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => {
+                      setCommentText(`@${cmt.author?.full_name || 'Người dùng'} `);
+                      if (commentInputRef.current) commentInputRef.current.focus?.();
+                    }}
+                    style={{ cursor: 'pointer' as any }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>
+                      Phản hồi
+                    </Text>
+                  </Pressable>
+
+                  <Text style={{ fontSize: 10, color: '#94A3B8' }}>
+                    {formatTheaterTimeAgo(cmt.created_at)}
+                  </Text>
+
+                  {canDeleteCmt && (
+                    <Pressable
+                      testID={`theater-btn-delete-comment-${cmt.id}`}
+                      onPress={() => handleDeleteComment(cmt.id)}
+                      style={{ cursor: 'pointer' as any }}
+                    >
+                      <Text style={{ fontSize: 10, color: '#EF4444', fontWeight: '600' }}>
+                        Xóa
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+            </View>
+          );
+        })
+      ) : (
+        <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', textAlign: 'center', marginVertical: 10 }}>
+          Chưa có bình luận nào. Hãy là người đầu tiên bình luận!
+        </Text>
+      )}
+    </View>
+  );
+
+  const renderCommentInputSection = () => (
+    <View
+      style={{
+        borderTopWidth: 1,
+        borderTopColor: '#E2E8F0',
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        backgroundColor: '#FFFFFF',
+        gap: 8,
+      }}
+    >
+      {/* Popover Trays */}
+      {activeCommentToolbar === 'emoji' && (
+        <View
+          testID="theater-tray-emoji"
+          style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: 12,
+            padding: 8,
+            borderWidth: 1,
+            borderColor: '#E2E8F0',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.08)' as any,
+          }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>Biểu tượng cảm xúc 😊</Text>
+            <Pressable onPress={() => setActiveCommentToolbar(null)} style={{ cursor: 'pointer' as any }}>
+              <X size={14} color="#94A3B8" />
+            </Pressable>
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, maxHeight: 120, overflow: 'hidden' }}>
+            {COMMENT_EMOJIS.slice(0, 30).map((emoji, idx) => (
+              <Pressable
+                key={idx}
+                testID={`theater-emoji-item-${idx}`}
+                onPress={() => setCommentText((prev) => prev + emoji)}
+                style={({ pressed }) => [{
+                  padding: 3,
+                  borderRadius: 4,
+                  backgroundColor: pressed ? '#F1F5F9' : 'transparent',
+                  cursor: 'pointer' as any,
+                }]}
+              >
+                <Text style={{ fontSize: 18 }}>{emoji}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {activeCommentToolbar === 'gif' && (
+        <View
+          testID="theater-tray-gif"
+          style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: 12,
+            padding: 10,
+            borderWidth: 1,
+            borderColor: '#E2E8F0',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.08)' as any,
+          }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: BRAND_COLORS.text }}>Chọn ảnh GIF 🎞️</Text>
+            <Pressable onPress={() => setActiveCommentToolbar(null)} style={{ cursor: 'pointer' as any }}>
+              <X size={14} color="#94A3B8" />
+            </Pressable>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            {CURATED_GIFS.map((gif) => (
+              <Pressable
+                key={gif.id}
+                testID={`theater-gif-item-${gif.id}`}
+                onPress={() => {
+                  setCommentMediaAttachment({ type: 'gif', url: gif.url });
+                  setActiveCommentToolbar(null);
+                }}
+                style={{ borderRadius: 6, overflow: 'hidden', borderWidth: 1, borderColor: '#CBD5E1', cursor: 'pointer' as any }}
+              >
+                <Image source={{ uri: gif.url }} style={{ width: 88, height: 60 }} resizeMode="cover" />
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {activeCommentToolbar === 'sticker' && (
+        <View
+          testID="theater-tray-sticker"
+          style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: 12,
+            padding: 10,
+            borderWidth: 1,
+            borderColor: '#E2E8F0',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.08)' as any,
+          }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: BRAND_COLORS.text }}>Bộ nhãn dán ViVu 🧸</Text>
+            <Pressable onPress={() => setActiveCommentToolbar(null)} style={{ cursor: 'pointer' as any }}>
+              <X size={14} color="#94A3B8" />
+            </Pressable>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+            {CURATED_STICKERS.map((stk) => (
+              <Pressable
+                key={stk.id}
+                testID={`theater-sticker-item-${stk.id}`}
+                onPress={() => {
+                  setCommentMediaAttachment({ type: 'sticker', url: stk.url });
+                  setActiveCommentToolbar(null);
+                }}
+                style={{ padding: 4, borderRadius: 8, backgroundColor: '#F8FAFC', cursor: 'pointer' as any }}
+              >
+                <Image source={{ uri: stk.url }} style={{ width: 44, height: 44 }} resizeMode="contain" />
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Row Avatar & Input Pill */}
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+        {userProfile?.avatar_url ? (
+          <Image
+            source={{ uri: userProfile.avatar_url }}
+            style={{ width: 34, height: 34, borderRadius: 17, marginTop: 2, borderWidth: 1, borderColor: '#CBD5E1' }}
+          />
+        ) : (
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: '#1877F2',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginTop: 2,
+            }}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
+              {userProfile?.full_name ? userProfile.full_name.charAt(0).toUpperCase() : 'U'}
+            </Text>
+          </View>
+        )}
+
+        <View style={{ flex: 1, gap: 4 }}>
+          <View
+            style={{
+              backgroundColor: '#F0F2F5',
+              borderRadius: 18,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderWidth: 1,
+              borderColor: '#E2E8F0',
+            }}
+          >
+            {/* Media đính kèm xem trước */}
+            {commentMediaAttachment && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  backgroundColor: '#FFFFFF',
+                  padding: 5,
+                  borderRadius: 8,
+                  alignSelf: 'flex-start',
+                  marginBottom: 4,
+                  borderWidth: 1,
+                  borderColor: '#CBD5E1',
+                }}
+              >
+                <Image
+                  source={{ uri: commentMediaAttachment.url }}
+                  style={{ width: 36, height: 36, borderRadius: 4 }}
+                  resizeMode={commentMediaAttachment.type === 'sticker' ? 'contain' : 'cover'}
+                />
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#1E293B' }}>
+                  {commentMediaAttachment.type === 'image'
+                    ? '📷 Ảnh'
+                    : commentMediaAttachment.type === 'gif'
+                    ? '🎞️ GIF'
+                    : '🧸 Sticker'}
+                </Text>
+                <Pressable
+                  onPress={() => setCommentMediaAttachment(null)}
+                  style={{ padding: 2, cursor: 'pointer' as any }}
+                >
+                  <X size={12} color="#64748B" />
+                </Pressable>
+              </View>
+            )}
+
+            {/* Indicator đang tải ảnh */}
+            {isUploadingMedia && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
+                <Text style={{ fontSize: 11, color: '#64748B' }}>Đang tải ảnh lên...</Text>
+              </View>
+            )}
+
+            {/* Ô nhập bình luận */}
+            <TextInput
+              ref={commentInputRef}
+              testID="theater-input-comment"
+              placeholder={currentUser ? 'Viết bình luận...' : 'Đăng nhập để bình luận'}
+              placeholderTextColor="#94A3B8"
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+              editable={!!currentUser}
+              style={{
+                fontSize: 13,
+                color: BRAND_COLORS.text,
+                minHeight: 22,
+                maxHeight: 80,
+                paddingVertical: 2,
+              }}
+            />
+
+            {/* 4 công cụ (Emoji, Ảnh, GIF, Sticker) & nút gửi */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginTop: 4,
+                paddingTop: 3,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                {/* Emoji */}
+                <Pressable
+                  testID="theater-btn-open-emoji"
+                  onPress={() => setActiveCommentToolbar((prev) => (prev === 'emoji' ? null : 'emoji'))}
+                  style={({ pressed }) => [{
+                    padding: 4,
+                    borderRadius: 14,
+                    backgroundColor: activeCommentToolbar === 'emoji' ? '#E2E8F0' : pressed ? '#E2E8F0' : 'transparent',
+                    cursor: 'pointer' as any,
+                  }]}
+                >
+                  <Smile size={17} color={activeCommentToolbar === 'emoji' ? BRAND_COLORS.primary : '#64748B'} />
+                </Pressable>
+
+                {/* Camera / Ảnh */}
+                <Pressable
+                  testID="theater-btn-open-camera"
+                  onPress={triggerImagePicker}
+                  style={({ pressed }) => [{
+                    padding: 4,
+                    borderRadius: 14,
+                    backgroundColor: pressed ? '#E2E8F0' : 'transparent',
+                    cursor: 'pointer' as any,
+                  }]}
+                >
+                  <Camera size={17} color="#64748B" />
+                </Pressable>
+
+                {/* GIF */}
+                <Pressable
+                  testID="theater-btn-open-gif"
+                  onPress={() => setActiveCommentToolbar((prev) => (prev === 'gif' ? null : 'gif'))}
+                  style={({ pressed }) => [{
+                    paddingHorizontal: 5,
+                    paddingVertical: 2,
+                    borderRadius: 5,
+                    backgroundColor: activeCommentToolbar === 'gif' ? '#CBD5E1' : pressed ? '#CBD5E1' : '#E2E8F0',
+                    cursor: 'pointer' as any,
+                  }]}
+                >
+                  <Text style={{ fontSize: 9, fontWeight: '800', color: activeCommentToolbar === 'gif' ? BRAND_COLORS.primary : '#475569' }}>
+                    GIF
+                  </Text>
+                </Pressable>
+
+                {/* Sticker */}
+                <Pressable
+                  testID="theater-btn-open-sticker"
+                  onPress={() => setActiveCommentToolbar((prev) => (prev === 'sticker' ? null : 'sticker'))}
+                  style={({ pressed }) => [{
+                    padding: 4,
+                    borderRadius: 14,
+                    backgroundColor: activeCommentToolbar === 'sticker' ? '#E2E8F0' : pressed ? '#E2E8F0' : 'transparent',
+                    cursor: 'pointer' as any,
+                  }]}
+                >
+                  <Text style={{ fontSize: 14 }}>🧸</Text>
+                </Pressable>
+              </View>
+
+              {/* Nút gửi */}
+              <Pressable
+                testID="theater-btn-send-comment"
+                disabled={!currentUser || (!commentText.trim() && !commentMediaAttachment) || isSubmitting}
+                onPress={handleSubmitComment}
+                style={({ pressed }) => [{
+                  opacity: !commentText.trim() && !commentMediaAttachment ? 0.35 : 1,
+                  padding: 5,
+                  borderRadius: 14,
+                  backgroundColor: pressed ? '#E2E8F0' : 'transparent',
+                  cursor: 'pointer' as any,
+                }]}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
+                ) : (
+                  <Send size={15} color={BRAND_COLORS.primary} />
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+
   return (
     <Modal
       visible={visible}
@@ -436,19 +992,21 @@ export default function PhotoTheaterModal({
           overflow: 'hidden',
         }}
       >
-        {/* ── CỘT TRÁI: MEDIA STAGE (Chiếm ~70% chiều rộng trên Desktop) ─── */}
-        <View
-          style={{
-            flex: isDesktop ? 1 : undefined,
-            width: isDesktop ? undefined : '100%',
-            height: isDesktop ? '100%' : Math.min(380, height * 0.44),
-            backgroundColor: '#000000',
-            position: 'relative',
-            justifyContent: 'center',
-            alignItems: 'center',
-            overflow: 'hidden',
-          }}
-        >
+        {isDesktop ? (
+          <>
+            {/* ── CỘT TRÁI: MEDIA STAGE (Chiếm ~70% chiều rộng trên Desktop) ─── */}
+            <View
+              style={{
+                flex: 1,
+                width: undefined,
+                height: '100%',
+                backgroundColor: '#000000',
+                position: 'relative',
+                justifyContent: 'center',
+                alignItems: 'center',
+                overflow: 'hidden',
+              }}
+            >
           {/* Nút đóng [X] ở góc trên bên trái (top: 16, left: 16) */}
           <Pressable
             testID="theater-btn-close"
@@ -1119,467 +1677,711 @@ export default function PhotoTheaterModal({
             </View>
 
             {/* Danh sách toàn bộ bình luận */}
-            <View style={{ gap: 12, marginTop: 4 }}>
-              {localComments && localComments.length > 0 ? (
-                localComments.map((cmt: any) => {
-                  const canDeleteCmt = currentUser?.id === cmt.user_id || canDeletePost;
-                  const isLikedCmt = !!likedCommentIds[cmt.id];
-
-                  return (
-                    <View key={cmt.id} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
-                      {cmt.author?.avatar_url ? (
-                        <Image
-                          source={{ uri: cmt.author.avatar_url }}
-                          style={{ width: 32, height: 32, borderRadius: 16, marginTop: 2 }}
-                        />
-                      ) : (
-                        <View
-                          style={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: 16,
-                            backgroundColor: 'rgba(31,111,84,0.1)',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginTop: 2,
-                          }}
-                        >
-                          <User size={15} color={BRAND_COLORS.primary} />
-                        </View>
-                      )}
-
-                      <View style={{ flex: 1 }}>
-                        {/* Bong bóng bình luận */}
-                        <View
-                          style={{
-                            backgroundColor: '#F0F2F5',
-                            borderRadius: 16,
-                            paddingHorizontal: 12,
-                            paddingVertical: 8,
-                            alignSelf: 'flex-start',
-                            maxWidth: '95%',
-                          }}
-                        >
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: BRAND_COLORS.text }}>
-                            {cmt.author?.full_name || 'Người dùng ViVu'}
-                          </Text>
-
-                          {!!cmt.content && (
-                            <Text style={{ fontSize: 13, color: '#1B2420', marginTop: 2, lineHeight: 18 }}>
-                              {cmt.content}
-                            </Text>
-                          )}
-
-                          {/* Media đính kèm (Ảnh / GIF / Sticker) */}
-                          {cmt.media_url && (
-                            <View style={{ marginTop: 6, borderRadius: 8, overflow: 'hidden' }}>
-                              {cmt.media_type === 'sticker' ? (
-                                <Image
-                                  source={{ uri: cmt.media_url }}
-                                  style={{ width: 80, height: 80 }}
-                                  resizeMode="contain"
-                                />
-                              ) : cmt.media_type === 'gif' ? (
-                                <Image
-                                  source={{ uri: cmt.media_url }}
-                                  style={{ width: 200, height: 130, borderRadius: 8 }}
-                                  resizeMode="cover"
-                                />
-                              ) : (
-                                <Image
-                                  source={{ uri: cmt.media_url }}
-                                  style={{ width: 220, height: 140, borderRadius: 8 }}
-                                  resizeMode="cover"
-                                />
-                              )}
-                            </View>
-                          )}
-                        </View>
-
-                        {/* Thanh tác vụ dưới bình luận */}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 3, marginLeft: 8 }}>
-                          <Pressable
-                            onPress={() => setLikedCommentIds((prev) => ({ ...prev, [cmt.id]: !prev[cmt.id] }))}
-                            style={{ cursor: 'pointer' as any }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 11,
-                                fontWeight: '700',
-                                color: isLikedCmt ? '#1877F2' : '#64748B',
-                              }}
-                            >
-                              Thích
-                            </Text>
-                          </Pressable>
-
-                          <Pressable
-                            onPress={() => {
-                              setCommentText(`@${cmt.author?.full_name || 'Người dùng'} `);
-                              if (commentInputRef.current) commentInputRef.current.focus?.();
-                            }}
-                            style={{ cursor: 'pointer' as any }}
-                          >
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>
-                              Phản hồi
-                            </Text>
-                          </Pressable>
-
-                          <Text style={{ fontSize: 10, color: '#94A3B8' }}>
-                            {formatTheaterTimeAgo(cmt.created_at)}
-                          </Text>
-
-                          {canDeleteCmt && (
-                            <Pressable
-                              testID={`theater-btn-delete-comment-${cmt.id}`}
-                              onPress={() => handleDeleteComment(cmt.id)}
-                              style={{ cursor: 'pointer' as any }}
-                            >
-                              <Text style={{ fontSize: 10, color: '#EF4444', fontWeight: '600' }}>
-                                Xóa
-                              </Text>
-                            </Pressable>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-                  );
-                })
-              ) : (
-                <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', textAlign: 'center', marginVertical: 10 }}>
-                  Chưa có bình luận nào. Hãy là người đầu tiên bình luận!
-                </Text>
-              )}
-            </View>
+            {renderCommentsList()}
           </ScrollView>
 
           {/* ── KHUNG GÕ BÌNH LUẬN KIỂU FACEBOOK CỐ ĐỊNH Ở ĐÁY CỘT PHẢI ─── */}
+          {renderCommentInputSection()}
+        </View>
+      </>
+    ) : (
+      /* ── MOBILE: FULLSCREEN PHOTO VIEWER (Nền đen 100%, Facebook Native) ─── */
+      <View
+        style={{
+          flex: 1,
+          width: '100%',
+          height: '100%',
+          backgroundColor: '#000000',
+          position: 'relative',
+          justifyContent: 'center',
+          alignItems: 'center',
+          overflow: 'hidden',
+        }}
+        // @ts-ignore
+        onTouchStart={handleTouchStart}
+        // @ts-ignore
+        onTouchEnd={handleTouchEnd}
+      >
+        {/* Vùng ảnh chính giữa */}
+        <View
+          style={{
+            width: '100%',
+            height: '100%',
+            justifyContent: 'center',
+            alignItems: 'center',
+            touchAction: 'pan-y' as any,
+          }}
+        >
+          {currentImageUrl ? (
+            <Image
+              testID="theater-image-mobile-active"
+              source={{ uri: currentImageUrl }}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="contain"
+            />
+          ) : (
+            <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#94A3B8', fontSize: 14 }}>Không có ảnh để hiển thị</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Icon Double Tap Heart nảy lên giữa màn hình */}
+        {showDoubleTapHeart && (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              alignSelf: 'center',
+              zIndex: 80,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: 'rgba(0,0,0,0.55)',
+                width: 100,
+                height: 100,
+                borderRadius: 50,
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: '#FA383E',
+                shadowOpacity: 0.5,
+                shadowRadius: 20,
+              }}
+            >
+              <Heart size={56} color="#FA383E" fill="#FA383E" />
+            </View>
+          </View>
+        )}
+
+        {/* Nút mũi tên < mép trái (nếu overlay hiển thị và có nhiều ảnh) */}
+        {total > 1 && overlayVisible && (
+          <Pressable
+            testID="theater-btn-mobile-prev"
+            onPress={handlePrev}
+            style={({ pressed }) => [{
+              position: 'absolute',
+              left: 12,
+              top: '50%',
+              transform: [{ translateY: -22 }],
+              zIndex: 40,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: pressed ? 'rgba(30, 41, 59, 0.9)' : 'rgba(15, 23, 42, 0.65)',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }]}
+          >
+            <ChevronLeft size={24} color="#FFFFFF" />
+          </Pressable>
+        )}
+
+        {/* Nút mũi tên > mép phải (nếu overlay hiển thị và có nhiều ảnh) */}
+        {total > 1 && overlayVisible && (
+          <Pressable
+            testID="theater-btn-mobile-next"
+            onPress={handleNext}
+            style={({ pressed }) => [{
+              position: 'absolute',
+              right: 12,
+              top: '50%',
+              transform: [{ translateY: -22 }],
+              zIndex: 40,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: pressed ? 'rgba(30, 41, 59, 0.9)' : 'rgba(15, 23, 42, 0.65)',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }]}
+          >
+            <ChevronRight size={24} color="#FFFFFF" />
+          </Pressable>
+        )}
+
+        {/* ── VIỀN TRÊN: TOP OVERLAY HEADER ──────────────────────────── */}
+        {overlayVisible && (
           <View
             style={{
-              borderTopWidth: 1,
-              borderTopColor: '#E2E8F0',
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              backgroundColor: '#FFFFFF',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 50,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: 16,
+              paddingTop: Platform.OS === 'ios' ? 44 : 16,
+              paddingBottom: 14,
+              backgroundColor: 'rgba(0, 0, 0, 0.55)',
+            }}
+          >
+            {/* Bên trái: Nút đóng [X] */}
+            <Pressable
+              testID="theater-btn-mobile-close"
+              onPress={onClose}
+              style={({ pressed }) => [{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: pressed ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }]}
+            >
+              <X size={20} color="#FFFFFF" />
+            </Pressable>
+
+            {/* Giữa: Badge số ảnh (ví dụ 2 / 7) */}
+            {total > 0 && (
+              <View
+                style={{
+                  backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                  paddingHorizontal: 12,
+                  paddingVertical: 5,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                }}
+              >
+                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
+                  {activeIndex + 1} / {total}
+                </Text>
+              </View>
+            )}
+
+            {/* Bên phải: Nút Tag/Thẻ và Nút Ba Chấm [...] */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Pressable
+                testID="theater-btn-mobile-tag"
+                onPress={() => setShowTagInfo((prev) => !prev)}
+                style={({ pressed }) => [{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  backgroundColor: showTagInfo ? 'rgba(16, 185, 129, 0.4)' : pressed ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }]}
+              >
+                <Tag size={18} color="#FFFFFF" />
+              </Pressable>
+
+              <Pressable
+                testID="theater-btn-mobile-more"
+                onPress={() => setShowMobileMoreMenu(true)}
+                style={({ pressed }) => [{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  backgroundColor: pressed ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }]}
+              >
+                <MoreHorizontal size={20} color="#FFFFFF" />
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {/* Popup Thông tin Tag Địa Điểm khi ấn nút Tag */}
+        {showTagInfo && (
+          <View
+            style={{
+              position: 'absolute',
+              top: Platform.OS === 'ios' ? 95 : 68,
+              right: 16,
+              zIndex: 60,
+              backgroundColor: 'rgba(15, 23, 42, 0.95)',
+              padding: 12,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+              gap: 6,
+              maxWidth: 240,
+            }}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
+              📍 {post.place_name}
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              <View style={{ backgroundColor: 'rgba(46, 125, 50, 0.4)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                <Text style={{ color: '#86EFAC', fontSize: 11, fontWeight: '700' }}>{post.province}</Text>
+              </View>
+              <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.15)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                <Text style={{ color: '#F1F5F9', fontSize: 11 }}>{catMeta.icon} {catMeta.label}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* ── VIỀN DƯỚI: BOTTOM OVERLAY FOOTER ───────────────────────── */}
+        {overlayVisible && (
+          <View
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 50,
+              backgroundColor: 'rgba(0, 0, 0, 0.78)',
+              paddingHorizontal: 16,
+              paddingTop: 12,
+              paddingBottom: Platform.OS === 'ios' ? 32 : 16,
               gap: 8,
             }}
           >
-            {/* Popover Trays */}
-            {activeCommentToolbar === 'emoji' && (
-              <View
-                testID="theater-tray-emoji"
-                style={{
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: 12,
-                  padding: 8,
-                  borderWidth: 1,
-                  borderColor: '#E2E8F0',
-                  boxShadow: '0 4px 14px rgba(0,0,0,0.08)' as any,
-                }}
-              >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>Biểu tượng cảm xúc 😊</Text>
-                  <Pressable onPress={() => setActiveCommentToolbar(null)} style={{ cursor: 'pointer' as any }}>
-                    <X size={14} color="#94A3B8" />
-                  </Pressable>
-                </View>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, maxHeight: 120, overflow: 'hidden' }}>
-                  {COMMENT_EMOJIS.slice(0, 30).map((emoji, idx) => (
-                    <Pressable
-                      key={idx}
-                      testID={`theater-emoji-item-${idx}`}
-                      onPress={() => setCommentText((prev) => prev + emoji)}
-                      style={({ pressed }) => [{
-                        padding: 3,
-                        borderRadius: 4,
-                        backgroundColor: pressed ? '#F1F5F9' : 'transparent',
-                        cursor: 'pointer' as any,
-                      }]}
-                    >
-                      <Text style={{ fontSize: 18 }}>{emoji}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {activeCommentToolbar === 'gif' && (
-              <View
-                testID="theater-tray-gif"
-                style={{
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: 12,
-                  padding: 10,
-                  borderWidth: 1,
-                  borderColor: '#E2E8F0',
-                  boxShadow: '0 4px 14px rgba(0,0,0,0.08)' as any,
-                }}
-              >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: BRAND_COLORS.text }}>Chọn ảnh GIF 🎞️</Text>
-                  <Pressable onPress={() => setActiveCommentToolbar(null)} style={{ cursor: 'pointer' as any }}>
-                    <X size={14} color="#94A3B8" />
-                  </Pressable>
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                  {CURATED_GIFS.map((gif) => (
-                    <Pressable
-                      key={gif.id}
-                      testID={`theater-gif-item-${gif.id}`}
-                      onPress={() => {
-                        setCommentMediaAttachment({ type: 'gif', url: gif.url });
-                        setActiveCommentToolbar(null);
-                      }}
-                      style={{ borderRadius: 6, overflow: 'hidden', borderWidth: 1, borderColor: '#CBD5E1', cursor: 'pointer' as any }}
-                    >
-                      <Image source={{ uri: gif.url }} style={{ width: 88, height: 60 }} resizeMode="cover" />
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
-            {activeCommentToolbar === 'sticker' && (
-              <View
-                testID="theater-tray-sticker"
-                style={{
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: 12,
-                  padding: 10,
-                  borderWidth: 1,
-                  borderColor: '#E2E8F0',
-                  boxShadow: '0 4px 14px rgba(0,0,0,0.08)' as any,
-                }}
-              >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: BRAND_COLORS.text }}>Bộ nhãn dán ViVu 🧸</Text>
-                  <Pressable onPress={() => setActiveCommentToolbar(null)} style={{ cursor: 'pointer' as any }}>
-                    <X size={14} color="#94A3B8" />
-                  </Pressable>
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-                  {CURATED_STICKERS.map((stk) => (
-                    <Pressable
-                      key={stk.id}
-                      testID={`theater-sticker-item-${stk.id}`}
-                      onPress={() => {
-                        setCommentMediaAttachment({ type: 'sticker', url: stk.url });
-                        setActiveCommentToolbar(null);
-                      }}
-                      style={{ padding: 4, borderRadius: 8, backgroundColor: '#F8FAFC', cursor: 'pointer' as any }}
-                    >
-                      <Image source={{ uri: stk.url }} style={{ width: 44, height: 44 }} resizeMode="contain" />
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
-            {/* Row Avatar & Input Pill */}
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
-              {userProfile?.avatar_url ? (
+            {/* Hàng 1: Avatar tròn tác giả, Tên tác giả, Thời gian + icon 🌐 */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              {post.author?.avatar_url ? (
                 <Image
-                  source={{ uri: userProfile.avatar_url }}
-                  style={{ width: 34, height: 34, borderRadius: 17, marginTop: 2, borderWidth: 1, borderColor: '#CBD5E1' }}
+                  source={{ uri: post.author.avatar_url }}
+                  style={{ width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: '#FFFFFF' }}
                 />
               ) : (
                 <View
                   style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 17,
-                    backgroundColor: '#1877F2',
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: 'rgba(255,255,255,0.2)',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginTop: 2,
                   }}
                 >
-                  <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
-                    {userProfile?.full_name ? userProfile.full_name.charAt(0).toUpperCase() : 'U'}
-                  </Text>
+                  <User size={18} color="#FFFFFF" />
                 </View>
               )}
-
-              <View style={{ flex: 1, gap: 4 }}>
-                <View
-                  style={{
-                    backgroundColor: '#F0F2F5',
-                    borderRadius: 18,
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderWidth: 1,
-                    borderColor: '#E2E8F0',
-                  }}
-                >
-                  {/* Media đính kèm xem trước */}
-                  {commentMediaAttachment && (
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6,
-                        backgroundColor: '#FFFFFF',
-                        padding: 5,
-                        borderRadius: 8,
-                        alignSelf: 'flex-start',
-                        marginBottom: 4,
-                        borderWidth: 1,
-                        borderColor: '#CBD5E1',
-                      }}
-                    >
-                      <Image
-                        source={{ uri: commentMediaAttachment.url }}
-                        style={{ width: 36, height: 36, borderRadius: 4 }}
-                        resizeMode={commentMediaAttachment.type === 'sticker' ? 'contain' : 'cover'}
-                      />
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#1E293B' }}>
-                        {commentMediaAttachment.type === 'image'
-                          ? '📷 Ảnh'
-                          : commentMediaAttachment.type === 'gif'
-                          ? '🎞️ GIF'
-                          : '🧸 Sticker'}
-                      </Text>
-                      <Pressable
-                        onPress={() => setCommentMediaAttachment(null)}
-                        style={{ padding: 2, cursor: 'pointer' as any }}
-                      >
-                        <X size={12} color="#64748B" />
-                      </Pressable>
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>
+                    {post.author?.full_name || 'Người dùng ViVu'}
+                  </Text>
+                  {post.author?.is_premium && (
+                    <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#B45309' }}>⭐ PRO</Text>
                     </View>
                   )}
-
-                  {/* Indicator đang tải ảnh */}
-                  {isUploadingMedia && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                      <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
-                      <Text style={{ fontSize: 11, color: '#64748B' }}>Đang tải ảnh lên...</Text>
-                    </View>
-                  )}
-
-                  {/* Ô nhập bình luận */}
-                  <TextInput
-                    ref={commentInputRef}
-                    testID="theater-input-comment"
-                    placeholder={currentUser ? 'Viết bình luận...' : 'Đăng nhập để bình luận'}
-                    placeholderTextColor="#94A3B8"
-                    value={commentText}
-                    onChangeText={setCommentText}
-                    multiline
-                    editable={!!currentUser}
-                    style={{
-                      fontSize: 13,
-                      color: BRAND_COLORS.text,
-                      minHeight: 22,
-                      maxHeight: 80,
-                      paddingVertical: 2,
-                    }}
-                  />
-
-                  {/* 4 công cụ (Emoji, Ảnh, GIF, Sticker) & nút gửi */}
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginTop: 4,
-                      paddingTop: 3,
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                      {/* Emoji */}
-                      <Pressable
-                        testID="theater-btn-open-emoji"
-                        onPress={() => setActiveCommentToolbar((prev) => (prev === 'emoji' ? null : 'emoji'))}
-                        style={({ pressed }) => [{
-                          padding: 4,
-                          borderRadius: 14,
-                          backgroundColor: activeCommentToolbar === 'emoji' ? '#E2E8F0' : pressed ? '#E2E8F0' : 'transparent',
-                          cursor: 'pointer' as any,
-                        }]}
-                      >
-                        <Smile size={17} color={activeCommentToolbar === 'emoji' ? BRAND_COLORS.primary : '#64748B'} />
-                      </Pressable>
-
-                      {/* Camera / Ảnh */}
-                      <Pressable
-                        testID="theater-btn-open-camera"
-                        onPress={triggerImagePicker}
-                        style={({ pressed }) => [{
-                          padding: 4,
-                          borderRadius: 14,
-                          backgroundColor: pressed ? '#E2E8F0' : 'transparent',
-                          cursor: 'pointer' as any,
-                        }]}
-                      >
-                        <Camera size={17} color="#64748B" />
-                      </Pressable>
-
-                      {/* GIF */}
-                      <Pressable
-                        testID="theater-btn-open-gif"
-                        onPress={() => setActiveCommentToolbar((prev) => (prev === 'gif' ? null : 'gif'))}
-                        style={({ pressed }) => [{
-                          paddingHorizontal: 5,
-                          paddingVertical: 2,
-                          borderRadius: 5,
-                          backgroundColor: activeCommentToolbar === 'gif' ? '#CBD5E1' : pressed ? '#CBD5E1' : '#E2E8F0',
-                          cursor: 'pointer' as any,
-                        }]}
-                      >
-                        <Text style={{ fontSize: 9, fontWeight: '800', color: activeCommentToolbar === 'gif' ? BRAND_COLORS.primary : '#475569' }}>
-                          GIF
-                        </Text>
-                      </Pressable>
-
-                      {/* Sticker */}
-                      <Pressable
-                        testID="theater-btn-open-sticker"
-                        onPress={() => setActiveCommentToolbar((prev) => (prev === 'sticker' ? null : 'sticker'))}
-                        style={({ pressed }) => [{
-                          padding: 4,
-                          borderRadius: 14,
-                          backgroundColor: activeCommentToolbar === 'sticker' ? '#E2E8F0' : pressed ? '#E2E8F0' : 'transparent',
-                          cursor: 'pointer' as any,
-                        }]}
-                      >
-                        <Text style={{ fontSize: 14 }}>🧸</Text>
-                      </Pressable>
-                    </View>
-
-                    {/* Nút gửi */}
-                    <Pressable
-                      testID="theater-btn-send-comment"
-                      disabled={!currentUser || (!commentText.trim() && !commentMediaAttachment) || isSubmitting}
-                      onPress={handleSubmitComment}
-                      style={({ pressed }) => [{
-                        opacity: !commentText.trim() && !commentMediaAttachment ? 0.35 : 1,
-                        padding: 5,
-                        borderRadius: 14,
-                        backgroundColor: pressed ? '#E2E8F0' : 'transparent',
-                        cursor: 'pointer' as any,
-                      }]}
-                    >
-                      {isSubmitting ? (
-                        <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
-                      ) : (
-                        <Send size={15} color={BRAND_COLORS.primary} />
-                      )}
-                    </Pressable>
-                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 }}>
+                  <Text style={{ fontSize: 11, color: '#CBD5E1' }}>
+                    {formatTheaterTimeAgo(post.created_at)}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#CBD5E1' }}>·</Text>
+                  <Globe size={11} color="#CBD5E1" />
+                  <Text style={{ fontSize: 11, color: '#CBD5E1' }}>Công khai</Text>
                 </View>
               </View>
             </View>
-          </View>
-        </View>
-      </View>
 
-      {/* Modal Danh sách cảm xúc */}
-      <ReactionsListModal
-        visible={showReactionsList}
-        onClose={() => setShowReactionsList(false)}
-        postId={post?.id || null}
-        totalReactions={reactionsTotal}
-      />
-    </Modal>
+            {/* Hàng 2: Caption nội dung bài viết (rút gọn, nếu dài có nút ... Xem thêm) */}
+            {post.content ? (
+              <View>
+                <Text
+                  numberOfLines={isExpandedCaption ? undefined : 2}
+                  style={{ color: '#E2E8F0', fontSize: 13, lineHeight: 18 }}
+                >
+                  {post.content}
+                </Text>
+                {post.content.length > 70 && (
+                  <Pressable onPress={() => setIsExpandedCaption((prev) => !prev)}>
+                    <Text style={{ color: '#60A5FA', fontSize: 12, fontWeight: '700', marginTop: 2 }}>
+                      {isExpandedCaption ? 'Thu gọn' : '... Xem thêm'}
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            ) : null}
+
+            {/* Hàng 3: Hàng Reaction tóm tắt (icon like/tim + số lượt like, số bình luận) */}
+            {(reactionsTotal > 0 || commentsCount > 0) && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingTop: 4,
+                  borderTopWidth: 1,
+                  borderTopColor: 'rgba(255,255,255,0.12)',
+                }}
+              >
+                {/* Tóm tắt Reactions */}
+                {reactionsTotal > 0 ? (
+                  <Pressable
+                    onPress={() => setShowReactionsList(true)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      {topEmojis.map((emoji, idx) => (
+                        <Text key={idx} style={{ fontSize: 13, marginLeft: idx > 0 ? -3 : 0 }}>
+                          {emoji}
+                        </Text>
+                      ))}
+                    </View>
+                    <Text style={{ fontSize: 12, color: '#E2E8F0', fontWeight: '600' }}>
+                      {reactionsTotal}
+                    </Text>
+                  </Pressable>
+                ) : <View />}
+
+                {/* Tóm tắt Bình luận */}
+                {commentsCount > 0 ? (
+                  <Pressable onPress={() => setShowMobileCommentsSheet(true)}>
+                    <Text style={{ fontSize: 12, color: '#E2E8F0', fontWeight: '600' }}>
+                      {commentsCount} bình luận
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            )}
+
+            {/* Hàng 4: 3 nút chức năng Facebook kinh điển */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderTopWidth: 1,
+                borderTopColor: 'rgba(255, 255, 255, 0.15)',
+                paddingTop: 6,
+                position: 'relative',
+              }}
+            >
+              {/* Floating Popover Reaction trên Mobile */}
+              {hoverReaction && (
+                <>
+                  {/* Backdrop trong suốt chạm ra ngoài đóng popover */}
+                  <Pressable
+                    style={{
+                      position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+                      top: 0, left: 0, right: 0, bottom: 0,
+                      zIndex: 9998,
+                      backgroundColor: 'transparent',
+                    }}
+                    onPress={() => {
+                      setHoverReaction(false);
+                      setHoveredReactionEmoji(null);
+                    }}
+                  />
+                  <View
+                    style={{
+                      position: 'absolute',
+                      bottom: 44,
+                      left: 0,
+                      flexDirection: 'row',
+                      backgroundColor: '#242526',
+                      borderRadius: 30,
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      boxShadow: '0 6px 20px rgba(0,0,0,0.5)' as any,
+                      zIndex: 9999,
+                      gap: 6,
+                      alignItems: 'center',
+                    }}
+                  >
+                    {FB_REACTIONS.map((r) => (
+                      <Pressable
+                        key={r.id}
+                        onPress={() => handleSelectReaction(r.id)}
+                        style={({ pressed }) => [{
+                          padding: 4,
+                          borderRadius: 20,
+                          transform: [{ scale: pressed ? 1.3 : 1 }],
+                        }]}
+                      >
+                        <Text style={{ fontSize: 24 }}>{r.emoji}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* Nút Thích */}
+              <Pressable
+                testID="theater-btn-mobile-like"
+                onPress={() => {
+                  const reactToSend = userReaction ? userReaction : 'like';
+                  handleSelectReaction(reactToSend);
+                }}
+                onLongPress={() => setHoverReaction(true)}
+                delayLongPress={250}
+                style={({ pressed }) => [{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 6,
+                  borderRadius: 6,
+                  backgroundColor: pressed ? 'rgba(255,255,255,0.1)' : 'transparent',
+                }]}
+              >
+                {userReactionMeta ? (
+                  <>
+                    <Text style={{ fontSize: 16 }}>{userReactionMeta.emoji}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: userReactionMeta.color }}>
+                      {userReactionMeta.label}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <ThumbsUp size={16} color="#FFFFFF" />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>Thích</Text>
+                  </>
+                )}
+              </Pressable>
+
+              {/* Nút Bình luận */}
+              <Pressable
+                testID="theater-btn-mobile-comment"
+                onPress={() => setShowMobileCommentsSheet(true)}
+                style={({ pressed }) => [{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 6,
+                  borderRadius: 6,
+                  backgroundColor: pressed ? 'rgba(255,255,255,0.1)' : 'transparent',
+                }]}
+              >
+                <MessageSquare size={16} color="#FFFFFF" />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>Bình luận</Text>
+              </Pressable>
+
+              {/* Nút Chia sẻ */}
+              <Pressable
+                testID="theater-btn-mobile-share"
+                onPress={handleShareImage}
+                style={({ pressed }) => [{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 6,
+                  borderRadius: 6,
+                  backgroundColor: pressed ? 'rgba(255,255,255,0.1)' : 'transparent',
+                }]}
+              >
+                <Share2 size={16} color="#FFFFFF" />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>Chia sẻ</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+      </View>
+    )}
+  </View>
+
+  {/* Modal Bottom Sheet More Options (Khi bấm [...]) */}
+  <Modal
+    visible={showMobileMoreMenu}
+    transparent
+    animationType="slide"
+    onRequestClose={() => setShowMobileMoreMenu(false)}
+  >
+    <Pressable
+      style={{
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'flex-end',
+      }}
+      onPress={() => setShowMobileMoreMenu(false)}
+    >
+      <Pressable
+        onPress={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: '#FFFFFF',
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          paddingHorizontal: 20,
+          paddingTop: 12,
+          paddingBottom: Platform.OS === 'ios' ? 36 : 20,
+          gap: 4,
+        }}
+      >
+        {/* Handle bar */}
+        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#CBD5E1', alignSelf: 'center', marginBottom: 12 }} />
+
+        {/* 1. Lưu vào điện thoại / Tải ảnh xuống */}
+        <Pressable
+          testID="theater-menu-download"
+          onPress={handleDownloadImage}
+          style={({ pressed }) => [{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            paddingVertical: 14,
+            borderBottomWidth: 1,
+            borderBottomColor: '#F1F5F9',
+            backgroundColor: pressed ? '#F8FAFC' : 'transparent',
+          }]}
+        >
+          <Download size={20} color="#1E293B" />
+          <Text style={{ fontSize: 15, fontWeight: '600', color: '#1E293B' }}>
+            Lưu vào điện thoại / Tải ảnh xuống
+          </Text>
+        </Pressable>
+
+        {/* 2. Chia sẻ ra bên ngoài */}
+        <Pressable
+          testID="theater-menu-share"
+          onPress={handleShareImage}
+          style={({ pressed }) => [{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            paddingVertical: 14,
+            borderBottomWidth: 1,
+            borderBottomColor: '#F1F5F9',
+            backgroundColor: pressed ? '#F8FAFC' : 'transparent',
+          }]}
+        >
+          <Share2 size={20} color="#1E293B" />
+          <Text style={{ fontSize: 15, fontWeight: '600', color: '#1E293B' }}>
+            Chia sẻ ra bên ngoài
+          </Text>
+        </Pressable>
+
+        {/* 3. Báo cáo ảnh */}
+        <Pressable
+          testID="theater-menu-report"
+          onPress={() => {
+            setShowMobileMoreMenu(false);
+            setShowReportModal(true);
+          }}
+          style={({ pressed }) => [{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            paddingVertical: 14,
+            backgroundColor: pressed ? '#F8FAFC' : 'transparent',
+          }]}
+        >
+          <Flag size={20} color="#DC2626" />
+          <Text style={{ fontSize: 15, fontWeight: '600', color: '#DC2626' }}>
+            Báo cáo bài viết / ảnh này
+          </Text>
+        </Pressable>
+
+        {/* Nút Đóng */}
+        <Pressable
+          onPress={() => setShowMobileMoreMenu(false)}
+          style={{
+            marginTop: 8,
+            paddingVertical: 12,
+            borderRadius: 12,
+            backgroundColor: '#F1F5F9',
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: '700', color: '#64748B' }}>Đóng</Text>
+        </Pressable>
+      </Pressable>
+    </Pressable>
+  </Modal>
+
+  {/* Modal Bottom Sheet Bình Luận Trên Mobile */}
+  <Modal
+    visible={showMobileCommentsSheet}
+    transparent
+    animationType="slide"
+    onRequestClose={() => setShowMobileCommentsSheet(false)}
+  >
+    <Pressable
+      style={{
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+      }}
+      onPress={() => setShowMobileCommentsSheet(false)}
+    >
+      <Pressable
+        onPress={(e) => e.stopPropagation()}
+        style={{
+          height: '78%',
+          backgroundColor: '#FFFFFF',
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header Sheet */}
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: '#F1F5F9',
+          }}
+        >
+          <View style={{ width: 24 }} />
+          <View style={{ alignItems: 'center' }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#CBD5E1', marginBottom: 6 }} />
+            <Text style={{ fontSize: 15, fontWeight: '800', color: BRAND_COLORS.text }}>
+              Bình luận ({commentsCount})
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setShowMobileCommentsSheet(false)}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              backgroundColor: '#F1F5F9',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <X size={16} color="#64748B" />
+          </Pressable>
+        </View>
+
+        {/* Danh sách bình luận cuộn */}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 16, gap: 12 }}
+          showsVerticalScrollIndicator={true}
+        >
+          {renderCommentsList()}
+        </ScrollView>
+
+        {/* Khung gõ bình luận cố định ở đáy */}
+        {renderCommentInputSection()}
+      </Pressable>
+    </Pressable>
+  </Modal>
+
+  {/* Report Modal */}
+  <ReportModal
+    visible={showReportModal}
+    postId={post?.id || null}
+    placeName={post?.place_name || ''}
+    onClose={() => setShowReportModal(false)}
+    onSuccess={() => {
+      setShowReportModal(false);
+      Alert.alert('Thành công', 'Báo cáo của bạn đã được gửi tới Ban quản trị ViVu.');
+    }}
+  />
+
+  {/* Modal Danh sách cảm xúc */}
+  <ReactionsListModal
+    visible={showReactionsList}
+    onClose={() => setShowReactionsList(false)}
+    postId={post?.id || null}
+    totalReactions={reactionsTotal}
+  />
+</Modal>
   );
 }

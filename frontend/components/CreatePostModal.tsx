@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Platform,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 import {
   X,
@@ -51,6 +52,9 @@ export default function CreatePostModal({
   initialProvince = '',
   initialTripId = '',
 }: CreatePostModalProps) {
+  const { width: windowWidth } = useWindowDimensions();
+  const isMobile = windowWidth < 640;
+
   // Form State
   const [placeName, setPlaceName] = useState(initialPlaceName);
   const [province, setProvince] = useState(initialProvince || 'Hà Nội');
@@ -300,7 +304,7 @@ export default function CreatePostModal({
       <View
         style={{
           flex: 1,
-          backgroundColor: 'rgba(20,32,27,0.65)',
+          backgroundColor: 'rgba(20, 32, 27, 0.7)',
           justifyContent: 'center',
           alignItems: 'center',
           padding: 16,
@@ -309,12 +313,11 @@ export default function CreatePostModal({
         <View
           style={{
             backgroundColor: '#FFFFFF',
-            borderRadius: 24,
+            borderRadius: 20,
             width: '100%',
-            maxWidth: 720,
-            maxHeight: '92%',
-            display: 'flex',
-            flexDirection: 'column',
+            maxWidth: 580,
+            maxHeight: '90%',
+            alignSelf: 'center',
             overflow: 'hidden',
             boxShadow: '0 20px 45px rgba(0,0,0,0.2)' as any,
           }}
@@ -322,8 +325,9 @@ export default function CreatePostModal({
           {/* Header */}
           <View
             style={{
-              paddingHorizontal: 24,
-              paddingVertical: 18,
+              width: '100%',
+              paddingHorizontal: 16,
+              paddingVertical: 14,
               borderBottomWidth: 1,
               borderBottomColor: 'rgba(27,36,32,0.08)',
               flexDirection: 'row',
@@ -332,20 +336,25 @@ export default function CreatePostModal({
               backgroundColor: '#FBF5EA',
             }}
           >
-            <View style={{ gap: 4 }}>
+            <View style={{ flex: 1, minWidth: 0, gap: 4, paddingRight: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Text style={{ fontSize: 20 }}>✍️</Text>
                 <Text
+                  numberOfLines={1}
                   style={{
                     fontFamily: 'Lora_700Bold',
                     fontSize: 18,
                     color: BRAND_COLORS.text,
+                    flexShrink: 1,
                   }}
                 >
                   Đăng Bài Đánh Giá Địa Điểm
                 </Text>
               </View>
-              <Text style={{ fontSize: 12, color: BRAND_COLORS.textMuted }}>
+              <Text
+                numberOfLines={2}
+                style={{ fontSize: 12, color: BRAND_COLORS.textMuted, lineHeight: 16 }}
+              >
                 Chia sẻ cảm nhận, tiêu chí phụ, chi phí và hình ảnh thực tế tới cộng đồng
               </Text>
             </View>
@@ -363,7 +372,10 @@ export default function CreatePostModal({
           </View>
 
           {/* Body Form */}
-          <ScrollView contentContainerStyle={{ padding: 24, gap: 20 }}>
+          <ScrollView
+            style={{ width: '100%' }}
+            contentContainerStyle={{ padding: 16, gap: 16 }}
+          >
             {/* Error & Success Notification */}
             {errorMsg ? (
               <View
@@ -407,7 +419,7 @@ export default function CreatePostModal({
 
             {/* Bước 1: Chọn từ chuyến đi hoặc Tên địa điểm */}
             <View style={{ gap: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: BRAND_COLORS.text }}>
                   1. Tên Địa Điểm Được Đánh Giá <Text style={{ color: '#EF4444' }}>*</Text>
                 </Text>
@@ -534,6 +546,9 @@ export default function CreatePostModal({
                     value={province}
                     onChange={(e: any) => setProvince(e.target.value)}
                     style={{
+                      width: '100%',
+                      maxWidth: '100%',
+                      boxSizing: 'border-box',
                       backgroundColor: '#FFFFFF',
                       border: '1.5px solid rgba(27,36,32,0.2)',
                       borderRadius: 10,
@@ -619,8 +634,15 @@ export default function CreatePostModal({
               </Text>
 
               {/* Interactive Stars */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 4 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 10,
+                }}
+              >
+                <View style={{ flexDirection: 'row', gap: 4, flexShrink: 0 }}>
                   {[1, 2, 3, 4, 5].map((s) => (
                     <Pressable
                       key={s}
@@ -641,6 +663,7 @@ export default function CreatePostModal({
                     paddingHorizontal: 10,
                     paddingVertical: 4,
                     borderRadius: 8,
+                    alignSelf: 'flex-start',
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: '800', color: '#B45309' }}>
@@ -1080,8 +1103,9 @@ export default function CreatePostModal({
           {/* Footer Actions */}
           <View
             style={{
-              paddingHorizontal: 24,
-              paddingVertical: 16,
+              width: '100%',
+              paddingHorizontal: 16,
+              paddingVertical: 14,
               borderTopWidth: 1,
               borderTopColor: 'rgba(27,36,32,0.08)',
               flexDirection: 'row',
@@ -1094,7 +1118,7 @@ export default function CreatePostModal({
               onPress={onClose}
               disabled={submitting}
               style={{
-                paddingHorizontal: 18,
+                paddingHorizontal: 16,
                 paddingVertical: 10,
                 borderRadius: 12,
                 backgroundColor: '#F3F4F6',
@@ -1112,7 +1136,7 @@ export default function CreatePostModal({
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 8,
-                paddingHorizontal: 22,
+                paddingHorizontal: 20,
                 paddingVertical: 10,
                 borderRadius: 12,
                 backgroundColor: BRAND_COLORS.primary,

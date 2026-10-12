@@ -1,6 +1,5 @@
 import { Stack } from 'expo-router';
 import { View, ActivityIndicator, Platform, StyleSheet } from 'react-native';
-import * as Notifications from 'expo-notifications';
 import {
   useFonts,
   BeVietnamPro_400Regular,
@@ -20,18 +19,6 @@ import '../global.css';
 
 if (typeof (StyleSheet as any).setFlag === 'function') {
   (StyleSheet as any).setFlag('darkMode', 'class');
-}
-
-if (Platform.OS !== 'web') {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
 }
 
 const queryClient = new QueryClient();

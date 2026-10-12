@@ -143,7 +143,9 @@ function DateInput({
         min={min}
         style={{
           width: '100%',
+          boxSizing: 'border-box' as any,
           padding: '12px 16px',
+          paddingRight: 32,
           borderRadius: 12,
           border: '1px solid rgba(27,36,32,0.12)',
           fontSize: 14,
@@ -162,6 +164,7 @@ function DateInput({
       onChangeText={onChange}
       placeholder={placeholder}
       className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text"
+      style={{ paddingRight: 32 }}
       placeholderTextColor={BRAND_COLORS.textMuted}
     />
   );
@@ -2366,12 +2369,12 @@ export default function TripWizard() {
                   </View>
 
                   {/* Dates */}
-                  <View className="flex-row gap-4">
-                    <View className="flex-1 gap-1.5">
+                  <View className="flex-col sm:flex-row gap-3">
+                    <View className="w-full sm:flex-1 gap-1.5">
                       <Text className="text-sm font-bold text-brand-textSoft">Ngày đi</Text>
                       <DateInput value={startDate} onChange={setStartDate} placeholder="YYYY-MM-DD" min={getTodayString()} />
                     </View>
-                    <View className="flex-1 gap-1.5">
+                    <View className="w-full sm:flex-1 gap-1.5">
                       <Text className="text-sm font-bold text-brand-textSoft">Ngày về</Text>
                       <DateInput value={endDate} onChange={setEndDate} placeholder="YYYY-MM-DD" min={getTodayString()} />
                     </View>
@@ -2525,19 +2528,30 @@ export default function TripWizard() {
 
                   <View className="gap-2">
                     <Text className="text-sm font-bold text-brand-textSoft">Chọn các sở thích (Chọn nhiều)</Text>
-                    <View className="flex-row flex-wrap gap-2.5">
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                       {PREFERENCE_OPTIONS.map(pref => {
                         const selected = selectedPrefs.includes(pref.id);
                         return (
                           <Pressable
                             key={pref.id}
                             onPress={() => handlePrefToggle(pref.id)}
-                            className={`px-4 py-3 rounded-xl border ${selected
+                            style={{
+                              flexBasis: '48%',
+                              flexGrow: 1,
+                              maxWidth: '49%',
+                              paddingHorizontal: 10,
+                              paddingVertical: 9,
+                              borderRadius: 12,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            className={`border ${selected
                               ? 'bg-brand-primary border-brand-primary'
                               : 'bg-brand-bg border-brand-line/50'}`}
                           >
                             <Text
-                              className={`text-sm font-semibold ${selected ? 'text-white' : 'text-brand-textSoft'}`}
+                              style={{ fontSize: 12.5, textAlign: 'center' }}
+                              className={`font-semibold ${selected ? 'text-white' : 'text-brand-textSoft'}`}
                             >
                               {pref.label}
                             </Text>
@@ -2552,9 +2566,19 @@ export default function TripWizard() {
                           <Pressable
                             key={idx}
                             onPress={() => handlePrefToggle(customTag)}
-                            className="px-4 py-3 rounded-xl bg-brand-accent border border-brand-accent"
+                            style={{
+                              flexBasis: '48%',
+                              flexGrow: 1,
+                              maxWidth: '49%',
+                              paddingHorizontal: 10,
+                              paddingVertical: 9,
+                              borderRadius: 12,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            className="bg-brand-accent border border-brand-accent"
                           >
-                            <Text className="text-sm font-bold text-white">✨ {customTag} ✕</Text>
+                            <Text style={{ fontSize: 12.5, textAlign: 'center' }} className="font-bold text-white">✨ {customTag} ✕</Text>
                           </Pressable>
                         ))}
                     </View>
@@ -2597,8 +2621,8 @@ export default function TripWizard() {
                   {/* Mode header / Group Collaboration Bar at the top of Step 4 */}
                   {!canAccessWorkspace ? (
                     // Banner for Free user
-                    <View className="p-4 rounded-2xl bg-[#FFFBF0] border border-[#F5D599] flex-row items-center justify-between gap-3 shadow-sm">
-                      <View className="flex-1 gap-1">
+                    <View className="p-4 rounded-2xl bg-[#FFFBF0] border border-[#F5D599] flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-sm">
+                      <View className="w-full sm:flex-1 gap-1">
                         <View className="flex-row items-center gap-1.5">
                           <Crown size={16} color={BRAND_COLORS.accent} />
                           <Text className="text-sm font-extrabold text-[#9A5B00]">
@@ -2611,10 +2635,10 @@ export default function TripWizard() {
                       </View>
                       <Pressable
                         onPress={() => setShowPremiumModal(true)}
-                        className="px-3.5 py-2 rounded-xl bg-brand-accent active:opacity-90 flex-row items-center gap-1.5 self-center shadow-sm"
+                        className="w-full sm:w-auto justify-center px-4 py-2.5 sm:px-3.5 sm:py-2 rounded-xl bg-brand-accent active:opacity-90 flex-row items-center gap-1.5 shadow-sm"
                       >
                         <Crown size={13} color="#FFFFFF" />
-                        <Text className="text-xs font-bold text-white whitespace-nowrap">Nâng cấp Pro để mở khóa</Text>
+                        <Text className="text-xs font-bold text-white text-center whitespace-nowrap">Nâng cấp Pro để mở khóa</Text>
                       </Pressable>
                     </View>
                   ) : useProWorkspace ? (
@@ -3111,7 +3135,7 @@ export default function TripWizard() {
                           </Pressable>
                         </View>
 
-                        <View className="flex-row gap-3">
+                        <View className="flex-col sm:flex-row gap-3">
                           {/* Option 1: AI Tiêu Chuẩn (Mặc định) */}
                           <Pressable
                             testID="ai-engine-gemini-card"
@@ -3119,7 +3143,7 @@ export default function TripWizard() {
                               setSelectedAiProvider('gemini');
                               setUseProForTrip(false);
                             }}
-                            className={`flex-1 p-3.5 rounded-xl border flex-col justify-between gap-2 ${(!useProForTrip && selectedAiProvider === 'gemini') ? 'bg-brand-primary/10 border-brand-primary' : 'bg-brand-bg border-brand-line/50'}`}
+                            className={`w-full sm:flex-1 p-3.5 rounded-xl border flex-col justify-between gap-2.5 ${(!useProForTrip && selectedAiProvider === 'gemini') ? 'bg-brand-primary/10 border-brand-primary' : 'bg-brand-bg border-brand-line/50'}`}
                           >
                             <View className="flex-row items-center justify-between">
                               <View className="flex-row items-center gap-1.5">
@@ -3128,11 +3152,11 @@ export default function TripWizard() {
                                   AI Tiêu Chuẩn
                                 </Text>
                               </View>
-                              <View className="px-1.5 py-0.5 rounded bg-brand-line/20">
-                                <Text className="text-[9px] font-bold text-brand-textSoft">Miễn phí</Text>
+                              <View className="px-2 py-0.5 rounded bg-brand-line/20">
+                                <Text className="text-[10px] font-bold text-brand-textSoft">Miễn phí</Text>
                               </View>
                             </View>
-                            <Text className="text-[10px] text-brand-textSoft leading-tight">
+                            <Text className="text-xs text-brand-textSoft leading-relaxed">
                               Tốc độ nhanh, gợi ý điểm đến phổ biến và lịch trình cơ bản.
                             </Text>
                           </Pressable>
@@ -3147,7 +3171,7 @@ export default function TripWizard() {
                                 setShowPremiumModal(true);
                               }
                             }}
-                            className={`flex-1 p-3.5 rounded-xl border flex-col justify-between gap-2 ${(useProForTrip || selectedAiProvider === 'custom_openai') ? 'bg-brand-accent/10 border-brand-accent' : 'bg-brand-bg border-brand-line/50'}`}
+                            className={`w-full sm:flex-1 p-3.5 rounded-xl border flex-col justify-between gap-2.5 ${(useProForTrip || selectedAiProvider === 'custom_openai') ? 'bg-brand-accent/10 border-brand-accent' : 'bg-brand-bg border-brand-line/50'}`}
                           >
                             <View className="flex-row items-center justify-between">
                               <View className="flex-row items-center gap-1.5">
@@ -3157,19 +3181,19 @@ export default function TripWizard() {
                                 </Text>
                               </View>
                               {hasCredits ? (
-                                <View className="px-1.5 py-0.5 rounded bg-brand-accent/20">
-                                  <Text className="text-[9px] font-extrabold text-brand-accent">
+                                <View className="px-2 py-0.5 rounded bg-brand-accent/20">
+                                  <Text className="text-[10px] font-extrabold text-brand-accent">
                                     {`CÒN ${remainingTrips} LƯỢT`}
                                   </Text>
                                 </View>
                               ) : (
-                                <View className="flex-row items-center gap-0.5 px-1.5 py-0.5 rounded bg-brand-line/30">
-                                  <Lock size={9} color={BRAND_COLORS.textSoft} />
-                                  <Text className="text-[9px] font-extrabold text-brand-textSoft">CẦN GÓI PRO</Text>
+                                <View className="flex-row items-center gap-1 px-2 py-0.5 rounded bg-brand-line/30">
+                                  <Lock size={10} color={BRAND_COLORS.textSoft} />
+                                  <Text className="text-[10px] font-extrabold text-brand-textSoft">CẦN GÓI PRO</Text>
                                 </View>
                               )}
                             </View>
-                            <Text className="text-[10px] text-brand-textSoft leading-tight">
+                            <Text className="text-xs text-brand-textSoft leading-relaxed">
                               Tối ưu ngân sách sâu, lộ trình thông minh và khám phá điểm đến độc lạ.
                             </Text>
                           </Pressable>

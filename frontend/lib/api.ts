@@ -1,13 +1,28 @@
 import axios from 'axios';
+import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
 /**
  * api — Axios client chuẩn.
  * - Tự động gắn Supabase access_token vào mỗi request
- * - Tự động fallback baseURL về '/api' nếu không set EXPO_PUBLIC_API_BASE_URL (chạy mượt trên Vercel Monorepo)
+ * - Khi chạy Web trên localhost: trỏ thẳng về 'http://localhost:4000/api'
+ * - Khi chạy Mobile (Android/iOS): dùng EXPO_PUBLIC_API_BASE_URL (http://<IP_LAN>:4000/api)
+ * - Khi chạy Production Web (Vercel): fallback về '/api'
  * - 401 -> sign out (không redirect loop)
  */
-const baseURL = process.env.EXPO_PUBLIC_API_BASE_URL || '/api';
+const getBaseURL = () => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:4000/api';
+    }
+    // Web production / Vercel
+    return process.env.EXPO_PUBLIC_API_BASE_URL || '/api';
+  }
+  // Mobile Expo Go / Native
+  return process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:4000/api';
+};
+
+const baseURL = getBaseURL();
 
 export const api = axios.create({
   baseURL,

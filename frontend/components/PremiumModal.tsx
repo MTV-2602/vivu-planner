@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, Pressable, Modal, ScrollView,
   ActivityIndicator, Platform, Linking, Image,
+  useWindowDimensions,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -41,6 +42,7 @@ interface OrderHistoryItem {
 }
 
 export default function PremiumModal({ visible, onClose, onActivated, onSuccess }: PremiumModalProps) {
+  const { width } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<'upgrade' | 'history'>('upgrade');
   const [selectedPlan, setSelectedPlan] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'payos' | 'momo'>('payos');
@@ -474,7 +476,7 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
           </View>
 
           {/* Body Content */}
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24, gap: 18 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: width < 640 ? 14 : 24, gap: 18 }}>
 
             {/* TAB 1: NÂNG CẤP GÓI */}
             {activeTab === 'upgrade' && (
@@ -491,13 +493,13 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      {isCurrentPremium ? <Crown size={20} color="#CA8A04" /> : <Sparkles size={20} color="#64748B" />}
-                      <Text style={{ fontSize: 13, fontWeight: '800', color: isCurrentPremium ? '#854D0E' : '#334155' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8, minWidth: 0 }}>
+                      {isCurrentPremium ? <Crown size={20} color="#CA8A04" style={{ flexShrink: 0 }} /> : <Sparkles size={20} color="#64748B" style={{ flexShrink: 0 }} />}
+                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, fontWeight: '800', color: isCurrentPremium ? '#854D0E' : '#334155', flexShrink: 1 }}>
                         Tài khoản: {statusData?.planName || (isCurrentPremium ? 'Gói Pro' : 'Gói Miễn Phí')}
                       </Text>
                     </View>
-                    <View style={{ backgroundColor: isCurrentPremium ? '#CA8A04' : '#64748B', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 3 }}>
+                    <View style={{ backgroundColor: isCurrentPremium ? '#CA8A04' : '#64748B', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 3, flexShrink: 0 }}>
                       <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>
                         {isCurrentPremium ? 'ĐANG HOẠT ĐỘNG' : 'MIỄN PHÍ'}
                       </Text>
@@ -507,13 +509,13 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
                   {/* 1. Ví Miễn Phí (AI Tiêu Chuẩn) */}
                   <View style={{ backgroundColor: '#F1F5F9', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', gap: 4 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Gift size={16} color="#059669" />
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, marginRight: 8 }}>
+                        <Gift size={16} color="#059669" style={{ flexShrink: 0 }} />
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, fontWeight: '700', color: '#1E293B', flexShrink: 1 }}>
                           Ví Miễn Phí (AI Tiêu Chuẩn)
                         </Text>
                       </View>
-                      <View style={{ backgroundColor: '#E2E8F0', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
+                      <View style={{ backgroundColor: '#E2E8F0', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, flexShrink: 0 }}>
                         <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>
                           {wallet.freeRemaining}/{wallet.freeTotal} chuyến
                         </Text>
@@ -534,9 +536,9 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
                     gap: 6,
                   }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Crown size={16} color={(statusData?.remainingTrips ?? 0) > 0 ? '#059669' : '#D97706'} />
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: (statusData?.remainingTrips ?? 0) > 0 ? '#065F46' : '#92400E' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, marginRight: 8 }}>
+                        <Crown size={16} color={(statusData?.remainingTrips ?? 0) > 0 ? '#059669' : '#D97706'} style={{ flexShrink: 0 }} />
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, fontWeight: '800', color: (statusData?.remainingTrips ?? 0) > 0 ? '#065F46' : '#92400E', flexShrink: 1 }}>
                           Ví Pro (AI Pro & Live Map)
                         </Text>
                       </View>
@@ -545,6 +547,7 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
                         paddingHorizontal: 8,
                         paddingVertical: 2,
                         borderRadius: 8,
+                        flexShrink: 0,
                       }}>
                         <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFFFFF' }}>
                           {statusData?.remainingTrips ?? 0} lượt khả dụng

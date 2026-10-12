@@ -11,6 +11,7 @@ import {
   Alert,
   Modal,
   Linking,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -115,6 +116,8 @@ export default function CommunityFeedScreen() {
   const router = useRouter();
   const { user, profile, isAdmin } = useAuth();
   const queryClient = useQueryClient();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
 
   // Filter States (2 tag bắt buộc)
   const [selectedProvince, setSelectedProvince] = useState<string>('all');
@@ -133,6 +136,7 @@ export default function CommunityFeedScreen() {
   const [hoverReactionPostId, setHoverReactionPostId] = useState<string | null>(null);
   const [hoveredReactionEmoji, setHoveredReactionEmoji] = useState<string | null>(null);
   const reactionLeaveTimerRef = React.useRef<any>(null);
+  const popoverLayoutRef = React.useRef<{ x: number; width: number } | null>(null);
 
   // Facebook Comments States
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
@@ -440,6 +444,7 @@ export default function CommunityFeedScreen() {
   };
 
   const handleMouseLeaveLike = () => {
+    if (isMobile) return;
     if (reactionLeaveTimerRef.current) {
       clearTimeout(reactionLeaveTimerRef.current);
     }
@@ -629,20 +634,20 @@ export default function CommunityFeedScreen() {
           backgroundColor: '#FFFFFF',
           borderBottomWidth: 1,
           borderBottomColor: 'rgba(27,36,32,0.08)',
-          paddingHorizontal: 24,
-          paddingVertical: 14,
+          paddingHorizontal: isMobile ? 12 : 24,
+          paddingVertical: 12,
         }}
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           {/* Logo & Navigation */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 8 : 14 }}>
             <Pressable
               onPress={() => router.push(APP_ROUTES.TRIPS as any)}
               style={({ pressed }) => [{
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 6,
-                paddingHorizontal: 12,
+                paddingHorizontal: isMobile ? 8 : 12,
                 paddingVertical: 7,
                 borderRadius: 10,
                 backgroundColor: pressed ? '#F3ECDC' : '#FAF5EA',
@@ -651,21 +656,21 @@ export default function CommunityFeedScreen() {
             >
               <ArrowLeft size={16} color={BRAND_COLORS.text} />
               <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND_COLORS.text }}>
-                Chuyến đi của bạn
+                {isMobile ? 'Chuyến đi' : 'Chuyến đi của bạn'}
               </Text>
             </Pressable>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Compass size={24} color={BRAND_COLORS.primary} />
-              <Text style={{ fontFamily: 'Lora_700Bold', fontSize: 18, color: BRAND_COLORS.primary }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 6 : 8 }}>
+              <Compass size={isMobile ? 20 : 24} color={BRAND_COLORS.primary} />
+              <Text style={{ fontFamily: 'Lora_700Bold', fontSize: isMobile ? 16 : 18, color: BRAND_COLORS.primary }}>
                 Bảng Tin ViVu
               </Text>
             </View>
           </View>
 
           {/* Right Actions */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <SystemClock />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 8 : 12 }}>
+            {!isMobile && <SystemClock />}
 
             {/* Profile Button */}
             <Pressable
@@ -673,8 +678,8 @@ export default function CommunityFeedScreen() {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 8,
-                paddingHorizontal: 12,
+                gap: isMobile ? 6 : 8,
+                paddingHorizontal: isMobile ? 8 : 12,
                 paddingVertical: 6,
                 borderRadius: 100,
                 backgroundColor: '#FAF5EA',
@@ -702,7 +707,15 @@ export default function CommunityFeedScreen() {
                   <User size={13} color={BRAND_COLORS.primary} />
                 </View>
               )}
-              <Text style={{ fontSize: 12, fontWeight: '700', color: BRAND_COLORS.text }}>
+              <Text
+                numberOfLines={1}
+                style={{
+                  fontSize: 12,
+                  fontWeight: '700',
+                  color: BRAND_COLORS.text,
+                  maxWidth: isMobile ? 70 : 120,
+                }}
+              >
                 {profile?.full_name || 'Hồ sơ'}
               </Text>
             </Pressable>
@@ -785,7 +798,7 @@ export default function CommunityFeedScreen() {
           >
             <Plus size={18} color="#FFFFFF" />
             <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF' }}>
-              + Đăng Bài Đánh Giá Mới
+              Đăng Bài Đánh Giá Mới
             </Text>
           </Pressable>
         </View>
@@ -1414,75 +1427,131 @@ export default function CommunityFeedScreen() {
                       position: 'relative',
                     }}
                   >
-                    {/* Floating Reaction Popover - Kích hoạt khi di chuột vào nút Thích */}
+                    {/* Floating Reaction Popover - Hỗ trợ Hover (Desktop) và Long Press (Mobile) */}
                     {hoverReactionPostId === post.id && (
-                      <View
-                        // @ts-ignore
-                        onMouseEnter={() => handleMouseEnterLike(post.id)}
-                        onMouseLeave={handleMouseLeaveLike}
-                        style={{
-                          position: 'absolute',
-                          bottom: 44,
-                          left: 0,
-                          flexDirection: 'row',
-                          backgroundColor: '#242526',
-                          borderRadius: 40,
-                          paddingHorizontal: 8,
-                          paddingVertical: 5,
-                          boxShadow: '0 8px 24px rgba(0,0,0,0.25)' as any,
-                          zIndex: 9999,
-                          gap: 6,
-                          alignItems: 'center',
-                        }}
-                      >
-                        {FB_REACTIONS.map((r) => {
-                          const isHovered = hoveredReactionEmoji === r.id;
-                          return (
-                            <View key={r.id} style={{ alignItems: 'center', position: 'relative' }}>
-                              {isHovered && (
-                                <View
-                                  style={{
-                                    position: 'absolute',
-                                    top: -24,
-                                    backgroundColor: 'rgba(0,0,0,0.85)',
-                                    paddingHorizontal: 6,
-                                    paddingVertical: 2,
-                                    borderRadius: 8,
-                                    zIndex: 10,
+                      <>
+                        {/* Backdrop vô hình để chạm ra ngoài là ẩn popover */}
+                        <Pressable
+                          style={{
+                            position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            zIndex: 9998,
+                            backgroundColor: 'transparent',
+                          }}
+                          onPress={() => {
+                            setHoverReactionPostId(null);
+                            setHoveredReactionEmoji(null);
+                          }}
+                        />
+
+                        <View
+                          // @ts-ignore
+                          onMouseEnter={() => handleMouseEnterLike(post.id)}
+                          onMouseLeave={handleMouseLeaveLike}
+                          onLayout={(e) => {
+                            // @ts-ignore
+                            if (e.target && typeof e.target.getBoundingClientRect === 'function') {
+                              // @ts-ignore
+                              const rect = e.target.getBoundingClientRect();
+                              popoverLayoutRef.current = { x: rect.left, width: rect.width };
+                            } else {
+                              const { x, width } = e.nativeEvent.layout;
+                              popoverLayoutRef.current = { x, width };
+                            }
+                          }}
+                          // @ts-ignore
+                          onTouchMove={(e) => {
+                            const touch = e.nativeEvent.touches?.[0];
+                            if (touch && popoverLayoutRef.current) {
+                              const pageX = touch.pageX ?? (touch as any).clientX ?? 0;
+                              const relX = pageX - popoverLayoutRef.current.x;
+                              const itemWidth = popoverLayoutRef.current.width / FB_REACTIONS.length;
+                              const idx = Math.floor(relX / itemWidth);
+                              if (idx >= 0 && idx < FB_REACTIONS.length) {
+                                setHoveredReactionEmoji(FB_REACTIONS[idx].id);
+                              }
+                            }
+                          }}
+                          // @ts-ignore
+                          onTouchEnd={() => {
+                            if (hoveredReactionEmoji) {
+                              if (!user) {
+                                Alert.alert('Thông báo', 'Vui lòng đăng nhập để thả cảm xúc.');
+                              } else {
+                                reactMutation.mutate({ postId: post.id, reaction: hoveredReactionEmoji });
+                              }
+                              setHoverReactionPostId(null);
+                              setHoveredReactionEmoji(null);
+                            }
+                          }}
+                          style={{
+                            position: 'absolute',
+                            bottom: 44,
+                            left: 0,
+                            flexDirection: 'row',
+                            backgroundColor: '#242526',
+                            borderRadius: 40,
+                            paddingHorizontal: 8,
+                            paddingVertical: 5,
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.35)' as any,
+                            zIndex: 9999,
+                            gap: 6,
+                            alignItems: 'center',
+                            userSelect: 'none' as any,
+                          }}
+                        >
+                          {FB_REACTIONS.map((r) => {
+                            const isHovered = hoveredReactionEmoji === r.id;
+                            return (
+                              <View key={r.id} style={{ alignItems: 'center', position: 'relative' }}>
+                                {isHovered && (
+                                  <View
+                                    style={{
+                                      position: 'absolute',
+                                      top: -24,
+                                      backgroundColor: 'rgba(0,0,0,0.85)',
+                                      paddingHorizontal: 6,
+                                      paddingVertical: 2,
+                                      borderRadius: 8,
+                                      zIndex: 10,
+                                    }}
+                                  >
+                                    <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>
+                                      {r.label}
+                                    </Text>
+                                  </View>
+                                )}
+                                <Pressable
+                                  testID={`react-${post.id}-${r.id}`}
+                                  // @ts-ignore
+                                  onMouseEnter={() => setHoveredReactionEmoji(r.id)}
+                                  onMouseLeave={() => setHoveredReactionEmoji(null)}
+                                  onPress={() => {
+                                    if (!user) {
+                                      Alert.alert('Thông báo', 'Vui lòng đăng nhập để thả cảm xúc.');
+                                      return;
+                                    }
+                                    setHoverReactionPostId(null);
+                                    setHoveredReactionEmoji(null);
+                                    reactMutation.mutate({ postId: post.id, reaction: r.id });
                                   }}
+                                  style={({ pressed }) => [{
+                                    padding: 4,
+                                    borderRadius: 24,
+                                    transform: [{ scale: isHovered || pressed ? 1.35 : 1 }],
+                                    cursor: 'pointer' as any,
+                                  }]}
                                 >
-                                  <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>
-                                    {r.label}
-                                  </Text>
-                                </View>
-                              )}
-                              <Pressable
-                                testID={`react-${post.id}-${r.id}`}
-                                // @ts-ignore
-                                onMouseEnter={() => setHoveredReactionEmoji(r.id)}
-                                onMouseLeave={() => setHoveredReactionEmoji(null)}
-                                onPress={() => {
-                                  if (!user) {
-                                    Alert.alert('Thông báo', 'Vui lòng đăng nhập để thả cảm xúc.');
-                                    return;
-                                  }
-                                  setHoverReactionPostId(null);
-                                  setHoveredReactionEmoji(null);
-                                  reactMutation.mutate({ postId: post.id, reaction: r.id });
-                                }}
-                                style={({ pressed }) => [{
-                                  padding: 4,
-                                  borderRadius: 24,
-                                  transform: [{ scale: isHovered || pressed ? 1.35 : 1 }],
-                                  cursor: 'pointer' as any,
-                                }]}
-                              >
-                                <Text style={{ fontSize: 26 }}>{r.emoji}</Text>
-                              </Pressable>
-                            </View>
-                          );
-                        })}
-                      </View>
+                                  <Text style={{ fontSize: 26 }}>{r.emoji}</Text>
+                                </Pressable>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </>
                     )}
 
                     {/* Nút Thích - Hỗ trợ Hover hiện emoji và Click toggle */}
@@ -1507,6 +1576,11 @@ export default function CommunityFeedScreen() {
                               const reactToSend = userReaction ? userReaction : 'like';
                               reactMutation.mutate({ postId: post.id, reaction: reactToSend });
                             }}
+                            onLongPress={() => {
+                              setHoverReactionPostId(post.id);
+                              setHoveredReactionEmoji(null);
+                            }}
+                            delayLongPress={250}
                             style={({ pressed }) => [{
                               flexDirection: 'row',
                               alignItems: 'center',
@@ -1516,6 +1590,7 @@ export default function CommunityFeedScreen() {
                               borderRadius: 8,
                               backgroundColor: pressed ? '#F1F5F9' : 'transparent',
                               cursor: 'pointer' as any,
+                              userSelect: 'none' as any,
                             }]}
                           >
                             {currentMeta ? (
