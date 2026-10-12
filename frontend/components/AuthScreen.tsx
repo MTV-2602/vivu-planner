@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView,
   ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions,
@@ -14,6 +14,13 @@ import { supabase, decodeJwtRole } from '../lib/supabase';
 import { api } from '../lib/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BRAND_COLORS, APP_ROUTES, UI_BREAKPOINTS, UserRole } from '../constants';
+import Turnstile, {
+  TurnstileRef,
+  getTurnstileSiteKey,
+  isSignupSubmissionAllowed,
+  buildSupabaseSignUpOptions,
+  buildSupabaseSignInOptions,
+} from './Turnstile';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -100,6 +107,9 @@ export default function AuthScreen({ mode }: Props) {
   const [infoMsg, setInfoMsg] = useState('');
   const [focused, setFocused] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileRef>(null);
+  const turnstileSiteKey = getTurnstileSiteKey();
 
   // Quên mật khẩu state
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -292,6 +302,12 @@ export default function AuthScreen({ mode }: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    setIsSignUp(mode === 'signup');
+    setCaptchaToken(null);
+    turnstileRef.current?.reset();
+  }, [mode]);
+
   const handleSubmit = async () => {
     if (!email || !password) {
       setErrorMsg('Vui lòng điền đầy đủ email và mật khẩu');
@@ -300,6 +316,32 @@ export default function AuthScreen({ mode }: Props) {
     if (isSignUp && !agreed) {
       setErrorMsg('Vui lòng đọc và đồng ý với cam kết bảo mật dữ liệu');
       return;
+    }
+    if (isSignUp) {
+      if (Platform.OS !== 'web') {
+        setErrorMsg('Đăng ký tài khoản yêu cầu xác minh bảo mật trên Web. Vui lòng mở trang web để đăng ký.');
+        return;
+      }
+      if (!turnstileSiteKey) {
+        setErrorMsg('Đăng ký tạm thời bị vô hiệu hóa do thiếu cấu hình CAPTCHA. Vui lòng liên hệ quản trị viên.');
+        return;
+      }
+      if (!captchaToken) {
+        setErrorMsg('Vui lòng hoàn thành xác minh bảo vệ (CAPTCHA) trước khi tạo tài khoản.');
+        return;
+      }
+    } else {
+      // Khi CAPTCHA được cấu hình trên server Supabase, bắt buộc xác minh trên Web đối với đăng nhập email/mật khẩu
+      if (turnstileSiteKey) {
+        if (Platform.OS !== 'web') {
+          setErrorMsg('Đăng nhập tài khoản với xác minh bảo mật (CAPTCHA) yêu cầu thực hiện trên trình duyệt Web. Vui lòng mở trang web để đăng nhập.');
+          return;
+        }
+        if (!captchaToken) {
+          setErrorMsg('Vui lòng hoàn thành xác minh bảo vệ (CAPTCHA) trước khi đăng nhập.');
+          return;
+        }
+      }
     }
     setLoading(true);
     setErrorMsg('');
@@ -310,7 +352,10 @@ export default function AuthScreen({ mode }: Props) {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: fullName } }
+          options: buildSupabaseSignUpOptions({
+            fullName,
+            captchaToken,
+          }),
         });
         if (error) throw error;
 
@@ -326,7 +371,12 @@ export default function AuthScreen({ mode }: Props) {
 
         setInfoMsg('Đăng ký thành công! Vui lòng kiểm tra email để xác nhận.');
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const signInOptions = buildSupabaseSignInOptions({ captchaToken });
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+          ...(signInOptions ? { options: signInOptions } : {}),
+        });
         if (error) throw new Error('Email hoặc mật khẩu không chính xác!');
         
         let isAdmin = data.session?.access_token
@@ -344,6 +394,8 @@ export default function AuthScreen({ mode }: Props) {
       setErrorMsg(err.message || 'Có lỗi xảy ra trong quá trình xử lý');
     } finally {
       setLoading(false);
+      setCaptchaToken(null);
+      turnstileRef.current?.reset();
     }
   };
 
@@ -356,16 +408,20 @@ export default function AuthScreen({ mode }: Props) {
     setErrorMsg('');
     setInfoMsg('');
     try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        const redirectTo = `${window.location.origin}/dang-nhap`;
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo,
-            queryParams: {
-              access_type: 'offline',
-              prompt: 'consent',
-            },
+      const redirectTo = Platform.OS === 'web' && typeof window !== 'undefined'
+        ? `${window.location.origin}/dang-nhap`
+        : 'vivuplanner://';
+
+      // Giới hạn đã biết (Explicit limitation):
+      // Supabase signInWithOAuth chuyển hướng trực tiếp sang Google IdP và không hỗ trợ captchaToken client-side.
+      // Cơ chế phòng chống bot cho Google OAuth do hạ tầng bảo mật của Google và Supabase OAuth đảm nhiệm.
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
           },
         });
         if (error) throw error;
@@ -441,6 +497,8 @@ export default function AuthScreen({ mode }: Props) {
     setIsSignUp(!isSignUp);
     setErrorMsg('');
     setInfoMsg('');
+    setCaptchaToken(null);
+    turnstileRef.current?.reset();
     router.replace((isSignUp ? APP_ROUTES.SIGN_IN : APP_ROUTES.SIGN_UP) as any);
   };
 
@@ -455,6 +513,15 @@ export default function AuthScreen({ mode }: Props) {
     color: BRAND_COLORS.text,
     backgroundColor: focused === name ? '#fff' : '#FDFAF4',
   });
+
+  const submissionCheck = isSignupSubmissionAllowed({
+    isSignUp,
+    siteKey: turnstileSiteKey,
+    captchaToken,
+    loading,
+    googleLoading,
+  });
+  const isSubmitDisabled = !submissionCheck.allowed;
 
   return (
     <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column', backgroundColor: BRAND_COLORS.bgDark }}>
@@ -693,6 +760,27 @@ export default function AuthScreen({ mode }: Props) {
                 {' '}nhằm tối ưu hóa lộ trình du lịch cá nhân hóa.
               </Text>
             </Pressable>
+          )}
+
+          {/* Turnstile CAPTCHA: Luôn hiển thị cho đăng ký (Fail-Closed); nếu đã cấu hình Site Key thì kích hoạt cho cả đăng nhập */}
+          {(isSignUp || Boolean(turnstileSiteKey)) && (
+            <View style={{ marginTop: 16 }}>
+              <Turnstile
+                ref={turnstileRef}
+                siteKey={turnstileSiteKey}
+                action={isSignUp ? 'signup' : 'login'}
+                onSuccess={(token) => {
+                  setCaptchaToken(token);
+                  setErrorMsg('');
+                }}
+                onExpire={() => {
+                  setCaptchaToken(null);
+                }}
+                onError={() => {
+                  setCaptchaToken(null);
+                }}
+              />
+            </View>
           )}
 
           {/* Submit */}
