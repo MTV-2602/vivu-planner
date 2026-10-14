@@ -1,7 +1,15 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-// @ts-ignore
-import ReactDOM from 'react-dom';
 import { View, Text, Pressable, Platform, ScrollView, TextInput, useWindowDimensions } from 'react-native';
+
+// Trên Native mobile, react-dom không tồn tại. Chỉ import ReactDOM động khi chạy trên nền web.
+let ReactDOM: any = null;
+if (Platform.OS === 'web') {
+  try {
+    ReactDOM = require('react-dom');
+  } catch (e) {
+    // ignore
+  }
+}
 import {
   Calendar,
   Clock,

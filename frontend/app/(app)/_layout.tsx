@@ -3,6 +3,7 @@ import { Redirect, Stack, useSegments } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 import { ChatbotProvider } from '../../context/ChatbotContext';
 import { ChatbotWidget } from '../../components/ChatbotWidget';
+import ScreenErrorBoundary from '../../components/ScreenErrorBoundary';
 
 export default function AppLayout() {
   const { session, loading, isAdmin } = useAuth();
@@ -23,11 +24,13 @@ export default function AppLayout() {
   if (isAdmin) return <Redirect href="/admin" />;
 
   return (
-    <ChatbotProvider>
-      <View style={{ flex: 1 }}>
-        <Stack screenOptions={{ headerShown: false }} />
-        <ChatbotWidget />
-      </View>
-    </ChatbotProvider>
+    <ScreenErrorBoundary fallbackTitle="Lỗi màn hình ứng dụng">
+      <ChatbotProvider>
+        <View style={{ flex: 1 }}>
+          <Stack screenOptions={{ headerShown: false }} />
+          <ChatbotWidget />
+        </View>
+      </ChatbotProvider>
+    </ScreenErrorBoundary>
   );
 }
