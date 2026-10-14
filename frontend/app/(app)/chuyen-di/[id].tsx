@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useContext, useMemo, useCallback } from 'r
 import {
   View, Text, ScrollView, Pressable, TextInput,
   Modal, Alert, ActivityIndicator, Platform, Linking, Share,
+  useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -161,6 +163,9 @@ function ModalShell({ visible, onClose, children }: { visible: boolean; onClose:
 export default function TripDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
   const queryClient = useQueryClient();
   const { isAdmin, user } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
@@ -1251,7 +1256,10 @@ export default function TripDetail() {
         scrollEventThrottle={200}
       >
         {/* Navbar */}
-        <View className="bg-brand-bg border-b border-brand-line px-4 md:px-6 py-3 md:py-4">
+        <View
+          className="bg-brand-bg border-b border-brand-line px-4 md:px-6 py-3 md:py-4"
+          style={{ paddingTop: Math.max(insets.top, 14) }}
+        >
           <View className="flex-row justify-between items-center">
             <Pressable onPress={() => router.push(isAdmin ? (APP_ROUTES.ADMIN_TRIPS as any) : (APP_ROUTES.TRIPS as any))} className="flex-row items-center gap-1.5 shrink-0" style={{ cursor: 'pointer' as any }}>
               <ArrowLeft size={16} color={BRAND_COLORS.textSoft} />
@@ -1264,6 +1272,23 @@ export default function TripDetail() {
               {(() => {
                 const chip = formatHeaderChip(statusData);
                 const isProUser = !!statusData?.isPremium || (statusData?.pro_credits || 0) > 0 || (statusData?.monthly_credits || 0) > 0;
+                const totalCredits = (statusData?.pro_credits || 0) + (statusData?.monthly_credits || 0);
+                const remaining = statusData?.remainingTrips ?? totalCredits;
+
+                let chipText = chip.text;
+                if (isMobile) {
+                  if (remaining > 0) {
+                    if (remaining >= 1000) {
+                      chipText = `👑 ${(remaining / 1000).toFixed(remaining % 1000 === 0 ? 0 : 1)}k`;
+                    } else {
+                      chipText = `👑 ${remaining}`;
+                    }
+                  } else if (isProUser) {
+                    chipText = '👑 Pro';
+                  } else {
+                    chipText = '✨ Free';
+                  }
+                }
 
                 return (
                   <Pressable
@@ -1271,21 +1296,23 @@ export default function TripDetail() {
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 5,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
+                      gap: isMobile ? 3 : 5,
+                      paddingHorizontal: isMobile ? 8 : 10,
+                      paddingVertical: isMobile ? 4 : 5,
                       borderRadius: 16,
-                      backgroundColor: chip.color,
+                      backgroundColor: (isProUser || remaining > 0) ? '#D4A017' : chip.color,
                       cursor: 'pointer' as any,
                     }}
                   >
-                    {isProUser ? (
-                      <Crown size={12} color="#fff" />
-                    ) : (
-                      <Sparkles size={12} color="#fff" />
+                    {!isMobile && (
+                      isProUser ? (
+                        <Crown size={12} color="#fff" />
+                      ) : (
+                        <Sparkles size={12} color="#fff" />
+                      )
                     )}
                     <Text className="text-[10px] md:text-xs font-extrabold text-white" style={{ color: '#fff' }}>
-                      {chip.text}
+                      {chipText}
                     </Text>
                   </Pressable>
                 );

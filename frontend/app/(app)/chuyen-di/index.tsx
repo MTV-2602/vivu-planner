@@ -16,6 +16,7 @@ import { supabase } from '../../../lib/supabase';
 import { getCache, setCache, clearCache } from '../../../lib/cache';
 import Reveal from '../../../components/Reveal';
 import SystemClock from '../../../components/SystemClock';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BRAND_COLORS, APP_ROUTES } from '../../../constants';
 import PremiumModal from '../../../components/PremiumModal';
 import ConfirmModal from '../../../components/ConfirmModal';
@@ -87,6 +88,7 @@ function getTripStatusInfo(startDateStr: string, endDateStr: string, dbStatus: s
 
 export default function Dashboard() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user, profile, isAdmin, signOut } = useAuth();
   const { openChatbot } = useChatbot();
   const userEmail = user?.email || '';
@@ -234,132 +236,161 @@ export default function Dashboard() {
       )}
       <ScrollView className="flex-1 bg-brand-bg" contentContainerStyle={{ flexGrow: 1 }}>
       {/* Navbar */}
-      <View className="bg-brand-bg border-b border-brand-line px-4 py-3 sm:px-6 sm:py-4">
+      <View
+        className="bg-brand-bg border-b border-brand-line px-3 py-2.5 sm:px-6 sm:py-4"
+        style={{
+          paddingTop: isMobile ? Math.max(insets.top, 12) : undefined,
+        }}
+      >
         {isMobile ? (
-          <View style={{ gap: 8 }}>
-            {/* Hàng 1 (Mobile): Logo bên trái, Cụm Pro chip + Profile + Thoát bên phải */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Pressable onPress={() => router.push(APP_ROUTES.LANDING as any)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                <Compass size={22} color={BRAND_COLORS.primary} />
-                <Text style={{ fontFamily: 'Lora_700Bold', fontWeight: 'bold', fontSize: 16, color: BRAND_COLORS.primary }}>ViVu Planner</Text>
-              </Pressable>
+          /* Single-row Navbar trên Mobile */
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* CỤM BÊN TRÁI: Logo ViVu Planner */}
+            <Pressable
+              onPress={() => router.push(APP_ROUTES.LANDING as any)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0 }}
+            >
+              <Compass size={20} color={BRAND_COLORS.primary} />
+              <Text
+                style={{
+                  fontFamily: 'Lora_700Bold',
+                  fontWeight: 'bold',
+                  fontSize: 15,
+                  color: BRAND_COLORS.primary,
+                }}
+              >
+                ViVu Planner
+              </Text>
+            </Pressable>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                {(() => {
-                  const chip = formatHeaderChip(paymentStatus);
-                  const isProUser = !!paymentStatus?.isPremium || (paymentStatus?.pro_credits || 0) > 0 || (paymentStatus?.monthly_credits || 0) > 0;
-
-                  return (
-                    <Pressable
-                      onPress={() => setShowPremiumModal(true)}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 3,
-                        paddingHorizontal: 8,
-                        paddingVertical: 4.5,
-                        borderRadius: 16,
-                        backgroundColor: chip.color,
-                        cursor: 'pointer' as any,
-                      }}
-                    >
-                      {isProUser ? (
-                        <Crown size={11} color="#fff" />
-                      ) : (
-                        <Sparkles size={11} color="#fff" />
-                      )}
-                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>
-                        {chip.text}
-                      </Text>
-                    </Pressable>
-                  );
-                })()}
-
-                {isAdmin && (
-                  <Pressable
-                    onPress={() => router.push(APP_ROUTES.ADMIN as any)}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 4.5, borderRadius: 8, backgroundColor: 'rgba(217, 119, 6, 0.1)' }}
-                  >
-                    <Shield size={11} color={BRAND_COLORS.accent} />
-                    <Text style={{ color: BRAND_COLORS.accent, fontSize: 10, fontWeight: '700' }}>Admin</Text>
-                  </Pressable>
-                )}
-
-                <Pressable
-                  onPress={() => router.push('/(app)/profile' as any)}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 4,
-                    paddingHorizontal: 7,
-                    paddingVertical: 3.5,
-                    borderRadius: 20,
-                    borderWidth: 1,
-                    borderColor: '#E2E8F0',
-                    backgroundColor: 'rgba(248, 250, 252, 0.8)',
-                    cursor: 'pointer' as any,
-                    maxWidth: 75,
-                  }}
-                >
-                  {profile?.avatar_url ? (
-                    <Image
-                      source={{ uri: profile.avatar_url }}
-                      style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: BRAND_COLORS.primary }}
-                    />
-                  ) : (
-                    <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: 'rgba(31,111,84,0.15)', alignItems: 'center', justifyContent: 'center' }}>
-                      <User size={10} color={BRAND_COLORS.primary} />
-                    </View>
-                  )}
-                  <Text style={{ color: '#475569', fontSize: 10, fontWeight: '600' }} numberOfLines={1}>
-                    {profile?.full_name ? profile.full_name.split(' ').slice(-1)[0] : (userEmail.split('@')[0] || '')}
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={handleLogout}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 3,
-                    paddingHorizontal: 7,
-                    paddingVertical: 4.5,
-                    borderRadius: 8,
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                    cursor: 'pointer' as any,
-                  }}
-                >
-                  <LogOut size={11} color={BRAND_COLORS.danger} />
-                  <Text style={{ color: BRAND_COLORS.danger, fontSize: 10, fontWeight: '700' }}>Thoát</Text>
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Hàng 2 (Mobile): Nút Bảng Tin Cộng Đồng & Đồng hồ */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(226, 232, 240, 0.6)' }}>
+            {/* CỤM BÊN PHẢI: Bảng tin + Pro + Profile + Đăng xuất */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              {/* Nút 🌟 Bảng Tin */}
               <Pressable
                 testID="nav-link-feed"
                 onPress={() => router.push((APP_ROUTES.FEED || '/(app)/bang-tin') as any)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 5,
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  borderRadius: 8,
-                  backgroundColor: '#FAF5EA',
+                  gap: 3,
+                  paddingHorizontal: 6,
+                  paddingVertical: 4,
+                  borderRadius: 10,
+                  backgroundColor: '#FFFFFF',
                   borderWidth: 1,
                   borderColor: '#E8DECC',
                   cursor: 'pointer' as any,
                 }}
               >
-                <Text style={{ fontSize: 12 }}>🌟</Text>
-                <Text style={{ color: BRAND_COLORS.primary, fontSize: 11, fontWeight: '800' }}>
-                  Bảng Tin Cộng Đồng
+                <Text style={{ fontSize: 10.5 }}>🌟</Text>
+                <Text style={{ color: BRAND_COLORS.primary, fontSize: 10.5, fontWeight: '700' }}>
+                  Bảng tin
                 </Text>
               </Pressable>
 
-              <SystemClock />
+              {/* Nút Pro / Nâng cấp */}
+              {(() => {
+                const chip = formatHeaderChip(paymentStatus);
+                const isProUser = !!paymentStatus?.isPremium || (paymentStatus?.pro_credits || 0) > 0 || (paymentStatus?.monthly_credits || 0) > 0;
+                const remaining = paymentStatus?.remainingTrips ?? 0;
+                let mobileText = '✨ Free';
+                if (remaining > 0) {
+                  if (remaining >= 1000) {
+                    mobileText = `👑 ${(remaining / 1000).toFixed(remaining % 1000 === 0 ? 0 : 1)}k`;
+                  } else {
+                    mobileText = `👑 ${remaining}`;
+                  }
+                } else if (isProUser) {
+                  mobileText = '👑 Pro';
+                }
+
+                return (
+                  <Pressable
+                    onPress={() => setShowPremiumModal(true)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 2,
+                      paddingHorizontal: 6,
+                      paddingVertical: 4,
+                      borderRadius: 10,
+                      backgroundColor: chip.color,
+                      cursor: 'pointer' as any,
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 10.5, fontWeight: '800' }}>
+                      {mobileText}
+                    </Text>
+                  </Pressable>
+                );
+              })()}
+
+              {isAdmin && (
+                <Pressable
+                  onPress={() => router.push(APP_ROUTES.ADMIN as any)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 2,
+                    paddingHorizontal: 5,
+                    paddingVertical: 4,
+                    borderRadius: 8,
+                    backgroundColor: 'rgba(217, 119, 6, 0.1)',
+                  }}
+                >
+                  <Shield size={10} color={BRAND_COLORS.accent} />
+                  <Text style={{ color: BRAND_COLORS.accent, fontSize: 9.5, fontWeight: '700' }}>Admin</Text>
+                </Pressable>
+              )}
+
+              {/* Nút Profile / Avatar */}
+              <Pressable
+                onPress={() => router.push('/(app)/profile' as any)}
+                style={{
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer' as any,
+                }}
+              >
+                {profile?.avatar_url ? (
+                  <Image
+                    source={{ uri: profile.avatar_url }}
+                    style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: BRAND_COLORS.primary }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 12,
+                      backgroundColor: 'rgba(31,111,84,0.15)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderColor: 'rgba(31,111,84,0.3)',
+                    }}
+                  >
+                    <User size={12} color={BRAND_COLORS.primary} />
+                  </View>
+                )}
+              </Pressable>
+
+              {/* Nút Đăng xuất (Thoát) */}
+              <Pressable
+                onPress={handleLogout}
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 7,
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer' as any,
+                }}
+              >
+                <LogOut size={12} color={BRAND_COLORS.danger} />
+              </Pressable>
             </View>
           </View>
         ) : (
@@ -617,7 +648,7 @@ export default function Dashboard() {
             </View>
           </Reveal>
         ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: isMobile ? 8 : 16, justifyContent: isMobile ? 'space-between' : 'flex-start' }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: isMobile ? 10 : 16, justifyContent: isMobile ? 'space-between' : 'flex-start' }}>
             {trips?.map((trip, idx) => {
               const isAiPro = Boolean(trip.preferences?.is_ai_pro || (trip as any).is_ai_pro || trip.preferences?.ai_tier === 'pro');
               return (
@@ -628,8 +659,8 @@ export default function Dashboard() {
                   style={{
                     padding: isMobile ? 12 : 20,
                     width: '100%',
-                    height: '100%',
-                    justifyContent: 'space-between',
+                    minHeight: isMobile ? 180 : undefined,
+                    borderRadius: 16,
                     cursor: 'pointer' as any,
                     ...(isAiPro ? { borderColor: '#F59E0B', shadowColor: '#F59E0B', shadowOpacity: 0.15, shadowRadius: 10 } : {})
                   }}
@@ -738,7 +769,7 @@ export default function Dashboard() {
                             fontWeight: '700',
                             fontFamily: 'Lora_700Bold',
                             color: '#1E293B',
-                            lineHeight: isMobile ? 18 : 24
+                            lineHeight: isMobile ? 19 : 24
                           }}
                           numberOfLines={2}
                         >
@@ -753,16 +784,16 @@ export default function Dashboard() {
                       </View>
                     </View>
 
-                    <View style={{ gap: isMobile ? 6 : 8, paddingTop: isMobile ? 8 : 12, borderTopWidth: 1, borderTopColor: 'rgba(226, 232, 240, 0.6)' }}>
+                    <View style={{ gap: isMobile ? 5 : 8, paddingTop: isMobile ? 8 : 12, borderTopWidth: 1, borderTopColor: 'rgba(226, 232, 240, 0.6)' }}>
                       <View className="flex-row items-center gap-1.5">
                         <Calendar size={isMobile ? 12 : 14} color={BRAND_COLORS.primary} />
-                        <Text style={{ fontSize: isMobile ? 10 : 12, color: '#64748B' }} numberOfLines={1}>
+                        <Text style={{ fontSize: isMobile ? 10.5 : 12, color: '#64748B' }} numberOfLines={1}>
                           {formatDate(trip.start_date)} - {formatDate(trip.end_date)}
                         </Text>
                       </View>
                       <View className="flex-row items-center gap-1.5">
                         <Wallet size={isMobile ? 12 : 14} color={BRAND_COLORS.primary} />
-                        <Text style={{ fontSize: isMobile ? 10 : 12, color: '#64748B' }} numberOfLines={1}>
+                        <Text style={{ fontSize: isMobile ? 10.5 : 12, color: '#64748B' }} numberOfLines={1}>
                           <Text style={{ fontWeight: '700', color: '#1E293B' }}>
                             {formatCurrency(trip.budget_total)}
                           </Text>
@@ -770,7 +801,7 @@ export default function Dashboard() {
                       </View>
                       <View className="flex-row items-center gap-1.5">
                         <DollarSign size={isMobile ? 12 : 14} color={BRAND_COLORS.primary} />
-                        <Text style={{ fontSize: isMobile ? 10 : 12, color: '#64748B' }} numberOfLines={1}>
+                        <Text style={{ fontSize: isMobile ? 10.5 : 12, color: '#64748B' }} numberOfLines={1}>
                           <Text style={{ fontWeight: '700', color: '#1E293B' }}>
                             {trip.traveler_count} khách
                           </Text>{' '}

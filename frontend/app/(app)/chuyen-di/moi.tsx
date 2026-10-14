@@ -19,6 +19,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { usePaymentStatus } from '../../../hooks/usePaymentStatus';
 import { formatWallet } from '../../../lib/plans';
 import PremiumModal from '../../../components/PremiumModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Reveal from '../../../components/Reveal';
 import BudgetBreakdown, { BudgetBreakdownData } from '../../../components/cart/BudgetBreakdown';
 import LiveBudgetBar from '../../../components/cart/LiveBudgetBar';
@@ -393,8 +394,11 @@ export default function TripWizard() {
   const [editCostInput, setEditCostInput] = useState('');
   const [hoveredPoolPlaceId, setHoveredPoolPlaceId] = useState<string | null>(null);
   const cartMapIframeRef = useRef<any>(null);
+  const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const isLargeScreen = windowWidth >= 900;
+  const isMobile = windowWidth < 768;
+  const [showCityPickerModal, setShowCityPickerModal] = useState(false);
 
   // ── STATE TỰ NHẬP ĐỊA ĐIỂM THỦ CÔNG (KHÔNG PHỤ THUỘC HARDCODE) ──
   const [showCustomPlaceModal, setShowCustomPlaceModal] = useState<boolean>(false);
@@ -2260,7 +2264,12 @@ export default function TripWizard() {
     >
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ flexGrow: 1, padding: 24, paddingTop: 48, paddingBottom: 48 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          padding: isMobile ? 16 : 24,
+          paddingTop: isMobile ? Math.max(insets.top, 16) : 48,
+          paddingBottom: isMobile ? Math.max(insets.bottom, 24) : 48,
+        }}
         keyboardShouldPersistTaps="handled"
       >
         <View className={`w-full self-center gap-8 ${useProWorkspace && step === 4 ? 'max-w-[1360px]' : 'max-w-xl'}`}>
@@ -2357,6 +2366,7 @@ export default function TripWizard() {
                     ) : (
                       <View style={{ borderWidth: 1, borderColor: 'rgba(27,36,32,0.15)', borderRadius: 12, overflow: 'hidden', backgroundColor: '#FBF5EA' }}>
                         <Pressable
+                          onPress={() => setShowCityPickerModal(true)}
                           style={{ paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
                         >
                           <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 14, color: '#1B2420' }}>
@@ -3861,6 +3871,54 @@ export default function TripWizard() {
                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>+ Thêm vào giỏ</Text>
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Chọn Thành Phố trên Native Mobile */}
+      <Modal
+        visible={showCityPickerModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCityPickerModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '75%', paddingBottom: Math.max(insets.bottom, 20) }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#E5DFD3' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <MapPin size={18} color={BRAND_COLORS.primary} />
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#1B2420' }}>Chọn thành phố điểm đến</Text>
+              </View>
+              <Pressable onPress={() => setShowCityPickerModal(false)} style={{ padding: 6, borderRadius: 999, backgroundColor: '#F3ECDC' }}>
+                <X size={18} color="#6E7B70" />
+              </Pressable>
+            </View>
+            <ScrollView style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+              {VIETNAMESE_CITIES.map((city) => (
+                <Pressable
+                  key={city}
+                  onPress={() => {
+                    setDestinationCity(city);
+                    setShowCityPickerModal(false);
+                  }}
+                  style={({ pressed }) => [{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingVertical: 13,
+                    paddingHorizontal: 12,
+                    borderRadius: 12,
+                    backgroundColor: destinationCity === city ? 'rgba(31,111,84,0.08)' : (pressed ? '#FBF5EA' : 'transparent'),
+                    marginVertical: 2,
+                  }]}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: destinationCity === city ? '800' : '500', color: destinationCity === city ? BRAND_COLORS.primary : '#1B2420' }}>
+                    📍 {city}
+                  </Text>
+                  {destinationCity === city && <Check size={16} color={BRAND_COLORS.primary} />}
+                </Pressable>
+              ))}
+            </ScrollView>
           </View>
         </View>
       </Modal>

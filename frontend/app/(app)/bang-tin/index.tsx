@@ -59,6 +59,7 @@ import {
   VIETNAM_PROVINCES,
   POST_CATEGORIES,
 } from '../../../constants';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const FB_REACTIONS: { id: string; label: string; emoji: string; color: string }[] = [
   { id: 'like', label: 'Thích', emoji: '👍', color: '#1877F2' },
@@ -116,6 +117,7 @@ export default function CommunityFeedScreen() {
   const router = useRouter();
   const { user, profile, isAdmin } = useAuth();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
@@ -635,7 +637,8 @@ export default function CommunityFeedScreen() {
           borderBottomWidth: 1,
           borderBottomColor: 'rgba(27,36,32,0.08)',
           paddingHorizontal: isMobile ? 12 : 24,
-          paddingVertical: 12,
+          paddingTop: isMobile ? Math.max(insets.top, 14) : 12,
+          paddingBottom: 12,
         }}
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -646,30 +649,30 @@ export default function CommunityFeedScreen() {
               style={({ pressed }) => [{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
+                gap: 5,
                 paddingHorizontal: isMobile ? 8 : 12,
-                paddingVertical: 7,
+                paddingVertical: 6,
                 borderRadius: 10,
                 backgroundColor: pressed ? '#F3ECDC' : '#FAF5EA',
                 cursor: 'pointer' as any,
               }]}
             >
-              <ArrowLeft size={16} color={BRAND_COLORS.text} />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND_COLORS.text }}>
+              <ArrowLeft size={15} color={BRAND_COLORS.text} />
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: BRAND_COLORS.text }}>
                 {isMobile ? 'Chuyến đi' : 'Chuyến đi của bạn'}
               </Text>
             </Pressable>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 6 : 8 }}>
-              <Compass size={isMobile ? 20 : 24} color={BRAND_COLORS.primary} />
-              <Text style={{ fontFamily: 'Lora_700Bold', fontSize: isMobile ? 16 : 18, color: BRAND_COLORS.primary }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 5 : 8 }}>
+              <Compass size={isMobile ? 19 : 24} color={BRAND_COLORS.primary} />
+              <Text style={{ fontFamily: 'Lora_700Bold', fontSize: isMobile ? 15 : 18, color: BRAND_COLORS.primary }}>
                 Bảng Tin ViVu
               </Text>
             </View>
           </View>
 
           {/* Right Actions */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 8 : 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 6 : 12 }}>
             {!isMobile && <SystemClock />}
 
             {/* Profile Button */}
@@ -678,9 +681,9 @@ export default function CommunityFeedScreen() {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: isMobile ? 6 : 8,
-                paddingHorizontal: isMobile ? 8 : 12,
-                paddingVertical: 6,
+                gap: isMobile ? 4 : 8,
+                paddingHorizontal: isMobile ? 6 : 12,
+                paddingVertical: isMobile ? 5 : 6,
                 borderRadius: 100,
                 backgroundColor: '#FAF5EA',
                 borderWidth: 1,
@@ -707,17 +710,19 @@ export default function CommunityFeedScreen() {
                   <User size={13} color={BRAND_COLORS.primary} />
                 </View>
               )}
-              <Text
-                numberOfLines={1}
-                style={{
-                  fontSize: 12,
-                  fontWeight: '700',
-                  color: BRAND_COLORS.text,
-                  maxWidth: isMobile ? 70 : 120,
-                }}
-              >
-                {profile?.full_name || 'Hồ sơ'}
-              </Text>
+              {!isMobile && (
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: BRAND_COLORS.text,
+                    maxWidth: 120,
+                  }}
+                >
+                  {profile?.full_name || 'Hồ sơ'}
+                </Text>
+              )}
             </Pressable>
           </View>
         </View>
