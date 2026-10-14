@@ -23,6 +23,7 @@ import {
   PricingPlan,
 } from '../lib/plans';
 import { usePaymentStatus } from '../hooks/usePaymentStatus';
+import { parseErrorMessage } from '../lib/error';
 
 interface PremiumModalProps {
   visible: boolean;
@@ -271,7 +272,7 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
       });
       setOrderData(data);
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.response?.data?.details || err.message || 'Không thể tạo đơn thanh toán';
+      const msg = parseErrorMessage(err, 'Không thể tạo đơn thanh toán');
       setErrorMessage(msg);
     } finally {
       setLoading(false);
@@ -741,7 +742,7 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
                     {errorMessage ? (
                       <View style={{ backgroundColor: '#FEF2F2', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#FECACA', flexDirection: 'row', gap: 10, alignItems: 'center' }}>
                         <AlertTriangle size={18} color="#DC2626" />
-                        <Text style={{ fontSize: 13, color: '#991B1B', fontWeight: '600', flex: 1 }}>{errorMessage}</Text>
+                        <Text style={{ fontSize: 13, color: '#991B1B', fontWeight: '600', flex: 1 }}>{typeof errorMessage === 'string' ? errorMessage : (typeof (errorMessage as any)?.message === 'string' ? (errorMessage as any).message : '')}</Text>
                       </View>
                     ) : null}
 

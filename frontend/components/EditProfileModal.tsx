@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { X, Camera, Plus, Check, User, AlertCircle, CheckCircle2 } from 'lucide-react-native';
 import { api } from '../lib/api';
+import { parseErrorMessage } from '../lib/error';
 import { PREFERENCE_OPTIONS, BRAND_COLORS } from '../constants';
 
 interface EditProfileModalProps {
@@ -103,14 +104,14 @@ export default function EditProfileModal({
             setAvatarUrl(res.data.url);
           }
         } catch (uploadErr: any) {
-          setErrorMsg(uploadErr.response?.data?.error || 'Lỗi khi tải ảnh lên máy chủ.');
+          setErrorMsg(parseErrorMessage(uploadErr, 'Lỗi khi tải ảnh lên máy chủ.'));
         } finally {
           setUploadingAvatar(false);
         }
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Lỗi khi đọc file ảnh.');
+      setErrorMsg(parseErrorMessage(err, 'Lỗi khi đọc file ảnh.'));
       setUploadingAvatar(false);
     }
   };
@@ -136,7 +137,7 @@ export default function EditProfileModal({
         onClose();
       }, 700);
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.error || err.message || 'Lỗi lưu thông tin hồ sơ.');
+      setErrorMsg(parseErrorMessage(err, 'Lỗi lưu thông tin hồ sơ.'));
     } finally {
       setSaving(false);
     }
@@ -226,7 +227,7 @@ export default function EditProfileModal({
                 }}
               >
                 <AlertCircle size={16} color="#EF4444" />
-                <Text style={{ fontSize: 13, color: '#B91C1C', flex: 1 }}>{errorMsg}</Text>
+                <Text style={{ fontSize: 13, color: '#B91C1C', flex: 1 }}>{typeof errorMsg === 'string' ? errorMsg : (typeof (errorMsg as any)?.message === 'string' ? (errorMsg as any).message : 'Lỗi')}</Text>
               </View>
             )}
 

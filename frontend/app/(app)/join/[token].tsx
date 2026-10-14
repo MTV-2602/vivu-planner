@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../hooks/useAuth';
+import { parseErrorMessage } from '../../../lib/error';
 
 export default function JoinTripPage() {
   const { token } = useLocalSearchParams<{ token: string }>();
@@ -48,12 +49,12 @@ export default function JoinTripPage() {
         router.replace(`/chuyen-di/${data.trip_id}`);
       }, 1500);
     } catch (e: any) {
-      const errData = e?.response?.data;
-      if (errData?.error?.includes('đủ')) {
+      const parsed = parseErrorMessage(e, 'Không thể tham gia lịch trình');
+      if (parsed.includes('đủ')) {
         setStatus('full');
       } else {
         setStatus('error');
-        setErrorMsg(errData?.error || 'Không thể tham gia lịch trình');
+        setErrorMsg(parsed);
       }
     }
   };
@@ -104,7 +105,7 @@ export default function JoinTripPage() {
         <>
           <Text style={styles.emoji}>❌</Text>
           <Text style={styles.title}>Không thể tham gia</Text>
-          <Text style={styles.subtitle}>{errorMsg || 'Link mời không hợp lệ hoặc đã hết hạn.'}</Text>
+          <Text style={styles.subtitle}>{typeof errorMsg === 'string' && errorMsg ? errorMsg : (typeof (errorMsg as any)?.message === 'string' ? (errorMsg as any).message : 'Link mời không hợp lệ hoặc đã hết hạn.')}</Text>
           <TouchableOpacity style={styles.btnOutline} onPress={handleGoHome}>
             <Text style={styles.btnOutlineText}>Về trang chủ</Text>
           </TouchableOpacity>

@@ -1627,7 +1627,7 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
           if (!existingDraftTrip) {
             await supabaseAdmin.from('trips').delete().eq('id', trip.id);
           }
-          return res.status(403).json({ error: deductResult.error || 'Lỗi cập nhật hạn mức chuyến đi', requires_premium: true });
+          return res.status(403).json({ error: typeof deductResult.error === 'string' ? deductResult.error : 'Lỗi cập nhật hạn mức chuyến đi', requires_premium: true });
         }
         if (deductResult.deducted) {
           quotaDeducted = true;
@@ -2056,7 +2056,7 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
         if (!existingDraftTrip) {
           await supabaseAdmin.from('trips').delete().eq('id', trip.id);
         }
-        return res.status(403).json({ error: deductResult.error || 'Lỗi cập nhật hạn mức chuyến đi', requires_premium: true });
+        return res.status(403).json({ error: typeof deductResult.error === 'string' ? deductResult.error : 'Lỗi cập nhật hạn mức chuyến đi', requires_premium: true });
       }
       if (deductResult.deducted) {
         quotaDeducted = true;
@@ -2118,14 +2118,29 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       }
     }
 
-    const statusCode = error.status || (error.message?.includes('503') ? 503 : (error.message?.includes('429') ? 429 : 500));
-    const userMessage = error.message || 'Không thể tạo lịch trình bằng AI lúc này. Vui lòng thử lại sau ít phút.';
+    const statusCode = error?.status || (typeof error?.message === 'string' && error.message.includes('503') ? 503 : (typeof error?.message === 'string' && error.message.includes('429') ? 429 : 500));
+    const rawError = error?.message || error?.error?.message || error?.error || error;
+    const userMessage = typeof rawError === 'string'
+      ? rawError
+      : (typeof rawError?.message === 'string'
+        ? rawError.message
+        : 'Không thể tạo lịch trình bằng AI lúc này. Vui lòng thử lại sau ít phút.');
+
+    const errorCode = typeof error?.code === 'string'
+      ? error.code
+      : (typeof error?.error?.code === 'string' || typeof error?.error?.code === 'number'
+        ? String(error.error.code)
+        : (statusCode === 503 ? 'AI_OVERLOADED' : (statusCode === 429 ? 'AI_RATE_LIMIT' : 'AI_SERVICE_ERROR')));
+
+    const errorDetails = typeof error?.details === 'string'
+      ? error.details
+      : (typeof error?.message === 'string' ? error.message : undefined);
 
     return res.status(statusCode).json({
       success: false,
       error: userMessage,
-      code: error.code || (statusCode === 503 ? 'AI_OVERLOADED' : (statusCode === 429 ? 'AI_RATE_LIMIT' : 'AI_SERVICE_ERROR')),
-      details: error.message
+      code: errorCode,
+      details: errorDetails
     });
   }
 });

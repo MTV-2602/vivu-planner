@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { X, Mail, KeyRound, Lock, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react-native';
 import { api } from '../lib/api';
+import { parseErrorMessage } from '../lib/error';
 
 interface ChangePasswordModalProps {
   visible: boolean;
@@ -59,7 +60,7 @@ export default function ChangePasswordModal({
       setSuccessMsg(res.data?.message || 'Mã xác nhận 6 số đã được gửi đến email của bạn.');
       setStep('verifyOtp');
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.error || err.message || 'Lỗi gửi mã xác nhận OTP.');
+      setErrorMsg(parseErrorMessage(err, 'Lỗi gửi mã xác nhận OTP.'));
     } finally {
       setLoading(false);
     }
@@ -79,7 +80,7 @@ export default function ChangePasswordModal({
       setSuccessMsg('');
       setStep('newPassword');
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.error || err.message || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
+      setErrorMsg(parseErrorMessage(err, 'Mã OTP không hợp lệ hoặc đã hết hạn.'));
     } finally {
       setLoading(false);
     }
@@ -107,7 +108,7 @@ export default function ChangePasswordModal({
       });
       setStep('success');
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.error || err.message || 'Lỗi cập nhật mật khẩu.');
+      setErrorMsg(parseErrorMessage(err, 'Lỗi cập nhật mật khẩu.'));
     } finally {
       setLoading(false);
     }
@@ -215,7 +216,7 @@ export default function ChangePasswordModal({
                 }}
               >
                 <AlertCircle size={18} color="#EF4444" />
-                <Text style={{ fontSize: 13, color: '#B91C1C', flex: 1 }}>{errorMsg}</Text>
+                <Text style={{ fontSize: 13, color: '#B91C1C', flex: 1 }}>{typeof errorMsg === 'string' ? errorMsg : (typeof (errorMsg as any)?.message === 'string' ? (errorMsg as any).message : 'Lỗi')}</Text>
               </View>
             )}
 

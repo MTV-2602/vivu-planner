@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { Compass, Sparkles, AlertCircle, ArrowRight, Check, KeyRound, Mail, X, CheckCircle2, Lock } from 'lucide-react-native';
 import { supabase, decodeJwtRole } from '../lib/supabase';
 import { api } from '../lib/api';
+import { parseErrorMessage } from '../lib/error';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BRAND_COLORS, APP_ROUTES, UI_BREAKPOINTS, UserRole } from '../constants';
 
@@ -125,7 +126,7 @@ export default function AuthScreen({ mode }: Props) {
       setForgotSuccess(res.data.message || 'Mã OTP đã được gửi đến email của bạn.');
       setForgotStep('otp');
     } catch (err: any) {
-      setForgotError(err.response?.data?.error || err.message || 'Không thể gửi mã OTP.');
+      setForgotError(parseErrorMessage(err, 'Không thể gửi mã OTP.'));
     } finally {
       setForgotLoading(false);
     }
@@ -143,7 +144,7 @@ export default function AuthScreen({ mode }: Props) {
       setForgotSuccess('');
       setForgotStep('newPassword');
     } catch (err: any) {
-      setForgotError(err.response?.data?.error || err.message || 'Mã OTP không hợp lệ.');
+      setForgotError(parseErrorMessage(err, 'Mã OTP không hợp lệ.'));
     } finally {
       setForgotLoading(false);
     }
@@ -175,7 +176,7 @@ export default function AuthScreen({ mode }: Props) {
       setForgotConfirmPassword('');
       setForgotStep('email');
     } catch (err: any) {
-      setForgotError(err.response?.data?.error || err.message || 'Lỗi đặt lại mật khẩu.');
+      setForgotError(parseErrorMessage(err, 'Lỗi đặt lại mật khẩu.'));
     } finally {
       setForgotLoading(false);
     }
@@ -341,7 +342,7 @@ export default function AuthScreen({ mode }: Props) {
         await handleNavigateAfterAuth(isAdmin);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Có lỗi xảy ra trong quá trình xử lý');
+      setErrorMsg(parseErrorMessage(err, 'Có lỗi xảy ra trong quá trình xử lý'));
     } finally {
       setLoading(false);
     }
@@ -434,7 +435,7 @@ export default function AuthScreen({ mode }: Props) {
         }
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể đăng nhập bằng Google. Vui lòng thử lại sau.');
+      setErrorMsg(parseErrorMessage(err, 'Không thể đăng nhập bằng Google. Vui lòng thử lại sau.'));
     } finally {
       setGoogleLoading(false);
     }
@@ -580,7 +581,7 @@ export default function AuthScreen({ mode }: Props) {
             }}>
               <AlertCircle size={16} color={BRAND_COLORS.danger} style={{ marginTop: 1 }} />
               <Text style={{ fontFamily: F.regular, fontSize: 13, color: BRAND_COLORS.danger, flex: 1, lineHeight: 20 }}>
-                {errorMsg}
+                {typeof errorMsg === 'string' ? errorMsg : (typeof (errorMsg as any)?.message === 'string' ? (errorMsg as any).message : 'Đã có lỗi xảy ra')}
               </Text>
             </View>
           )}
@@ -841,7 +842,7 @@ export default function AuthScreen({ mode }: Props) {
                 {forgotError ? (
                   <View style={{ backgroundColor: '#FEF2F2', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#FECACA', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                     <AlertCircle size={16} color="#DC2626" />
-                    <Text style={{ fontSize: 12, color: '#991B1B', fontWeight: '600', flex: 1 }}>{forgotError}</Text>
+                    <Text style={{ fontSize: 12, color: '#991B1B', fontWeight: '600', flex: 1 }}>{typeof forgotError === 'string' ? forgotError : (typeof (forgotError as any)?.message === 'string' ? (forgotError as any).message : 'Đã có lỗi xảy ra')}</Text>
                   </View>
                 ) : null}
 

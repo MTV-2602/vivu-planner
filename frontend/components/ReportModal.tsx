@@ -11,6 +11,7 @@ import {
 import { Flag, X, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react-native';
 import { BRAND_COLORS } from '../constants';
 import { api } from '../lib/api';
+import { parseErrorMessage } from '../lib/error';
 
 const REPORT_REASONS = [
   { id: 'spam', label: 'Spam hoặc quảng cáo trái phép', icon: '🚫' },
@@ -63,7 +64,7 @@ export default function ReportModal({
         }, 1200);
       }
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.error || 'Không thể gửi báo cáo vào lúc này');
+      setErrorMsg(parseErrorMessage(err, 'Không thể gửi báo cáo vào lúc này'));
     } finally {
       setSubmitting(false);
     }
@@ -156,7 +157,7 @@ export default function ReportModal({
               }}
             >
               <AlertCircle size={16} color="#DC2626" />
-              <Text style={{ fontSize: 13, color: '#DC2626', flex: 1 }}>{errorMsg}</Text>
+              <Text style={{ fontSize: 13, color: '#DC2626', flex: 1 }}>{typeof errorMsg === 'string' ? errorMsg : (typeof (errorMsg as any)?.message === 'string' ? (errorMsg as any).message : 'Lỗi')}</Text>
             </View>
           )}
 

@@ -61,6 +61,29 @@ const normalizePlaceKey = (str?: string) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]/g, '');
 
+const parseErrorMessage = (error: any, fallback = 'Có lỗi xảy ra khi tạo chuyến đi'): string => {
+  if (!error) return fallback;
+  if (typeof error === 'string') return error;
+  if (typeof error.response?.data?.error === 'string') return error.response.data.error;
+  if (typeof error.response?.data?.message === 'string') return error.response.data.message;
+  if (typeof error.response?.data?.error?.message === 'string') return error.response.data.error.message;
+  if (typeof error.response?.data?.details === 'string') return error.response.data.details;
+  if (typeof error.message === 'string') return error.message;
+  if (typeof error.error === 'string') return error.error;
+  if (error.code && error.message && typeof error.message === 'string') {
+    return `${error.message} (${error.code})`;
+  }
+  if (error.response?.data?.code && error.response?.data?.message && typeof error.response.data.message === 'string') {
+    return `${error.response.data.message} (${error.response.data.code})`;
+  }
+  try {
+    const stringified = JSON.stringify(error);
+    return stringified !== '{}' ? stringified : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 const getBaseUrl = () => {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin;
@@ -1250,8 +1273,7 @@ export default function TripWizard() {
       setDraftShareToken(token || tripId);
       setShowGroupModal(true);
     } catch (err: any) {
-      const msg = err?.response?.data?.error || 'Không thể khởi tạo nhóm lúc này. Vui lòng kiểm tra lại ngân sách hoặc thông tin!';
-      setErrorMsg(msg);
+      setErrorMsg(parseErrorMessage(err, 'Không thể khởi tạo nhóm lúc này. Vui lòng kiểm tra lại ngân sách hoặc thông tin!'));
     } finally {
       setIsCreatingDraftGroup(false);
     }
@@ -1966,7 +1988,7 @@ export default function TripWizard() {
         if (err.response?.status === 403 || err.response?.data?.code === 'requires_premium') {
           setShowPremiumModal(true);
         }
-        setErrorMsg(err.response?.data?.error || 'Có lỗi xảy ra khi tạo chuyến đi');
+        setErrorMsg(parseErrorMessage(err, 'Có lỗi xảy ra khi tạo chuyến đi'));
       }
     } else {
       // mode === 'manual': Không gọi AI, tạo ngay chuyến đi và đưa các địa điểm vào ngày 1 để khách tự sắp xếp, chuyển ngay sang trang chi tiết chuyến đi.
@@ -2003,7 +2025,7 @@ export default function TripWizard() {
         if (err.response?.status === 403 || err.response?.data?.code === 'requires_premium') {
           setShowPremiumModal(true);
         }
-        setErrorMsg(err.response?.data?.error || 'Có lỗi xảy ra khi tạo chuyến đi thủ công');
+        setErrorMsg(parseErrorMessage(err, 'Có lỗi xảy ra khi tạo chuyến đi thủ công'));
       }
     }
   };
@@ -2238,7 +2260,7 @@ export default function TripWizard() {
       if (err.response?.status === 403 || err.response?.data?.code === 'requires_premium') {
         setShowPremiumModal(true);
       }
-      setErrorMsg(err.response?.data?.error || 'Có lỗi xảy ra khi tạo chuyến đi');
+      setErrorMsg(parseErrorMessage(err, 'Có lỗi xảy ra khi tạo chuyến đi'));
       setStep(4);
     }
   };
@@ -2308,7 +2330,7 @@ export default function TripWizard() {
               <View className="p-4 rounded-xl bg-brand-danger/10 border border-brand-danger/30 flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
                 <View className="flex-row gap-2 items-start flex-1 min-w-[240px]">
                   <AlertTriangle size={18} color={BRAND_COLORS.danger} />
-                  <Text className="text-brand-danger text-sm flex-1">{errorMsg}</Text>
+                  <Text className="text-brand-danger text-sm flex-1">{typeof errorMsg === 'string' ? errorMsg : (typeof (errorMsg as any)?.message === 'string' ? (errorMsg as any).message : 'Đã có lỗi xảy ra')}</Text>
                 </View>
                 {useProWorkspace && step === 4 && (
                   <View className="flex-row items-center gap-2">
