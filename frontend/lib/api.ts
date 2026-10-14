@@ -11,7 +11,7 @@ import { supabase } from './supabase';
  * - 401 -> sign out (không redirect loop)
  */
 const getBaseURL = () => {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.hostname) {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return 'http://localhost:4000/api';
     }

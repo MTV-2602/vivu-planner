@@ -61,6 +61,13 @@ const normalizePlaceKey = (str?: string) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]/g, '');
 
+const getBaseUrl = () => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return 'https://vivu-planner.vercel.app';
+};
+
 function getTodayString() {
   const today = new Date();
   const year = today.getFullYear();
@@ -3702,17 +3709,13 @@ export default function TripWizard() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#E5DFD3' }}>
                 <LinkIcon size={14} color="#6E7B70" />
                 <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: '#1B2420' }}>
-                  {typeof window !== 'undefined'
-                    ? `${window.location.origin}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`
-                    : `https://vivu.app/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`}
+                  {`${getBaseUrl()}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`}
                 </Text>
               </View>
 
               <Pressable
                 onPress={async () => {
-                  const shareUrl = typeof window !== 'undefined'
-                    ? `${window.location.origin}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`
-                    : `https://vivu.app/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`;
+                  const shareUrl = `${getBaseUrl()}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`;
                   try {
                     if (typeof navigator !== 'undefined' && navigator.clipboard) {
                       await navigator.clipboard.writeText(shareUrl);
@@ -3736,9 +3739,7 @@ export default function TripWizard() {
                 <Image
                   source={{
                     uri: `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-                      typeof window !== 'undefined'
-                        ? `${window.location.origin}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`
-                        : `https://vivu.app/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`
+                      `${getBaseUrl()}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`
                     )}`,
                   }}
                   style={{ width: 130, height: 130, borderRadius: 12 }}

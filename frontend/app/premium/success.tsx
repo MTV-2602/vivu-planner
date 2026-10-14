@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { api } from '../../lib/api';
 
@@ -9,14 +9,14 @@ export default function PremiumSuccessRedirect() {
   useEffect(() => {
     async function processRedirect() {
       try {
-        const search = typeof window !== 'undefined' ? window.location.search : '';
+        const search = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.search) ? window.location.search : '';
         if (search) {
           await api.get(`/payment/verify-return${search}`);
         }
       } catch (e) {
         console.error('Redirect verify error:', e);
       } finally {
-        const search = typeof window !== 'undefined' ? window.location.search : '';
+        const search = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.search) ? window.location.search : '';
         router.replace((`/chuyen-di${search || '?payment=success'}`) as any);
       }
     }

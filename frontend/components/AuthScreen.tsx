@@ -216,7 +216,7 @@ export default function AuthScreen({ mode }: Props) {
       }
     );
 
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.hash?.includes('access_token')) {
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
       const access_token = params.get('access_token');
@@ -357,7 +357,10 @@ export default function AuthScreen({ mode }: Props) {
     setInfoMsg('');
     try {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        const redirectTo = `${window.location.origin}/dang-nhap`;
+        const origin = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin)
+          ? window.location.origin
+          : 'https://vivu-planner.vercel.app';
+        const redirectTo = `${origin}/dang-nhap`;
         const { error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {

@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { View, Text, Pressable, Modal, Platform } from 'react-native';
 import { X, Link, Copy, Check } from 'lucide-react-native';
 import { BRAND_COLORS } from '../constants';
@@ -13,7 +13,13 @@ interface ShareModalProps {
 export default function ShareModal({ visible, onClose, tripId, tripTitle }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
 
-  const shareUrl = `${typeof window !== 'undefined' ? window.location.origin : 'https://vivu-planner.vercel.app'}/share?id=${tripId}`;
+  const getOrigin = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+      return window.location.origin;
+    }
+    return 'https://vivu-planner.vercel.app';
+  };
+  const shareUrl = `${getOrigin()}/share?id=${tripId}`;
 
   const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareUrl)}&color=1F6F54&bgcolor=FFFFFF&qzone=2&format=png`;
 

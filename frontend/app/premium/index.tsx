@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 
 export default function PremiumIndexRedirect() {
   const router = useRouter();
 
   useEffect(() => {
-    const search = typeof window !== 'undefined' ? window.location.search : '';
+    const search = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.search) ? window.location.search : '';
     router.replace((`/chuyen-di${search || ''}`) as any);
   }, []);
 

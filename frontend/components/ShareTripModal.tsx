@@ -76,10 +76,14 @@ export default function ShareTripModal({
       const res = await api.post(`/trips/${tripId}/collaborators`);
       const data = res.data;
       const token = data.invite_token;
-      const webUrl = typeof window !== 'undefined' 
-        ? `${window.location.origin}/join/${token}`
-        : `vivu://join/${token}`;
-      setInviteUrl(Platform.OS === 'web' ? webUrl : (data.invite_url || `vivu://join/${token}`));
+      const getOrigin = () => {
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+          return window.location.origin;
+        }
+        return 'https://vivu-planner.vercel.app';
+      };
+      const webUrl = token ? `${getOrigin()}/join/${token}` : '';
+      setInviteUrl(Platform.OS === 'web' ? webUrl : (data.invite_url || (token ? `vivu://join/${token}` : '')));
     } catch (e: any) {
       const msg = e?.response?.data?.error || 'Không thể tạo link mời';
       Alert.alert('Lỗi', msg);

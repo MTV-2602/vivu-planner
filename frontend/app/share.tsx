@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, Platform, Pressable, Linking } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { api } from '../lib/api';
@@ -41,7 +41,8 @@ function formatCost(c?: number | null) {
 export default function PublicShareTripPage() {
   const params = useLocalSearchParams<{ id: string }>();
   // Also parse from window.location.search if on web and params.id is missing
-  const tripId = params.id || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('id') : '') || '';
+  const searchStr = Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.search ? window.location.search : '';
+  const tripId = params.id || (searchStr ? new URLSearchParams(searchStr).get('id') : '') || '';
 
   const [trip, setTrip] = useState<TripData | null>(null);
   const [loading, setLoading] = useState(true);

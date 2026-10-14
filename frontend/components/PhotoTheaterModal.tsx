@@ -259,8 +259,13 @@ export default function PhotoTheaterModal({
     if (onShare) {
       onShare(post);
     } else {
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && navigator.clipboard) {
-        navigator.clipboard.writeText(window.location.href);
+      if (Platform.OS === 'web') {
+        const shareHref = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.href)
+          ? window.location.href
+          : 'https://vivu-planner.vercel.app/bang-tin';
+        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+          navigator.clipboard.writeText(shareHref);
+        }
       }
       Alert.alert('Chia sẻ thành công', `Đã sao chép liên kết bài viết "${post?.place_name}"!`);
     }
@@ -1651,8 +1656,13 @@ export default function PhotoTheaterModal({
                   if (onShare) {
                     onShare(post);
                   } else {
-                    if (Platform.OS === 'web' && typeof window !== 'undefined' && navigator.clipboard) {
-                      navigator.clipboard.writeText(window.location.href);
+                    if (Platform.OS === 'web') {
+                      const shareHref = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.href)
+                        ? window.location.href
+                        : 'https://vivu-planner.vercel.app/bang-tin';
+                      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                        navigator.clipboard.writeText(shareHref);
+                      }
                     }
                     Alert.alert('Chia sẻ thành công', `Đã sao chép liên kết bài viết "${post.place_name}"!`);
                   }

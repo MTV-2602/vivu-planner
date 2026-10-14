@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Platform } from 'react-native';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, getRoleFromToken } from '../lib/supabase';
 import { UserRole, isUserPremium } from '../constants';
@@ -162,8 +163,11 @@ export function useAuth(): AuthState {
   };
 
   const linkGoogleAccount = async () => {
-    const redirectTo = typeof window !== 'undefined'
-      ? `${window.location.origin}/dang-nhap`
+    const origin = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) 
+      ? window.location.origin 
+      : 'https://vivu-planner.vercel.app';
+    const redirectTo = Platform.OS === 'web'
+      ? `${origin}/dang-nhap`
       : 'vivuplanner://';
 
     const { error } = await supabase.auth.linkIdentity({

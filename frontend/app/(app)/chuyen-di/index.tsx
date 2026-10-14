@@ -123,11 +123,13 @@ export default function Dashboard() {
 
 
   useEffect(() => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.search) {
       const search = window.location.search;
       if (search && (search.includes('payment=success') || search.includes('resultCode=0') || search.includes('code=00'))) {
         // Clean the URL immediately so user doesn't see ugly query params
-        window.history.replaceState({}, document.title, window.location.pathname);
+        if (typeof window !== 'undefined' && window.history && typeof window.history.replaceState === 'function') {
+          window.history.replaceState({}, (typeof document !== 'undefined' ? document.title : ''), window.location?.pathname || '');
+        }
         api.get(`/payment/verify-return${search}`).then(() => {
             setPaymentSuccessMsg('🎉 Thanh toán thành công! Gói dịch vụ đã được kích hoạt thành công, mở khóa toàn bộ tính năng Bản đồ & Tải PDF cho tài khoản của bạn.');
             refetchStatus();
