@@ -7,7 +7,7 @@ import { getCityCoordinates, searchPlaces, PlaceCandidate, fetchCandidatePlacesF
 import { getDefaultPlacesForCity } from '../places/defaultPlaces';
 import { geocodeOnline } from '../places/geocoding.service';
 import { getWeatherForecast } from '../weather/weather.service';
-import { generateItinerary, adaptItinerary, generateAlternatives, chatWithItinerary, generateRichPlacesPool, buildRichPlacesFallback, generateDeterministicPlaceId } from '../ai/gemini.service';
+import { generateItinerary, adaptItinerary, generateAlternatives, chatWithItinerary, generateRichPlacesPool, buildRichPlacesFallback, generateDeterministicPlaceId, GeneratedItinerary } from '../ai/gemini.service';
 import { getRelevantPartners, convertPartnersToPlaceCandidates, logPartnerEvent } from '../partners/partners.service';
 import {
   TripStatus,
@@ -1655,32 +1655,30 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       });
     }
 
-    // 2. Fetch weather
-    const weatherForecast = await getWeatherForecast(lat, lng, correctedStartDate, correctedEndDate);
-
-    // 3. Quét toàn bộ địa điểm du lịch ứng viên trong 1 truy vấn duy nhất từ cache DB (kèm lọc ngân sách & cân bằng danh mục)
-    const batchPlaces = await fetchCandidatePlacesForCity(
-      destination_city,
-      lat,
-      lng,
-      preferences,
-      special_requirements || '',
-      title || '',
-      parseFloat(budget_total) || 5000000,
-      parseInt(traveler_count || '1') || 1
-    );
- 
-    // Lấy đối tác liên quan
-    const relevantPartners = await getRelevantPartners(
-      destination_city,
-      lat,
-      lng,
-      preferences || {},
-      parseFloat(budget_total) || 0,
-      correctedStartDate,
-      correctedEndDate,
-      parseInt(traveler_count || '1')
-    );
+    // 2. Tối ưu song song: Fetch đồng thời thời tiết, quét địa điểm và tìm kiếm đối tác
+    const [weatherForecast, batchPlaces, relevantPartners] = await Promise.all([
+      getWeatherForecast(lat, lng, correctedStartDate, correctedEndDate).catch(() => []),
+      fetchCandidatePlacesForCity(
+        destination_city,
+        lat,
+        lng,
+        preferences,
+        special_requirements || '',
+        title || '',
+        parseFloat(budget_total) || 5000000,
+        parseInt(traveler_count || '1') || 1
+      ).catch(() => getDefaultPlacesForCity(destination_city)),
+      getRelevantPartners(
+        destination_city,
+        lat,
+        lng,
+        preferences || {},
+        parseFloat(budget_total) || 0,
+        correctedStartDate,
+        correctedEndDate,
+        parseInt(traveler_count || '1')
+      ).catch(() => [])
+    ]);
     const partnerCandidates = convertPartnersToPlaceCandidates(relevantPartners);
 
     // Chuyển đổi cart_items thành PlaceCandidate nếu có
@@ -1805,8 +1803,8 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
         : mandatoryNotice;
     }
 
-    // 4. Generate AI itinerary using Gemini
-    const itinerary = await generateItinerary(
+    // 4. Generate AI itinerary using Gemini với cơ chế Timeout 7.5s & Fallback an toàn (chống Vercel 10s Serverless Timeout)
+    const aiPromise = generateItinerary(
       {
         ...req.body,
         special_requirements: effectiveSpecialRequirements,
@@ -1816,6 +1814,44 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       weatherForecast,
       candidatePlaces
     );
+    aiPromise.catch(() => {});
+
+    let timeoutId: NodeJS.Timeout | undefined;
+    const aiTimeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('AI_TIMEOUT_FALLBACK')), 7500);
+    });
+
+    let itinerary: GeneratedItinerary;
+    try {
+      itinerary = (await Promise.race([aiPromise, aiTimeoutPromise])) as GeneratedItinerary;
+    } catch (err: any) {
+      const errMsg = String(err?.message || '').toLowerCase();
+      if (
+        err?.message === 'AI_TIMEOUT_FALLBACK' ||
+        errMsg.includes('timeout') ||
+        errMsg.includes('overloaded') ||
+        errMsg.includes('503') ||
+        errMsg.includes('504') ||
+        errMsg.includes('resource exhausted') ||
+        errMsg.includes('rate limit')
+      ) {
+        console.warn('[TripsRouter] AI tạo lịch trình mất hơn 7.5s hoặc quá tải, kích hoạt Fallback địa điểm thực tế ngay lập tức để không bị Vercel 10s timeout...', err?.message);
+        itinerary = buildRichPlacesFallback(
+          destination_city,
+          correctedStartDate,
+          correctedEndDate,
+          parseFloat(budget_total) || 5000000,
+          parseInt(traveler_count || '1') || 1,
+          preferences || {},
+          effectiveSpecialRequirements,
+          candidatePlaces
+        );
+      } else {
+        throw err;
+      }
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
 
     const enrichedPreferences = {
       ...(existingDraftTrip?.preferences || {}),

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, Platform, ImageBackground } from 'react-native';
+import { View, Text, Pressable, Platform, ImageBackground, ScrollView, useWindowDimensions } from 'react-native';
 import { Bookmark, Star, MapPin, Leaf, Sparkles } from 'lucide-react-native';
 
 interface DestinationItem {
@@ -54,6 +54,8 @@ const MOCK_DESTINATIONS: DestinationItem[] = [
 ];
 
 export default function LocalizedBentoGrid() {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 640;
   const [bookmarkedIds, setBookmarkedIds] = useState<Record<string, boolean>>({
     'pu-luong': true,
   });
@@ -101,150 +103,289 @@ export default function LocalizedBentoGrid() {
         </Text>
       </View>
 
-      {/* Bento Grid Layout */}
-      <View style={{
-        display: Platform.OS === 'web' ? ('grid' as any) : 'flex',
-        flexDirection: Platform.OS === 'web' ? undefined : 'column',
-        gridTemplateColumns: Platform.OS === 'web' ? 'repeat(3, minmax(0, 1fr))' : undefined,
-        gap: 18,
-      }}>
-        {MOCK_DESTINATIONS.map((item) => {
-          const isSaved = !!bookmarkedIds[item.id];
-          return (
-            <View
-              key={item.id}
-              style={{
-                gridColumn: Platform.OS === 'web' && item.isLarge ? 'span 2 / span 2' : undefined,
-                minHeight: item.isLarge ? 340 : 280,
-                borderRadius: 24,
-                overflow: 'hidden',
-                backgroundColor: '#FFFFFF',
-                borderWidth: 1,
-                borderColor: '#D4E3E8',
-                position: 'relative',
-                ...(Platform.OS === 'web' ? {
-                  transition: 'all 0.3s ease',
-                  boxShadow: '0 6px 24px rgba(74, 112, 125, 0.08)',
-                } as any : {}),
-              }}
-            >
-              {/* High-res Image Background */}
-              <ImageBackground
-                source={{ uri: item.imageUrl }}
-                style={{ width: '100%', height: '100%', justifyContent: 'space-between', padding: 20 }}
-                imageStyle={{ borderRadius: 24 }}
+      {/* Mobile Horizontal Carousel */}
+      {isMobile ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginHorizontal: -16 }}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}
+        >
+          {MOCK_DESTINATIONS.map((item) => {
+            const isSaved = !!bookmarkedIds[item.id];
+            return (
+              <View
+                key={item.id}
+                style={{
+                  width: 260,
+                  height: 320,
+                  borderRadius: 20,
+                  overflow: 'hidden',
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#D4E3E8',
+                  position: 'relative',
+                }}
               >
-                {/* Overlay Gradient */}
-                <View style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  backgroundColor: 'rgba(26, 44, 51, 0.35)',
-                  borderRadius: 24,
-                  ...(Platform.OS === 'web' ? {
-                    backgroundImage: 'linear-gradient(180deg, rgba(26, 44, 51, 0.15) 0%, rgba(15, 27, 34, 0.85) 85%)',
-                  } as any : {}),
-                }} />
-
-                {/* Top Bar: Category Tag & Interactive Bookmark */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
+                <ImageBackground
+                  source={{ uri: item.imageUrl }}
+                  style={{ width: '100%', height: '100%', justifyContent: 'space-between', padding: 16 }}
+                  imageStyle={{ borderRadius: 20 }}
+                >
+                  {/* Overlay Gradient */}
                   <View style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 100,
-                    backgroundColor: 'rgba(255, 255, 255, 0.92)',
-                    borderWidth: 1,
-                    borderColor: 'rgba(255, 255, 255, 0.5)',
-                    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)' } as any : {}),
-                  }}>
-                    <Text style={{ color: '#2D4B54', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
-                      {item.tag}
-                    </Text>
-                  </View>
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(26, 44, 51, 0.45)',
+                    borderRadius: 20,
+                  }} />
 
-                  <Pressable
-                    onPress={() => toggleBookmark(item.id)}
-                    style={({ pressed }) => [{
-                      width: 38,
-                      height: 38,
-                      borderRadius: 19,
-                      backgroundColor: isSaved ? '#3B7A8C' : 'rgba(255, 255, 255, 0.25)',
-                      borderWidth: 1,
-                      borderColor: isSaved ? '#3B7A8C' : 'rgba(255, 255, 255, 0.4)',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      opacity: pressed ? 0.8 : 1,
-                      transform: [{ scale: pressed ? 0.9 : 1 }],
-                      ...(Platform.OS === 'web' ? {
-                        backdropFilter: 'blur(8px)',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                      } as any : {}),
-                    }]}
-                  >
-                    <Bookmark size={18} color="#FFFFFF" fill={isSaved ? '#FFFFFF' : 'transparent'} />
-                  </Pressable>
-                </View>
-
-                {/* Bottom Destination Details & Metrics */}
-                <View style={{ gap: 10, zIndex: 10 }}>
-                  <View style={{ gap: 2 }}>
-                    <Text style={{
-                      fontSize: item.isLarge ? 22 : 18,
-                      fontWeight: '800',
-                      color: '#FFFFFF',
-                      letterSpacing: -0.3,
-                    }}>
-                      {item.title}
-                    </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <MapPin size={13} color="rgba(255, 255, 255, 0.85)" />
-                      <Text style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: 13, fontWeight: '500' }}>
-                        {item.location}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Metric Pill Badges */}
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                  {/* Top Bar: Tag & Bookmark */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
                     <View style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 5,
                       paddingHorizontal: 10,
                       paddingVertical: 5,
-                      borderRadius: 8,
+                      borderRadius: 100,
                       backgroundColor: 'rgba(255, 255, 255, 0.92)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(255, 255, 255, 0.5)',
+                      ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)' } as any : {}),
                     }}>
-                      <Star size={12} color="#D97706" fill="#D97706" />
-                      <Text style={{ color: '#2D4B54', fontSize: 11, fontWeight: '700' }}>
-                        {item.metric1}
+                      <Text style={{ color: '#2D4B54', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
+                        {item.tag}
                       </Text>
                     </View>
 
-                    <View style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 5,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 8,
-                      backgroundColor: 'rgba(59, 122, 140, 0.9)',
-                    }}>
-                      <Leaf size={12} color="#FFFFFF" />
-                      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
-                        {item.metric2}
+                    <Pressable
+                      onPress={() => toggleBookmark(item.id)}
+                      style={({ pressed }) => [{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 18,
+                        backgroundColor: isSaved ? '#3B7A8C' : 'rgba(255, 255, 255, 0.25)',
+                        borderWidth: 1,
+                        borderColor: isSaved ? '#3B7A8C' : 'rgba(255, 255, 255, 0.4)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: pressed ? 0.8 : 1,
+                        transform: [{ scale: pressed ? 0.9 : 1 }],
+                        ...(Platform.OS === 'web' ? {
+                          backdropFilter: 'blur(8px)',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                        } as any : {}),
+                      }]}
+                    >
+                      <Bookmark size={16} color="#FFFFFF" fill={isSaved ? '#FFFFFF' : 'transparent'} />
+                    </Pressable>
+                  </View>
+
+                  {/* Bottom: Tiêu đề, Tỉnh/thành, Tag trải nghiệm */}
+                  <View style={{ gap: 8, zIndex: 10 }}>
+                    <View style={{ gap: 2 }}>
+                      <Text style={{
+                        fontSize: 17,
+                        fontWeight: '800',
+                        color: '#FFFFFF',
+                        letterSpacing: -0.3,
+                      }} numberOfLines={1}>
+                        {item.title}
                       </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <MapPin size={12} color="rgba(255, 255, 255, 0.85)" />
+                        <Text style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
+                          {item.location}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Metric Pill Badges */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                      <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 8,
+                        backgroundColor: 'rgba(255, 255, 255, 0.92)',
+                      }}>
+                        <Star size={11} color="#D97706" fill="#D97706" />
+                        <Text style={{ color: '#2D4B54', fontSize: 10, fontWeight: '700' }}>
+                          {item.metric1}
+                        </Text>
+                      </View>
+
+                      <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 8,
+                        backgroundColor: 'rgba(59, 122, 140, 0.9)',
+                      }}>
+                        <Leaf size={11} color="#FFFFFF" />
+                        <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>
+                          {item.metric2}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-              </ImageBackground>
-            </View>
-          );
-        })}
-      </View>
+                </ImageBackground>
+              </View>
+            );
+          })}
+        </ScrollView>
+      ) : (
+        /* Desktop Bento Grid Layout */
+        <View style={{
+          display: Platform.OS === 'web' ? ('grid' as any) : 'flex',
+          flexDirection: Platform.OS === 'web' ? undefined : 'column',
+          gridTemplateColumns: Platform.OS === 'web' ? 'repeat(3, minmax(0, 1fr))' : undefined,
+          gap: 18,
+        }}>
+          {MOCK_DESTINATIONS.map((item) => {
+            const isSaved = !!bookmarkedIds[item.id];
+            return (
+              <View
+                key={item.id}
+                style={{
+                  gridColumn: Platform.OS === 'web' && item.isLarge ? 'span 2 / span 2' : undefined,
+                  minHeight: item.isLarge ? 340 : 280,
+                  borderRadius: 24,
+                  overflow: 'hidden',
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#D4E3E8',
+                  position: 'relative',
+                  ...(Platform.OS === 'web' ? {
+                    transition: 'all 0.3s ease',
+                    boxShadow: '0 6px 24px rgba(74, 112, 125, 0.08)',
+                  } as any : {}),
+                }}
+              >
+                {/* High-res Image Background */}
+                <ImageBackground
+                  source={{ uri: item.imageUrl }}
+                  style={{ width: '100%', height: '100%', justifyContent: 'space-between', padding: 20 }}
+                  imageStyle={{ borderRadius: 24 }}
+                >
+                  {/* Overlay Gradient */}
+                  <View style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(26, 44, 51, 0.35)',
+                    borderRadius: 24,
+                    ...(Platform.OS === 'web' ? {
+                      backgroundImage: 'linear-gradient(180deg, rgba(26, 44, 51, 0.15) 0%, rgba(15, 27, 34, 0.85) 85%)',
+                    } as any : {}),
+                  }} />
+
+                  {/* Top Bar: Category Tag & Interactive Bookmark */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
+                    <View style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 100,
+                      backgroundColor: 'rgba(255, 255, 255, 0.92)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(255, 255, 255, 0.5)',
+                      ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)' } as any : {}),
+                    }}>
+                      <Text style={{ color: '#2D4B54', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
+                        {item.tag}
+                      </Text>
+                    </View>
+
+                    <Pressable
+                      onPress={() => toggleBookmark(item.id)}
+                      style={({ pressed }) => [{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 19,
+                        backgroundColor: isSaved ? '#3B7A8C' : 'rgba(255, 255, 255, 0.25)',
+                        borderWidth: 1,
+                        borderColor: isSaved ? '#3B7A8C' : 'rgba(255, 255, 255, 0.4)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: pressed ? 0.8 : 1,
+                        transform: [{ scale: pressed ? 0.9 : 1 }],
+                        ...(Platform.OS === 'web' ? {
+                          backdropFilter: 'blur(8px)',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                        } as any : {}),
+                      }]}
+                    >
+                      <Bookmark size={18} color="#FFFFFF" fill={isSaved ? '#FFFFFF' : 'transparent'} />
+                    </Pressable>
+                  </View>
+
+                  {/* Bottom Destination Details & Metrics */}
+                  <View style={{ gap: 10, zIndex: 10 }}>
+                    <View style={{ gap: 2 }}>
+                      <Text style={{
+                        fontSize: item.isLarge ? 22 : 18,
+                        fontWeight: '800',
+                        color: '#FFFFFF',
+                        letterSpacing: -0.3,
+                      }}>
+                        {item.title}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <MapPin size={13} color="rgba(255, 255, 255, 0.85)" />
+                        <Text style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: 13, fontWeight: '500' }}>
+                          {item.location}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Metric Pill Badges */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                      <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 8,
+                        backgroundColor: 'rgba(255, 255, 255, 0.92)',
+                      }}>
+                        <Star size={12} color="#D97706" fill="#D97706" />
+                        <Text style={{ color: '#2D4B54', fontSize: 11, fontWeight: '700' }}>
+                          {item.metric1}
+                        </Text>
+                      </View>
+
+                      <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 8,
+                        backgroundColor: 'rgba(59, 122, 140, 0.9)',
+                      }}>
+                        <Leaf size={12} color="#FFFFFF" />
+                        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                          {item.metric2}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </ImageBackground>
+              </View>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }

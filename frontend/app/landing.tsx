@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, Pressable, Platform, Animated, useWindowDimensions, TextInput, ImageBackground } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Compass, Sparkles, AlertTriangle, MapPin, ShieldAlert, Check, Lock,
   ArrowRight, CalendarDays, Wallet, Star, ChevronUp, Search, Sun, Moon,
@@ -64,6 +65,7 @@ export default function Landing() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isMobile = width < 640;
+  const insets = useSafeAreaInsets();
   const px = isMobile ? 16 : 40;
   const scrollRef = useRef<any>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -339,7 +341,10 @@ export default function Landing() {
       {/* ── NAVBAR ──────────────────────────────────────────────────────────── */}
       <View style={{
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingHorizontal: px, paddingVertical: isMobile ? 14 : 18, zIndex: 100,
+        paddingHorizontal: px,
+        paddingTop: isMobile ? Math.max(insets.top, 14) : 18,
+        paddingBottom: isMobile ? 14 : 18,
+        zIndex: 100,
         backgroundColor: T.navBg,
         borderBottomWidth: scrolled ? 1 : 0,
         borderBottomColor: T.navBorder,

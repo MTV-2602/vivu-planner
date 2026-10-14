@@ -3334,18 +3334,31 @@ export default function TripWizard() {
         animationType="fade"
         onRequestClose={() => setShowScheduleOptionModal(false)}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <View style={{ width: '100%', maxWidth: 540, backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, gap: 18, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 10 }}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: isMobile ? 12 : 20 }}>
+          <View style={{
+            width: isMobile ? '92%' : '100%',
+            maxWidth: isMobile ? 360 : 540,
+            alignSelf: 'center',
+            backgroundColor: '#FFFFFF',
+            borderRadius: isMobile ? 20 : 24,
+            padding: isMobile ? 16 : 24,
+            gap: isMobile ? 14 : 18,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: 0.25,
+            shadowRadius: 20,
+            elevation: 10,
+          }}>
             {/* Modal Header */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <View style={{ gap: 4, flex: 1, paddingRight: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Sparkles size={18} color={BRAND_COLORS.primary} />
-                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 18, color: '#1B2420' }}>
+              <View style={{ gap: 4, flex: 1, paddingRight: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Sparkles size={16} color={BRAND_COLORS.primary} />
+                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: isMobile ? 15 : 18, color: '#1B2420', flexShrink: 1 }}>
                     Khởi tạo hành trình {destinationCity}
                   </Text>
                 </View>
-                <Text style={{ fontSize: 13, color: '#6E7B70', lineHeight: 18 }}>
+                <Text style={{ fontSize: 12, color: '#6E7B70', lineHeight: 17 }}>
                   Vui lòng chọn phương thức khởi tạo lịch trình phù hợp với nhu cầu của bạn:
                 </Text>
               </View>
@@ -3354,7 +3367,7 @@ export default function TripWizard() {
                 onPress={() => setShowScheduleOptionModal(false)}
                 style={{ padding: 6, borderRadius: 999, backgroundColor: '#F3ECDC' }}
               >
-                <X size={18} color="#6E7B70" />
+                <X size={16} color="#6E7B70" />
               </Pressable>
             </View>
 
@@ -3368,7 +3381,7 @@ export default function TripWizard() {
                   handleSubmit();
                 }}
                 style={({ pressed }) => [{
-                  padding: 16,
+                  padding: isMobile ? 12 : 16,
                   borderRadius: 16,
                   borderWidth: 1.5,
                   borderColor: BRAND_COLORS.accent,
@@ -3376,13 +3389,13 @@ export default function TripWizard() {
                   gap: 8,
                 }]}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(226,112,58,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-                      <Sparkles size={20} color={BRAND_COLORS.accent} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(226,112,58,0.12)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Sparkles size={18} color={BRAND_COLORS.accent} />
                     </View>
-                    <View>
-                      <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: BRAND_COLORS.accent }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 14, color: BRAND_COLORS.accent, flexShrink: 1 }}>
                         ⚡ Tạo nhanh tự động (1-chạm)
                       </Text>
                       <Text style={{ fontSize: 11, color: '#6E7B70', fontWeight: '500' }}>
@@ -3390,12 +3403,12 @@ export default function TripWizard() {
                       </Text>
                     </View>
                   </View>
-                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: BRAND_COLORS.accent }}>
+                  <View style={{ flexShrink: 0, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: BRAND_COLORS.accent }}>
                     <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>NHANH 5S</Text>
                   </View>
                 </View>
 
-                <Text style={{ fontSize: 12, color: '#3F4F45', lineHeight: 17, paddingLeft: 50 }}>
+                <Text style={{ fontSize: 12, color: '#3F4F45', lineHeight: 17, paddingLeft: 0 }}>
                   AI tự động phân tích sở thích, ngân sách và tạo lịch trình hoàn chỉnh từ A-Z trong vài giây, tối ưu đường đi và thời gian hợp lý.
                 </Text>
               </Pressable>
@@ -3412,7 +3425,7 @@ export default function TripWizard() {
                   }
                 }}
                 style={({ pressed }) => [{
-                  padding: 16,
+                  padding: isMobile ? 12 : 16,
                   borderRadius: 16,
                   borderWidth: 1.5,
                   borderColor: canAccessWorkspace ? BRAND_COLORS.primary : '#F5D599',
@@ -3422,13 +3435,13 @@ export default function TripWizard() {
                   gap: 8,
                 }]}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: canAccessWorkspace ? 'rgba(31,111,84,0.12)' : 'rgba(212,160,23,0.15)', alignItems: 'center', justifyContent: 'center' }}>
-                      <Crown size={20} color={canAccessWorkspace ? BRAND_COLORS.primary : '#D4A017'} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: canAccessWorkspace ? 'rgba(31,111,84,0.12)' : 'rgba(212,160,23,0.15)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Crown size={18} color={canAccessWorkspace ? BRAND_COLORS.primary : '#D4A017'} />
                     </View>
-                    <View>
-                      <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: canAccessWorkspace ? BRAND_COLORS.primary : '#9A5B00' }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 14, color: canAccessWorkspace ? BRAND_COLORS.primary : '#9A5B00', flexShrink: 1 }}>
                         🗺️ Không gian Bản đồ Trực quan & Lập lịch
                       </Text>
                       <Text style={{ fontSize: 11, color: canAccessWorkspace ? '#1F6F54' : '#7A5210', fontWeight: '500' }}>
@@ -3436,15 +3449,15 @@ export default function TripWizard() {
                       </Text>
                     </View>
                   </View>
-                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: canAccessWorkspace ? BRAND_COLORS.primary : '#D4A017', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <View style={{ flexShrink: 0, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: canAccessWorkspace ? BRAND_COLORS.primary : '#D4A017', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     {!canAccessWorkspace && <Lock size={10} color="#FFFFFF" />}
                     <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>
-                      {canAccessWorkspace ? `ĐÃ MỞ KHÓA PRO (${paymentStatus?.remainingTrips ?? 0} lượt)` : 'GÓI PRO 🔒'}
+                      {canAccessWorkspace ? (isMobile ? `PRO (${paymentStatus?.remainingTrips ?? 0})` : `ĐÃ MỞ KHÓA PRO (${paymentStatus?.remainingTrips ?? 0} lượt)`) : 'GÓI PRO 🔒'}
                     </Text>
                   </View>
                 </View>
 
-                <Text style={{ fontSize: 12, color: canAccessWorkspace ? '#3F4F45' : '#7A5210', lineHeight: 17, paddingLeft: 50 }}>
+                <Text style={{ fontSize: 12, color: canAccessWorkspace ? '#3F4F45' : '#7A5210', lineHeight: 17, paddingLeft: 0 }}>
                   {canAccessWorkspace
                     ? 'Tự do kéo thả địa điểm từ Giỏ hàng vào Lịch trình trực quan, xem đường xe chạy OSRM và cân đối Bảng ngân sách ma trận.'
                     : 'Đặc quyền thành viên ViVu Pro. Mở khóa Không gian Bản đồ Trực quan & Lịch trình ViVu để tự tay sắp xếp lịch trình trên bản đồ.'}

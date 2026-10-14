@@ -829,7 +829,7 @@ function filterByBudget(places: PlaceCandidate[], dailyBudget: number, neededCou
 }
 
 // Programmatic mock itinerary generator
-function generateMockItinerary(
+export function generateMockItinerary(
   tripData: any,
   weatherForecast: WeatherForecast[],
   candidatePlaces: Record<string, PlaceCandidate[]>
@@ -1839,8 +1839,71 @@ export function buildRichPlacesFallback(
   daysCount: number,
   isBudgetTight: boolean,
   cityCoords: { lat: number; lng: number },
-  existingPlaces: GeneratedRichPlaceItem[] = []
-): GeneratedRichPlaceItem[] {
+  existingPlaces?: GeneratedRichPlaceItem[]
+): GeneratedRichPlaceItem[];
+export function buildRichPlacesFallback(
+  destination_city: string,
+  startDate: string,
+  endDate: string,
+  budgetTotal?: number,
+  travelerCount?: number,
+  preferences?: any,
+  specialRequirements?: string,
+  candidatePlacesInput?: Record<string, PlaceCandidate[]>
+): GeneratedItinerary;
+export function buildRichPlacesFallback(
+  destination_city: string,
+  arg2: any,
+  arg3: any,
+  arg4?: any,
+  arg5?: any,
+  arg6?: any,
+  arg7?: any,
+  arg8?: any
+): any {
+  if (typeof arg2 !== 'number') {
+    const startDate = String(arg2 || '');
+    const endDate = String(arg3 || '');
+    const budgetTotal = Number(arg4) || 5000000;
+    const travelerCount = Number(arg5) || 1;
+    const preferences = arg6 || {};
+    const specialRequirements = arg7 || '';
+    const candidatePlacesInput: Record<string, PlaceCandidate[]> = arg8 || getDefaultPlacesForCity(destination_city);
+
+    const start = new Date(startDate || new Date().toISOString().split('T')[0]);
+    const end = new Date(endDate || startDate || new Date().toISOString().split('T')[0]);
+    const diffTime = Math.max(0, end.getTime() - start.getTime());
+    const diffDays = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1);
+
+    const weatherForecast: WeatherForecast[] = Array.from({ length: diffDays }).map((_, i) => {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      return {
+        date: d.toISOString().split('T')[0],
+        condition: 'Nắng nhẹ, tạnh ráo',
+        temp_min: 24,
+        temp_max: 32,
+        rain_chance: 10
+      };
+    });
+
+    const tripData = {
+      destination_city,
+      start_date: startDate,
+      end_date: endDate,
+      budget_total: budgetTotal,
+      traveler_count: travelerCount,
+      preferences,
+      special_requirements: specialRequirements
+    };
+
+    return generateMockItinerary(tripData, weatherForecast, candidatePlacesInput);
+  }
+
+  const daysCount: number = arg2;
+  const isBudgetTight: boolean = Boolean(arg3);
+  const cityCoords: { lat: number; lng: number } = arg4;
+  const existingPlaces: GeneratedRichPlaceItem[] = arg5 || [];
   const defaultData = getDefaultPlacesForCity(destination_city);
   const defaultCafes = getDefaultCafesForCity(destination_city);
 
