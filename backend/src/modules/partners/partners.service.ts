@@ -1,6 +1,7 @@
 import { supabaseAdmin, isDbMocked } from '../../config/supabase';
 import { PlaceCandidate } from '../places/places.service';
 import { GEO_CONFIG, BUDGET_PRICE_TIERS, PARTNER_MATCH_WEIGHTS } from '../../constants';
+import { verifyRecordPinEvidence } from './partnerImport.service';
 
 export interface Partner {
   id: string;
@@ -22,14 +23,21 @@ export interface Partner {
   booking_url?: string;
   website_url?: string;
   description?: string;
+  opening_hours?: string;
+  avg_duration_minutes?: number;
+  social_review_quote?: string;
+  social_review_url?: string;
+  coordinate_source?: string;
+  location_verified?: boolean;
+  i18n?: Record<string, any>;
   impression_count: number;
   click_count: number;
   booking_count: number;
 }
 
-function normalizeCityName(name: string): string {
+export function normalizeCityName(name: string): string {
   if (!name) return '';
-  return name
+  const norm = name
     .toLowerCase()
     .replace(/đ/g, 'd')
     .normalize('NFD')
@@ -38,6 +46,15 @@ function normalizeCityName(name: string): string {
     .replace(/thanh\s*pho\s*/g, '')
     .replace(/\s+/g, '')
     .trim();
+
+  // Surgical alias resolution without conflating islands/cities
+  if (['thuathienhue', 'tinhthuathienhue', 'thuathien-hue', 'tinhthuathien-hue'].includes(norm)) {
+    return 'hue';
+  }
+  if (['hcm', 'saigon', 'tphochiminh', 'hochiminh'].includes(norm)) {
+    return 'hochiminh';
+  }
+  return norm;
 }
 
 function getHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -100,14 +117,24 @@ export async function getRelevantPartners(
 
     const scoredPartners = partners
       .filter((partner: Partner) => {
+        // Basic validity check for coordinates
+        if (!partner.lat || !partner.lng || isNaN(partner.lat) || isNaN(partner.lng) || (partner.lat === 0 && partner.lng === 0)) {
+          return false;
+        }
+
+        // Quality verification: must be verified google_maps_pin (no legacy or unverified coordinates)
+        const isLocationVerified = partner.location_verified === true || partner.i18n?.location_verified === true;
+        const coordSource = partner.coordinate_source || partner.i18n?.coordinate_source;
+        if (!isLocationVerified || coordSource !== 'google_maps_pin') {
+          return false;
+        }
+        if (!verifyRecordPinEvidence(partner as any).verified) return false;
+
         // Match city (case insensitive and normalized)
         const partnerCityNorm = normalizeCityName(partner.city);
         if (partnerCityNorm !== targetCityNorm) return false;
 
-        // Proximity check (hard block > 15km)
-        const distance = getHaversineDistance(lat, lng, partner.lat, partner.lng);
-        if (distance > 15) return false;
-
+        // Match the whole destination; distance ranks rural/island places without hiding them.
         return true;
       })
       .map((partner: Partner) => {
@@ -228,11 +255,11 @@ export async function getRelevantPartners(
 export function convertPartnersToPlaceCandidates(partners: Partner[]): PlaceCandidate[] {
   return partners.map(p => {
     let candidateCategory: 'accommodation' | 'dining' | 'attraction' | 'rental' = 'attraction';
-    if (['hotel', 'homestay', 'resort'].includes(p.category)) {
+    if (['hotel', 'homestay', 'resort', 'accommodation'].includes(p.category)) {
       candidateCategory = 'accommodation';
-    } else if (['restaurant', 'cafe'].includes(p.category)) {
+    } else if (['restaurant', 'cafe', 'food', 'dining'].includes(p.category)) {
       candidateCategory = 'dining';
-    } else if (p.category === 'transport') {
+    } else if (['transport', 'rental'].includes(p.category)) {
       candidateCategory = 'rental';
     }
 
@@ -245,7 +272,16 @@ export function convertPartnersToPlaceCandidates(partners: Partner[]): PlaceCand
       rating: p.admin_rating || 4.5,
       price_level: p.price_level || 2,
       address: p.address,
-      booking_url: p.booking_url
+      booking_url: p.booking_url || p.website_url,
+      partner_id: p.id,
+      is_partner: true,
+      pro_badge: 'Dữ liệu Pro',
+      source: 'admin_partner',
+      opening_hours: p.opening_hours || p.i18n?.opening_hours,
+      avg_duration_minutes: p.avg_duration_minutes || p.i18n?.avg_duration_minutes,
+      description: p.description,
+      social_review_quote: p.social_review_quote,
+      i18n: p.i18n
     };
   });
 }

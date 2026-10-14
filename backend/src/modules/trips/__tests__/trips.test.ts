@@ -1,3 +1,35 @@
+// This suite generates fallback itineraries; never use a developer's live keys/database.
+for (const key of Object.keys(process.env)) {
+  if (/^(CUSTOM_AI|GEMINI|PAYOS|MOMO|STRIPE|PAYPAL|VNPAY|ZALOPAY)/i.test(key)) delete process.env[key];
+}
+process.env.SUPABASE_URL = 'http://localhost:54321';
+process.env.SUPABASE_SERVICE_ROLE_KEY = 'synthetic-mock-role-key-test-isolation';
+process.env.SUPABASE_ANON_KEY = 'synthetic-mock-anon-key-test-isolation';
+process.env.GEMINI_API_KEY = 'synthetic-mock-gemini-key-test-isolation';
+process.env.NODE_ENV = 'test';
+import dotenv from 'dotenv';
+dotenv.config = () => ({ parsed: {} });
+if (typeof (dotenv as any).configDotenv === 'function') (dotenv as any).configDotenv = () => ({ parsed: {} });
+globalThis.fetch = (() => { throw new Error('FAILCLOSED_NETWORK_DENIED: trip unit tests use synthetic fallback data'); }) as any;
+import http from 'node:http';
+import https from 'node:https';
+import net from 'node:net';
+import tls from 'node:tls';
+import dns from 'node:dns';
+import { syncBuiltinESMExports } from 'node:module';
+const denyNetwork = () => { throw new Error('FAILCLOSED_NETWORK_DENIED: trip unit tests use synthetic fallback data'); };
+http.request = denyNetwork as any;
+http.get = denyNetwork as any;
+https.request = denyNetwork as any;
+https.get = denyNetwork as any;
+net.Socket.prototype.connect = denyNetwork as any;
+tls.connect = denyNetwork as any;
+dns.lookup = denyNetwork as any;
+dns.resolve = denyNetwork as any;
+dns.promises.lookup = denyNetwork as any;
+dns.promises.resolve = denyNetwork as any;
+syncBuiltinESMExports();
+
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -195,9 +227,25 @@ describe('Trip & Quota Business Rules', () => {
     }
   });
 
-  it('DEV-BE-FIX01 LỖI B1 & H2: should keep accommodation on Day 1 and strip "Di chuyển đến" transport', async () => {
+  it('DEV-BE-FIX01 LỖI B1 & H2: should keep accommodation on Day 1 and strip "Di chuyển đến" transport', async (context) => {
     const { generateItinerary } = await import('../../ai/gemini.service');
     const { getDefaultPlacesForCity } = await import('../../places/defaultPlaces');
+    const { supabaseAdmin } = await import('../../../config/supabase');
+    const query: any = {
+      select: () => query, update: () => query, eq: () => query, neq: () => query,
+      or: () => query, lt: () => query, order: () => query, limit: () => query,
+      maybeSingle: async () => ({ data: null, error: null }),
+      then: (resolve: any) => resolve({ data: [], error: null }),
+    };
+    context.mock.method(supabaseAdmin, 'from', () => query);
+    const modelResponse = JSON.stringify({
+      days: [{ day_number: 1, date: '2026-10-15', weather_note: 'Nắng nhẹ', items: [
+        { item_type: 'accommodation', title: 'Khách sạn thử nghiệm', start_time: '14:00', end_time: '15:00', estimated_cost: 200000, order_index: 0 },
+        { item_type: 'transport', title: 'Di chuyển đến Đà Nẵng', start_time: '07:00', end_time: '08:00', estimated_cost: 100000, order_index: 1 },
+      ] }], budget_summary: { estimated_total: 300000, remaining: 1700000 },
+    });
+    context.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ candidates: [{ content: { role: 'model', parts: [{ text: modelResponse }] } }] }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    context.mock.timers.enable({ apis: ['setTimeout'] });
 
     // Test with mock data for a 1-day trip (start_date === end_date)
     const tripData = {

@@ -184,17 +184,24 @@ router.post('/create-order', requireAuth, async (req: any, res: Response) => {
 
     // 5. Lưu đơn pending vào DB kèm snapshot quota_granted
     const quotaGranted = Number(planConfig.quota_total_grant ?? 1);
-    const { error: dbErr } = await supabaseAdmin.from('payment_orders').insert({
+    const pendingOrder = {
       id: orderId,
       user_id: userId,
       method,
       plan: planConfig.id,
       amount,
       quota_granted: quotaGranted,
+      duration_days_granted: Number(planConfig.duration_days ?? 0),
       status: PaymentStatus.PENDING,
       order_code: String(orderCode),
       created_at: new Date().toISOString(),
-    });
+    };
+    let { error: dbErr } = await supabaseAdmin.from('payment_orders').insert(pendingOrder);
+    if (dbErr?.code === 'PGRST204' && dbErr.message?.includes('duration_days_granted')) {
+      const { duration_days_granted, ...legacyOrder } = pendingOrder;
+      const retry = await supabaseAdmin.from('payment_orders').insert(legacyOrder);
+      dbErr = retry.error;
+    }
 
     if (dbErr) {
       throw new Error(`Database error saving payment order: ${dbErr.message}`);
@@ -730,10 +737,12 @@ router.get('/status', requireAuth, async (req: any, res: Response) => {
       remainingTrips: isAdmin ? 9999 : proInfo.total,
       singleCredits: isAdmin ? 9999 : proInfo.proCredits,
       monthlyCredits: isAdmin ? 0 : (hasActiveMonthly ? proInfo.monthlyCredits : 0),
-      monthlyUntil: hasActiveMonthly ? proInfo.monthlyUntil : null,
+      monthlyUntil: isAdmin ? null : (profile?.premium_until || null),
+      rawMonthlyCredits: isAdmin ? 0 : Number(profile?.monthly_credits ?? 0),
       monthlyRemainingDays: hasActiveMonthly ? proInfo.monthlyRemainingDays : null,
       freeRemaining: isAdmin ? 9999 : freeQuota.remaining,
       freeTotal: isAdmin ? 9999 : freeQuota.total,
+      freeUsed: isAdmin ? 0 : freeQuota.used,
       planName,
       planId,
       dbWarning,

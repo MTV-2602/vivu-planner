@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   X, Crown, Sparkles, Check, Clock, AlertTriangle,
   History, ExternalLink, RefreshCw, Copy, CheckCircle2,
-  ShieldCheck, CreditCard, Gift,
+  ShieldCheck, CreditCard, Gift, Calendar,
 } from 'lucide-react-native';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -294,6 +294,9 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
 
   const isCurrentPremium = !!statusData?.isPremium;
   const wallet = formatWallet(statusData);
+  const monthlyExpiresAt = statusData?.monthlyUntil ?? statusData?.premiumUntil ?? null;
+  const monthlyExpired = Boolean(monthlyExpiresAt && new Date(monthlyExpiresAt).getTime() <= Date.now());
+  const monthlyAvailable = monthlyExpiresAt && !monthlyExpired ? statusData?.monthlyCredits ?? statusData?.monthly_credits ?? 0 : 0;
 
   // Màn hình thanh toán thành công
   if (activated) {
@@ -479,7 +482,7 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
             {/* TAB 1: NÂNG CẤP GÓI */}
             {activeTab === 'upgrade' && (
               <>
-                {/* Khối "Ví lượt hiện tại" - Tách bạch rõ ràng 2 ví */}
+                {/* Khối "Ví lượt hiện tại" - Tách bạch rõ ràng 3 ví */}
                 <View
                   style={{
                     backgroundColor: isCurrentPremium ? '#FEFCE8' : '#F8FAFC',
@@ -505,7 +508,7 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
                   </View>
 
                   {/* 1. Ví Miễn Phí (AI Tiêu Chuẩn) */}
-                  <View style={{ backgroundColor: '#F1F5F9', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', gap: 4 }}>
+                  <View testID="wallet-free" style={{ backgroundColor: '#F1F5F9', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', gap: 4 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Gift size={16} color="#059669" />
@@ -520,56 +523,26 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
                       </View>
                     </View>
                     <Text style={{ fontSize: 11, color: '#64748B', paddingLeft: 22 }}>
-                      {wallet.freeLine || `🎁 Lượt miễn phí cơ bản: ${wallet.freeRemaining}/${wallet.freeTotal} chuyến`}
+                      Đã dùng {statusData?.freeUsed ?? statusData?.tripsUsed ?? Math.max(0, wallet.freeTotal - wallet.freeRemaining)} / tổng {wallet.freeTotal} lượt • còn {wallet.freeRemaining} lượt AI Tiêu chuẩn
                     </Text>
                   </View>
 
-                  {/* 2. Ví Pro (AI Pro & Live Map) */}
-                  <View style={{
-                    backgroundColor: (statusData?.remainingTrips ?? 0) > 0 ? '#ECFDF5' : '#FFFBEB',
-                    padding: 12,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: (statusData?.remainingTrips ?? 0) > 0 ? '#A7F3D0' : '#FDE68A',
-                    gap: 6,
-                  }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Crown size={16} color={(statusData?.remainingTrips ?? 0) > 0 ? '#059669' : '#D97706'} />
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: (statusData?.remainingTrips ?? 0) > 0 ? '#065F46' : '#92400E' }}>
-                          Ví Pro (AI Pro & Live Map)
-                        </Text>
-                      </View>
-                      <View style={{
-                        backgroundColor: (statusData?.remainingTrips ?? 0) > 0 ? '#10B981' : '#F59E0B',
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                        borderRadius: 8,
-                      }}>
-                        <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFFFFF' }}>
-                          {statusData?.remainingTrips ?? 0} lượt khả dụng
-                        </Text>
-                      </View>
+                  {/* 2. Pro không thời hạn */}
+                  <View testID="wallet-pro-permanent" style={{ backgroundColor: '#ECFDF5', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#A7F3D0', gap: 5 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}><Crown size={16} color="#047857" /><Text style={{ fontSize: 13, fontWeight: '800', color: '#065F46' }}>Pro không thời hạn</Text></View>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#047857' }}>{wallet.singleCredits} lượt</Text>
                     </View>
-
-                    {/* Chi tiết lượt không thời hạn và gói thời hạn */}
-                    <View style={{ gap: 3, paddingLeft: 22 }}>
-                      {wallet.singleLine ? (
-                        <Text style={{ fontSize: 11, color: (statusData?.remainingTrips ?? 0) > 0 ? '#047857' : '#78350F', fontWeight: '600' }}>
-                          {wallet.singleLine}
-                        </Text>
-                      ) : null}
-                      {wallet.monthlyLine ? (
-                        <Text style={{ fontSize: 11, color: (statusData?.remainingTrips ?? 0) > 0 ? '#047857' : '#78350F', fontWeight: '600' }}>
-                          📅 {wallet.monthlyLine}
-                        </Text>
-                      ) : null}
-                      {!wallet.singleLine && !wallet.monthlyLine && (
-                        <Text style={{ fontSize: 11, color: '#B45309' }}>
-                          Chưa có lượt Pro. Nâng cấp gói bên dưới để dùng AI Pro & Không gian Bản đồ Trực quan!
-                        </Text>
-                      )}
+                    <Text style={{ fontSize: 11, color: '#047857', paddingLeft: 22 }}>Không có ngày hết hạn • dùng cho AI Pro và Live Map</Text>
+                  </View>
+                  {/* 3. Pro có hạn */}
+                  <View testID="wallet-pro-timed" style={{ backgroundColor: '#FFFBEB', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#FDE68A', gap: 5 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}><Calendar size={16} color="#B45309" /><Text style={{ fontSize: 13, fontWeight: '800', color: '#92400E' }}>Pro có hạn</Text></View>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#92400E' }}>{monthlyAvailable} lượt khả dụng</Text>
                     </View>
+                    <Text style={{ fontSize: 11, color: '#92400E', paddingLeft: 22 }}>{monthlyExpiresAt ? `${monthlyExpired ? 'Đã hết hạn' : monthlyAvailable > 0 ? 'Còn hạn' : 'Đã dùng hết lượt, thời hạn còn hiệu lực'} • đến ${new Date(monthlyExpiresAt).toLocaleDateString('vi-VN')}` : 'Chưa có gói có hạn • chưa có ngày hết hạn'}</Text>
+                    {monthlyExpired && (statusData?.rawMonthlyCredits || 0) > 0 && <Text style={{ fontSize: 11, color: '#92400E', paddingLeft: 22 }}>{statusData?.rawMonthlyCredits} lượt đã hết hạn, không thể sử dụng.</Text>}
                   </View>
                 </View>
 

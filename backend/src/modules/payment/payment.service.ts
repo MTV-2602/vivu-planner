@@ -404,65 +404,28 @@ export async function grantCreditsToUser(
   quotaGranted: number,
   durationDays: number
 ): Promise<void> {
+  if (![quotaGranted, durationDays].every(Number.isSafeInteger) || quotaGranted <= 0 || durationDays < 0 || quotaGranted > 2147483647 || durationDays > 36500) throw new Error('Cấu hình gói không hợp lệ.');
   const { error: rpcErr } = await supabaseAdmin.rpc('grant_plan_credits', {
     p_user_id: userId,
     p_credits: quotaGranted,
     p_duration_days: durationDays,
   });
 
-  if (rpcErr) {
-    console.warn('[Payment] grant_plan_credits RPC error, falling back to manual computeGrant:', rpcErr.message);
-    const { data: currentProfile, error: profileFetchErr } = await supabaseAdmin
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (profileFetchErr || !currentProfile) {
-      throw new Error(`Profile not found: ${profileFetchErr?.message || 'not found'}`);
-    }
-
-    const computed = computeGrant(
-      currentProfile,
-      { quota_total_grant: quotaGranted, duration_days: durationDays },
-      new Date()
-    );
-
-    const { error: updateProfileErr } = await supabaseAdmin
-      .from('profiles')
-      .update({
-        pro_credits: computed.pro_credits,
-        monthly_credits: computed.monthly_credits,
-        premium_until: computed.premium_until,
-        is_premium: computed.pro_credits + computed.monthly_credits > 0,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId);
-
-    if (updateProfileErr) {
-      throw updateProfileErr;
-    }
-  } else if (durationDays <= 0) {
-    // Đảm bảo: nếu mua gói theo lượt mà user không có lượt tháng khả dụng, premium_until phải là null
-    const { data: prof } = await supabaseAdmin
-      .from('profiles')
-      .select('monthly_credits, premium_until')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (prof && Number(prof.monthly_credits ?? 0) <= 0 && prof.premium_until !== null) {
-      await supabaseAdmin
-        .from('profiles')
-        .update({
-          monthly_credits: 0,
-          premium_until: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', userId);
-    }
+  if (!rpcErr) return;
+  if (rpcErr.code !== 'PGRST202') throw rpcErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data: current, error: fetchErr } = await supabaseAdmin.from('profiles').select('*').eq('id', userId).maybeSingle();
+    if (fetchErr || !current) throw fetchErr || new Error('Không tìm thấy người dùng.');
+    const computed = computeGrant(current, { quota_total_grant: quotaGranted, duration_days: durationDays });
+    let query = supabaseAdmin.from('profiles').update({ ...computed, is_premium: current.role === 'admin' || computed.pro_credits + computed.monthly_credits > 0, updated_at: new Date().toISOString() })
+      .eq('id', userId).eq('pro_credits', current.pro_credits).eq('monthly_credits', current.monthly_credits);
+    query = current.premium_until === null ? query.is('premium_until', null) : query.eq('premium_until', current.premium_until);
+    const { data: updated, error: updateErr } = await query.select().maybeSingle();
+    if (updateErr) throw updateErr;
+    if (updated) return;
   }
+  throw new Error('Ví lượt vừa thay đổi. Vui lòng thử lại.');
 }
-
 // ─── Unified Order Activation Function (Single Source of Truth) ─────────────
 export interface ActivateOrderOptions {
   force?: boolean;
@@ -619,7 +582,7 @@ export async function activateOrderById(
       Number(order.quota_granted) > 0
         ? Number(order.quota_granted)
         : Number(dbPlan.quota_total_grant ?? 1);
-    const durationDays = Number(dbPlan.duration_days ?? 0);
+    const durationDays = Number(order.duration_days_granted ?? dbPlan.duration_days ?? 0);
 
     try {
       await grantCreditsToUser(order.user_id, quotaGranted, durationDays);

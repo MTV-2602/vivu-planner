@@ -8,7 +8,7 @@ import { getDefaultPlacesForCity } from '../places/defaultPlaces';
 import { geocodeOnline } from '../places/geocoding.service';
 import { getWeatherForecast } from '../weather/weather.service';
 import { generateItinerary, adaptItinerary, generateAlternatives, chatWithItinerary, generateRichPlacesPool, buildRichPlacesFallback, generateDeterministicPlaceId } from '../ai/gemini.service';
-import { getRelevantPartners, convertPartnersToPlaceCandidates, logPartnerEvent } from '../partners/partners.service';
+import { getRelevantPartners, convertPartnersToPlaceCandidates, logPartnerEvent, normalizeCityName } from '../partners/partners.service';
 import {
   TripStatus,
   TravelerType,
@@ -48,7 +48,32 @@ const aiChatLimiter = createRateLimiter({
   message: 'Bạn đã gửi tin nhắn quá nhanh. Vui lòng chờ 1 phút trước khi tiếp tục.'
 });
 
-// Middleware requirePremium: kiểm tra quyền Pro của user hoặc chuyến đi Pro
+// Helper: Kiểm tra quyền Pro của chuyến đi dựa trên bản ghi database chính chủ.
+// Tuyệt đối không tin cậy req.body, cờ use_pro_workspace đơn thuần hay số dư ví/credits của tài khoản.
+export function isTripProEntitled(trip: any): boolean {
+  if (!trip || !trip.preferences) return false;
+  return Boolean(
+    trip.preferences.is_ai_pro === true ||
+    trip.preferences.ai_tier === 'pro'
+  );
+}
+
+export function buildCreatedTripResponse(savedTrip: any, refreshedTrip: any, preferences: any, days: any[], isAiPro: boolean, quotaDeducted: boolean): any {
+  if (!savedTrip || typeof savedTrip.id !== 'string' || !savedTrip.id.trim()) throw new Error('Không nhận được mã chuyến đi sau khi lưu.');
+  const trip = refreshedTrip?.id === savedTrip.id ? refreshedTrip : savedTrip;
+  const finalPreferences = {
+    ...preferences,
+    ...(trip.preferences || {}),
+    is_ai_pro: isAiPro,
+    ai_tier: isAiPro ? 'pro' : 'standard',
+    use_local_data: isAiPro,
+    pro_credit_consumed: isAiPro && Boolean(quotaDeducted || preferences?.pro_credit_consumed || trip.preferences?.pro_credit_consumed),
+    quota_consumed: !isAiPro && Boolean(quotaDeducted || preferences?.quota_consumed || trip.preferences?.quota_consumed)
+  };
+  return { ...savedTrip, ...trip, preferences: finalPreferences, is_ai_pro: isAiPro, days };
+}
+
+// Middleware requirePremium: kiểm tra quyền Pro của chuyến đi Pro (bắt buộc trip Pro)
 const requirePremium = async (req: any, res: any, next: any) => {
   try {
     const userId = req.user?.id;
@@ -64,220 +89,47 @@ const requirePremium = async (req: any, res: any, next: any) => {
         .eq('id', tripId)
         .maybeSingle();
 
-      if (trip?.preferences?.is_ai_pro === true || trip?.preferences?.ai_tier === 'pro') {
+      if (!trip) {
+        return res.status(404).json({ error: 'Trip not found' });
+      }
+
+      if (isTripProEntitled(trip)) {
         return next();
       }
+
+      return res.status(403).json({
+        error: 'Tính năng chỉ dành cho chuyến đi Pro',
+        requires_upgrade: true,
+        requires_premium: true
+      });
     }
 
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (!isUserPremium(profile)) {
-      return res.status(403).json({ error: 'Tính năng chỉ dành cho tài khoản Pro hoặc chuyến đi Pro', requires_premium: true });
-    }
-    next();
+    return res.status(403).json({
+      error: 'Tính năng chỉ dành cho chuyến đi Pro',
+      requires_upgrade: true,
+      requires_premium: true
+    });
   } catch (err) {
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
 
-// Helper: Trừ quota chuyến đi (Pro hoặc Free)
-export async function deductTripQuota(
-  userId: string,
-  isAiPro: boolean,
-  existingDraftTrip: any,
-  tripId: string,
-  profile: any
-): Promise<{ success: boolean; deducted?: boolean; error?: string }> {
-  if (isAiPro) {
-    const alreadyConsumed = Boolean(existingDraftTrip?.preferences?.pro_credit_consumed);
-    if (!alreadyConsumed) {
-      // 1. Gọi RPC consume_pro_credit (atomic)
-      const { data: remainingAfter, error: rpcErr } = await supabaseAdmin.rpc('consume_pro_credit', {
-        p_user_id: userId,
-      });
-
-      if (rpcErr) {
-        // NẾU RPC báo NO_PRO_CREDIT: coi là hết lượt ngay lập tức, tuyệt đối KHÔNG fallback dùng profile stale!
-        if (rpcErr.message?.includes('NO_PRO_CREDIT')) {
-          return { success: false, error: 'Bạn không còn lượt Pro khả dụng. Vui lòng mua thêm gói để tạo chuyến đi này!' };
-        }
-
-        const isMissingFunction = rpcErr.code === 'PGRST202' || rpcErr.message?.includes('Could not find the function');
-        if (!isMissingFunction) {
-          console.error('[TripQuota] Unexpected consume_pro_credit RPC error:', rpcErr);
-          return { success: false, error: 'Không thể trừ lượt Pro: ' + rpcErr.message };
-        }
-
-        console.warn('[TripQuota] consume_pro_credit RPC missing, attempting safe manual deduction:', rpcErr.message);
-        // Fallback thủ công an toàn CHỈ khi thiếu hàm: đọc LẠI profile tươi từ DB ngay trước khi trừ,
-        // trừ bằng điều kiện tối ưu lạc quan (optimistic concurrency) để không double-spend.
-        const { data: currentProf } = await supabaseAdmin
-          .from('profiles')
-          .select('pro_credits, monthly_credits, premium_until')
-          .eq('id', userId)
-          .maybeSingle();
-
-        const now = new Date();
-        const hasActiveMonthly = Boolean(
-          currentProf?.premium_until && new Date(currentProf.premium_until) > now && (currentProf?.monthly_credits ?? 0) > 0
-        );
-
-        if (hasActiveMonthly) {
-          const currentMonthly = currentProf?.monthly_credits ?? 0;
-          const { data: upRes, error: upErr } = await supabaseAdmin
-            .from('profiles')
-            .update({
-              monthly_credits: currentMonthly - 1,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', userId)
-            .eq('monthly_credits', currentMonthly)
-            .select();
-
-          if (upErr || !upRes || upRes.length === 0) {
-            return { success: false, error: 'Bạn đã hết lượt Pro khả dụng.' };
-          }
-        } else if ((currentProf?.pro_credits ?? 0) > 0) {
-          const currentPro = currentProf?.pro_credits ?? 0;
-          const { data: upRes, error: upErr } = await supabaseAdmin
-            .from('profiles')
-            .update({
-              pro_credits: currentPro - 1,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', userId)
-            .eq('pro_credits', currentPro)
-            .select();
-
-          if (upErr || !upRes || upRes.length === 0) {
-            return { success: false, error: 'Bạn đã hết lượt Pro khả dụng.' };
-          }
-        } else {
-          return { success: false, error: 'Bạn đã hết lượt Pro khả dụng.' };
-        }
-      }
-
-      // Đánh dấu cờ pro_credit_consumed: true vào preferences của chuyến đi
-      const { data: freshTrip } = await supabaseAdmin.from('trips').select('preferences').eq('id', tripId).maybeSingle();
-      const updatedPrefs = {
-        ...(freshTrip?.preferences || {}),
-        is_ai_pro: true,
-        ai_tier: 'pro',
-        pro_credit_consumed: true,
-      };
-      await supabaseAdmin.from('trips').update({ preferences: updatedPrefs }).eq('id', tripId);
-      return { success: true, deducted: true };
-    }
-  } else {
-    // Chuyến thường (Free): chỉ tăng quota_used khi chưa trừ cho chuyến này
-    const alreadyConsumedFree = Boolean(existingDraftTrip?.preferences?.quota_consumed);
-    if (!alreadyConsumedFree && profile) {
-      const nextUsed = (profile?.quota_used ?? 0) + 1;
-      await supabaseAdmin
-        .from('profiles')
-        .update({
-          quota_used: nextUsed,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', userId);
-
-      // Đánh dấu cờ quota_consumed: true vào preferences của chuyến đi
-      const { data: freshTrip } = await supabaseAdmin.from('trips').select('preferences').eq('id', tripId).maybeSingle();
-      const updatedPrefs = {
-        ...(freshTrip?.preferences || {}),
-        quota_consumed: true,
-      };
-      await supabaseAdmin.from('trips').update({ preferences: updatedPrefs }).eq('id', tripId);
-      return { success: true, deducted: true };
-    }
-  }
-  return { success: true, deducted: false };
+// Source tracking and balance changes must commit together; no nonatomic fallback.
+export async function deductTripQuota(userId: string, isAiPro: boolean, existingDraftTrip: any, tripId: string, profile: any): Promise<{ success: boolean; deducted?: boolean; error?: string; status?: number; code?: string; safeToDelete?: boolean }> {
+  const { data, error } = await supabaseAdmin.rpc('consume_trip_wallet', { p_user_id: userId, p_trip_id: tripId, p_is_pro: isAiPro });
+  if (!error && typeof data?.deducted === 'boolean') return { success: true, deducted: data.deducted };
+  if (!error) return { success: false, status: 500, error: 'Chưa xác nhận được giao dịch ví lượt. Vui lòng thử lại chuyến đi đã lưu.' };
+  if (error.code === 'PGRST202') return { success: false, safeToDelete: true, status: 503, code: 'WALLET_MIGRATION_REQUIRED', error: 'Chưa cập nhật cơ sở dữ liệu ví lượt. Quản trị viên cần chạy migration 20261014_three_wallets.sql.' };
+  const empty = error.message.includes('NO_');
+  return { success: false, safeToDelete: empty, status: empty ? 403 : 500, error: empty ? 'Bạn không còn lượt khả dụng cho chuyến đi này.' : 'Không thể xác nhận giao dịch ví lượt. Vui lòng thử lại chuyến đi đã lưu.' };
 }
 
-// Helper: Hoàn trả lại quota khi xảy ra lỗi tạo chuyến sau khi đã trừ
-export async function rollbackTripQuota(
-  userId: string,
-  isAiPro: boolean,
-  tripId?: string | null
-): Promise<void> {
-  try {
-    if (isAiPro) {
-      // 1. Hoàn trả Pro: cộng lại 1 vào pro_credits trên DB
-      const { data: currentProf } = await supabaseAdmin
-        .from('profiles')
-        .select('pro_credits')
-        .eq('id', userId)
-        .maybeSingle();
-
-      const currentPro = currentProf?.pro_credits ?? 0;
-      await supabaseAdmin
-        .from('profiles')
-        .update({
-          pro_credits: currentPro + 1,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', userId);
-
-      if (tripId) {
-        const { data: freshTrip } = await supabaseAdmin
-          .from('trips')
-          .select('preferences')
-          .eq('id', tripId)
-          .maybeSingle();
-
-        if (freshTrip?.preferences?.pro_credit_consumed) {
-          const updatedPrefs = {
-            ...freshTrip.preferences,
-            pro_credit_consumed: false,
-          };
-          await supabaseAdmin.from('trips').update({ preferences: updatedPrefs }).eq('id', tripId);
-        }
-      }
-      console.log(`[RollbackQuota] Đã hoàn trả lại 1 pro_credit cho user ${userId}`);
-    } else {
-      // 2. Hoàn trả Free: trừ đi 1 ở quota_used trên DB (không giảm dưới 0)
-      const { data: currentProf } = await supabaseAdmin
-        .from('profiles')
-        .select('quota_used')
-        .eq('id', userId)
-        .maybeSingle();
-
-      const currentUsed = currentProf?.quota_used ?? 0;
-      const newUsed = Math.max(0, currentUsed - 1);
-      await supabaseAdmin
-        .from('profiles')
-        .update({
-          quota_used: newUsed,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', userId);
-
-      if (tripId) {
-        const { data: freshTrip } = await supabaseAdmin
-          .from('trips')
-          .select('preferences')
-          .eq('id', tripId)
-          .maybeSingle();
-
-        if (freshTrip?.preferences?.quota_consumed) {
-          const updatedPrefs = {
-            ...freshTrip.preferences,
-            quota_consumed: false,
-          };
-          await supabaseAdmin.from('trips').update({ preferences: updatedPrefs }).eq('id', tripId);
-        }
-      }
-      console.log(`[RollbackQuota] Đã hoàn trả lại 1 lượt miễn phí (quota_used: ${currentUsed} -> ${newUsed}) cho user ${userId}`);
-    }
-  } catch (err: any) {
-    console.error('[RollbackQuota] Lỗi hoàn trả quota:', err.message);
-  }
+export async function rollbackTripQuota(userId: string, isAiPro: boolean, tripId?: string | null): Promise<boolean> {
+  if (!tripId) return false;
+  const { error } = await supabaseAdmin.rpc('refund_trip_wallet', { p_user_id: userId, p_trip_id: tripId });
+  if (error) console.error('[RollbackQuota] Không thể hoàn lượt nguyên tử; giữ dấu trừ lượt để đối soát:', error.message, { tripId });
+  return !error;
 }
-
 const logActivity = async (tripId: string, userId: string, actionType: string, itemTitle?: string | null, itemId?: string | null, detail?: any) => {
   try {
     await supabaseAdmin.from('trip_activity_log').insert({
@@ -450,6 +302,15 @@ router.put('/join/:token', requireAuth, async (req: any, res: Response) => {
       return res.status(410).json({ error: 'Link mời đã hết hạn' });
     }
 
+    // Kiểm tra chuyến đi có phải là chuyến Pro không trước khi cho phép gia nhập
+    if (!isTripProEntitled(foundTrip) && !req.isAdmin) {
+      return res.status(403).json({
+        error: 'Tính năng nhóm chỉ dành cho chuyến đi Pro',
+        requires_upgrade: true,
+        requires_premium: true
+      });
+    }
+
     const tripId = foundTrip.id;
 
     // 3. Check user không phải owner
@@ -544,18 +405,14 @@ router.post('/:id/collaborators', requireAuth, requirePremium, async (req: any, 
       return res.status(403).json({ error: 'Chỉ chủ chuyến đi mới có quyền tạo link mời' });
     }
 
-    // 2. Check quyền Pro: trip là Pro hoặc owner là Pro hoặc admin
-    const isTripPro = Boolean(trip.preferences?.is_ai_pro === true || trip.preferences?.ai_tier === 'pro');
+    // 2. Check quyền Pro: trip phải là chuyến Pro
+    const isTripPro = isTripProEntitled(trip);
     if (!isTripPro && !req.isAdmin) {
-      const { data: profile } = await supabaseAdmin
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (!isUserPremium(profile)) {
-        return res.status(403).json({ error: 'Tính năng chỉ dành cho chuyến đi Pro hoặc tài khoản Pro', requires_premium: true });
-      }
+      return res.status(403).json({
+        error: 'Tính năng chỉ dành cho chuyến đi Pro',
+        requires_upgrade: true,
+        requires_premium: true
+      });
     }
 
     // 3. Đếm số member đã tham gia: count < 4
@@ -927,6 +784,127 @@ router.get('/:id/public', async (req, res: Response) => {
   }
 });
 
+/**
+ * Helper: Lấy danh sách đối tác xác thực hợp lệ cho chuyến đi Pro
+ * Tự kết hợp dữ liệu local đã xác minh thuộc thành phố của chuyến đi Pro.
+ */
+export async function getEligiblePartnersForTrip(trip: any): Promise<any[]> {
+  const isTripPro = isTripProEntitled(trip);
+  if (!isTripPro) return [];
+  const city = trip?.destination_city || trip?.destination_province || '';
+  if (!city) return [];
+  const cityCoords = getCityCoordinates(city);
+  const lat = (trip?.lat !== undefined && trip?.lat !== null && !isNaN(Number(trip?.lat))) ? Number(trip?.lat) : cityCoords.lat;
+  const lng = (trip?.lng !== undefined && trip?.lng !== null && !isNaN(Number(trip?.lng))) ? Number(trip?.lng) : cityCoords.lng;
+  return await getRelevantPartners(city, lat, lng, trip?.preferences || {});
+}
+
+/**
+ * Helper: Chuẩn hóa và làm sạch thông tin đối tác cho từng địa điểm lịch trình
+ * - Chuyến Pro & đối tác hợp lệ: làm giàu provenance và booking_url
+ * - Chuyến Free hoặc đối tác không hợp lệ: làm sạch toàn bộ cờ/dữ liệu đối tác, bảo tồn dữ liệu địa điểm thường
+ */
+export function sanitizeItineraryItemForTrip(
+  item: any,
+  isTripPro: boolean,
+  eligiblePartnerMap: Map<string, any>
+): any {
+  let rawPid: string | null = null;
+  if (item.partner_id) {
+    rawPid = String(item.partner_id).replace('partner_', '');
+  } else if (item.google_place_id && typeof item.google_place_id === 'string' && item.google_place_id.startsWith('partner_')) {
+    rawPid = item.google_place_id.replace('partner_', '');
+  }
+
+  const isEligiblePartner = Boolean(isTripPro && rawPid && eligiblePartnerMap.has(rawPid));
+
+  if (isEligiblePartner) {
+    const matchedPartner = eligiblePartnerMap.get(rawPid!)!;
+    const authoritativeBookingUrl = matchedPartner.booking_url || null;
+    let sanitizedI18n = item.i18n;
+    if (sanitizedI18n && typeof sanitizedI18n === 'object') {
+      sanitizedI18n = { ...sanitizedI18n };
+      delete sanitizedI18n.pro_privilege;
+      if (sanitizedI18n.booking_url !== undefined) {
+        sanitizedI18n.booking_url = authoritativeBookingUrl;
+      }
+      sanitizedI18n.pro_badge = 'Dữ liệu Pro';
+      sanitizedI18n.is_pro_partner = true;
+    }
+    return {
+      ...item,
+      partner_id: String(matchedPartner.id),
+      google_place_id: item.google_place_id || `partner_${matchedPartner.id}`,
+      is_partner: true,
+      is_pro_partner: true,
+      pro_badge: 'Dữ liệu Pro',
+      source: 'admin_partner',
+      booking_url: authoritativeBookingUrl,
+      pro_privilege: null,
+      i18n: sanitizedI18n
+    };
+  }
+
+  const hasNestedPartnerProvenance = Boolean(
+    item.i18n && typeof item.i18n === 'object' && (
+      item.i18n.partner_id ||
+      item.i18n.source === 'admin_partner' ||
+      item.i18n.is_partner ||
+      item.i18n.is_pro_partner ||
+      item.i18n.pro_badge ||
+      item.i18n.pro_privilege ||
+      item.i18n.badge === 'Dữ liệu Pro'
+    )
+  );
+
+  const hadPartnerProvenance = Boolean(
+    rawPid ||
+    item.source === 'admin_partner' ||
+    item.is_pro_partner ||
+    item.is_partner ||
+    item.pro_badge ||
+    item.pro_privilege ||
+    item.badge === 'Dữ liệu Pro' ||
+    (item.google_place_id && typeof item.google_place_id === 'string' && item.google_place_id.startsWith('partner_')) ||
+    hasNestedPartnerProvenance
+  );
+
+  let sanitizedI18n = item.i18n;
+  if (sanitizedI18n && typeof sanitizedI18n === 'object') {
+    sanitizedI18n = { ...sanitizedI18n };
+    delete sanitizedI18n.pro_badge;
+    delete sanitizedI18n.partner_id;
+    delete sanitizedI18n.is_partner;
+    delete sanitizedI18n.is_pro_partner;
+    delete sanitizedI18n.pro_privilege;
+    if (sanitizedI18n.source === 'admin_partner') {
+      delete sanitizedI18n.source;
+    }
+    if (sanitizedI18n.badge === 'Dữ liệu Pro' || (hadPartnerProvenance && sanitizedI18n.badge === 'Đối tác')) {
+      delete sanitizedI18n.badge;
+    }
+    if (hadPartnerProvenance) {
+      delete sanitizedI18n.booking_url;
+    }
+  }
+
+  return {
+    ...item,
+    partner_id: null,
+    google_place_id: (item.google_place_id && typeof item.google_place_id === 'string' && item.google_place_id.startsWith('partner_'))
+      ? null
+      : item.google_place_id,
+    source: item.source === 'admin_partner' ? null : item.source,
+    pro_badge: null,
+    badge: (item.badge === 'Dữ liệu Pro' || (hadPartnerProvenance && item.badge === 'Đối tác')) ? null : item.badge,
+    is_partner: false,
+    is_pro_partner: false,
+    pro_privilege: null,
+    booking_url: hadPartnerProvenance ? null : (item.booking_url || null),
+    i18n: sanitizedI18n
+  };
+}
+
 router.get('/:id', requireAuth, async (req: any, res: Response) => {
   const tripId = req.params.id;
 
@@ -961,19 +939,18 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
       return res.status(403).json({ error: 'Bạn không có quyền truy cập chuyến đi này' });
     }
 
-    // Gom các query không phụ thuộc nhau vào Promise.all:
-    let partnersQuery = supabaseAdmin
-      .from('partners')
-      .select('id, name, city, category, address, booking_url, active_status')
-      .eq('active_status', true);
+    const isTripPro = isTripProEntitled(trip);
 
-    if (trip.destination_city) {
-      partnersQuery = partnersQuery.ilike('city', `%${trip.destination_city}%`);
-    }
+    // Gom các query không phụ thuộc nhau vào Promise.all:
+    // Đối với chuyến Pro: lấy danh sách đối tác xác thực hợp lệ qua getEligiblePartnersForTrip
+    // Đối với chuyến Free: không query đối tác
+    const eligiblePartnersPromise = isTripPro
+      ? getEligiblePartnersForTrip(trip)
+      : Promise.resolve([]);
 
     const [
       daysResult,
-      partnersResult,
+      eligiblePartners,
       revisionsResult,
       priorTripsResult
     ] = await Promise.all([
@@ -982,7 +959,7 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
         .select('*')
         .eq('trip_id', tripId)
         .order('day_number', { ascending: true }),
-      partnersQuery.limit(200),
+      eligiblePartnersPromise,
       supabaseAdmin
         .from('itinerary_revisions')
         .select('*')
@@ -999,7 +976,6 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
     if (daysResult.error) throw daysResult.error;
 
     const days = daysResult.data || [];
-    const partners = partnersResult.data || [];
     const revisions = revisionsResult.data || [];
     const priorTripsCount = priorTripsResult.count ?? 0;
 
@@ -1014,65 +990,13 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
 
       if (itemsError) throw itemsError;
 
-      // Dynamically match and enrich partner information for pre-existing itinerary items
-      let enrichedItems = items || [];
-      try {
-        const activePartners = partners || [];
+      // Xây dựng partnerMap từ các đối tác xác thực hợp lệ
+      const partnerMap = new Map((eligiblePartners || []).map((p: any) => [String(p.id), p]));
 
-        const normalizeNameForMatching = (name: string): string => {
-          if (!name) return '';
-          return name
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '') // remove diacritics
-            .replace(/[&\/\\#,+()$~%.'\":*?<>{}]/g, '') // remove special chars
-            .replace(/\s+/g, ' ') // normalize whitespace
-            .trim();
-        };
-
-        const matchPartner = (itemTitle: string, partnerName: string): boolean => {
-          const normTitle = normalizeNameForMatching(itemTitle);
-          const normPartner = normalizeNameForMatching(partnerName);
-          
-          if (!normTitle || !normPartner) return false;
-          if (normTitle === normPartner) return true;
-          
-          if (normPartner.length >= 6) {
-            if (normTitle.includes(normPartner) || normPartner.includes(normTitle)) {
-              return true;
-            }
-          }
-          return false;
-        };
-
-        enrichedItems = (items || []).map((item: any) => {
-          // If it's already a partner item, keep it but ensure booking_url is populated
-          if (item.google_place_id && item.google_place_id.startsWith('partner_')) {
-            const partnerId = item.google_place_id.replace('partner_', '');
-            const matchedPartner = activePartners.find((p: any) => String(p.id) === partnerId);
-            if (matchedPartner) {
-              return {
-                ...item,
-                booking_url: item.booking_url || matchedPartner.booking_url || null
-              };
-            }
-          }
-
-          // Otherwise, check name match to enrich retroactively
-          const matched = activePartners.find((p: any) => matchPartner(item.title, p.name));
-          if (matched) {
-            return {
-              ...item,
-              google_place_id: item.google_place_id || `partner_${matched.id}`,
-              booking_url: item.booking_url || matched.booking_url || null
-            };
-          }
-
-          return item;
-        });
-      } catch (partnerErr) {
-        console.error('[GetTripDetail] Error enriching partner data:', partnerErr);
-      }
+      // Làm giàu thông tin đối tác cho chuyến Pro, hoặc làm sạch triệt để provenance đối tác cho chuyến Free / noneligible
+      const enrichedItems = (items || []).map((item: any) =>
+        sanitizeItineraryItemForTrip(item, isTripPro, partnerMap)
+      );
 
       daysWithItems = days.map((day: any) => ({
         ...day,
@@ -1084,7 +1008,7 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
 
     return res.json({
       ...trip,
-      is_ai_pro: Boolean(trip.preferences?.is_ai_pro || trip.preferences?.ai_tier === 'pro'),
+      is_ai_pro: isTripPro,
       days: daysWithItems,
       revisions: revisions || [],
       is_free_tier: isFreeTier,
@@ -1128,7 +1052,75 @@ router.post('/pregen-places', requireAuth, async (req: any, res: Response) => {
       return res.status(400).json({ error: 'Thiếu thông tin thành phố điểm đến' });
     }
 
+    const userId = req.user?.id;
+    const requestsPro = req.body.is_ai_pro === true || req.body.use_pro_workspace === true || preferences?.is_ai_pro === true || preferences?.ai_tier === 'pro' || preferences?.use_pro_workspace === true || ai_provider === 'custom_openai';
+    let hasProAccess = Boolean(req.isAdmin);
+    if (requestsPro && req.body.trip_id) {
+      const access = await verifyTripAccess(String(req.body.trip_id), userId, Boolean(req.isAdmin));
+      if (!access.trip) return res.status(404).json({ error: 'Không tìm thấy chuyến đi.' });
+      if (!access.hasAccess) return res.status(403).json({ error: 'Bạn không có quyền truy cập chuyến đi này.' });
+      if (normalizeCityName(destination_city) !== normalizeCityName(access.trip.destination_city || access.trip.destination_province || '')) return res.status(400).json({ error: 'Điểm đến phải khớp với chuyến đi đã lưu.' });
+      hasProAccess = hasProAccess || isTripProEntitled(access.trip);
+    }
+    if (!hasProAccess && userId) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+      hasProAccess = isUserPremium(profile);
+    }
+    if (requestsPro && !hasProAccess) return res.status(403).json({ error: 'Bạn cần lượt Pro để nạp dữ liệu địa phương cho AI Pro.', requires_premium: true });
+    const isPro = requestsPro && hasProAccess;
+
     const isCart = Boolean(mode === 'cart' || (cart_items && Array.isArray(cart_items) && cart_items.length > 0) || is_cart_mode === true);
+    const cityCoords = getCityCoordinates(destination_city);
+
+    let partnerRichPlaces: any[] = [];
+    if (isPro) {
+      const relevantPartners = await getRelevantPartners(
+        destination_city,
+        cityCoords.lat,
+        cityCoords.lng,
+        preferences || {},
+        Number(budget_total) || 5000000,
+        '',
+        '',
+        Number(traveler_count) || 1
+      );
+
+      partnerRichPlaces = relevantPartners.map((p, idx) => {
+        let cat: 'dining' | 'cafe' | 'hotel' | 'attraction' | 'experience' = 'attraction';
+        if (p.category === 'cafe') cat = 'cafe';
+        else if (['restaurant', 'food', 'dining'].includes(p.category)) cat = 'dining';
+        else if (['hotel', 'homestay', 'resort', 'accommodation'].includes(p.category)) cat = 'hotel';
+        else if (p.category === 'attraction') cat = 'attraction';
+        else cat = 'experience';
+
+        return {
+          id: `partner_${p.id}`,
+          partner_id: p.id,
+          name: p.name,
+          category: cat,
+          suggested_day: (idx % (Number(days_count) || 2)) + 1,
+          lat: p.lat,
+          lng: p.lng,
+          address: p.address,
+          estimated_cost: p.price_level ? p.price_level * 50000 : 50000,
+          rating: p.admin_rating || 4.8,
+          time_slot_suggestion: '09:00 - 11:00',
+          description: p.description || p.address,
+          social_review_quote: p.social_review_quote || '',
+          opening_hours: p.opening_hours || p.i18n?.opening_hours || '',
+          avg_duration_minutes: p.avg_duration_minutes || p.i18n?.avg_duration_minutes || 60,
+          booking_url: p.booking_url || p.website_url || '',
+          is_partner: true,
+          pro_badge: 'Dữ liệu Pro',
+          source: 'admin_partner',
+          why_recommended: 'Địa điểm đối tác xác thực'
+        };
+      });
+    }
 
     const pool = await generateRichPlacesPool({
       destination_city,
@@ -1139,9 +1131,11 @@ router.post('/pregen-places', requireAuth, async (req: any, res: Response) => {
       preferences: Array.isArray(preferences) ? preferences : (preferences ? [preferences] : []),
       traveler_type,
       special_requirements,
-      ai_provider,
+      ai_provider: isPro ? ai_provider : undefined,
       is_cart_mode: isCart,
-      num_places: Number(num_places) || (isCart ? 25 : 20)
+      num_places: Number(num_places) || (isCart ? 25 : 20),
+      is_ai_pro: isPro,
+      partner_places: partnerRichPlaces
     });
 
     return res.json({
@@ -1279,7 +1273,7 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
     });
   }
 
-  const isAiPro = wantsPro;
+  const isAiPro = wantsPro && (alreadyConsumed || proInfo.total > 0 || Boolean(profile?.role === 'admin'));
 
   if (!destination_city || !start_date || !end_date || !budget_total) {
     return res.status(400).json({ error: 'Missing required parameters: destination_city, start_date, end_date, budget_total' });
@@ -1339,6 +1333,20 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
 
     // Xử lý chế độ tạo thủ công: creation_mode === 'manual'
     if (creation_mode === 'manual') {
+      let manualPartners: any[] = [];
+      if (isAiPro) {
+        manualPartners = await getRelevantPartners(
+          destination_city,
+          lat,
+          lng,
+          preferences || {},
+          parseFloat(budget_total) || 0,
+          correctedStartDate,
+          correctedEndDate,
+          parseInt(traveler_count || '1')
+        );
+      }
+      const validPartnerIds = new Set(manualPartners.map(p => p.id));
       const pregenPlaces = req.body.pregen_places || preferences?.pregen_places || existingDraftTrip?.preferences?.pregen_places || [];
       const workspaceStage = req.body.workspace_stage || preferences?.workspace_stage || existingDraftTrip?.preferences?.workspace_stage || 'draft_pool';
       const enrichedPreferences = {
@@ -1347,11 +1355,12 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
         pregen_places: pregenPlaces,
         workspace_stage: workspaceStage,
         is_ai_pro: isAiPro,
+        use_local_data: isAiPro,
         ai_tier: isAiPro ? 'pro' : 'standard',
         use_pro_workspace: Boolean(req.body.use_pro_workspace || preferences?.use_pro_workspace),
         creation_mode: 'manual',
-        pro_credit_consumed: Boolean(existingDraftTrip?.preferences?.pro_credit_consumed || preferences?.pro_credit_consumed),
-        quota_consumed: Boolean(existingDraftTrip?.preferences?.quota_consumed || preferences?.quota_consumed)
+        pro_credit_consumed: Boolean(existingDraftTrip?.preferences?.pro_credit_consumed),
+        quota_consumed: Boolean(existingDraftTrip?.preferences?.quota_consumed)
       };
 
       let trip: any;
@@ -1518,10 +1527,10 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
 
         const rawPlaceId = place.id || place.google_place_id || cItem.partner_id || null;
         let itemPartnerId: string | null = null;
-        if (rawPlaceId) {
+        if (isAiPro && rawPlaceId) {
           const cleanId = String(rawPlaceId).replace('partner_', '');
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-          if (uuidRegex.test(cleanId)) {
+          if (uuidRegex.test(cleanId) && validPartnerIds.has(cleanId)) {
             itemPartnerId = cleanId;
           }
         }
@@ -1562,12 +1571,27 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
         const finalAddress = place.address || place.description || cItem.notes || '';
         const currentCountInDay = manualItemsToInsert.filter(it => it.day_id === matchedDay.id).length;
 
+        let manualDescription = finalAddress;
+        let manualI18n: Record<string, any> = { ...(place.i18n || {}) };
+        if (itemPartnerId) {
+          manualI18n = {
+            ...manualI18n,
+            is_pro_partner: true,
+            pro_badge: 'Dữ liệu Pro'
+          };
+          delete manualI18n.pro_privilege;
+        } else {
+          delete manualI18n.is_pro_partner;
+          delete manualI18n.pro_badge;
+          delete manualI18n.pro_privilege;
+        }
+
         manualItemsToInsert.push({
           day_id: matchedDay.id,
           partner_id: itemPartnerId,
           item_type: normalizedType,
           title: placeTitle,
-          description: finalAddress,
+          description: manualDescription,
           start_time: finalStartTime,
           end_time: finalEndTime,
           location_name: placeTitle,
@@ -1577,7 +1601,8 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
           estimated_cost: estimatedCost,
           booking_url: place.booking_url || place.google_map_url || null,
           order_index: cItem.order_index !== undefined ? Number(cItem.order_index) : (currentCountInDay + 1),
-          status: 'planned'
+          status: 'planned',
+          i18n: manualI18n
         });
       });
 
@@ -1593,12 +1618,12 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
         }
         const cartPayload = safeCartItems.map((cItem: any) => {
           const place = cItem.place || cItem;
-          const rawPlaceId = place.id || place.google_place_id || cItem.partner_id || null;
+        const rawPlaceId = cItem.partner_id || place.partner_id || place.google_place_id || place.id || null;
           let partnerId: string | null = null;
-          if (rawPlaceId) {
+          if (isAiPro && rawPlaceId) {
             const cleanId = String(rawPlaceId).replace('partner_', '');
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-            if (uuidRegex.test(cleanId)) {
+            if (uuidRegex.test(cleanId) && validPartnerIds.has(cleanId)) {
               partnerId = cleanId;
             }
           }
@@ -1624,10 +1649,10 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       if (!isDraftOnly) {
         const deductResult = await deductTripQuota(userId, isAiPro, existingDraftTrip, trip.id, profile);
         if (!deductResult.success) {
-          if (!existingDraftTrip) {
+          if (!existingDraftTrip && deductResult.safeToDelete) {
             await supabaseAdmin.from('trips').delete().eq('id', trip.id);
           }
-          return res.status(403).json({ error: deductResult.error || 'Lỗi cập nhật hạn mức chuyến đi', requires_premium: true });
+          return res.status(deductResult.status || 403).json({ error: deductResult.error || 'Lỗi cập nhật hạn mức chuyến đi', code: deductResult.code, requires_premium: deductResult.status === 403 && isAiPro });
         }
         if (deductResult.deducted) {
           quotaDeducted = true;
@@ -1648,11 +1673,7 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
           items: manualItemsToInsert.filter(item => item.day_id === day.id)
         }));
 
-      return res.status(201).json({
-        ...fullTrip,
-        is_ai_pro: Boolean(fullTrip?.preferences?.is_ai_pro || fullTrip?.preferences?.ai_tier === 'pro'),
-        days: dbDaysWithItems
-      });
+      return res.status(201).json(buildCreatedTripResponse(trip, fullTrip, enrichedPreferences, dbDaysWithItems, isAiPro, quotaDeducted));
     }
 
     // 2. Fetch weather
@@ -1670,18 +1691,21 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       parseInt(traveler_count || '1') || 1
     );
  
-    // Lấy đối tác liên quan
-    const relevantPartners = await getRelevantPartners(
-      destination_city,
-      lat,
-      lng,
-      preferences || {},
-      parseFloat(budget_total) || 0,
-      correctedStartDate,
-      correctedEndDate,
-      parseInt(traveler_count || '1')
-    );
-    const partnerCandidates = convertPartnersToPlaceCandidates(relevantPartners);
+    // Lấy đối tác liên quan (CHỈ KHI isAiPro === true - Cách ly tuyệt đối đối tác Pro và Free)
+    let relevantPartners: any[] = [];
+    if (isAiPro) {
+      relevantPartners = await getRelevantPartners(
+        destination_city,
+        lat,
+        lng,
+        preferences || {},
+        parseFloat(budget_total) || 0,
+        correctedStartDate,
+        correctedEndDate,
+        parseInt(traveler_count || '1')
+      );
+    }
+    const partnerCandidates = isAiPro ? convertPartnersToPlaceCandidates(relevantPartners) : [];
 
     // Chuyển đổi cart_items thành PlaceCandidate nếu có
     const safeCartItems: any[] = Array.isArray(cart_items) ? cart_items : [];
@@ -1821,10 +1845,11 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       ...(existingDraftTrip?.preferences || {}),
       ...(preferences || {}),
       is_ai_pro: isAiPro,
+      use_local_data: isAiPro,
       ai_tier: isAiPro ? 'pro' : 'standard',
       use_pro_workspace: Boolean(req.body.use_pro_workspace || preferences?.use_pro_workspace),
-      pro_credit_consumed: Boolean(existingDraftTrip?.preferences?.pro_credit_consumed || preferences?.pro_credit_consumed),
-      quota_consumed: Boolean(existingDraftTrip?.preferences?.quota_consumed || preferences?.quota_consumed)
+      pro_credit_consumed: Boolean(existingDraftTrip?.preferences?.pro_credit_consumed),
+      quota_consumed: Boolean(existingDraftTrip?.preferences?.quota_consumed)
     };
 
     // 5. Save trip to Supabase
@@ -1986,12 +2011,27 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
           normalizedItemType = 'experience';
         }
 
+        let itemDescription = item.description || itemAddress || '';
+        let itemI18n: Record<string, any> = { ...((item as any).i18n || {}) };
+        if (itemPartnerId) {
+          itemI18n = {
+            ...itemI18n,
+            is_pro_partner: true,
+            pro_badge: 'Dữ liệu Pro'
+          };
+          delete itemI18n.pro_privilege;
+        } else {
+          delete itemI18n.is_pro_partner;
+          delete itemI18n.pro_badge;
+          delete itemI18n.pro_privilege;
+        }
+
         itemsToInsert.push({
           day_id: dbDay.id, // Sử dụng UUID đã sinh ở trên để liên kết
           partner_id: itemPartnerId, // Chỉ lưu khi partner_id thực sự tồn tại trong DB
           item_type: normalizedItemType,
           title: item.title,
-          description: item.description || itemAddress || '',
+          description: itemDescription,
           start_time: formatTimeForDb(item.start_time),
           end_time: formatTimeForDb(item.end_time),
           location_name: item.title,
@@ -2001,7 +2041,8 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
           estimated_cost: parseOptionalCost(item.estimated_cost),
           booking_url: itemBookingUrl || null,
           order_index: item.order_index,
-          status: 'planned'
+          status: 'planned',
+          i18n: itemI18n
         });
       });
     });
@@ -2022,12 +2063,12 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       }
       const cartPayload = safeCartItems.map((cItem: any) => {
         const place = cItem.place || cItem;
-        const rawPlaceId = place.id || place.google_place_id || cItem.partner_id || null;
+        const rawPlaceId = cItem.partner_id || place.partner_id || place.google_place_id || place.id || null;
         let partnerId: string | null = null;
-        if (rawPlaceId) {
+        if (isAiPro && rawPlaceId) {
           const cleanId = String(rawPlaceId).replace('partner_', '');
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-          if (uuidRegex.test(cleanId)) {
+          if (uuidRegex.test(cleanId) && validPartnerIds.has(cleanId)) {
             partnerId = cleanId;
           }
         }
@@ -2053,10 +2094,10 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
     if (!isDraftOnly) {
       const deductResult = await deductTripQuota(userId, isAiPro, existingDraftTrip, trip.id, profile);
       if (!deductResult.success) {
-        if (!existingDraftTrip) {
+        if (!existingDraftTrip && deductResult.safeToDelete) {
           await supabaseAdmin.from('trips').delete().eq('id', trip.id);
         }
-        return res.status(403).json({ error: deductResult.error || 'Lỗi cập nhật hạn mức chuyến đi', requires_premium: true });
+        return res.status(deductResult.status || 403).json({ error: deductResult.error || 'Lỗi cập nhật hạn mức chuyến đi', code: deductResult.code, requires_premium: deductResult.status === 403 && isAiPro });
       }
       if (deductResult.deducted) {
         quotaDeducted = true;
@@ -2090,21 +2131,15 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
         items: itemsToInsert.filter(item => item.day_id === day.id)
       }));
 
-    return res.status(201).json({
-      ...fullTrip,
-      is_ai_pro: Boolean(fullTrip?.preferences?.is_ai_pro || fullTrip?.preferences?.ai_tier === 'pro'),
-      days: dbDaysWithItems
-    });
+    return res.status(201).json(buildCreatedTripResponse(trip, fullTrip, enrichedPreferences, dbDaysWithItems, isAiPro, quotaDeducted));
   } catch (error: any) {
     console.error('Error generating trip:', error);
 
     // Rollback quota nếu đã trừ thành công trong phiên này nhưng gặp lỗi xử lý sau đó
-    if (quotaDeducted) {
-      await rollbackTripQuota(userId, isAiPro, createdTripId);
-    }
+    const quotaRefunded = !quotaDeducted || await rollbackTripQuota(userId, isAiPro, createdTripId);
 
     // Rollback trip record, itinerary_days mid-generation
-    if (createdTripId) {
+    if (createdTripId && quotaRefunded) {
       try {
         await supabaseAdmin.from('itinerary_days').delete().eq('trip_id', createdTripId);
         if (!existingDraftTrip) {
@@ -2287,6 +2322,7 @@ router.post('/:id/upgrade-pro', requireAuth, async (req: any, res: Response) => 
       ...(trip.preferences || {}),
       is_ai_pro: true,
       ai_tier: 'pro',
+      use_local_data: true,
       pro_credit_consumed: true,
     };
 
@@ -2773,18 +2809,22 @@ router.post('/:id/disruptions/preview', requireAuth, aiChatLimiter, async (req: 
       parseInt(trip.traveler_count || '1') || 1
     );
  
-    // Lấy đối tác liên quan
-    const relevantPartners = await getRelevantPartners(
-      trip.destination_city,
-      lat,
-      lng,
-      trip.preferences || {},
-      parseFloat(trip.budget_total) || 0,
-      trip.start_date,
-      trip.end_date,
-      parseInt(trip.traveler_count || '1')
-    );
-    const partnerCandidates = convertPartnersToPlaceCandidates(relevantPartners);
+    // Lấy đối tác liên quan (CHỈ KHI chuyến đi là Pro - Cách ly Pro/Free tuyệt đối)
+    const tripIsPro = Boolean(trip.preferences?.is_ai_pro || trip.preferences?.ai_tier === 'pro');
+    let relevantPartners: any[] = [];
+    if (tripIsPro) {
+      relevantPartners = await getRelevantPartners(
+        trip.destination_city,
+        lat,
+        lng,
+        trip.preferences || {},
+        parseFloat(trip.budget_total) || 0,
+        trip.start_date,
+        trip.end_date,
+        parseInt(trip.traveler_count || '1')
+      );
+    }
+    const partnerCandidates = tripIsPro ? convertPartnersToPlaceCandidates(relevantPartners) : [];
  
     const mergedAccommodations = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'accommodation'), ...batchPlaces.accommodation]);
     const mergedDining = deduplicatePlaces([...partnerCandidates.filter(p => p.category === 'dining'), ...batchPlaces.dining]);
@@ -2908,8 +2948,9 @@ router.post('/:id/disruptions/apply', requireAuth, async (req: any, res: Respons
     const city = trip?.destination_city || 'Da Nang';
     const { lat, lng } = getCityCoordinates(city);
 
-    // Fetch relevant partners to match booking_url
-    const relevantPartners = await getRelevantPartners(
+    // Fetch relevant partners to match booking_url (CHỈ KHI chuyến đi là Pro - Cách ly Pro/Free)
+    const tripIsPro = Boolean(trip?.preferences?.is_ai_pro || trip?.preferences?.ai_tier === 'pro');
+    const relevantPartners = tripIsPro ? await getRelevantPartners(
       city,
       lat,
       lng,
@@ -2918,7 +2959,7 @@ router.post('/:id/disruptions/apply', requireAuth, async (req: any, res: Respons
       trip?.start_date,
       trip?.end_date,
       parseInt(trip?.traveler_count || '1')
-    );
+    ) : [];
 
     const itemIdsToReplace: string[] = [];
     const dbItemsToUpdate: { dbItem: any; newItem: any }[] = [];
@@ -3126,7 +3167,6 @@ router.post('/days/:dayId/items', requireAuth, async (req: any, res: Response) =
 
 // 2.6 PUT /api/trips/days/:dayId/reorder-items - Cập nhật thứ tự các hoạt động trong ngày (kéo thả Google Maps)
 router.put('/days/:dayId/reorder-items', requireAuth, async (req: any, res: Response) => {
-  const client = getSupabaseUserClient(req.token!);
   const dayId = req.params.dayId;
   const { item_ids, schedule } = req.body;
 
@@ -3146,6 +3186,46 @@ router.put('/days/:dayId/reorder-items', requireAuth, async (req: any, res: Resp
   ];
 
   try {
+    const user = req.user!;
+    const isAdmin = Boolean(req.isAdmin === true || user.role === 'admin');
+
+    // 1. Tải bản ghi ngày hành trình để lấy trip_id có thẩm quyền
+    const { data: dayRecord, error: dayErr } = await supabaseAdmin
+      .from('itinerary_days')
+      .select('trip_id')
+      .eq('id', dayId)
+      .maybeSingle();
+
+    if (dayErr || !dayRecord) {
+      return res.status(404).json({ error: 'Itinerary day not found' });
+    }
+
+    // 2. Xác thực quyền truy cập chuyến đi
+    const access = await verifyTripAccess(dayRecord.trip_id, user.id, isAdmin);
+    if (!access.trip) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+    if (!access.hasAccess) {
+      return res.status(403).json({ error: 'Bạn không có quyền truy cập chuyến đi này' });
+    }
+
+    // 3. Phân quyền canEdit (chỉ owner, admin, editor)
+    const canEdit = access.isOwner || isAdmin || access.role === 'owner' || access.role === 'admin' || access.role === 'editor';
+    if (!canEdit) {
+      return res.status(403).json({ error: 'Bạn không có quyền sắp xếp lại lịch trình của chuyến đi này' });
+    }
+
+    // 4. Kiểm tra chuyến đi Pro
+    const isTripPro = isTripProEntitled(access.trip);
+    if (!isTripPro && !isAdmin) {
+      return res.status(403).json({
+        error: 'Tính năng sắp xếp lịch trình chỉ dành cho chuyến đi Pro',
+        requires_upgrade: true,
+        requires_premium: true
+      });
+    }
+
+    const client = req.token ? getSupabaseUserClient(req.token) : supabaseAdmin;
     const updatePromises = item_ids.map((itemId: string, index: number) => {
       const explicit = Array.isArray(schedule) ? schedule.find((s: any) => s.id === itemId) : null;
       const updateData: any = { order_index: index + 1 };
@@ -3188,7 +3268,6 @@ router.put('/days/:dayId/reorder-items', requireAuth, async (req: any, res: Resp
 
 // 2.7 PUT /api/trips/:id/sync-calendar - Lưu toàn bộ lịch trình Calendar kéo thả
 router.put('/:id/sync-calendar', requireAuth, async (req: any, res: Response) => {
-  const client = getSupabaseUserClient(req.token!);
   const tripId = req.params.id;
   const { events } = req.body;
 
@@ -3197,7 +3276,36 @@ router.put('/:id/sync-calendar', requireAuth, async (req: any, res: Response) =>
   }
 
   try {
-    // 1. Lấy danh sách các ngày của trip
+    const user = req.user!;
+    const isAdmin = Boolean(req.isAdmin === true || user.role === 'admin');
+
+    // 1. Xác thực quyền truy cập chuyến đi
+    const access = await verifyTripAccess(tripId, user.id, isAdmin);
+    if (!access.trip) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+    if (!access.hasAccess) {
+      return res.status(403).json({ error: 'Bạn không có quyền truy cập chuyến đi này' });
+    }
+
+    // 2. Phân quyền canEdit (chỉ owner, admin, editor)
+    const canEdit = access.isOwner || isAdmin || access.role === 'owner' || access.role === 'admin' || access.role === 'editor';
+    if (!canEdit) {
+      return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa lịch trình của chuyến đi này' });
+    }
+
+    // 3. Kiểm tra chuyến đi Pro
+    const isTripPro = isTripProEntitled(access.trip);
+    if (!isTripPro && !isAdmin) {
+      return res.status(403).json({
+        error: 'Tính năng đồng bộ lịch trình chỉ dành cho chuyến đi Pro',
+        requires_upgrade: true,
+        requires_premium: true
+      });
+    }
+
+    const client = req.token ? getSupabaseUserClient(req.token) : supabaseAdmin;
+    // 4. Lấy danh sách các ngày của trip
     const { data: days, error: daysErr } = await client
       .from('itinerary_days')
       .select('id, day_number')
@@ -3239,7 +3347,8 @@ router.put('/:id/sync-calendar', requireAuth, async (req: any, res: Response) =>
       .map((item: any) => item.id);
 
     if (removedItemIds.length > 0) {
-      await client.from('itinerary_items').delete().in('id', removedItemIds);
+      const { error: deleteErr } = await client.from('itinerary_items').delete().in('id', removedItemIds);
+      if (deleteErr) throw deleteErr;
     }
 
     // b) existingEvents & c) newEvents:
@@ -3292,12 +3401,15 @@ router.put('/:id/sync-calendar', requireAuth, async (req: any, res: Response) =>
       }
     });
 
-    await Promise.all(updateOrInsertPromises);
+    const writeResults = await Promise.all(updateOrInsertPromises);
+    const failedWrite = writeResults.find(result => result?.error);
+    if (failedWrite?.error) throw failedWrite.error;
 
-    await client
+    const { error: touchErr } = await client
       .from('trips')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', tripId);
+    if (touchErr) throw touchErr;
 
     return res.json({ success: true, message: 'Lịch trình Calendar đã được đồng bộ thành công' });
   } catch (error: any) {
@@ -3447,18 +3559,22 @@ router.post('/items/:itemId/ai-replace', requireAuth, async (req: any, res: Resp
 
     const searchPlacesResults = await searchPlaces(searchQuery, category, lat, lng);
 
-    // Fetch relevant partners and merge them
-    const relevantPartners = await getRelevantPartners(
-      trip.destination_city,
-      lat,
-      lng,
-      trip.preferences || {},
-      parseFloat(trip.budget_total) || 0,
-      trip.start_date,
-      trip.end_date,
-      parseInt(trip.traveler_count || '1')
-    );
-    const partnerCandidates = convertPartnersToPlaceCandidates(relevantPartners);
+    // Fetch relevant partners and merge them (CHỈ KHI chuyến đi là Pro - Cách ly Pro/Free)
+    const tripIsPro = Boolean(trip.preferences?.is_ai_pro || trip.preferences?.ai_tier === 'pro');
+    let relevantPartners: any[] = [];
+    if (tripIsPro) {
+      relevantPartners = await getRelevantPartners(
+        trip.destination_city,
+        lat,
+        lng,
+        trip.preferences || {},
+        parseFloat(trip.budget_total) || 0,
+        trip.start_date,
+        trip.end_date,
+        parseInt(trip.traveler_count || '1')
+      );
+    }
+    const partnerCandidates = tripIsPro ? convertPartnersToPlaceCandidates(relevantPartners) : [];
     const categoryPartners = partnerCandidates.filter(p => p.category === category);
 
     const candidatePlaces = deduplicatePlaces([...categoryPartners, ...customDiningResults, ...searchPlacesResults]);
@@ -3486,19 +3602,68 @@ router.post('/:id/cart', requireAuth, async (req: any, res: Response) => {
   }
 
   try {
-    const payload = items.map((item: any) => ({
-      trip_id: id,
-      partner_id: item.partner_id || item.place_id || item.id,
-      custom_cost: Number(item.custom_cost) || 0,
-      pricing_option: item.pricing_option === 'manual' ? 'manual' : 'auto',
-      notes: item.notes || item.name || '',
-    }));
+    const user = req.user!;
+    const isAdmin = Boolean(req.isAdmin === true || user.role === 'admin');
 
-    const { data, error } = await supabaseAdmin
-      .from('trip_cart_items')
-      .upsert(payload);
+    // 1. Phân quyền: chủ sở hữu, cộng tác viên hoặc admin
+    const access = await verifyTripAccess(id, user.id, isAdmin);
+    if (!access.trip) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+    if (!access.hasAccess) {
+      return res.status(403).json({ error: 'Bạn không có quyền truy cập chuyến đi này' });
+    }
 
-    if (error) throw error;
+    const canEdit = access.isOwner || isAdmin || access.role === 'owner' || access.role === 'admin' || access.role === 'editor';
+    if (!canEdit) {
+      return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa giỏ hàng của chuyến đi này' });
+    }
+
+    const trip = access.trip;
+    // Server-derived trip entitlement, ngăn chặn forged body bypass
+    const isTripPro = isTripProEntitled(trip);
+    if (!isTripPro && !isAdmin) {
+      return res.status(403).json({
+        error: 'Tính năng giỏ hàng chỉ dành cho chuyến đi Pro',
+        requires_upgrade: true,
+        requires_premium: true
+      });
+    }
+
+    // 2. Chuyến Pro: chỉ cho phép đối tác xác thực hợp lệ theo thành phố/bán kính
+    let eligiblePartnerIds = new Set<string>();
+    if (isTripPro) {
+      const eligiblePartners = await getEligiblePartnersForTrip(trip);
+      eligiblePartnerIds = new Set(eligiblePartners.map((p: any) => String(p.id)));
+    }
+
+    // 3. Map items: Chuyến Free partner_id = null; Chuyến Pro chỉ nhận ID hợp lệ nằm trong eligiblePartnerIds
+    const payload = items.map((item: any) => {
+      const rawPid = item.partner_id || item.place_id || item.id || null;
+      let cleanPid: string | null = null;
+      if (isTripPro && rawPid) {
+        const idStr = String(rawPid).replace('partner_', '');
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(idStr) && eligiblePartnerIds.has(idStr)) {
+          cleanPid = idStr;
+        }
+      }
+      return {
+        trip_id: id,
+        partner_id: cleanPid,
+        custom_cost: Number(item.custom_cost) || 0,
+        pricing_option: item.pricing_option === 'manual' ? 'manual' : 'auto',
+        notes: item.notes || item.name || '',
+      };
+    });
+
+    if (payload.length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('trip_cart_items')
+        .upsert(payload);
+
+      if (error) throw error;
+    }
 
     return res.json({ success: true, count: items.length });
   } catch (err: any) {
@@ -3581,17 +3746,18 @@ export function sanitizeBudgetBreakdown(raw: any, logs: ExpenseLogItem[]) {
 export async function verifyTripAccess(tripId: string, userId: string, isAdmin = false) {
   const { data: trip, error: tripErr } = await supabaseAdmin
     .from('trips')
-    .select('id, user_id, preferences, budget_breakdown')
+    .select('id, user_id, destination_city, destination_province, destination_lat, destination_lng, preferences, budget_breakdown')
     .eq('id', tripId)
     .maybeSingle();
 
-  if (tripErr || !trip) {
-    return { trip: null, isOwner: false, isCollaborator: false, hasAccess: false, error: 'Trip not found' };
+  if (tripErr) throw tripErr;
+  if (!trip) {
+    return { trip: null, isOwner: false, isCollaborator: false, role: null, hasAccess: false, error: 'Trip not found' };
   }
 
   const isOwner = trip.user_id === userId;
   if (isOwner || isAdmin) {
-    return { trip, isOwner, isCollaborator: false, hasAccess: true, error: null };
+    return { trip, isOwner, isCollaborator: false, role: isOwner ? 'owner' : 'admin', hasAccess: true, error: null };
   }
 
   const { data: collab } = await supabaseAdmin
@@ -3602,10 +3768,12 @@ export async function verifyTripAccess(tripId: string, userId: string, isAdmin =
     .maybeSingle();
 
   const isCollaborator = !!collab;
+  const role = collab?.role || null;
   return {
     trip,
     isOwner: false,
     isCollaborator,
+    role,
     hasAccess: isCollaborator,
     error: isCollaborator ? null : 'Access denied'
   };
@@ -3904,7 +4072,7 @@ router.get('/:id/shared-cart', requireAuth, async (req: any, res: Response) => {
     if (!access.hasAccess && inviteToken) {
       const tripData = access.trip || (await supabaseAdmin
         .from('trips')
-        .select('id, user_id, preferences, budget_breakdown')
+        .select('id, user_id, destination_city, destination_province, destination_lat, destination_lng, preferences, budget_breakdown')
         .eq('id', id)
         .maybeSingle()).data;
 
@@ -3970,35 +4138,29 @@ router.get('/:id/shared-cart', requireAuth, async (req: any, res: Response) => {
 router.put('/:id/shared-cart', requireAuth, async (req: any, res: Response) => {
   const { id } = req.params;
   const user = req.user!;
-  const isAdmin = req.isAdmin === true || user.role === 'admin';
-  const inviteToken = req.body?.invite_token || req.query.invite_token || req.headers['x-invite-token'] || req.headers['invite-token'];
+  const isAdmin = Boolean(req.isAdmin === true || user.role === 'admin');
 
   try {
     const access = await verifyTripAccess(id, user.id, isAdmin);
 
-    // Hỗ trợ kiểm tra invite_token nếu là collaborator có link mời
-    if (!access.hasAccess && inviteToken) {
-      const tripData = access.trip || (await supabaseAdmin
-        .from('trips')
-        .select('id, user_id, preferences, budget_breakdown')
-        .eq('id', id)
-        .maybeSingle()).data;
-
-      if (tripData) {
-        const pending = Array.isArray(tripData.preferences?.pending_invites) ? tripData.preferences.pending_invites : [];
-        const matchedInvite = pending.find((p: any) => p.invite_token === inviteToken);
-        const isSharedToken = tripData.preferences?.invite_token === inviteToken;
-        if (matchedInvite || isSharedToken) {
-          access.trip = tripData;
-          access.hasAccess = true;
-        }
-      }
-    }
-
     if (!access.trip) return res.status(404).json({ error: 'Trip not found' });
     if (!access.hasAccess) return res.status(403).json({ error: 'Bạn không có quyền cập nhật giỏ hàng chung của chuyến đi này' });
 
+    const canEdit = access.isOwner || isAdmin || access.role === 'owner' || access.role === 'admin' || access.role === 'editor';
+    if (!canEdit) {
+      return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa giỏ hàng của chuyến đi này' });
+    }
+
     const trip = access.trip;
+    const isTripPro = isTripProEntitled(trip);
+    if (!isTripPro && !isAdmin) {
+      return res.status(403).json({
+        error: 'Tính năng giỏ hàng chỉ dành cho chuyến đi Pro',
+        requires_upgrade: true,
+        requires_premium: true
+      });
+    }
+
     const currentPrefs = (trip.preferences && typeof trip.preferences === 'object' && !Array.isArray(trip.preferences))
       ? trip.preferences
       : {};

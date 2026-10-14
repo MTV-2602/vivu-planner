@@ -313,16 +313,17 @@ export default function TripDetail() {
   const { paymentStatus: statusData, refetch: refetchStatus } = usePaymentStatus();
 
   const tripData = trip ?? cachedTrip;
-  const isTripPro = Boolean((tripData as any)?.is_ai_pro || tripData?.preferences?.is_ai_pro || (tripData as any)?.preferences?.ai_tier === 'pro' || (tripData as any)?.is_pro);
-  const isUserPro = Boolean(statusData?.isPremium || isAdmin);
-  const effectivePro = Boolean(isUserPro || isTripPro);
-  const isOwner = tripData?.user_id === user?.id || (!collaborators.length && !tripData?.user_id);
-  const isCollaborator = collaborators.some((c: any) => c.user_id === user?.id) || (tripData?.collaborators || []).some((c: any) => c.user_id === user?.id);
-  // Owner: bị lock nếu họ là Free và trip không phải Pro
-  // Collaborator: được edit (trip đã được Pro owner cho phép chia sẻ)
-  // Khác: bị lock
-  const isLocked = isOwner ? !effectivePro : !isCollaborator;
-  const canShare = isOwner && (effectivePro || isCollaborator);
+  // Authoritative Trip Entitlement: Chỉ dựa trên cờ của chuyến đi từ backend, không kế thừa từ pro_credits ví của user
+  const isTripPro = Boolean((tripData as any)?.is_ai_pro || tripData?.preferences?.is_ai_pro === true || (tripData as any)?.preferences?.ai_tier === 'pro' || (tripData as any)?.is_pro);
+  const canUseProFeatures = Boolean(isTripPro || isAdmin);
+  const isOwner = Boolean(tripData?.user_id && user?.id && tripData.user_id === user.id) || (!tripData?.user_id && !collaborators.length);
+  const myCollab = collaborators.find((c: any) => c.user_id === user?.id) || (tripData?.collaborators || []).find((c: any) => c.user_id === user?.id);
+  const isCollaborator = Boolean(myCollab);
+  const isViewer = myCollab?.role === 'viewer';
+  // Phân tách canEdit (quyền ghi cơ bản) và canUseProFeatures (quyền tính năng Pro)
+  const canEdit = Boolean(isAdmin || isOwner || (isCollaborator && !isViewer));
+  const isLocked = !canEdit || !canUseProFeatures;
+  const canShare = Boolean((isOwner || isAdmin) && canUseProFeatures);
   const canEditBudget = Boolean(isOwner || isAdmin);
   const { distanceKm, loading: locLoading } = useDistanceToCity(tripData?.destination_city ?? '');
 
@@ -339,10 +340,12 @@ export default function TripDetail() {
     if (aiReplaceOpen && trip?.destination_city && poolPlaces.length === 0) {
       setLoadingPool(true);
       api.post('/trips/pregen-places', {
+        ...(typeof trip.id === 'string' && trip.id.trim() ? { trip_id: trip.id } : {}),
+        is_ai_pro: isTripPro,
         destination_city: trip.destination_city,
         days_count: trip.days?.length || 2,
         budget_total: trip.budget_total || 5000000,
-        preferences: trip.preferences ? Object.keys(trip.preferences).filter(k => (trip.preferences as any)[k] === true) : ['Ẩm thực', 'Khám phá'],
+        preferences: { ...(trip.preferences || { food: true, culture: true }), use_local_data: isTripPro },
       }).then(r => {
         if (r.data?.places && Array.isArray(r.data.places)) {
           setPoolPlaces(r.data.places);
@@ -899,6 +902,15 @@ export default function TripDetail() {
           startMinute: startM,
           durationMinutes: dur,
           notes: it.description || '',
+          partner_id: it.partner_id || (it.i18n as any)?.partner_id,
+          is_partner: Boolean(it.partner_id || it.is_partner || (it.i18n as any)?.is_partner),
+          is_pro_partner: Boolean(it.is_pro_partner || (it.i18n as any)?.is_pro_partner || it.partner_id),
+          pro_badge: it.pro_badge || (it.i18n as any)?.pro_badge || 'Dữ liệu Pro',
+          i18n: it.i18n,
+          location_verified: it.location_verified ?? (it.i18n as any)?.location_verified,
+          coordinate_source: it.coordinate_source || (it.i18n as any)?.coordinate_source,
+          opening_hours: it.opening_hours || (it.i18n as any)?.opening_hours,
+          original_price: it.original_price ?? (it.i18n as any)?.original_price,
         });
       });
     });
@@ -908,8 +920,8 @@ export default function TripDetail() {
 
   // Danh sách địa điểm gợi ý sẵn sàng cho khay chờ nếu người dùng muốn thêm/thay thế
   const standbySuggestions = useMemo(() => {
-    // 1. User thường KHÔNG có giỏ hàng chờ xếp lịch (Giỏ hàng khóa cho Pro)
-    if (!effectivePro && !isCollaborator) return [];
+    // 1. Chỉ chuyến đi Pro mới có giỏ hàng chờ xếp lịch
+    if (!canUseProFeatures) return [];
 
     // 2. Chuyến đi tạo nhanh 1-Click (creation_mode === 'ai_auto' hoặc không có giỏ ban đầu)
     const creationMode = trip?.preferences?.creation_mode || 'ai_auto';
@@ -933,15 +945,27 @@ export default function TripDetail() {
           lat: p.lat,
           lng: p.lng,
           cost: p.estimated_cost || 50000,
-          suggestedDuration: 90,
+          suggestedDuration: p.durationMinutes || p.duration_minutes || 90,
+          partner_id: p.partner_id || (p.i18n as any)?.partner_id,
+          is_partner: Boolean(p.partner_id || p.is_partner || (p.i18n as any)?.is_partner),
+          is_pro_partner: Boolean(p.is_pro_partner || (p.i18n as any)?.is_pro_partner || p.partner_id),
+          pro_badge: p.pro_badge || (p.i18n as any)?.pro_badge || 'Dữ liệu Pro',
+          i18n: p.i18n,
+          location_verified: p.location_verified ?? (p.i18n as any)?.location_verified,
+          coordinate_source: p.coordinate_source || (p.i18n as any)?.coordinate_source,
+          opening_hours: p.opening_hours || (p.i18n as any)?.opening_hours,
+          original_price: p.original_price ?? (p.i18n as any)?.original_price,
         }));
     }
 
     return [];
-  }, [effectivePro, isCollaborator, trip, calendarEvents]);
+  }, [canUseProFeatures, trip, calendarEvents]);
 
   const handleSaveCalendarWorkspace = async (newEvents: CalendarEventItem[]) => {
-    if (isLocked) {
+    if (!canEdit || !canUseProFeatures) {
+      if (!canUseProFeatures && isOwner) {
+        handleUpgradeTripToPro();
+      }
       return;
     }
     try {
@@ -1023,6 +1047,10 @@ export default function TripDetail() {
   };
 
   const handleUpgradeTripToPro = () => {
+    if (isTripPro) {
+      setAppToast({ text: 'Chuyến đi này đã có Pro. Bạn có thể lưu và chỉnh sửa mà không cần mua thêm lượt.', type: 'info' });
+      return;
+    }
     const totalCredits = (statusData?.pro_credits || 0) + (statusData?.monthly_credits || 0);
     const remainingTrips = statusData?.remainingTrips ?? totalCredits;
     const hasCredits = remainingTrips > 0 || (Boolean(statusData?.isPremium) && remainingTrips > 0);
@@ -1039,11 +1067,14 @@ export default function TripDetail() {
       message: `Nâng cấp chuyến này lên AI Pro sẽ trừ 1 lượt Pro trong tài khoản của bạn (Hiện còn ${remainingTrips} lượt). Bạn có muốn tiếp tục?`,
       onConfirm: async () => {
         try {
-          await api.post(`/trips/${id}/upgrade-pro`);
-          queryClient.invalidateQueries({ queryKey: ['trip', id] });
-          queryClient.invalidateQueries({ queryKey: ['payment-status'] });
-          refetch();
-          refetchStatus();
+          const upgrade = await api.post(`/trips/${id}/upgrade-pro`);
+          if (upgrade.data?.trip) {
+            const upgradedTrip = { ...tripData, ...upgrade.data.trip, is_ai_pro: true } as TripDetailData;
+            queryClient.setQueryData(['trip', id], upgradedTrip);
+            setCachedTrip(upgradedTrip);
+            await setCache(`trip_${id}`, upgradedTrip);
+          }
+          await Promise.all([refetch(), refetchStatus()]);
 
           setAppToast({
             text: '🎉 Đã nâng cấp chuyến đi lên AI Pro thành công!',
@@ -1068,8 +1099,12 @@ export default function TripDetail() {
   };
 
   const handleExportPDF = async () => {
-    if (isLocked) {
-      setShowPremiumModal(true);
+    if (!canUseProFeatures) {
+      if (isOwner) {
+        handleUpgradeTripToPro();
+      } else {
+        setShowPremiumModal(true);
+      }
       return;
     }
     if (Platform.OS === 'web') {
@@ -1422,15 +1457,19 @@ export default function TripDetail() {
                 >
                   <Share2 size={15} color="white" />
                   <Text className="text-xs md:text-sm font-bold text-white">
-                    {Platform.OS === 'web' ? 'Tải PDF' : 'Chia sẻ'} {isLocked && '🔒'}
+                    {Platform.OS === 'web' ? 'Tải PDF' : 'Chia sẻ'} {!canUseProFeatures && '🔒'}
                   </Text>
                 </Pressable>
                 {/* Nút Nhóm - chia sẻ lịch trình cộng tác */}
                 <Pressable
                   onPress={() => {
-                    if (canShare || isCollaborator) {
+                    if (canShare || (isCollaborator && canUseProFeatures)) {
                       setShareTripModalVisible(true);
-                    } else if (isOwner && !effectivePro) {
+                    } else if (isOwner && !canUseProFeatures) {
+                      handleUpgradeTripToPro();
+                    } else if (isCollaborator) {
+                      setShareTripModalVisible(true);
+                    } else {
                       setShowPremiumModal(true);
                     }
                   }}
@@ -1595,9 +1634,9 @@ export default function TripDetail() {
               onEventDelta={handleEventDelta}
               lockedItems={lockedItems}
               onSave={handleSaveCalendarWorkspace}
-              readOnly={isLocked}
+              readOnly={!canEdit}
               isDetailPage={true}
-              isUserPro={effectivePro || isCollaborator}
+              isUserPro={canUseProFeatures}
               tripId={trip.id}
               creationMode={trip?.preferences?.creation_mode || 'ai_auto'}
               onUpgradePro={handleUpgradeTripToPro}
@@ -1832,11 +1871,16 @@ export default function TripDetail() {
                               {checked && <Check size={10} color="white" />}
                             </View>
                             <View className="flex-1 gap-1">
-                              <View className="flex-row items-center gap-2">
+                              <View className="flex-row items-center gap-2 flex-wrap">
                                 <Text className="text-xs font-bold text-brand-text">{item.title}</Text>
                                 <View className="bg-brand-primary/10 px-1.5 py-0.5 rounded">
                                   <Text className="text-[9px] font-bold text-brand-primary uppercase">{item.item_type}</Text>
                                 </View>
+                                {Boolean((item as any).partner_id || (item as any).is_pro_partner || (item as any).is_partner || ((item as any).i18n as any)?.is_pro_partner || ((item as any).i18n as any)?.partner_id) && (
+                                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#F59E0B' }}>
+                                    <Text style={{ fontSize: 9, fontWeight: '800', color: '#B45309' }}>Dữ liệu Pro</Text>
+                                  </View>
+                                )}
                               </View>
                               <Text className="text-xs text-brand-textSoft font-serif" numberOfLines={2}>{item.description}</Text>
                               <Text className="text-[10px] font-bold text-brand-textMuted">Chi phí: {formatCost(item.estimated_cost, item.item_type)}</Text>
@@ -2343,10 +2387,15 @@ export default function TripDetail() {
                     {items.map((item) => (
                       <View key={item.id} style={{ borderWidth: 1, borderColor: '#eeeeee', borderRadius: 8, padding: 10, backgroundColor: '#ffffff' }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#14201B', backgroundColor: '#e2f0ea', paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4 }}>
                               {ITEM_TYPE_LABELS[item.item_type] || 'Khác'}
                             </Text>
+                            {Boolean((item as any).partner_id || (item as any).is_pro_partner || (item as any).is_partner || ((item as any).i18n as any)?.is_pro_partner || ((item as any).i18n as any)?.partner_id) && (
+                              <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#F59E0B' }}>
+                                <Text style={{ fontSize: 9, fontWeight: '800', color: '#B45309' }}>Dữ liệu Pro</Text>
+                              </View>
+                            )}
                             {Boolean(item.start_time) ? (
                               <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#666666' }}>
                                 ⏱️ {item.start_time?.substring(0, 5)}{item.end_time ? ` - ${item.end_time?.substring(0, 5)}` : ''}

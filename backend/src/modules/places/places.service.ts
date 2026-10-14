@@ -13,6 +13,17 @@ export interface PlaceCandidate {
   price_level: number;
   address: string;
   booking_url?: string;
+  partner_id?: string;
+  is_partner?: boolean;
+  pro_badge?: string;
+  source?: 'admin_partner' | 'google_places' | 'osm' | 'cache' | 'default';
+  opening_hours?: string;
+  avg_duration_minutes?: number;
+  description?: string;
+  social_review_quote?: string;
+  original_price?: number;
+  source_maps_url?: string;
+  i18n?: Record<string, any>;
 }
 
 const VIETNAM_PROVINCES: Record<string, { lat: number; lng: number }> = {
@@ -20,8 +31,10 @@ const VIETNAM_PROVINCES: Record<string, { lat: number; lng: number }> = {
   'da nang': { lat: 16.0544, lng: 108.2022 },
   'ho chi minh': { lat: 10.7769, lng: 106.7009 },
   'sai gon': { lat: 10.7769, lng: 106.7009 },
+  'hcm': { lat: 10.7769, lng: 106.7009 },
   'hoi an': { lat: 15.8801, lng: 108.3380 },
   'hue': { lat: 16.4637, lng: 107.5908 },
+  'thua thien hue': { lat: 16.4637, lng: 107.5908 },
   'nha trang': { lat: 12.2388, lng: 109.1967 },
   'da lat': { lat: 11.9404, lng: 108.4583 },
   'phu quoc': { lat: 10.2899, lng: 103.9840 },
@@ -39,6 +52,12 @@ const VIETNAM_PROVINCES: Record<string, { lat: number; lng: number }> = {
 
 export function getCityCoordinates(city: string): { lat: number; lng: number } {
   const normalized = city.toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '');
+  if (['hcm', 'tphcm', 'saigon', 'tphochiminh', 'hochiminh'].includes(normalized)) {
+    return VIETNAM_PROVINCES['ho chi minh'];
+  }
+  if (['hue', 'thuathienhue', 'tinhthuathienhue'].includes(normalized)) {
+    return VIETNAM_PROVINCES['hue'];
+  }
   for (const key of Object.keys(VIETNAM_PROVINCES)) {
     const keyNormalized = key.replace(/\s+/g, '');
     if (normalized.includes(keyNormalized)) {
