@@ -44,7 +44,7 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   { key: 'trips', label: 'Chuyến đi', path: APP_ROUTES.ADMIN_TRIPS, icon: Compass },
   { key: 'posts', label: 'Bài đăng', path: APP_ROUTES.ADMIN_POSTS, icon: FileText },
   { key: 'keys', label: 'AI & API Keys', path: APP_ROUTES.ADMIN_KEYS, icon: Key },
-  { key: 'partners', label: 'Đối tác', path: APP_ROUTES.ADMIN_PARTNERS, icon: Handshake },
+  { key: 'partners', label: 'Địa điểm bản địa', path: APP_ROUTES.ADMIN_PARTNERS, icon: Handshake },
 ];
 
 export interface AdminShellProps {

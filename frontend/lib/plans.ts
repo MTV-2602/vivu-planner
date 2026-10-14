@@ -19,12 +19,14 @@ export interface PaymentStatus {
   remainingTrips: number;
   singleCredits?: number;
   monthlyCredits?: number;
+  rawMonthlyCredits?: number;
   proCredits?: number;
   pro_credits?: number;
   monthly_credits?: number;
   monthlyUntil?: string | null;
   monthlyRemainingDays?: number | null;
   freeRemaining?: number;
+  freeUsed?: number;
   freeTotal?: number;
   planName?: string;
   planId?: string;

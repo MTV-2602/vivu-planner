@@ -156,6 +156,9 @@ export function sanitizeSearchQuery(q: string | undefined | null): string {
 
 export interface AdjustCreditsInput {
   mode: 'set' | 'adjust' | 'revoke';
+  targetWallet?: 'free' | 'permanent' | 'monthly';
+  freeRemaining?: number;
+  freeDelta?: number;
   proCredits?: number;
   monthlyCredits?: number;
   monthlyUntil?: string | null;
@@ -166,159 +169,71 @@ export interface AdjustCreditsInput {
 }
 
 export interface CurrentProfileCredits {
+  quota_total?: number;
+  quota_used?: number;
   pro_credits: number;
   monthly_credits: number;
   premium_until: string | null;
   is_premium?: boolean;
 }
 
-/**
- * Validate đầu vào cho API chỉnh sửa ví lượt
- */
 export function validateCreditsInput(body: any): { valid: boolean; error?: string; data?: AdjustCreditsInput } {
-  if (!body || typeof body !== 'object') {
-    return { valid: false, error: 'Dữ liệu yêu cầu không hợp lệ' };
+  const invalid = (error: string) => ({ valid: false, error });
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return invalid('Dữ liệu yêu cầu không hợp lệ');
+  if (!['set', 'adjust', 'revoke'].includes(body.mode)) return invalid('Chế độ không hợp lệ.');
+  if (body.targetWallet !== undefined && !['free', 'permanent', 'monthly'].includes(body.targetWallet)) return invalid('Ví lượt không hợp lệ.');
+  const setFields = ['freeRemaining', 'proCredits', 'monthlyCredits'];
+  const deltaFields = ['freeDelta', 'proDelta', 'monthlyDelta', 'daysDelta'];
+  for (const field of [...setFields, ...deltaFields]) {
+    if (body[field] !== undefined && (typeof body[field] !== 'number' || !Number.isSafeInteger(body[field]) || Math.abs(body[field]) > 2147483647 || (setFields.includes(field) && body[field] < 0))) return invalid(`${field} phải là số nguyên hợp lệ.`);
   }
-
-  const { mode, proCredits, monthlyCredits, monthlyUntil, proDelta, monthlyDelta, daysDelta, note } = body;
-
-  if (!['set', 'adjust', 'revoke'].includes(mode)) {
-    return { valid: false, error: 'Chế độ (mode) không hợp lệ. Chỉ chấp nhận: "set", "adjust", "revoke".' };
+  if (body.monthlyUntil !== undefined && body.monthlyUntil !== null) {
+    const date = body.monthlyUntil;
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(`${date.slice(0, 10)}T00:00:00Z`).toISOString().slice(0, 10) !== date.slice(0, 10)) return invalid('monthlyUntil phải là ngày ISO hợp lệ có múi giờ hoặc null.');
   }
-
-  if (mode === 'revoke') {
-    return { valid: true, data: { mode: 'revoke', note: note ? String(note) : undefined } };
-  }
-
-  if (mode === 'set') {
-    if (proCredits !== undefined) {
-      if (typeof proCredits !== 'number' || !Number.isInteger(proCredits) || proCredits < 0) {
-        return { valid: false, error: 'proCredits phải là số nguyên không âm (>= 0).' };
-      }
-    }
-    if (monthlyCredits !== undefined) {
-      if (typeof monthlyCredits !== 'number' || !Number.isInteger(monthlyCredits) || monthlyCredits < 0) {
-        return { valid: false, error: 'monthlyCredits phải là số nguyên không âm (>= 0).' };
-      }
-    }
-    if (monthlyUntil !== undefined && monthlyUntil !== null) {
-      if (typeof monthlyUntil !== 'string' || isNaN(new Date(monthlyUntil).getTime())) {
-        return { valid: false, error: 'monthlyUntil phải là chuỗi ngày ISO hợp lệ hoặc null.' };
-      }
-    }
-
-    return {
-      valid: true,
-      data: {
-        mode: 'set',
-        proCredits: proCredits !== undefined ? proCredits : undefined,
-        monthlyCredits: monthlyCredits !== undefined ? monthlyCredits : undefined,
-        monthlyUntil: monthlyUntil !== undefined ? monthlyUntil : undefined,
-        note: note ? String(note) : undefined,
-      },
-    };
-  }
-
-  if (mode === 'adjust') {
-    if (proDelta !== undefined) {
-      if (typeof proDelta !== 'number' || !Number.isInteger(proDelta)) {
-        return { valid: false, error: 'proDelta phải là số nguyên.' };
-      }
-    }
-    if (monthlyDelta !== undefined) {
-      if (typeof monthlyDelta !== 'number' || !Number.isInteger(monthlyDelta)) {
-        return { valid: false, error: 'monthlyDelta phải là số nguyên.' };
-      }
-    }
-    if (daysDelta !== undefined) {
-      if (typeof daysDelta !== 'number' || !Number.isInteger(daysDelta)) {
-        return { valid: false, error: 'daysDelta phải là số nguyên.' };
-      }
-    }
-
-    return {
-      valid: true,
-      data: {
-        mode: 'adjust',
-        proDelta: proDelta !== undefined ? proDelta : undefined,
-        monthlyDelta: monthlyDelta !== undefined ? monthlyDelta : undefined,
-        daysDelta: daysDelta !== undefined ? daysDelta : undefined,
-        note: note ? String(note) : undefined,
-      },
-    };
-  }
-
-  return { valid: false, error: 'Dữ liệu không hợp lệ' };
+  const allowed = body.mode === 'set' ? [...setFields, 'monthlyUntil'] : body.mode === 'adjust' ? deltaFields : [];
+  if (body.mode !== 'revoke' && !allowed.some(field => body[field] !== undefined && (body.mode !== 'adjust' || body[field] !== 0))) return invalid('Chưa có thay đổi ví lượt.');
+  if ([...setFields, ...deltaFields, 'monthlyUntil'].some(field => body[field] !== undefined && !allowed.includes(field))) return invalid('Trường cập nhật không phù hợp với chế độ.');
+  const walletFields: Record<string, string[]> = { free: ['freeRemaining', 'freeDelta'], permanent: ['proCredits', 'proDelta'], monthly: ['monthlyCredits', 'monthlyUntil', 'monthlyDelta', 'daysDelta'] };
+  if (body.targetWallet && allowed.some(field => body[field] !== undefined && !walletFields[body.targetWallet].includes(field))) return invalid('Chỉ được cập nhật ví đã chọn.');
+  const data: any = { mode: body.mode };
+  if (body.targetWallet) data.targetWallet = body.targetWallet;
+  for (const field of allowed) if (body[field] !== undefined) data[field] = body[field];
+  if (body.note) data.note = String(body.note).slice(0, 1000);
+  return { valid: true, data };
 }
 
-/**
- * Tính toán số lượt và hạn mới dựa trên mode: set | adjust | revoke
- */
-export function calculateNewCredits(
-  current: CurrentProfileCredits,
-  input: AdjustCreditsInput,
-  now: Date = new Date()
-): { pro_credits: number; monthly_credits: number; premium_until: string | null; is_premium: boolean } {
+export function calculateNewCredits(current: CurrentProfileCredits, input: AdjustCreditsInput, now: Date = new Date()) {
+  const used = current.quota_used ?? 0;
+  let total = current.quota_total ?? 3;
+  let pro = current.pro_credits;
+  let monthly = current.monthly_credits;
+  let until = current.premium_until;
+  const activeBefore = Boolean(until && Date.parse(until) > now.getTime());
+  const monthlyTouched = input.monthlyCredits !== undefined || input.monthlyUntil !== undefined || input.monthlyDelta !== undefined || input.daysDelta !== undefined;
   if (input.mode === 'revoke') {
-    return {
-      pro_credits: 0,
-      monthly_credits: 0,
-      premium_until: null,
-      is_premium: false,
-    };
-  }
-
-  if (input.mode === 'set') {
-    const pro = input.proCredits !== undefined ? Math.max(0, input.proCredits) : Math.max(0, current.pro_credits);
-    const monthly =
-      input.monthlyCredits !== undefined ? Math.max(0, input.monthlyCredits) : Math.max(0, current.monthly_credits);
-    let until = input.monthlyUntil !== undefined ? input.monthlyUntil : current.premium_until;
-
-    if (until && isNaN(new Date(until).getTime())) {
-      until = null;
-    }
-
-    const hasActiveMonthly = Boolean(until && new Date(until).getTime() > now.getTime());
-    const activeMonthly = hasActiveMonthly ? monthly : 0;
-    const is_premium = pro + activeMonthly > 0;
-
-    return {
-      pro_credits: pro,
-      monthly_credits: monthly,
-      premium_until: until,
-      is_premium,
-    };
-  }
-
-  if (input.mode === 'adjust') {
-    const pro = Math.max(0, current.pro_credits + (input.proDelta ?? 0));
-    const monthly = Math.max(0, current.monthly_credits + (input.monthlyDelta ?? 0));
-    let until = current.premium_until;
-
+    if (input.targetWallet === 'free') total = used;
+    if (!input.targetWallet || input.targetWallet === 'permanent') pro = 0;
+    if (!input.targetWallet || input.targetWallet === 'monthly') { monthly = 0; until = null; }
+  } else if (input.mode === 'set') {
+    if (input.freeRemaining !== undefined) total = used + input.freeRemaining;
+    if (input.proCredits !== undefined) pro = input.proCredits;
+    if (input.monthlyCredits !== undefined) monthly = input.monthlyCredits;
+    if (input.monthlyUntil !== undefined) until = input.monthlyUntil;
+    // A new expiry must never revive a stored expired balance.
+    if (!activeBefore && input.monthlyCredits === undefined && input.monthlyUntil !== undefined) monthly = 0;
+  } else {
+    if (input.freeDelta !== undefined) total = used + Math.max(0, total - used) + input.freeDelta;
+    pro += input.proDelta ?? 0;
+    if (monthlyTouched) monthly = (activeBefore ? monthly : 0) + (input.monthlyDelta ?? 0);
     if (input.daysDelta !== undefined && input.daysDelta !== 0) {
-      // daysDelta dời premium_until; nếu premium_until null và daysDelta > 0 thì tính từ now
-      const isCurrentlyActive = Boolean(until && new Date(until).getTime() > now.getTime());
-      const baseTime = isCurrentlyActive ? new Date(until!).getTime() : now.getTime();
-      const newTime = baseTime + input.daysDelta * 24 * 60 * 60 * 1000;
-
-      if (newTime <= now.getTime()) {
-        until = null;
-      } else {
-        until = new Date(newTime).toISOString();
-      }
+      const time = (activeBefore ? Date.parse(until!) : now.getTime()) + input.daysDelta * 86400000;
+      if (!Number.isFinite(time) || Math.abs(time) > 8640000000000000) throw new Error('Ngày hết hạn vượt giới hạn.');
+      until = time > now.getTime() ? new Date(time).toISOString() : null;
     }
-
-    const hasActiveMonthly = Boolean(until && new Date(until).getTime() > now.getTime());
-    const activeMonthly = hasActiveMonthly ? monthly : 0;
-    const is_premium = pro + activeMonthly > 0;
-
-    return {
-      pro_credits: pro,
-      monthly_credits: monthly,
-      premium_until: until,
-      is_premium,
-    };
   }
-
-  throw new Error(`Mode không hợp lệ: ${(input as any).mode}`);
+  if ([total, pro, monthly].some(value => !Number.isSafeInteger(value) || value < 0 || value > 2147483647) || total < used && (input.freeRemaining !== undefined || input.freeDelta !== undefined)) throw new Error('Số lượt sau cập nhật không được âm hoặc vượt giới hạn.');
+  const active = Boolean(until && Date.parse(until) > now.getTime());
+  if (monthlyTouched && monthly > 0 && !active) throw new Error('Lượt Pro có hạn phải có ngày hết hạn trong tương lai.');
+  return { quota_total: total, pro_credits: pro, monthly_credits: monthly, premium_until: until, is_premium: pro + (active ? monthly : 0) > 0 };
 }

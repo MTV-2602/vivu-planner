@@ -25,7 +25,7 @@ import LiveBudgetBar from '../../../components/cart/LiveBudgetBar';
 import CuratedMap, { getCityCenterCoords } from '../../../components/map/CuratedMap';
 import GoogleMapsRoutePlanner, { RouteWaypoint } from '../../../components/map/GoogleMapsRoutePlanner';
 import GoogleCalendarWorkspace, { CalendarEventItem, StandbyPlaceItem, CalendarDeltaAction } from '../../../components/workspace/GoogleCalendarWorkspace';
-import { PlaceItem } from '../../../components/map/PlacePopup';
+import { PlaceItem, isProLocalPlace } from '../../../components/map/PlacePopup';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
 import {
   VIETNAMESE_CITIES, TRAVELER_TYPES, PREFERENCE_OPTIONS, BRAND_COLORS,
@@ -347,6 +347,7 @@ export default function TripWizard() {
 
   // Pro Workspace state
   const [useProWorkspace, setUseProWorkspace] = useState(false);
+  const [hydratedDraftId, setHydratedDraftId] = useState<string | null>(null);
   const totalCredits = (paymentStatus?.pro_credits || 0) + (paymentStatus?.monthly_credits || 0);
   const remainingTrips = paymentStatus?.remainingTrips ?? totalCredits;
   const hasCredits = remainingTrips > 0 || (Boolean(paymentStatus?.isPremium) && remainingTrips > 0);
@@ -659,18 +660,22 @@ export default function TripWizard() {
     setErrorMsg('');
     let finalPlaces: PlaceItem[] = [];
     const validOverride = (overrideProvider === 'gemini' || overrideProvider === 'custom_openai') ? overrideProvider : undefined;
-    const providerToUse = validOverride || (useProWorkspace || useProForTrip ? 'custom_openai' : selectedAiProvider);
+    const isProReq = Boolean(useProWorkspace || useProForTrip || selectedAiProvider === 'custom_openai');
+    const providerToUse = validOverride || (isProReq ? 'custom_openai' : selectedAiProvider);
     try {
       const res = await api.post('/trips/pregen-places', {
+        ...(typeof draftTripId === 'string' && draftTripId.trim() ? { trip_id: draftTripId } : {}),
         destination_city: destinationCity,
         days_count: daysCount,
         budget_total: budgetTotal,
         budget_breakdown: budgetBreakdown,
-        preferences: selectedPrefs,
+        preferences: { ...Object.fromEntries(selectedPrefs.map(pref => [pref, true])), use_local_data: isProReq },
         traveler_type: travelerType,
         traveler_count: travelerCount,
         special_requirements: specialRequirements,
-        ai_provider: providerToUse
+        ai_provider: providerToUse,
+        is_ai_pro: isProReq,
+        use_pro_workspace: Boolean(useProWorkspace),
       }, { timeout: 45000 });
       if (res.data?.places && Array.isArray(res.data.places) && res.data.places.length > 0) {
         finalPlaces = res.data.places;
@@ -804,7 +809,12 @@ export default function TripWizard() {
   // Lắng nghe params.draft_id nếu người dùng mở từ link mời nhóm cùng chọn giỏ hàng
   useEffect(() => {
     const draftId = params.draft_id;
-    if (!draftId) return;
+    if (!draftId) {
+      setHydratedDraftId(null);
+      return;
+    }
+    setHydratedDraftId(null);
+    setPregenPlaces([]);
 
     setDraftTripId(draftId);
     setStep(4);
@@ -840,6 +850,7 @@ export default function TripWizard() {
           if (remoteStage === 'scheduling' || remoteStage === 'collecting') {
             setWorkspaceStage(remoteStage);
           }
+          setHydratedDraftId(draftId);
         }
       } catch (e) {}
 
@@ -872,11 +883,11 @@ export default function TripWizard() {
 
   // Tự động lấy danh sách gợi ý địa điểm nếu vào Pro Workspace và chưa có địa điểm
   useEffect(() => {
-    if (params.token || isGroupMember) return;
+    if (params.token || isGroupMember || (params.draft_id && hydratedDraftId !== params.draft_id)) return;
     if (useProWorkspace && canAccessWorkspace && pregenPlaces.length === 0 && !loadingPregen && destinationCity) {
       fetchPregenPlaces();
     }
-  }, [useProWorkspace, canAccessWorkspace, destinationCity, isGroupMember, params.token, pregenPlaces.length]);
+  }, [useProWorkspace, canAccessWorkspace, destinationCity, isGroupMember, params.token, params.draft_id, hydratedDraftId, pregenPlaces.length]);
 
   // Realtime Channel đồng bộ giỏ hàng và danh sách thành viên online
   useEffect(() => {
@@ -1208,6 +1219,7 @@ export default function TripWizard() {
         preferences: {
           ...selectedPrefs,
           selected_prefs: selectedPrefs,
+          use_local_data: true,
           special_requirements: specialRequirements,
           creation_mode: 'manual',
           draft_cart: cartItems,
@@ -1221,7 +1233,10 @@ export default function TripWizard() {
       }, { timeout: 120000 });
 
       const newTrip = res.data;
-      const tripId = newTrip.id;
+      const tripId = newTrip?.id;
+      if (typeof tripId !== 'string' || !tripId.trim()) {
+        throw new Error('Máy chủ chưa trả mã chuyến đi. Vui lòng kiểm tra danh sách chuyến đi trước khi thử tạo lại.');
+      }
       setDraftTripId(tripId);
       setDraftOwnerId(newTrip.user_id || user?.id || null);
 
@@ -1424,7 +1439,7 @@ export default function TripWizard() {
     }).addTo(map);
 
     var markersMap = {};
-    var places = ${JSON.stringify(validPlaces)};
+    var places = ${JSON.stringify(validPlaces.map(place => ({ ...place, is_pro_local_data: isProLocalPlace(place) })))};
     var cartIds = ${JSON.stringify(Array.from(cartIds))};
     var cartSet = new Set(cartIds);
 
@@ -1488,6 +1503,7 @@ export default function TripWizard() {
       bounds.push([p.lat, p.lng]);
 
       var popupHtml = '<div style="padding:12px; min-width:210px; max-width:260px;">' +
+        (p.is_pro_local_data ? '<div data-testid="map-pro-data-badge" style="display:inline-block; padding:3px 8px; margin-bottom:6px; border-radius:6px; background:#FEF3C7; border:1px solid #F59E0B; color:#92400E; font-size:11px; font-weight:800;">Dữ liệu Pro</div>' : '') +
         '<div style="font-size:10px; font-weight:800; color:' + color + '; margin-bottom:2px;">' + icon + ' ' + (categoryNames[cat] || 'Địa điểm') + '</div>' +
         '<div style="font-size:13px; font-weight:800; color:#202124; margin-bottom:4px;">' + p.name + '</div>' +
         '<div style="font-size:11px; font-weight:800; color:#137333; margin-bottom:4px;">' + costFormatted + '</div>' +
@@ -1711,6 +1727,15 @@ export default function TripWizard() {
         startHour: it.startHour !== undefined ? it.startHour : 8,
         startMinute: it.startMinute || 0,
         durationMinutes: it.durationMinutes || 90,
+        partner_id: (it.place as any).partner_id,
+        is_partner: (it.place as any).is_partner,
+        is_pro_partner: (it.place as any).is_pro_partner,
+        pro_badge: (it.place as any).pro_badge,
+        i18n: (it.place as any).i18n,
+        location_verified: (it.place as any).location_verified,
+        coordinate_source: (it.place as any).coordinate_source,
+        opening_hours: (it.place as any).opening_hours,
+        original_price: (it.place as any).original_price,
       }));
     }
     // MỚI VÀO CHƯA SẮP XẾP GÌ: Lịch trình ban đầu PHẢI HOÀN TOÀN TRỐNG!
@@ -1730,6 +1755,15 @@ export default function TripWizard() {
         lng: it.place.lng,
         cost: it.custom_cost,
         suggestedDuration: it.durationMinutes || 90,
+        partner_id: (it.place as any).partner_id,
+        is_partner: (it.place as any).is_partner,
+        is_pro_partner: (it.place as any).is_pro_partner,
+        pro_badge: (it.place as any).pro_badge,
+        i18n: (it.place as any).i18n,
+        location_verified: (it.place as any).location_verified,
+        coordinate_source: (it.place as any).coordinate_source,
+        opening_hours: (it.place as any).opening_hours,
+        original_price: (it.place as any).original_price,
       }));
   }, [cartItems]);
 
@@ -1868,6 +1902,7 @@ export default function TripWizard() {
     const willUsePro = Boolean(useProWorkspace || useProForTrip || selectedAiProvider === 'custom_openai');
     formattedPrefs.is_ai_pro = willUsePro;
     formattedPrefs.ai_tier = willUsePro ? 'pro' : 'standard';
+    formattedPrefs.use_local_data = willUsePro;
     formattedPrefs.creation_mode = mode;
     if (useProWorkspace) {
       formattedPrefs.use_pro_workspace = true;
@@ -1931,8 +1966,11 @@ export default function TripWizard() {
           ...(draftTripId ? { draft_id: draftTripId } : {}),
         }, { signal: controller.signal, timeout: 120000 });
         clearInterval(stageInterval);
-        await clearCache('trips');
         const targetTripId = res.data?.id || draftTripId;
+        if (typeof targetTripId !== 'string' || !targetTripId.trim()) {
+          throw new Error('Máy chủ chưa trả mã chuyến đi. Vui lòng kiểm tra danh sách chuyến đi trước khi thử tạo lại.');
+        }
+        await clearCache('trips');
         if (draftTripId && targetTripId) {
           await broadcastTripFinalized(targetTripId);
         }
@@ -1952,7 +1990,7 @@ export default function TripWizard() {
         if (err.response?.status === 403 || err.response?.data?.code === 'requires_premium') {
           setShowPremiumModal(true);
         }
-        setErrorMsg(err.response?.data?.error || 'Có lỗi xảy ra khi tạo chuyến đi');
+        setErrorMsg(err.response?.data?.error || err.message || 'Có lỗi xảy ra khi tạo chuyến đi');
       }
     } else {
       // mode === 'manual': Không gọi AI, tạo ngay chuyến đi và đưa các địa điểm vào ngày 1 để khách tự sắp xếp, chuyển ngay sang trang chi tiết chuyến đi.
@@ -1978,8 +2016,11 @@ export default function TripWizard() {
           cart_items: formattedCartItems,
           ...(draftTripId ? { draft_id: draftTripId } : {}),
         }, { timeout: 120000 });
-        await clearCache('trips');
         const targetTripId = res.data?.id || draftTripId;
+        if (typeof targetTripId !== 'string' || !targetTripId.trim()) {
+          throw new Error('Máy chủ chưa trả mã chuyến đi. Vui lòng kiểm tra danh sách chuyến đi trước khi thử tạo lại.');
+        }
+        await clearCache('trips');
         if (draftTripId && targetTripId) {
           await broadcastTripFinalized(targetTripId);
         }
@@ -1989,7 +2030,7 @@ export default function TripWizard() {
         if (err.response?.status === 403 || err.response?.data?.code === 'requires_premium') {
           setShowPremiumModal(true);
         }
-        setErrorMsg(err.response?.data?.error || 'Có lỗi xảy ra khi tạo chuyến đi thủ công');
+        setErrorMsg(err.response?.data?.error || err.message || 'Có lỗi xảy ra khi tạo chuyến đi thủ công');
       }
     }
   };
@@ -2167,6 +2208,7 @@ export default function TripWizard() {
     const willUsePro = Boolean(useProWorkspace || useProForTrip || selectedAiProvider === 'custom_openai');
     formattedPrefs.is_ai_pro = willUsePro;
     formattedPrefs.ai_tier = willUsePro ? 'pro' : 'standard';
+    formattedPrefs.use_local_data = willUsePro;
     if (useProWorkspace) {
       formattedPrefs.use_pro_workspace = true;
     }
@@ -2202,8 +2244,11 @@ export default function TripWizard() {
       }, { signal: controller.signal, timeout: 120000 });
       clearInterval(stageInterval);
       // Invalidate trips cache + schedule reminder notification
-      await clearCache('trips');
       const targetTripId = res.data?.id || draftTripId;
+      if (typeof targetTripId !== 'string' || !targetTripId.trim()) {
+        throw new Error('Máy chủ chưa trả mã chuyến đi. Vui lòng kiểm tra danh sách chuyến đi trước khi thử tạo lại.');
+      }
+      await clearCache('trips');
       if (draftTripId && targetTripId) {
         await broadcastTripFinalized(targetTripId);
       }
@@ -2224,7 +2269,7 @@ export default function TripWizard() {
       if (err.response?.status === 403 || err.response?.data?.code === 'requires_premium') {
         setShowPremiumModal(true);
       }
-      setErrorMsg(err.response?.data?.error || 'Có lỗi xảy ra khi tạo chuyến đi');
+      setErrorMsg(err.response?.data?.error || err.message || 'Có lỗi xảy ra khi tạo chuyến đi');
       setStep(4);
     }
   };
@@ -2685,6 +2730,13 @@ export default function TripWizard() {
                     </View>
                   ) : null}
 
+                  {(useProWorkspace || useProForTrip || selectedAiProvider === 'custom_openai') && (
+                    <View testID="local-data-automatic" className="p-4 rounded-2xl border border-brand-line bg-brand-bgAlt gap-2">
+                      <Text className="text-sm font-bold text-brand-text">AI Pro tự động bổ sung địa điểm bản địa</Text>
+                      <Text className="text-xs text-brand-textSoft">Địa điểm đã xác minh tại {destinationCity || 'điểm đến'} được ghép với địa điểm thông thường và loại trùng trước khi AI lập lịch trình.</Text>
+                    </View>
+                  )}
+
                   {/* PRO WORKSPACE VIEW */}
                   {useProWorkspace && canAccessWorkspace ? (
                     loadingPregen ? (
@@ -2890,6 +2942,11 @@ export default function TripWizard() {
                                                 {CATEGORY_NAMES_VI[String(place.category || '').toLowerCase()] || place.category || 'Địa điểm'}
                                               </Text>
                                             </View>
+                                            {isProLocalPlace(place) && (
+                                              <View testID={`place-pro-data-badge-${place.id}`} className="px-2 py-0.5 rounded-md bg-amber-100 border border-amber-400">
+                                                <Text className="text-[11px] font-extrabold text-amber-900">Dữ liệu Pro</Text>
+                                              </View>
+                                            )}
                                             <Text className="text-xs font-extrabold text-emerald-700">
                                               {new Intl.NumberFormat('vi-VN').format(cost)} đ
                                             </Text>

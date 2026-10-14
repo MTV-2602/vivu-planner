@@ -110,6 +110,43 @@ describe('Admin Module - Date Ranges & Zero-filled Time Series', () => {
 });
 
 describe('Admin Module - User Credits Modification (Set, Adjust, Revoke)', () => {
+  it('preserves usage history and unselected wallets when changing Free remaining', () => {
+    const current = { quota_total: 3, quota_used: 3, pro_credits: 7, monthly_credits: 4, premium_until: '2027-10-20T00:00:00.000Z' };
+    const result = calculateNewCredits(current, { mode: 'set', targetWallet: 'free', freeRemaining: 5 }, new Date('2026-10-14'));
+    assert.equal(result.quota_total, 8);
+    assert.equal(result.pro_credits, 7);
+    assert.equal(result.monthly_credits, 4);
+    assert.equal(result.premium_until, current.premium_until);
+    const revoked = calculateNewCredits(current, { mode: 'revoke', targetWallet: 'free' });
+    assert.equal(revoked.quota_total, 3);
+    assert.equal(revoked.pro_credits, 7);
+    assert.equal(revoked.monthly_credits, 4);
+  });
+
+  it('rejects no-op, wrong wallet fields, numeric strings and database integer overflow', () => {
+    for (const body of [
+      { mode: 'set' }, { mode: 'adjust', freeDelta: 0 },
+      { mode: 'set', targetWallet: 'free', proCredits: 2 },
+      { mode: 'set', freeRemaining: '2' }, { mode: 'set', freeRemaining: 2147483648 },
+      { mode: 'adjust', freeDelta: 1.5 }, { mode: 'set', freeRemaining: 1, proDelta: 2 },
+      { mode: 'set', monthlyUntil: '2027-02-30T00:00:00Z' },
+    ]) assert.equal(validateCreditsInput(body).valid, false, JSON.stringify(body));
+    assert.equal(validateCreditsInput({ mode: 'set', targetWallet: 'free', freeRemaining: 0 }).valid, true);
+  });
+
+  it('never revives an expired stored balance by changing its expiry', () => {
+    const current = { quota_total: 10, quota_used: 4, pro_credits: 2, monthly_credits: 9, premium_until: '2026-10-01T00:00:00Z' };
+    const now = new Date('2026-10-14T00:00:00Z');
+    const expiryOnly = calculateNewCredits(current, { mode: 'adjust', targetWallet: 'monthly', daysDelta: 30 }, now);
+    assert.equal(expiryOnly.monthly_credits, 0);
+    const newGrant = calculateNewCredits(current, { mode: 'adjust', targetWallet: 'monthly', monthlyDelta: 3, daysDelta: 30 }, now);
+    assert.equal(newGrant.monthly_credits, 3);
+    assert.equal(newGrant.pro_credits, 2);
+    assert.equal(newGrant.quota_total, 10);
+    assert.throws(() => calculateNewCredits(current, { mode: 'set', monthlyCredits: 5 }, now), /tương lai/);
+    assert.throws(() => calculateNewCredits(current, { mode: 'adjust', freeDelta: -7 }, now), /không được âm/);
+    assert.equal(calculateNewCredits(current, { mode: 'revoke', targetWallet: 'permanent' }, now).monthly_credits, 9);
+  });
   it('should validate inputs strictly and reject invalid modes, negative numbers, or decimals', () => {
     assert.equal(validateCreditsInput(null).valid, false);
     assert.equal(validateCreditsInput({ mode: 'invalid_mode' }).valid, false);
@@ -167,7 +204,7 @@ describe('Admin Module - User Credits Modification (Set, Adjust, Revoke)', () =>
     assert.equal(res.is_premium, true);
   });
 
-  it('should handle mode adjust with clamping to 0 and shift premium_until with daysDelta', () => {
+  it('should reject adjustment underflow and shift premium_until with daysDelta', () => {
     const now = new Date('2026-10-04T10:00:00Z');
     const current = {
       pro_credits: 3,
@@ -176,8 +213,8 @@ describe('Admin Module - User Credits Modification (Set, Adjust, Revoke)', () =>
       is_premium: true,
     };
 
-    // Subtraction exceeding current amount -> clamp to 0
-    const res1 = calculateNewCredits(
+    // Subtraction exceeding the selected wallet must be rejected.
+    assert.throws(() => calculateNewCredits(
       current,
       {
         mode: 'adjust',
@@ -185,11 +222,7 @@ describe('Admin Module - User Credits Modification (Set, Adjust, Revoke)', () =>
         monthlyDelta: -5,
       },
       now
-    );
-
-    assert.equal(res1.pro_credits, 0);
-    assert.equal(res1.monthly_credits, 0);
-    assert.equal(res1.is_premium, false);
+    ), /không được âm/);
 
     // Positive adjust with daysDelta
     const res2 = calculateNewCredits(

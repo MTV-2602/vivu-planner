@@ -1771,6 +1771,16 @@ export interface GeneratedRichPlaceItem {
   description: string;
   social_review_quote?: string;
   why_recommended?: string;
+  partner_id?: string;
+  is_partner?: boolean;
+  pro_badge?: string;
+  source?: string;
+  opening_hours?: string;
+  avg_duration_minutes?: number;
+  booking_url?: string;
+  original_price?: number;
+  source_maps_url?: string;
+  i18n?: Record<string, any>;
 }
 
 export interface GenerateRichPlacesPoolParams {
@@ -1791,6 +1801,8 @@ export interface GenerateRichPlacesPoolParams {
   ai_provider?: string;
   is_cart_mode?: boolean;
   num_places?: number;
+  is_ai_pro?: boolean;
+  partner_places?: GeneratedRichPlaceItem[];
 }
 
 function normalizePlaceKey(str: string): string {
@@ -1800,8 +1812,10 @@ function normalizePlaceKey(str: string): string {
 function deduplicateRichPlaces(list: GeneratedRichPlaceItem[]): GeneratedRichPlaceItem[] {
   const result: GeneratedRichPlaceItem[] = [];
   const seenKeys: string[] = [];
+  const seenIds = new Set<string>();
 
   for (const item of list) {
+    if (item.id && seenIds.has(item.id)) continue;
     const key = normalizePlaceKey(item.name);
     if (!key || key.length < 2) continue;
 
@@ -1820,6 +1834,7 @@ function deduplicateRichPlaces(list: GeneratedRichPlaceItem[]): GeneratedRichPla
 
     if (!isDuplicate) {
       seenKeys.push(key);
+      if (item.id) seenIds.add(item.id);
       result.push(item);
     }
   }
@@ -2089,7 +2104,7 @@ export async function generateRichPlacesPool(params: GenerateRichPlacesPoolParam
   const isBudgetTight = budgetPerPerson < 8000000;
   const preferencesList = Array.isArray(params.preferences) ? params.preferences.join(', ') : (params.preferences || 'Khám phá, Ẩm thực');
 
-  const cacheKey = `${params.destination_city.toLowerCase()}_${daysCount}_${Math.round(totalBudget / 1000000)}_${preferencesList}_${isCartMode ? 'cart' : 'standard'}_${isBudgetTight ? 'tight' : 'flex'}`;
+  const cacheKey = `${params.destination_city.toLowerCase()}_${daysCount}_${Math.round(totalBudget / 1000000)}_${preferencesList}_${isCartMode ? 'cart' : 'standard'}_${isBudgetTight ? 'tight' : 'flex'}_${params.is_ai_pro ? 'pro' : 'free'}`;
   const cached = richPlacesPoolCache.get(cacheKey);
   if (cached && Date.now() < cached.expiry && cached.data.places.length >= (isCartMode ? 25 : 15)) {
     return cached.data;
@@ -2314,8 +2329,13 @@ QUY TẮC BẮT BUỘC:
       uniquePlaces
     );
 
+    const partnerList = (params.is_ai_pro && Array.isArray(params.partner_places)) ? params.partner_places : [];
+    const mergedWithPartners = partnerList.length > 0
+      ? deduplicateRichPlaces([...partnerList, ...uniquePlacesFinal])
+      : uniquePlacesFinal;
+
     const result = {
-      places: uniquePlacesFinal,
+      places: mergedWithPartners,
       city_center: cityCoords
     };
 
@@ -2335,8 +2355,13 @@ QUY TẮC BẮT BUỘC:
       cityCoords
     );
 
+    const partnerList = (params.is_ai_pro && Array.isArray(params.partner_places)) ? params.partner_places : [];
+    const mergedFallback = partnerList.length > 0
+      ? deduplicateRichPlaces([...partnerList, ...fallbackPlaces])
+      : fallbackPlaces;
+
     const safeResult = {
-      places: fallbackPlaces,
+      places: mergedFallback,
       city_center: cityCoords
     };
 
