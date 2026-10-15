@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { View, Text, Pressable, Platform, ScrollView, TextInput, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, Platform, ScrollView, TextInput, useWindowDimensions, Linking } from 'react-native';
 
 // Trên Native mobile, react-dom không tồn tại. Chỉ import ReactDOM động khi chạy trên nền web.
 let ReactDOM: any = null;
@@ -350,7 +350,7 @@ export default function GoogleCalendarWorkspace({
   onEventDelta,
   externalDelta,
 }: GoogleCalendarWorkspaceProps) {
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && windowWidth >= 960;
 
   const [activeDay, setActiveDay] = useState(1);
@@ -929,7 +929,7 @@ export default function GoogleCalendarWorkspace({
       if (ev) {
         setSelectedPlaceId(ev.id);
         setCustomPlaceName(ev.title);
-        setExpenseAmountInput(ev.cost ? String(ev.cost) : '');
+        setExpenseAmountInput('');
         const autoCat = autoClassifyCategory(ev.category, ev.title);
         setManualCategory(autoCat.key);
       } else {
@@ -944,7 +944,7 @@ export default function GoogleCalendarWorkspace({
         : dayEvs[0];
       setSelectedPlaceId(match.id);
       setCustomPlaceName(match.title);
-      setExpenseAmountInput(match.cost ? String(match.cost) : '');
+      setExpenseAmountInput('');
       const autoCat = autoClassifyCategory(match.category, match.title);
       setManualCategory(autoCat.key);
     } else {
@@ -982,12 +982,16 @@ export default function GoogleCalendarWorkspace({
       setCustomPlaceName(first.title);
       const autoCat = autoClassifyCategory(first.category, first.title);
       setManualCategory(autoCat.key);
-      setExpenseAmountInput(first.cost ? String(first.cost) : '');
+      if (!editingLogId) {
+        setExpenseAmountInput('');
+      }
     } else {
       setSelectedPlaceId('custom');
       setCustomPlaceName('');
       setManualCategory('dining');
-      setExpenseAmountInput('');
+      if (!editingLogId) {
+        setExpenseAmountInput('');
+      }
     }
   };
 
@@ -2078,6 +2082,35 @@ export default function GoogleCalendarWorkspace({
     setActiveDay(nextCount);
   };
 
+  // Mở toàn bộ lộ trình ngày trên Google Maps (Mobile Native)
+  const handleOpenGoogleMapsRoute = () => {
+    if (currentDayEvents.length === 0) return;
+    let url = '';
+    if (currentDayEvents.length === 1) {
+      const p = currentDayEvents[0];
+      const q = p.lat && p.lng ? `${p.lat},${p.lng}` : encodeURIComponent(`${p.title} ${cityName || ''}`);
+      url = `https://www.google.com/maps/search/?api=1&query=${q}`;
+    } else {
+      const p0 = currentDayEvents[0];
+      const pn = currentDayEvents[currentDayEvents.length - 1];
+      const origin = p0.lat && p0.lng ? `${p0.lat},${p0.lng}` : encodeURIComponent(`${p0.title} ${cityName || ''}`);
+      const dest = pn.lat && pn.lng ? `${pn.lat},${pn.lng}` : encodeURIComponent(`${pn.title} ${cityName || ''}`);
+      const middle = currentDayEvents.slice(1, -1);
+      const waypoints = middle
+        .map((p) => (p.lat && p.lng ? `${p.lat},${p.lng}` : encodeURIComponent(`${p.title} ${cityName || ''}`)))
+        .join('|');
+      url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${waypoints ? `&waypoints=${waypoints}` : ''}`;
+    }
+    Linking.openURL(url).catch(() => {});
+  };
+
+  // Mở chỉ đường một điểm trên Google Maps (Mobile Native)
+  const handleOpenSinglePlaceMap = (p: CalendarEventItem) => {
+    const q = p.lat && p.lng ? `${p.lat},${p.lng}` : encodeURIComponent(`${p.title} ${p.address || ''} ${cityName || ''}`);
+    const url = `https://www.google.com/maps/search/?api=1&query=${q}`;
+    Linking.openURL(url).catch(() => {});
+  };
+
   // ── HTML GOOGLE MAPS ROUTE PLANNER VIEW ──
   const mapIframeHTML = useMemo(() => {
     const dayPlaces = currentDayEvents.filter((e) => e.lat && e.lng);
@@ -2716,59 +2749,210 @@ export default function GoogleCalendarWorkspace({
           </View>
 
           {/* Bản đồ Map View */}
-          <View style={{ height: 320, minHeight: 280, position: 'relative', backgroundColor: '#F8F9FA' }}>
-            {Platform.OS === 'web' ? (
-              <iframe
-                title="Bản đồ lộ trình ViVu"
-                srcDoc={mapIframeHTML}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  minHeight: 280,
-                  border: 'none',
-                  display: 'block',
-                }}
-              />
+          <View style={{ minHeight: 280, position: 'relative', backgroundColor: '#F8F9FA', ...(Platform.OS === 'web' && windowWidth >= 768 ? { height: 320 } : {}) }}>
+            {Platform.OS === 'web' && windowWidth >= 768 ? (
+              <>
+                <iframe
+                  title="Bản đồ lộ trình ViVu"
+                  srcDoc={mapIframeHTML}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    minHeight: 280,
+                    border: 'none',
+                    display: 'block',
+                  }}
+                />
+                {/* Map Legend Overlay */}
+                <View
+                  style={{
+                    position: 'absolute',
+                    bottom: 12,
+                    left: 12,
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: 'rgba(0,0,0,0.1)',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)' as any,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#1A73E8' }} />
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#202124' }}>
+                      Điểm Ngày {activeDay} ({currentDayEvents.length})
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#FBBC04' }} />
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#202124' }}>
+                      Giỏ chờ ({standbyList.length})
+                    </Text>
+                  </View>
+                </View>
+              </>
             ) : (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-                <MapPin size={32} color={BRAND_COLORS.primary} />
-                <Text style={{ fontSize: 13, color: '#5F6368', marginTop: 8 }}>
-                  Bản đồ trực tuyến hiển thị tốt nhất trên trình duyệt Web.
-                </Text>
+              <View
+                testID="mobile-route-map-card"
+                style={{
+                  padding: 14,
+                  gap: 12,
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: '#E8EAED',
+                  margin: 8,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.06,
+                  shadowRadius: 6,
+                  elevation: 2,
+                }}
+              >
+                {/* Tiêu đề & Thống kê */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13.5, fontWeight: '800', color: '#1B2420' }}>
+                    🗺️ Lộ trình Ngày {activeDay} ({currentDayEvents.length} điểm dừng)
+                  </Text>
+                  <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: '#E8F0FE' }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#1A73E8' }}>
+                      Chặng 1 ➔ {currentDayEvents.length}
+                    </Text>
+                  </View>
+                </View>
+
+                {currentDayEvents.length > 0 ? (
+                  <>
+                    {/* Nút bấm to nổi bật mở Google Maps */}
+                    <Pressable
+                      testID="btn-open-day-route-google-maps"
+                      onPress={handleOpenGoogleMapsRoute}
+                      style={{
+                        backgroundColor: '#1A73E8',
+                        paddingVertical: 11,
+                        paddingHorizontal: 14,
+                        borderRadius: 12,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        shadowColor: '#1A73E8',
+                        shadowOffset: { width: 0, height: 3 },
+                        shadowOpacity: 0.25,
+                        shadowRadius: 5,
+                        elevation: 3,
+                      }}
+                    >
+                      <Car size={16} color="#FFFFFF" />
+                      <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#FFFFFF', textAlign: 'center' }}>
+                        🗺️ Mở Bản đồ Lộ trình Ngày trên Google Maps
+                      </Text>
+                      <ExternalLink size={13} color="#FFFFFF" />
+                    </Pressable>
+
+                    {/* Danh sách các chặng dừng trong ngày */}
+                    <ScrollView
+                      style={{ maxHeight: 220 }}
+                      showsVerticalScrollIndicator={true}
+                      contentContainerStyle={{ gap: 7, paddingVertical: 2 }}
+                    >
+                      {currentDayEvents.map((ev, idx) => {
+                        const orderNum = idx + 1;
+                        const timeStr = `${ev.startHour < 10 ? '0' + ev.startHour : ev.startHour}:00`;
+                        return (
+                          <View
+                            key={ev.id}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              backgroundColor: '#F8F9FA',
+                              borderRadius: 10,
+                              paddingVertical: 7,
+                              paddingHorizontal: 9,
+                              borderWidth: 1,
+                              borderColor: '#E8EAED',
+                              gap: 8,
+                            }}
+                          >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                              <View
+                                style={{
+                                  width: 22,
+                                  height: 22,
+                                  borderRadius: 11,
+                                  backgroundColor: '#1A73E8',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#FFFFFF' }}>
+                                  {orderNum}
+                                </Text>
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#1A73E8' }}>
+                                    {timeStr}
+                                  </Text>
+                                  <Text
+                                    numberOfLines={1}
+                                    style={{ fontSize: 11.5, fontWeight: '700', color: '#202124', flex: 1 }}
+                                  >
+                                    {ev.title}
+                                  </Text>
+                                </View>
+                                {ev.address ? (
+                                  <Text numberOfLines={1} style={{ fontSize: 9.5, color: '#5F6368', marginTop: 1 }}>
+                                    {ev.address}
+                                  </Text>
+                                ) : null}
+                              </View>
+                            </View>
+
+                            <Pressable
+                              testID={`btn-direct-place-${ev.id}`}
+                              onPress={() => handleOpenSinglePlaceMap(ev)}
+                              style={{
+                                paddingHorizontal: 8,
+                                paddingVertical: 4.5,
+                                borderRadius: 7,
+                                backgroundColor: '#E8F0FE',
+                                borderWidth: 1,
+                                borderColor: '#1A73E8',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 3.5,
+                              }}
+                            >
+                              <MapPin size={11} color="#1A73E8" />
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: '#1A73E8' }}>
+                                📍 Chỉ đường
+                              </Text>
+                            </Pressable>
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  </>
+                ) : (
+                  <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 20, gap: 6 }}>
+                    <MapPin size={26} color="#9AA0A6" />
+                    <Text style={{ fontSize: 12, color: '#5F6368', textAlign: 'center' }}>
+                      Ngày {activeDay} chưa có địa điểm nào trên lịch trình.
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#80868B', textAlign: 'center' }}>
+                      Hãy kéo địa điểm từ giỏ chờ hoặc bấm "+ Thêm điểm" để bắt đầu xếp lịch!
+                    </Text>
+                  </View>
+                )}
               </View>
             )}
-
-            {/* Map Legend Overlay */}
-            <View
-              style={{
-                position: 'absolute',
-                bottom: 12,
-                left: 12,
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: 'rgba(0,0,0,0.1)',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 12,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)' as any,
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#1A73E8' }} />
-                <Text style={{ fontSize: 10, fontWeight: '700', color: '#202124' }}>
-                  Điểm Ngày {activeDay} ({currentDayEvents.length})
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#FBBC04' }} />
-                <Text style={{ fontSize: 10, fontWeight: '700', color: '#202124' }}>
-                  Giỏ chờ ({standbyList.length})
-                </Text>
-              </View>
-            </View>
           </View>
 
           {/* Khối Địa điểm chờ xếp ở Cột Trái */}
@@ -4339,7 +4523,7 @@ export default function GoogleCalendarWorkspace({
             {expenseModalOpen && (
               <View
                 style={{
-                  position: 'fixed' as any,
+                  position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
                   top: 0,
                   left: 0,
                   right: 0,
@@ -4355,11 +4539,11 @@ export default function GoogleCalendarWorkspace({
                   style={{
                     width: '100%',
                     maxWidth: 480,
-                    maxHeight: '90vh' as any,
+                    maxHeight: Platform.OS === 'web' ? ('90vh' as any) : Math.min(windowHeight * 0.9, 640),
                     backgroundColor: '#FFFFFF',
                     borderRadius: 20,
-                    padding: 20,
-                    gap: 14,
+                    padding: 16,
+                    gap: 12,
                     boxShadow: '0 20px 40px rgba(0,0,0,0.2)' as any,
                     overflow: 'hidden',
                   }}
@@ -4384,7 +4568,7 @@ export default function GoogleCalendarWorkspace({
                     </Pressable>
                   </View>
 
-                  <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={true} contentContainerStyle={{ gap: 14 }}>
+                  <ScrollView style={{ maxHeight: 480, flexShrink: 1 }} showsVerticalScrollIndicator={true} contentContainerStyle={{ gap: 12, paddingBottom: 24 }}>
                     {/* BƯỚC 1: CLICK VÔ NGÀY NÀO */}
                     <View style={{ gap: 6 }}>
                       <Text style={{ fontSize: 12, fontWeight: '800', color: '#1B2420' }}>
@@ -4447,7 +4631,7 @@ export default function GoogleCalendarWorkspace({
                       </View>
                     </View>
 
-                    {/* BƯỚC 2: CHỌN ĐỊA ĐIỂM CỦA NGÀY ĐÓ */}
+                    {/* BƯỚC 2: CHỌN ĐỊA ĐIỂM CỦA NGÀY ĐÓ (GRID 2 CỘT GỌN GÀNG) */}
                     <View style={{ gap: 6 }}>
                       <Text style={{ fontSize: 12, fontWeight: '800', color: '#1B2420' }}>
                         📍 Bước 2: Chọn địa điểm trong Ngày {selectedExpenseDay}:
@@ -4467,34 +4651,39 @@ export default function GoogleCalendarWorkspace({
                                       testID={`btn-select-place-${ev.id}`}
                                       onPress={() => handleSelectPlaceInModal(ev.id)}
                                       style={{
-                                        paddingHorizontal: 10,
-                                        paddingVertical: 7,
-                                        borderRadius: 10,
+                                        width: '48.5%',
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 6,
+                                        borderRadius: 8,
                                         backgroundColor: isSelected ? '#E8F0FE' : '#FAFAFA',
                                         borderWidth: 1.5,
                                         borderColor: isSelected ? '#1A73E8' : 'rgba(27,36,32,0.1)',
                                         flexDirection: 'row',
                                         alignItems: 'center',
-                                        gap: 6,
+                                        justifyContent: 'space-between',
+                                        gap: 4,
                                         cursor: 'pointer' as any,
                                       }}
                                     >
-                                      <Text style={{ fontSize: 12 }}>{autoCat.emoji}</Text>
-                                      <View>
-                                        <Text
-                                          style={{
-                                            fontSize: 11,
-                                            fontWeight: '800',
-                                            color: isSelected ? '#1A73E8' : '#202124',
-                                          }}
-                                        >
-                                          {ev.title}
-                                        </Text>
-                                        <Text style={{ fontSize: 10, color: '#5F6368' }}>
-                                          {ev.startHour}:00 · Dự kiến: {Number(ev.cost).toLocaleString('vi-VN')}đ
-                                        </Text>
+                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1, minWidth: 0 }}>
+                                        <Text style={{ fontSize: 12 }}>{autoCat.emoji}</Text>
+                                        <View style={{ flex: 1, minWidth: 0 }}>
+                                          <Text
+                                            numberOfLines={1}
+                                            style={{
+                                              fontSize: 11,
+                                              fontWeight: '800',
+                                              color: isSelected ? '#1A73E8' : '#202124',
+                                            }}
+                                          >
+                                            {ev.title}
+                                          </Text>
+                                          <Text numberOfLines={1} style={{ fontSize: 9.5, color: '#5F6368' }}>
+                                            {ev.startHour}:00 · {Number(ev.cost || 0).toLocaleString('vi-VN')}đ
+                                          </Text>
+                                        </View>
                                       </View>
-                                      {isSelected && <Check size={14} color="#1A73E8" />}
+                                      {isSelected && <Check size={13} color="#1A73E8" />}
                                     </Pressable>
                                   );
                                 })}
@@ -4511,22 +4700,25 @@ export default function GoogleCalendarWorkspace({
                               onPress={() => handleSelectPlaceInModal('custom')}
                               style={{
                                 paddingHorizontal: 10,
-                                paddingVertical: 7,
-                                borderRadius: 10,
+                                paddingVertical: 6,
+                                borderRadius: 8,
                                 backgroundColor: selectedPlaceId === 'custom' ? '#FFF8E1' : '#FAFAFA',
                                 borderWidth: 1.5,
                                 borderColor: selectedPlaceId === 'custom' ? '#FBBC04' : 'rgba(27,36,32,0.1)',
                                 flexDirection: 'row',
                                 alignItems: 'center',
+                                justifyContent: 'space-between',
                                 gap: 6,
                                 cursor: 'pointer' as any,
                               }}
                             >
-                              <Plus size={14} color="#B06000" />
-                              <Text style={{ fontSize: 11, fontWeight: '800', color: '#B06000' }}>
-                                + Địa điểm / Chi phí phát sinh khác ngoài lịch
-                              </Text>
-                              {selectedPlaceId === 'custom' && <Check size={14} color="#B06000" />}
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Plus size={13} color="#B06000" />
+                                <Text style={{ fontSize: 11, fontWeight: '800', color: '#B06000' }}>
+                                  + Địa điểm / Chi phí phát sinh khác ngoài lịch
+                                </Text>
+                              </View>
+                              {selectedPlaceId === 'custom' && <Check size={13} color="#B06000" />}
                             </Pressable>
 
                             {selectedPlaceId === 'custom' && (
@@ -4651,14 +4843,14 @@ export default function GoogleCalendarWorkspace({
                         testID="input-expense-amount"
                         value={expenseAmountInput}
                         onChangeText={setExpenseAmountInput}
-                        placeholder="Ví dụ: 120000 hoặc 50k, 1.5tr"
+                        placeholder="Nhập số tiền thực tế (ví dụ: 50k, 120000, 1.5tr)"
                         keyboardType="numeric"
                         style={{
                           borderWidth: 1.5,
                           borderColor: '#137333',
                           borderRadius: 10,
                           paddingHorizontal: 12,
-                          paddingVertical: 10,
+                          paddingVertical: 9,
                           fontSize: 16,
                           fontWeight: '800',
                           color: '#137333',
@@ -4691,13 +4883,15 @@ export default function GoogleCalendarWorkspace({
                             }}
                             style={{
                               paddingHorizontal: 8,
-                              paddingVertical: 4,
+                              paddingVertical: 5,
                               borderRadius: 6,
-                              backgroundColor: '#F1F3F4',
+                              backgroundColor: '#E8F5E9',
+                              borderWidth: 1,
+                              borderColor: '#C8E6C9',
                               cursor: 'pointer' as any,
                             }}
                           >
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#3C4043' }}>
+                            <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#137333' }}>
                               +{amt >= 1000000 ? `${amt / 1000000}tr` : `${amt / 1000}k`}
                             </Text>
                           </Pressable>

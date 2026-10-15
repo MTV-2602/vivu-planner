@@ -2736,23 +2736,26 @@ export default function TripWizard() {
                     </View>
                   ) : useProWorkspace ? (
                     <View className="p-3.5 rounded-2xl bg-white border border-brand-line/50 shadow-sm gap-2.5">
-                      <View className="flex-row flex-wrap items-center justify-between gap-2">
-                        <View className="flex-row items-center gap-2.5">
-                          <View className="w-9 h-9 rounded-xl bg-brand-primary items-center justify-center shadow-xs">
+                      <View className="flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                        <View className="flex-row items-center gap-2.5 flex-1 min-w-0">
+                          <View className="w-9 h-9 rounded-xl bg-brand-primary items-center justify-center shadow-xs shrink-0">
                             <Crown size={17} color="#FFFFFF" />
                           </View>
-                          <View>
+                          <View className="flex-1 min-w-0">
                             <View className="flex-row items-center gap-2 flex-wrap">
-                              <Text className="text-sm font-extrabold text-brand-text">
+                              <Text
+                                numberOfLines={2}
+                                className="text-xs sm:text-sm font-extrabold text-brand-text flex-shrink"
+                              >
                                 Không gian Chọn địa điểm & Lập lịch ViVu ({destinationCity})
                               </Text>
-                              <View className="px-2 py-0.5 rounded-full bg-brand-primary/10 border border-brand-primary/20">
+                              <View className="px-2 py-0.5 rounded-full bg-brand-primary/10 border border-brand-primary/20 shrink-0">
                                 <Text className="text-[10px] font-bold text-brand-primary">
                                   {`⚡ Còn ${paymentStatus?.remainingTrips ?? 0} lượt Pro`}
                                 </Text>
                               </View>
                             </View>
-                            <Text className="text-[11px] text-brand-textSoft">
+                            <Text numberOfLines={2} className="text-[11px] text-brand-textSoft">
                               {draftTripId
                                 ? `🟢 Phòng chọn chung đang hoạt động · ${collaboratorCount} thành viên trực tuyến`
                                 : 'Chọn địa điểm vào giỏ hoặc mời bạn bè cùng chọn đồng bộ tức thì'}
@@ -2761,7 +2764,7 @@ export default function TripWizard() {
                         </View>
 
                         {/* Nút thao tác Nhóm & Thêm địa điểm */}
-                        <View className="flex-row items-center gap-2">
+                        <View className="flex-row items-center gap-2 self-start sm:self-auto flex-wrap">
                           <Pressable
                             testID="btn-open-custom-place-modal"
                             onPress={() => setShowCustomPlaceModal(true)}
@@ -3303,16 +3306,19 @@ export default function TripWizard() {
                         })()}
 
                         {/* Thanh tổng kết giỏ hàng & Nút mở Calendar */}
-                        <View className="p-4 rounded-2xl bg-[#FFFBF0] border border-[#F5D599] flex-row items-center justify-between gap-3 shadow-md mt-2">
-                          <View className="flex-row items-center gap-3">
-                            <View className="w-10 h-10 rounded-xl bg-brand-accent/20 items-center justify-center">
+                        <View
+                          style={{ flexDirection: windowWidth < 640 ? 'column' : 'row', alignItems: windowWidth < 640 ? 'stretch' : 'center' }}
+                          className="p-3.5 sm:p-4 rounded-2xl bg-[#FFFBF0] border border-[#F5D599] justify-between gap-3 shadow-md mt-2"
+                        >
+                          <View className="flex-row items-center gap-3 flex-1 min-w-0">
+                            <View className="w-10 h-10 rounded-xl bg-brand-accent/20 items-center justify-center shrink-0">
                               <ShoppingBag size={20} color={BRAND_COLORS.accent} />
                             </View>
-                            <View>
+                            <View className="flex-1 min-w-0">
                               <Text className="text-sm font-extrabold text-[#9A5B00]">
                                 🛒 Giỏ hàng: {cartItems.length} địa điểm
                               </Text>
-                              <Text className="text-xs text-[#7A5210]">
+                              <Text className="text-xs text-[#7A5210]" numberOfLines={1}>
                                 Dự tính: {new Intl.NumberFormat('vi-VN').format(currentCartTotal)} đ / Ngân sách:{' '}
                                 {new Intl.NumberFormat('vi-VN').format(budgetTotal)} đ
                               </Text>
@@ -3320,16 +3326,16 @@ export default function TripWizard() {
                           </View>
 
                           {isGroupMember ? (
-                            <View className="flex-col sm:flex-row items-end sm:items-center gap-2">
-                              <Text className="text-[11px] text-gray-500 italic max-w-xs text-right">
+                            <View className="flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                              <Text className="text-[11px] text-gray-500 italic max-w-xs text-left sm:text-right">
                                 ℹ️ Bạn đang tham gia nhóm chọn giỏ hàng. Chỉ trưởng nhóm mới có quyền chốt danh sách và chuyển sang bước xếp lịch trình.
                               </Text>
                               <View
                                 testID="btn-open-calendar-member-disabled"
-                                className="px-5 py-3 rounded-xl flex-row items-center gap-2 bg-gray-200 opacity-80"
+                                className="w-full sm:w-auto px-4 sm:px-5 py-3 rounded-xl flex-row items-center justify-center gap-2 bg-gray-200 opacity-80"
                               >
                                 <Clock size={16} color="#6B7280" />
-                                <Text className="text-xs font-extrabold text-gray-500">
+                                <Text className="text-xs font-extrabold text-gray-500 text-center">
                                   ⏳ Chờ trưởng nhóm chốt danh sách ({cartItems.length} địa điểm)
                                 </Text>
                               </View>
@@ -3339,12 +3345,12 @@ export default function TripWizard() {
                               testID="btn-open-calendar-from-cart"
                               disabled={cartItems.length === 0}
                               onPress={handleCaptainAdvanceToScheduling}
-                              className={`px-5 py-3 rounded-xl flex-row items-center gap-2 shadow-sm ${
+                              className={`w-full sm:w-auto px-4 sm:px-5 py-3 rounded-xl flex-row items-center justify-center gap-2 shadow-sm ${
                                 cartItems.length === 0 ? 'bg-gray-300 opacity-60' : 'bg-brand-primary active:opacity-90'
                               }`}
                             >
                               <Calendar size={16} color="#FFFFFF" />
-                              <Text className="text-xs font-extrabold text-white">
+                              <Text className="text-xs font-extrabold text-white text-center">
                                 🚀 Chốt danh sách & Sang bước xếp lịch ({cartItems.length} điểm) →
                               </Text>
                             </Pressable>
