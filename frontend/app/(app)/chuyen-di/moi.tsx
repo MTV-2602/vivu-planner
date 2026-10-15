@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   View, Text, ScrollView, Pressable, TextInput, Image,
-  Animated, Platform, KeyboardAvoidingView, ActivityIndicator, Modal, useWindowDimensions,
+  Animated, Platform, KeyboardAvoidingView, ActivityIndicator, Modal, useWindowDimensions, Linking,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
@@ -430,6 +430,15 @@ export default function TripWizard() {
   const isLargeScreen = windowWidth >= 900;
   const isMobile = windowWidth < 768;
   const [showCityPickerModal, setShowCityPickerModal] = useState(false);
+  const [collectingViewMode, setCollectingViewMode] = useState<'list' | 'map' | 'both'>('list');
+
+  useEffect(() => {
+    if (windowWidth >= 1024) {
+      setCollectingViewMode('both');
+    } else {
+      setCollectingViewMode('list');
+    }
+  }, [windowWidth >= 1024]);
 
   // ── STATE TỰ NHẬP ĐỊA ĐIỂM THỦ CÔNG (KHÔNG PHỤ THUỘC HARDCODE) ──
   const [showCustomPlaceModal, setShowCustomPlaceModal] = useState<boolean>(false);
@@ -1539,7 +1548,7 @@ export default function TripWizard() {
       bounds.push([p.lat, p.lng]);
 
       var popupHtml = '<div style="padding:12px; min-width:210px; max-width:260px;">' +
-        (p.is_pro_local_data ? '<div data-testid="map-pro-data-badge" style="display:inline-block; padding:3px 8px; margin-bottom:6px; border-radius:6px; background:#FEF3C7; border:1px solid #F59E0B; color:#92400E; font-size:11px; font-weight:800;">Dữ liệu Pro</div>' : '') +
+        (p.is_pro_local_data ? '<div data-testid="map-pro-data-badge" style="display:inline-block; padding:3px 8px; margin-bottom:6px; border-radius:6px; background:#FEF3C7; border:1px solid #F59E0B; color:#92400E; font-size:11px; font-weight:800;">👑 Độc quyền Pro</div>' : '') +
         '<div style="font-size:10px; font-weight:800; color:' + color + '; margin-bottom:2px;">' + icon + ' ' + (categoryNames[cat] || 'Địa điểm') + '</div>' +
         '<div style="font-size:13px; font-weight:800; color:#202124; margin-bottom:4px;">' + p.name + '</div>' +
         '<div style="font-size:11px; font-weight:800; color:#137333; margin-bottom:4px;">' + costFormatted + '</div>' +
@@ -2828,263 +2837,470 @@ export default function TripWizard() {
                           </Text>
                         </View>
 
-                        {/* Layout 2 Cột: Bên trái Danh sách địa điểm, Bên phải Bản đồ tương tác */}
-                        <View className="flex-col lg:flex-row gap-5 items-start">
-                          {/* CỘT TRÁI: BỘ LỌC + DANH SÁCH ĐỊA ĐIỂM */}
-                          <View className="w-full lg:flex-1 gap-3.5">
-                            {/* Thanh lọc danh mục & Thao tác nhanh */}
-                            <View className="flex-row flex-wrap items-center justify-between gap-2.5 p-3 bg-white rounded-2xl border border-brand-line/50">
-                              {/* Filter Tabs */}
-                              <View className="flex-row flex-wrap items-center gap-1.5">
-                                {[
-                                  { id: 'all', label: 'Tất cả' },
-                                  { id: 'dining', label: 'Ẩm thực 🍽️' },
-                                  { id: 'cafe', label: 'Cà phê ☕' },
-                                  { id: 'attraction', label: 'Tham quan 🏔️' },
-                                  { id: 'hotel', label: 'Khách sạn 🏨' },
-                                ].map((tab) => (
-                                  <Pressable
-                                    key={tab.id}
-                                    onPress={() => setPlaceCategoryFilter(tab.id)}
-                                    className={`px-2.5 py-1.5 rounded-xl border ${
-                                      placeCategoryFilter === tab.id
-                                        ? 'bg-brand-primary border-brand-primary'
-                                        : 'bg-brand-bgAlt border-brand-line/50'
+                        {/* Thanh chuyển Tab Segmented Control */}
+                        {(() => {
+                          const isDesktopLayout = windowWidth >= 1024;
+                          const effectiveMode = isDesktopLayout ? collectingViewMode : (collectingViewMode === 'both' ? 'list' : collectingViewMode);
+                          return (
+                            <View className="flex-row items-center justify-between flex-wrap gap-2.5 p-2 bg-white rounded-2xl border border-brand-line/50 shadow-sm">
+                              <View className="flex-row items-center gap-1.5 p-1 bg-brand-bgAlt rounded-xl">
+                                <Pressable
+                                  testID="tab-collecting-list"
+                                  onPress={() => setCollectingViewMode('list')}
+                                  className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 transition-all ${
+                                    effectiveMode === 'list'
+                                      ? 'bg-white shadow-sm border border-brand-line/40'
+                                      : 'bg-transparent'
+                                  }`}
+                                >
+                                  <Text style={{ fontSize: 13 }}>📋</Text>
+                                  <Text
+                                    className={`text-xs font-bold ${
+                                      effectiveMode === 'list' ? 'text-brand-primary' : 'text-brand-textSoft'
                                     }`}
                                   >
-                                    <Text
-                                      className={`text-xs font-bold ${
-                                        placeCategoryFilter === tab.id ? 'text-white' : 'text-brand-textSoft'
-                                      }`}
-                                    >
-                                      {tab.label}
-                                    </Text>
-                                  </Pressable>
-                                ))}
-                              </View>
-
-                              {/* Action Buttons */}
-                              <View className="flex-row items-center gap-2">
-                                <Pressable
-                                  onPress={() => {
-                                    const addedByName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Tôi';
-                                    const addedById = user?.id;
-                                    setCartItems((prev) => {
-                                      let updated = [...prev];
-                                      filteredPoolPlaces.forEach((p) => {
-                                        const match = updated.find(
-                                          (it) =>
-                                            it.place.id === p.id ||
-                                            (normalizePlaceKey(it.place.name) === normalizePlaceKey(p.name) && it.place.category === p.category)
-                                        );
-                                        if (!match) {
-                                          const cost = p.estimated_cost || (p.price_level ? p.price_level * 50000 : 50000);
-                                          updated.push({
-                                            place: p,
-                                            pricing_option: 'auto',
-                                            custom_cost: cost,
-                                            day_number: 0,
-                                            order_index: updated.length + 1,
-                                            added_by_name: addedByName,
-                                            added_by_id: addedById,
-                                          });
-                                        }
-                                      });
-                                      syncCartToDraft(updated);
-                                      return updated;
-                                    });
-                                  }}
-                                  className="px-2.5 py-1.5 rounded-xl bg-brand-primary/10 border border-brand-primary/30 flex-row items-center gap-1"
-                                >
-                                  <Sparkles size={12} color={BRAND_COLORS.primary} />
-                                  <Text className="text-xs font-bold text-brand-primary">
-                                    ⚡ Chọn tất cả ({filteredPoolPlaces.length})
+                                    Danh sách gợi ý ({filteredPoolPlaces.length})
                                   </Text>
                                 </Pressable>
 
-                                {cartItems.length > 0 && (
-                                  <Pressable
-                                    onPress={handleClearCart}
-                                    className="px-2.5 py-1.5 rounded-xl bg-rose-50 border border-rose-200 flex-row items-center gap-1"
+                                <Pressable
+                                  testID="tab-collecting-map"
+                                  onPress={() => setCollectingViewMode('map')}
+                                  className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 transition-all ${
+                                    effectiveMode === 'map'
+                                      ? 'bg-white shadow-sm border border-brand-line/40'
+                                      : 'bg-transparent'
+                                  }`}
+                                >
+                                  <Text style={{ fontSize: 13 }}>🗺️</Text>
+                                  <Text
+                                    className={`text-xs font-bold ${
+                                      effectiveMode === 'map' ? 'text-brand-primary' : 'text-brand-textSoft'
+                                    }`}
                                   >
-                                    <Trash2 size={12} color="#E11D48" />
-                                    <Text className="text-xs font-bold text-rose-600">Xóa giỏ ({cartItems.length})</Text>
+                                    Bản đồ Live Map
+                                  </Text>
+                                </Pressable>
+
+                                {isDesktopLayout && (
+                                  <Pressable
+                                    testID="tab-collecting-both"
+                                    onPress={() => setCollectingViewMode('both')}
+                                    className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 transition-all ${
+                                      effectiveMode === 'both'
+                                        ? 'bg-white shadow-sm border border-brand-line/40'
+                                        : 'bg-transparent'
+                                    }`}
+                                  >
+                                    <Text style={{ fontSize: 13 }}>🖥️</Text>
+                                    <Text
+                                      className={`text-xs font-bold ${
+                                        effectiveMode === 'both' ? 'text-brand-primary' : 'text-brand-textSoft'
+                                      }`}
+                                    >
+                                      Xem song song
+                                    </Text>
                                   </Pressable>
                                 )}
                               </View>
-                            </View>
 
-                            {/* Ô tìm kiếm */}
-                            <View className="flex-row items-center px-3.5 py-2.5 bg-white rounded-xl border border-brand-line/50 gap-2">
-                              <Text style={{ fontSize: 13 }}>🔍</Text>
-                              <TextInput
-                                value={placeSearchQuery}
-                                onChangeText={setPlaceSearchQuery}
-                                placeholder="Tìm kiếm địa điểm theo tên hoặc địa chỉ..."
-                                placeholderTextColor="#9CA3AF"
-                                className="flex-1 text-xs text-brand-text outline-none"
-                              />
-                              {placeSearchQuery ? (
-                                <Pressable onPress={() => setPlaceSearchQuery('')}>
-                                  <X size={14} color="#9CA3AF" />
-                                </Pressable>
-                              ) : null}
-                            </View>
-
-                            {/* Danh sách địa điểm AI gợi ý (2 cột trên desktop) */}
-                            {filteredPoolPlaces.length === 0 ? (
-                              <View className="py-14 px-6 items-center justify-center bg-white rounded-2xl border border-dashed border-brand-line/60 gap-3 w-full">
-                                <View className="w-12 h-12 rounded-2xl bg-brand-primary/10 items-center justify-center">
-                                  <Sparkles size={24} color={BRAND_COLORS.primary} />
-                                </View>
-                                <Text className="text-sm font-extrabold text-brand-text text-center">
-                                  Chưa có địa điểm gợi ý nào trong danh sách
+                              <View className="flex-row items-center gap-2 px-2">
+                                <Text className="text-xs font-semibold text-brand-textSoft">
+                                  Đã chọn: <Text className="font-extrabold text-brand-primary">{cartItems.length}</Text> địa điểm
                                 </Text>
-                                <Text className="text-xs text-brand-textSoft text-center max-w-sm">
-                                  Bạn có thể nhấn nút dưới đây để AI phân tích và gợi ý kho địa điểm thực tế theo ngân sách, hoặc tự thêm địa điểm theo sở thích riêng.
-                                </Text>
-                                <View className="flex-row items-center gap-2.5 mt-2">
-                                  <Pressable
-                                    testID="btn-retry-pregen-empty"
-                                    onPress={fetchPregenPlaces}
-                                    className="px-4 py-2.5 rounded-xl bg-brand-primary active:opacity-90 flex-row items-center gap-1.5"
-                                  >
-                                    <Sparkles size={14} color="#FFFFFF" />
-                                    <Text className="text-xs font-bold text-white">🔄 Thử lại lấy gợi ý AI</Text>
-                                  </Pressable>
-                                  <Pressable
-                                    testID="btn-custom-place-empty"
-                                    onPress={() => setShowCustomPlaceModal(true)}
-                                    className="px-4 py-2.5 rounded-xl bg-brand-bgAlt border border-brand-line/60 active:opacity-80 flex-row items-center gap-1.5"
-                                  >
-                                    <Plus size={14} color={BRAND_COLORS.text} />
-                                    <Text className="text-xs font-bold text-brand-text">+ Thêm địa điểm thủ công</Text>
-                                  </Pressable>
-                                </View>
                               </View>
-                            ) : (
-                              <View className="flex-row flex-wrap gap-3">
-                                {filteredPoolPlaces.map((place) => {
-                                  const cartMatch = cartItems.find((it) =>
-                                    it.place.id === place.id ||
-                                    (normalizePlaceKey(it.place.name) === normalizePlaceKey(place.name) && it.place.category === place.category)
-                                  );
-                                  const isInCart = Boolean(cartMatch);
-                                  const cost = place.estimated_cost || 50000;
-                                  const isHovered = hoveredPoolPlaceId === place.id;
-                                  const addedByText = cartMatch?.added_by_id === user?.id
-                                    ? 'Bạn'
-                                    : (cartMatch?.added_by_name || 'Thành viên');
+                            </View>
+                          );
+                        })()}
 
-                                  return (
-                                    <View
-                                      key={place.id}
-                                      testID={`pool-card-${place.id}`}
-                                      // @ts-ignore
-                                      onMouseEnter={() => {
-                                        if (Platform.OS === 'web' && cartMapIframeRef.current?.contentWindow) {
-                                          cartMapIframeRef.current.contentWindow.postMessage({
-                                            type: 'PAN_TO_PLACE',
-                                            placeId: place.id
-                                          }, '*');
-                                        }
-                                      }}
-                                      className={`p-3.5 rounded-2xl border bg-white flex-1 min-w-[240px] max-w-[360px] gap-2.5 shadow-sm transition-all ${
-                                        isInCart
-                                          ? 'border-2 border-emerald-600 bg-emerald-50/40'
-                                          : isHovered
-                                          ? 'border-brand-accent bg-amber-50/30'
-                                          : 'border-brand-line/50'
-                                      }`}
-                                    >
-                                      <View className="flex-row items-start justify-between gap-2">
-                                        <View className="flex-1 gap-1">
-                                          <View className="flex-row items-center gap-2 flex-wrap">
-                                            <View className="px-2 py-0.5 rounded-md bg-brand-bgAlt border border-brand-line/40">
-                                              <Text className="text-[10px] font-extrabold text-brand-textSoft">
-                                                {CATEGORY_NAMES_VI[String(place.category || '').toLowerCase()] || place.category || 'Địa điểm'}
-                                              </Text>
-                                            </View>
-                                            {isProLocalPlace(place) && (
-                                              <View testID={`place-pro-data-badge-${place.id}`} className="px-2 py-0.5 rounded-md bg-amber-100 border border-amber-400">
-                                                <Text className="text-[11px] font-extrabold text-amber-900">Dữ liệu Pro</Text>
-                                              </View>
-                                            )}
-                                            <Text className="text-xs font-extrabold text-emerald-700">
-                                              {new Intl.NumberFormat('vi-VN').format(cost)} đ
-                                            </Text>
-                                            {isInCart && (
-                                              <View className="px-1.5 py-0.5 rounded-md bg-emerald-100 border border-emerald-300">
-                                                <Text className="text-[10px] font-bold text-emerald-800">
-                                                  ✓ {addedByText} đã thêm
-                                                </Text>
-                                              </View>
-                                            )}
-                                          </View>
-                                          <Text className="text-sm font-extrabold text-brand-text" numberOfLines={1}>
-                                            {place.name}
+                        {/* Layout: Danh sách địa điểm & Bản đồ tương tác */}
+                        {(() => {
+                          const isDesktopLayout = windowWidth >= 1024;
+                          const effectiveMode = isDesktopLayout ? collectingViewMode : (collectingViewMode === 'both' ? 'list' : collectingViewMode);
+                          const showList = effectiveMode === 'list' || effectiveMode === 'both';
+                          const showMap = effectiveMode === 'map' || effectiveMode === 'both';
+
+                          return (
+                            <View className="flex-col lg:flex-row gap-5 items-start w-full">
+                              {/* CỘT TRÁI: BỘ LỌC + DANH SÁCH ĐỊA ĐIỂM */}
+                              {showList && (
+                                <View className={`w-full ${showMap ? 'lg:flex-1' : 'flex-1'} gap-3.5`}>
+                                  {/* Thanh lọc danh mục & Thao tác nhanh */}
+                                  <View className="flex-row flex-wrap items-center justify-between gap-2.5 p-3 bg-white rounded-2xl border border-brand-line/50">
+                                    {/* Filter Tabs */}
+                                    <View className="flex-row flex-wrap items-center gap-1.5">
+                                      {[
+                                        { id: 'all', label: 'Tất cả' },
+                                        { id: 'dining', label: 'Ẩm thực 🍽️' },
+                                        { id: 'cafe', label: 'Cà phê ☕' },
+                                        { id: 'attraction', label: 'Tham quan 🏔️' },
+                                        { id: 'hotel', label: 'Khách sạn 🏨' },
+                                      ].map((tab) => (
+                                        <Pressable
+                                          key={tab.id}
+                                          onPress={() => setPlaceCategoryFilter(tab.id)}
+                                          className={`px-2.5 py-1.5 rounded-xl border ${
+                                            placeCategoryFilter === tab.id
+                                              ? 'bg-brand-primary border-brand-primary'
+                                              : 'bg-brand-bgAlt border-brand-line/50'
+                                          }`}
+                                        >
+                                          <Text
+                                            className={`text-xs font-bold ${
+                                              placeCategoryFilter === tab.id ? 'text-white' : 'text-brand-textSoft'
+                                            }`}
+                                          >
+                                            {tab.label}
                                           </Text>
-                                          {place.address && (
-                                            <Text className="text-[11px] text-brand-textSoft" numberOfLines={1}>
-                                              📍 {place.address}
-                                            </Text>
-                                          )}
-                                        </View>
-                                      </View>
-
-                                      <Pressable
-                                        testID={`btn-toggle-cart-${place.id}`}
-                                        onPress={() => handleAddToCart(place)}
-                                        className={`w-full py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-1.5 transition-all ${
-                                          isInCart
-                                            ? 'bg-emerald-600 active:opacity-90'
-                                            : 'bg-brand-primary active:opacity-90'
-                                        }`}
-                                      >
-                                        {isInCart ? (
-                                          <>
-                                            <Check size={14} color="#FFFFFF" />
-                                            <Text className="text-xs font-bold text-white">
-                                              ✓ {addedByText} đã thêm · Bấm để bỏ
-                                            </Text>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Plus size={14} color="#FFFFFF" />
-                                            <Text className="text-xs font-bold text-white">+ Thêm vào giỏ</Text>
-                                          </>
-                                        )}
-                                      </Pressable>
+                                        </Pressable>
+                                      ))}
                                     </View>
-                                  );
-                                })}
-                              </View>
-                            )}
-                          </View>
 
-                          {/* CỘT PHẢI: BẢN ĐỒ TƯƠNG TÁC GOOGLE MAPS TILES */}
-                          <View className="w-full lg:w-[420px] rounded-2xl overflow-hidden border border-brand-line/50 shadow-md bg-white min-h-[460px] lg:min-h-[580px] lg:sticky lg:top-4">
-                            <View className="p-3 bg-white border-b border-brand-line/40 flex-row items-center justify-between">
-                              <View className="flex-row items-center gap-2">
-                                <MapPin size={15} color={BRAND_COLORS.primary} />
-                                <Text className="text-xs font-extrabold text-brand-text">
-                                  Bản đồ Gợi ý ({filteredPoolPlaces.length} điểm)
-                                </Text>
-                              </View>
-                              <Text className="text-[10px] text-brand-textSoft italic">
-                                Trỏ vào để định vị · Bấm pin để thêm
-                              </Text>
+                                    {/* Action Buttons */}
+                                    <View className="flex-row items-center gap-2">
+                                      <Pressable
+                                        onPress={() => {
+                                          const addedByName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Tôi';
+                                          const addedById = user?.id;
+                                          setCartItems((prev) => {
+                                            let updated = [...prev];
+                                            filteredPoolPlaces.forEach((p) => {
+                                              const match = updated.find(
+                                                (it) =>
+                                                  it.place.id === p.id ||
+                                                  (normalizePlaceKey(it.place.name) === normalizePlaceKey(p.name) && it.place.category === p.category)
+                                              );
+                                              if (!match) {
+                                                const cost = p.estimated_cost || (p.price_level ? p.price_level * 50000 : 50000);
+                                                updated.push({
+                                                  place: p,
+                                                  pricing_option: 'auto',
+                                                  custom_cost: cost,
+                                                  day_number: 0,
+                                                  order_index: updated.length + 1,
+                                                  added_by_name: addedByName,
+                                                  added_by_id: addedById,
+                                                });
+                                              }
+                                            });
+                                            syncCartToDraft(updated);
+                                            return updated;
+                                          });
+                                        }}
+                                        className="px-2.5 py-1.5 rounded-xl bg-brand-primary/10 border border-brand-primary/30 flex-row items-center gap-1"
+                                      >
+                                        <Sparkles size={12} color={BRAND_COLORS.primary} />
+                                        <Text className="text-xs font-bold text-brand-primary">
+                                          ⚡ Chọn tất cả ({filteredPoolPlaces.length})
+                                        </Text>
+                                      </Pressable>
+
+                                      {cartItems.length > 0 && (
+                                        <Pressable
+                                          onPress={handleClearCart}
+                                          className="px-2.5 py-1.5 rounded-xl bg-rose-50 border border-rose-200 flex-row items-center gap-1"
+                                        >
+                                          <Trash2 size={12} color="#E11D48" />
+                                          <Text className="text-xs font-bold text-rose-600">Xóa giỏ ({cartItems.length})</Text>
+                                        </Pressable>
+                                      )}
+                                    </View>
+                                  </View>
+
+                                  {/* Ô tìm kiếm */}
+                                  <View className="flex-row items-center px-3.5 py-2.5 bg-white rounded-xl border border-brand-line/50 gap-2">
+                                    <Text style={{ fontSize: 13 }}>🔍</Text>
+                                    <TextInput
+                                      value={placeSearchQuery}
+                                      onChangeText={setPlaceSearchQuery}
+                                      placeholder="Tìm kiếm địa điểm theo tên hoặc địa chỉ..."
+                                      placeholderTextColor="#9CA3AF"
+                                      className="flex-1 text-xs text-brand-text outline-none"
+                                    />
+                                    {placeSearchQuery ? (
+                                      <Pressable onPress={() => setPlaceSearchQuery('')}>
+                                        <X size={14} color="#9CA3AF" />
+                                      </Pressable>
+                                    ) : null}
+                                  </View>
+
+                                  {/* Danh sách địa điểm AI gợi ý */}
+                                  {filteredPoolPlaces.length === 0 ? (
+                                    <View className="py-14 px-6 items-center justify-center bg-white rounded-2xl border border-dashed border-brand-line/60 gap-3 w-full">
+                                      <View className="w-12 h-12 rounded-2xl bg-brand-primary/10 items-center justify-center">
+                                        <Sparkles size={24} color={BRAND_COLORS.primary} />
+                                      </View>
+                                      <Text className="text-sm font-extrabold text-brand-text text-center">
+                                        Chưa có địa điểm gợi ý nào trong danh sách
+                                      </Text>
+                                      <Text className="text-xs text-brand-textSoft text-center max-w-sm">
+                                        Bạn có thể nhấn nút dưới đây để AI phân tích và gợi ý kho địa điểm thực tế theo ngân sách, hoặc tự thêm địa điểm theo sở thích riêng.
+                                      </Text>
+                                      <View className="flex-row items-center gap-2.5 mt-2">
+                                        <Pressable
+                                          testID="btn-retry-pregen-empty"
+                                          onPress={fetchPregenPlaces}
+                                          className="px-4 py-2.5 rounded-xl bg-brand-primary active:opacity-90 flex-row items-center gap-1.5"
+                                        >
+                                          <Sparkles size={14} color="#FFFFFF" />
+                                          <Text className="text-xs font-bold text-white">🔄 Thử lại lấy gợi ý AI</Text>
+                                        </Pressable>
+                                        <Pressable
+                                          testID="btn-custom-place-empty"
+                                          onPress={() => setShowCustomPlaceModal(true)}
+                                          className="px-4 py-2.5 rounded-xl bg-brand-bgAlt border border-brand-line/60 active:opacity-80 flex-row items-center gap-1.5"
+                                        >
+                                          <Plus size={14} color={BRAND_COLORS.text} />
+                                          <Text className="text-xs font-bold text-brand-text">+ Thêm địa điểm thủ công</Text>
+                                        </Pressable>
+                                      </View>
+                                    </View>
+                                  ) : (
+                                    <View className="flex-row flex-wrap gap-3">
+                                      {filteredPoolPlaces.map((place) => {
+                                        const cartMatch = cartItems.find((it) =>
+                                          it.place.id === place.id ||
+                                          (normalizePlaceKey(it.place.name) === normalizePlaceKey(place.name) && it.place.category === place.category)
+                                        );
+                                        const isInCart = Boolean(cartMatch);
+                                        const cost = place.estimated_cost || 50000;
+                                        const isHovered = hoveredPoolPlaceId === place.id;
+                                        const addedByText = cartMatch?.added_by_id === user?.id
+                                          ? 'Bạn'
+                                          : (cartMatch?.added_by_name || 'Thành viên');
+                                        const isPro = isProLocalPlace(place);
+
+                                        return (
+                                          <View
+                                            key={place.id}
+                                            testID={`pool-card-${place.id}`}
+                                            // @ts-ignore
+                                            onMouseEnter={() => {
+                                              if (Platform.OS === 'web' && cartMapIframeRef.current?.contentWindow) {
+                                                cartMapIframeRef.current.contentWindow.postMessage({
+                                                  type: 'PAN_TO_PLACE',
+                                                  placeId: place.id
+                                                }, '*');
+                                              }
+                                            }}
+                                            className={`p-3.5 rounded-2xl border bg-white flex-1 min-w-[240px] max-w-[360px] gap-2.5 shadow-sm transition-all ${
+                                              isInCart
+                                                ? 'border-2 border-emerald-600 bg-emerald-50/40'
+                                                : isPro
+                                                ? 'border-2 border-amber-400 bg-amber-50/20'
+                                                : isHovered
+                                                ? 'border-brand-accent bg-amber-50/30'
+                                                : 'border-brand-line/50'
+                                            }`}
+                                          >
+                                            <View className="flex-row items-start justify-between gap-2">
+                                              <View className="flex-1 gap-1.5">
+                                                <View className="flex-row items-center gap-1.5 flex-wrap">
+                                                  <View className="px-2 py-0.5 rounded-md bg-brand-bgAlt border border-brand-line/40">
+                                                    <Text className="text-[10px] font-extrabold text-brand-textSoft">
+                                                      {CATEGORY_NAMES_VI[String(place.category || '').toLowerCase()] || place.category || 'Địa điểm'}
+                                                    </Text>
+                                                  </View>
+                                                  {isPro && (
+                                                    <View
+                                                      testID={`place-pro-data-badge-${place.id}`}
+                                                      className="px-2 py-0.5 rounded-md bg-amber-100 border border-amber-400 flex-row items-center gap-1"
+                                                    >
+                                                      <Crown size={11} color="#B45309" />
+                                                      <Text className="text-[11px] font-extrabold text-amber-900">👑 Độc quyền Pro</Text>
+                                                    </View>
+                                                  )}
+                                                  <Text className="text-xs font-extrabold text-emerald-700">
+                                                    {new Intl.NumberFormat('vi-VN').format(cost)} đ
+                                                  </Text>
+                                                  {isInCart && (
+                                                    <View className="px-1.5 py-0.5 rounded-md bg-emerald-100 border border-emerald-300">
+                                                      <Text className="text-[10px] font-bold text-emerald-800">
+                                                        ✓ {addedByText} đã thêm
+                                                      </Text>
+                                                    </View>
+                                                  )}
+                                                </View>
+                                                <Text className="text-sm font-extrabold text-brand-text" numberOfLines={2}>
+                                                  {place.name}
+                                                </Text>
+                                                {place.address ? (
+                                                  <Text className="text-[11px] text-brand-textSoft leading-tight" numberOfLines={2}>
+                                                    📍 {place.address}
+                                                  </Text>
+                                                ) : (
+                                                  <Text className="text-[11px] text-brand-textSoft italic">
+                                                    📍 {destinationCity}
+                                                  </Text>
+                                                )}
+                                              </View>
+                                            </View>
+
+                                            <Pressable
+                                              testID={`btn-toggle-cart-${place.id}`}
+                                              onPress={() => handleAddToCart(place)}
+                                              className={`w-full py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-1.5 transition-all shadow-sm ${
+                                                isInCart
+                                                  ? 'bg-emerald-600 active:opacity-90'
+                                                  : isPro
+                                                  ? 'bg-amber-600 active:opacity-90'
+                                                  : 'bg-brand-primary active:opacity-90'
+                                              }`}
+                                            >
+                                              {isInCart ? (
+                                                <>
+                                                  <Check size={14} color="#FFFFFF" />
+                                                  <Text className="text-xs font-bold text-white">
+                                                    ✓ {addedByText} đã thêm · Bấm để bỏ
+                                                  </Text>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <Plus size={14} color="#FFFFFF" />
+                                                  <Text className="text-xs font-bold text-white">
+                                                    {isPro ? '👑 + Thêm vào giỏ' : '+ Thêm vào giỏ'}
+                                                  </Text>
+                                                </>
+                                              )}
+                                            </Pressable>
+                                          </View>
+                                        );
+                                      })}
+                                    </View>
+                                  )}
+                                </View>
+                              )}
+
+                              {/* CỘT PHẢI: BẢN ĐỒ TƯƠNG TÁC GOOGLE MAPS TILES / LIVE MAP */}
+                              {showMap && (
+                                <View
+                                  className={`w-full ${
+                                    showList
+                                      ? 'lg:w-[420px] min-h-[460px] lg:min-h-[580px] lg:sticky lg:top-4'
+                                      : 'flex-1 min-h-[560px] lg:min-h-[640px]'
+                                  } rounded-2xl overflow-hidden border border-brand-line/50 shadow-md bg-white`}
+                                >
+                                  <View className="p-3 bg-white border-b border-brand-line/40 flex-row items-center justify-between">
+                                    <View className="flex-row items-center gap-2">
+                                      <MapPin size={15} color={BRAND_COLORS.primary} />
+                                      <Text className="text-xs font-extrabold text-brand-text">
+                                        Bản đồ Gợi ý ({filteredPoolPlaces.length} điểm)
+                                      </Text>
+                                    </View>
+                                    <View className="flex-row items-center gap-2">
+                                      <Text className="text-[10px] text-brand-textSoft italic hidden sm:flex">
+                                        Trỏ vào để định vị · Bấm pin để thêm
+                                      </Text>
+                                      {isDesktopLayout && effectiveMode === 'both' && (
+                                        <Pressable
+                                          testID="btn-expand-live-map"
+                                          onPress={() => setCollectingViewMode('map')}
+                                          className="px-2 py-1 rounded-md bg-brand-bgAlt border border-brand-line/40 flex-row items-center gap-1 active:opacity-80"
+                                        >
+                                          <Text className="text-[10px] font-bold text-brand-text">⛶ Mở rộng</Text>
+                                        </Pressable>
+                                      )}
+                                      {effectiveMode === 'map' && (
+                                        <Pressable
+                                          testID="btn-collapse-live-map"
+                                          onPress={() => setCollectingViewMode(isDesktopLayout ? 'both' : 'list')}
+                                          className="px-2 py-1 rounded-md bg-brand-bgAlt border border-brand-line/40 flex-row items-center gap-1 active:opacity-80"
+                                        >
+                                          <Text className="text-[10px] font-bold text-brand-text">✕ Thu nhỏ</Text>
+                                        </Pressable>
+                                      )}
+                                    </View>
+                                  </View>
+
+                                  {Platform.OS === 'web' ? (
+                                    <iframe
+                                      ref={cartMapIframeRef}
+                                      srcDoc={cartMapIframeHTML}
+                                      style={{
+                                        width: '100%',
+                                        height: effectiveMode === 'map' ? 620 : 530,
+                                        border: 'none',
+                                      }}
+                                    />
+                                  ) : (
+                                    <View style={{ padding: 16, gap: 12 }}>
+                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: '#EFF6FF', borderRadius: 12, borderWidth: 1, borderColor: '#BFDBFE' }}>
+                                        <MapPin size={18} color={BRAND_COLORS.primary} />
+                                        <Text style={{ fontSize: 12, color: '#1E40AF', flex: 1, lineHeight: 18 }}>
+                                          Chạm vào địa điểm bên dưới để xem vị trí trực tiếp trên ứng dụng bản đồ hoặc mở chỉ dẫn đường.
+                                        </Text>
+                                      </View>
+                                      <ScrollView style={{ maxHeight: effectiveMode === 'map' ? 560 : 440 }} showsVerticalScrollIndicator={false}>
+                                        <View style={{ gap: 8 }}>
+                                          {filteredPoolPlaces.map((p) => {
+                                            const inCart = cartItems.some((it) => it.place.id === p.id);
+                                            const mapUrl = p.lat && p.lng
+                                              ? `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`
+                                              : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name + ' ' + (p.address || destinationCity))}`;
+                                            const isPro = isProLocalPlace(p);
+                                            return (
+                                              <View
+                                                key={`native-map-${p.id}`}
+                                                style={{
+                                                  padding: 12,
+                                                  borderRadius: 12,
+                                                  borderWidth: 1,
+                                                  borderColor: inCart ? '#10B981' : isPro ? '#F59E0B' : '#E5E7EB',
+                                                  backgroundColor: inCart ? '#ECFDF5' : isPro ? '#FEF3C7' : '#FFFFFF',
+                                                  gap: 8,
+                                                }}
+                                              >
+                                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                                                  <View style={{ flex: 1, gap: 2 }}>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#1F2937' }}>{p.name}</Text>
+                                                      {isPro && (
+                                                        <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: '#FDE68A' }}>
+                                                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#92400E' }}>👑 Pro</Text>
+                                                        </View>
+                                                      )}
+                                                    </View>
+                                                    {p.address ? (
+                                                      <Text style={{ fontSize: 11, color: '#6B7280' }}>📍 {p.address}</Text>
+                                                    ) : null}
+                                                  </View>
+                                                  <Pressable
+                                                    onPress={() => Linking.openURL(mapUrl)}
+                                                    style={{
+                                                      paddingHorizontal: 8,
+                                                      paddingVertical: 5,
+                                                      borderRadius: 6,
+                                                      backgroundColor: '#E0E7FF',
+                                                    }}
+                                                  >
+                                                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#3730A3' }}>🗺️ Bản đồ</Text>
+                                                  </Pressable>
+                                                </View>
+                                                <Pressable
+                                                  onPress={() => handleAddToCart(p)}
+                                                  style={{
+                                                    paddingVertical: 8,
+                                                    borderRadius: 8,
+                                                    alignItems: 'center',
+                                                    backgroundColor: inCart ? '#10B981' : isPro ? '#D97706' : BRAND_COLORS.primary,
+                                                  }}
+                                                >
+                                                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
+                                                    {inCart ? '✓ Đã trong giỏ (Bỏ chọn)' : isPro ? '👑 + Thêm vào giỏ' : '+ Thêm vào giỏ'}
+                                                  </Text>
+                                                </Pressable>
+                                              </View>
+                                            );
+                                          })}
+                                        </View>
+                                      </ScrollView>
+                                    </View>
+                                  )}
+                                </View>
+                              )}
                             </View>
-
-                            {Platform.OS === 'web' ? (
-                              <iframe
-                                ref={cartMapIframeRef}
-                                srcDoc={cartMapIframeHTML}
-                                style={{ width: '100%', height: 530, border: 'none' }}
-                              />
-                            ) : null}
-                          </View>
-                        </View>
+                          );
+                        })()}
 
                         {/* Thanh tổng kết giỏ hàng & Nút mở Calendar */}
                         <View className="p-4 rounded-2xl bg-[#FFFBF0] border border-[#F5D599] flex-row items-center justify-between gap-3 shadow-md mt-2">

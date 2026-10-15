@@ -182,8 +182,22 @@ export const catLabelsMap: Record<string, string> = {
   cafe: 'Cà phê',
   hotel: 'Nghỉ ngơi',
   attraction: 'Vui chơi',
-  other: 'Khác',
 };
+
+export function parseCurrencyInput(val: string): number {
+  if (!val) return 0;
+  const s = val.trim().toLowerCase();
+  if (s.endsWith('k')) {
+    const raw = parseFloat(s.replace('k', '').replace(/,/g, '.'));
+    return isNaN(raw) ? 0 : Math.round(raw * 1000);
+  }
+  if (s.endsWith('tr') || s.endsWith('m') || s.endsWith('triệu')) {
+    const raw = parseFloat(s.replace(/tr|m|triệu/g, '').replace(/,/g, '.'));
+    return isNaN(raw) ? 0 : Math.round(raw * 1000000);
+  }
+  const digits = s.replace(/\D/g, '');
+  return parseInt(digits, 10) || 0;
+}
 
 export function normalizeExpenseLogItem(raw: any): ExpenseLogItem {
   if (!raw) return raw;
@@ -999,7 +1013,7 @@ export default function GoogleCalendarWorkspace({
   // Lưu chi tiêu (thêm mới hoặc cập nhật bản ghi đang sửa)
   const handleSaveExpense = () => {
     if (canEditBudget === false) return;
-    const num = parseInt(expenseAmountInput.replace(/\D/g, ''), 10) || 0;
+    const num = parseCurrencyInput(expenseAmountInput);
     if (num <= 0) {
       setToastMsg('Vui lòng nhập số tiền chi tiêu hợp lệ (> 0đ)');
       setTimeout(() => setToastMsg(null), 3000);
@@ -1872,32 +1886,98 @@ export default function GoogleCalendarWorkspace({
           if (m) targetDay = parseInt(m[1], 10);
         }
 
-        if (targetDay !== null && !isNaN(targetDay) && cur.type === 'event') {
-          const nextEvents = eventsRef.current.map((ev) =>
-            ev.id === cur.id ? { ...ev, dayNumber: targetDay! } : ev
-          );
-          setEvents(nextEvents);
-          eventsRef.current = nextEvents;
-          if (eventsChangeDebouncerRef.current) {
-            clearTimeout(eventsChangeDebouncerRef.current);
-            eventsChangeDebouncerRef.current = null;
+        if (targetDay !== null && !isNaN(targetDay)) {
+          if (cur.type === 'event') {
+            const nextEvents = eventsRef.current.map((ev) =>
+              ev.id === cur.id ? { ...ev, dayNumber: targetDay! } : ev
+            );
+            setEvents(nextEvents);
+            eventsRef.current = nextEvents;
+            if (eventsChangeDebouncerRef.current) {
+              clearTimeout(eventsChangeDebouncerRef.current);
+              eventsChangeDebouncerRef.current = null;
+            }
+            const movedEv = nextEvents.find((e) => e.id === cur.id);
+            onEventsChange?.(nextEvents);
+            onEventDelta?.({
+              type: 'move_event',
+              eventId: cur.id,
+              placeId: movedEv?.placeId,
+              dayNumber: targetDay!,
+              startHour: movedEv?.startHour || 8,
+              startMinute: movedEv?.startMinute || 0,
+              durationMinutes: movedEv?.durationMinutes,
+              timestamp: Date.now(),
+            });
+            notifyChanges(nextEvents, standbyListRef.current);
+            const evTitle = (cur.item as CalendarEventItem).title || (cur.item as any).name || 'Hoạt động';
+            setToastMsg(`✓ Đã chuyển "${evTitle}" sang Ngày ${targetDay}!`);
+            setTimeout(() => setToastMsg(null), 3000);
+          } else if (cur.type === 'standby') {
+            const standbyItem =
+              standbyListRef.current.find((s) => s.id === cur.id) || (cur.item as StandbyPlaceItem);
+            if (standbyItem) {
+              const usedHours = new Set(
+                eventsRef.current
+                  .filter((ev) => Number(ev.dayNumber) === Number(targetDay))
+                  .map((e) => e.startHour)
+              );
+              let hour = 9;
+              for (let h = 8; h <= 21; h++) {
+                if (!usedHours.has(h)) {
+                  hour = h;
+                  break;
+                }
+              }
+              const newEvent: CalendarEventItem = {
+                id: `ev-${standbyItem.id}-${Date.now()}`,
+                placeId: standbyItem.id,
+                title: standbyItem.name,
+                category: standbyItem.category,
+                address: standbyItem.address,
+                lat: standbyItem.lat,
+                lng: standbyItem.lng,
+                cost: standbyItem.cost,
+                dayNumber: targetDay,
+                startHour: hour,
+                startMinute: 0,
+                durationMinutes: standbyItem.suggestedDuration || 90,
+                partner_id: standbyItem.partner_id,
+                is_partner: standbyItem.is_partner,
+                is_pro_partner: standbyItem.is_pro_partner,
+                pro_badge: standbyItem.pro_badge,
+                i18n: standbyItem.i18n,
+                location_verified: standbyItem.location_verified,
+                coordinate_source: standbyItem.coordinate_source,
+                opening_hours: standbyItem.opening_hours,
+                original_price: standbyItem.original_price,
+              };
+
+              const nextEvents = [...eventsRef.current, newEvent];
+              const nextStandby = standbyListRef.current.filter((s) => s.id !== standbyItem.id);
+
+              setEvents(nextEvents);
+              eventsRef.current = nextEvents;
+              if (eventsChangeDebouncerRef.current) {
+                clearTimeout(eventsChangeDebouncerRef.current);
+                eventsChangeDebouncerRef.current = null;
+              }
+              onEventsChange?.(nextEvents);
+              setStandbyList(nextStandby);
+              standbyListRef.current = nextStandby;
+              setActiveDay(targetDay);
+              activeDayRef.current = targetDay;
+              notifyChanges(nextEvents, nextStandby);
+              onEventDelta?.({
+                type: 'assign_standby',
+                event: newEvent,
+                placeId: standbyItem.id,
+                timestamp: Date.now(),
+              });
+              setToastMsg(`✓ Đã chuyển "${standbyItem.name}" vào Ngày ${targetDay}!`);
+              setTimeout(() => setToastMsg(null), 3000);
+            }
           }
-          const movedEv = nextEvents.find((e) => e.id === cur.id);
-          onEventsChange?.(nextEvents);
-          onEventDelta?.({
-            type: 'move_event',
-            eventId: cur.id,
-            placeId: movedEv?.placeId,
-            dayNumber: targetDay!,
-            startHour: movedEv?.startHour || 8,
-            startMinute: movedEv?.startMinute || 0,
-            durationMinutes: movedEv?.durationMinutes,
-            timestamp: Date.now(),
-          });
-          notifyChanges(nextEvents, standbyListRef.current);
-          const evTitle = (cur.item as CalendarEventItem).title || (cur.item as any).name || 'Hoạt động';
-          setToastMsg(`✓ Đã chuyển "${evTitle}" sang Ngày ${targetDay}!`);
-          setTimeout(() => setToastMsg(null), 3000);
         }
       }
 
@@ -1951,18 +2031,22 @@ export default function GoogleCalendarWorkspace({
 
     window.addEventListener('pointermove', handleGlobalPointerMove);
     window.addEventListener('pointerup', handleGlobalPointerUp);
+    window.addEventListener('pointercancel', handleGlobalPointerUp);
     window.addEventListener('mousemove', handleGlobalPointerMove);
     window.addEventListener('mouseup', handleGlobalPointerUp);
     window.addEventListener('touchmove', handleGlobalPointerMove);
     window.addEventListener('touchend', handleGlobalPointerUp);
+    window.addEventListener('touchcancel', handleGlobalPointerUp);
 
     return () => {
       window.removeEventListener('pointermove', handleGlobalPointerMove);
       window.removeEventListener('pointerup', handleGlobalPointerUp);
+      window.removeEventListener('pointercancel', handleGlobalPointerUp);
       window.removeEventListener('mousemove', handleGlobalPointerMove);
       window.removeEventListener('mouseup', handleGlobalPointerUp);
       window.removeEventListener('touchmove', handleGlobalPointerMove);
       window.removeEventListener('touchend', handleGlobalPointerUp);
+      window.removeEventListener('touchcancel', handleGlobalPointerUp);
       if (typeof document !== 'undefined') {
         document.body.style.userSelect = '';
         document.body.style.cursor = '';
@@ -4567,7 +4651,7 @@ export default function GoogleCalendarWorkspace({
                         testID="input-expense-amount"
                         value={expenseAmountInput}
                         onChangeText={setExpenseAmountInput}
-                        placeholder="Ví dụ: 120000"
+                        placeholder="Ví dụ: 120000 hoặc 50k, 1.5tr"
                         keyboardType="numeric"
                         style={{
                           borderWidth: 1.5,
@@ -4581,11 +4665,30 @@ export default function GoogleCalendarWorkspace({
                           backgroundColor: '#FFFFFF',
                         }}
                       />
+                      {(() => {
+                        const parsed = parseCurrencyInput(expenseAmountInput);
+                        if (parsed > 0) {
+                          return (
+                            <Text
+                              testID="text-expense-amount-preview"
+                              style={{ fontSize: 12, fontWeight: '700', color: '#137333' }}
+                            >
+                              ≈ ({parsed.toLocaleString('vi-VN')} đ)
+                            </Text>
+                          );
+                        }
+                        return null;
+                      })()}
                       <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                         {[20000, 50000, 100000, 200000, 500000].map((amt) => (
                           <Pressable
                             key={amt}
-                            onPress={() => setExpenseAmountInput(String(amt))}
+                            testID={`btn-quick-expense-${amt}`}
+                            onPress={() => {
+                              const cur = parseCurrencyInput(expenseAmountInput);
+                              const next = cur > 0 ? cur + amt : amt;
+                              setExpenseAmountInput(String(next));
+                            }}
                             style={{
                               paddingHorizontal: 8,
                               paddingVertical: 4,
