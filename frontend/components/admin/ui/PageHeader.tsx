@@ -35,7 +35,7 @@ export default function PageHeader({
       </View>
 
       {action && (
-        <View className="flex-row items-center gap-2.5 flex-wrap shrink-0">
+        <View className="flex-row items-center gap-2.5 flex-wrap w-full md:w-auto shrink md:shrink-0 max-w-full">
           {action}
         </View>
       )}

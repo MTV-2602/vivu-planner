@@ -178,6 +178,7 @@ export interface SelectProps {
   value: string;
   onChange: (val: string) => void;
   error?: string;
+  disabled?: boolean;
   className?: string;
 }
 
@@ -187,6 +188,7 @@ export function Select({
   onChange,
   error,
   className = '',
+  disabled = false,
 }: SelectProps) {
   const currentLabel = options.find((o) => o.value === value)?.label || value;
 
@@ -199,6 +201,7 @@ export function Select({
       {/* Web standard select overlay */}
       {typeof window !== 'undefined' ? (
         <select
+          disabled={disabled}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           style={{

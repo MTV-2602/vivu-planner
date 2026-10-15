@@ -53,6 +53,15 @@ export interface CalendarEventItem {
   startMinute: number; // 0, 15, 30...
   durationMinutes: number; // 60, 90...
   notes?: string;
+  partner_id?: string;
+  is_partner?: boolean;
+  is_pro_partner?: boolean;
+  pro_badge?: string;
+  i18n?: Record<string, any>;
+  location_verified?: boolean;
+  coordinate_source?: string;
+  opening_hours?: string;
+  original_price?: number;
 }
 
 export interface StandbyPlaceItem {
@@ -64,6 +73,15 @@ export interface StandbyPlaceItem {
   lng?: number;
   cost: number;
   suggestedDuration?: number;
+  partner_id?: string;
+  is_partner?: boolean;
+  is_pro_partner?: boolean;
+  pro_badge?: string;
+  i18n?: Record<string, any>;
+  location_verified?: boolean;
+  coordinate_source?: string;
+  opening_hours?: string;
+  original_price?: number;
 }
 
 export interface ExpenseLogEditHistoryEntry {
@@ -1173,6 +1191,15 @@ export default function GoogleCalendarWorkspace({
         lng: e.lng,
         cost: e.cost,
         suggestedDuration: e.durationMinutes,
+        partner_id: e.partner_id,
+        is_partner: e.is_partner,
+        is_pro_partner: e.is_pro_partner,
+        pro_badge: e.pro_badge,
+        i18n: e.i18n,
+        location_verified: e.location_verified,
+        coordinate_source: e.coordinate_source,
+        opening_hours: e.opening_hours,
+        original_price: e.original_price,
       })),
       ...standbyList,
     ];
@@ -1299,6 +1326,15 @@ export default function GoogleCalendarWorkspace({
         startMinute: slot.minute,
         durationMinutes: p.suggestedDuration || slot.dur,
         notes: `AI tối ưu lộ trình ngày ${targetDay}`,
+        partner_id: p.partner_id,
+        is_partner: p.is_partner,
+        is_pro_partner: p.is_pro_partner,
+        pro_badge: p.pro_badge,
+        i18n: p.i18n,
+        location_verified: p.location_verified,
+        coordinate_source: p.coordinate_source,
+        opening_hours: p.opening_hours,
+        original_price: p.original_price,
       });
     });
 
@@ -1326,6 +1362,13 @@ export default function GoogleCalendarWorkspace({
 
   // Thêm một địa điểm vào lịch
   const addPlaceToCalendar = (place: StandbyPlaceItem, targetHour?: number, immediate: boolean = false) => {
+    if (readOnly) return;
+    if (!isUserPro) {
+      if (onUpgradePro) onUpgradePro();
+      setToastMsg('🔒 Tính năng Khay Giỏ Hàng và Xếp lịch dành riêng cho thành viên Gói PRO!');
+      setTimeout(() => setToastMsg(null), 3000);
+      return;
+    }
     // Cảnh báo nếu thêm accommodation khi đã có chỗ ở trong lịch
     const isAccommodation = (cat: string) => {
       const c = (cat || '').toLowerCase();
@@ -1369,6 +1412,15 @@ export default function GoogleCalendarWorkspace({
       startHour: Number(hour),
       startMinute: 0,
       durationMinutes: place.suggestedDuration || 90,
+      partner_id: place.partner_id,
+      is_partner: place.is_partner,
+      is_pro_partner: place.is_pro_partner,
+      pro_badge: place.pro_badge,
+      i18n: place.i18n,
+      location_verified: place.location_verified,
+      coordinate_source: place.coordinate_source,
+      opening_hours: place.opening_hours,
+      original_price: place.original_price,
     };
 
     const nextEvents = [...eventsRef.current, newEvent];
@@ -1398,6 +1450,13 @@ export default function GoogleCalendarWorkspace({
 
   // Trả sự kiện từ lịch về giỏ chờ
   const removeEventToStandby = (eventId: string, immediate: boolean = false) => {
+    if (readOnly) return;
+    if (!isUserPro) {
+      if (onUpgradePro) onUpgradePro();
+      setToastMsg('🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!');
+      setTimeout(() => setToastMsg(null), 3000);
+      return;
+    }
     const ev = eventsRef.current.find((e) => e.id === eventId);
     if (!ev) return;
 
@@ -1410,6 +1469,15 @@ export default function GoogleCalendarWorkspace({
       lng: ev.lng,
       cost: ev.cost,
       suggestedDuration: ev.durationMinutes,
+      partner_id: ev.partner_id,
+      is_partner: ev.is_partner,
+      is_pro_partner: ev.is_pro_partner,
+      pro_badge: ev.pro_badge,
+      i18n: ev.i18n,
+      location_verified: ev.location_verified,
+      coordinate_source: ev.coordinate_source,
+      opening_hours: ev.opening_hours,
+      original_price: ev.original_price,
     };
 
     const nextEvents = eventsRef.current.filter((e) => e.id !== eventId);
@@ -1440,6 +1508,12 @@ export default function GoogleCalendarWorkspace({
   // Thêm nhanh địa điểm từ giỏ chờ vào ngày được chọn
   const handleQuickAddStandbyToDay = (item: StandbyPlaceItem, targetDay: number) => {
     if (readOnly) return;
+    if (!isUserPro) {
+      if (onUpgradePro) onUpgradePro();
+      setToastMsg('🔒 Tính năng Khay Giỏ Hàng và Xếp lịch dành riêng cho thành viên Gói PRO!');
+      setTimeout(() => setToastMsg(null), 3000);
+      return;
+    }
     const dayEvents = eventsRef.current.filter((e) => e.dayNumber === targetDay);
     const occupiedHours = new Set(dayEvents.map((e) => e.startHour));
     const candidateHours = [8, 10, 12, 14, 16, 18, 20];
@@ -1460,6 +1534,13 @@ export default function GoogleCalendarWorkspace({
 
   // Đổi giờ bắt đầu của sự kiện
   const moveEventHour = (eventId: string, deltaHours: number) => {
+    if (readOnly) return;
+    if (!isUserPro) {
+      if (onUpgradePro) onUpgradePro();
+      setToastMsg('🔒 Tính năng Thay đổi giờ Lịch trình dành riêng cho thành viên Gói PRO!');
+      setTimeout(() => setToastMsg(null), 3000);
+      return;
+    }
     let movedTitle = 'Hoạt động';
     let changedEvent: CalendarEventItem | undefined;
     const nextEvents = eventsRef.current.map((ev) => {
@@ -1602,9 +1683,9 @@ export default function GoogleCalendarWorkspace({
       setTimeout(() => setToastMsg(null), 3000);
       return;
     }
-    if (type === 'standby' && !isUserPro) {
+    if (!isUserPro) {
       if (onUpgradePro) onUpgradePro();
-      setToastMsg('🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!');
+      setToastMsg(type === 'standby' ? '🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!' : '🔒 Tính năng Kéo thả Lịch trình dành riêng cho thành viên Gói PRO!');
       setTimeout(() => setToastMsg(null), 3000);
       return;
     }
@@ -1721,6 +1802,18 @@ export default function GoogleCalendarWorkspace({
       const targetHour = findTargetHourFromPoint(clientX, clientY);
       const cartEl = elem?.closest('[data-cart-dropzone], [data-testid="cart-dropzone"]');
       const dayEl = elem?.closest('[data-day-tab], [data-testid*="tab-day-"]');
+
+      if (!isUserPro) {
+        if (onUpgradePro) onUpgradePro();
+        setToastMsg('🔒 Tính năng Kéo thả Lịch trình dành riêng cho thành viên Gói PRO!');
+        setTimeout(() => setToastMsg(null), 3000);
+        setPointerDrag(null);
+        pointerDragRef.current = null;
+        setHoveredHourSlot(null);
+        setHoveredCartZone(false);
+        setHoveredDayTab(null);
+        return;
+      }
 
       if (targetHour !== null && !isNaN(targetHour)) {
         if (cur.type === 'standby') {
@@ -2267,7 +2360,7 @@ export default function GoogleCalendarWorkspace({
               Không gian Lập lịch & Quản lý Ngân sách ViVu
             </Text>
             <Text style={{ fontSize: 11, color: '#5F6368' }}>
-              {cityName} · Kéo thả thẻ hoạt động trực tiếp vào từng khung giờ hoặc dùng nút điều chỉnh
+              {cityName} · {isUserPro ? 'Kéo thả thẻ hoạt động trực tiếp vào từng khung giờ hoặc dùng nút điều chỉnh' : 'Lịch trình chế độ xem. Nâng cấp Gói PRO để tự do kéo thả và sắp xếp lại khung giờ'}
             </Text>
           </View>
         </View>
@@ -2329,7 +2422,48 @@ export default function GoogleCalendarWorkspace({
           )}
 
           {onSave && (
-            (readOnly || !isOwner) ? (
+            !isUserPro ? (
+              isOwner ? (
+                <Pressable
+                  testID="btn-upgrade-pro-save"
+                  onPress={onUpgradePro}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: '#D4A017',
+                    paddingHorizontal: 16,
+                    paddingVertical: 9,
+                    borderRadius: 10,
+                    cursor: 'pointer' as any,
+                  }}
+                >
+                  <Crown size={15} color="#FFFFFF" />
+                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                    Nâng cấp PRO để lưu thay đổi
+                  </Text>
+                </Pressable>
+              ) : (
+                <View
+                  testID="btn-save-calendar-member-disabled"
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: '#E5E7EB',
+                    paddingHorizontal: 16,
+                    paddingVertical: 9,
+                    borderRadius: 10,
+                    opacity: 0.85,
+                  }}
+                >
+                  <Clock size={16} color="#6B7280" />
+                  <Text style={{ color: '#4B5563', fontSize: 12, fontWeight: '700' }}>
+                    ⏳ Chờ trưởng nhóm chốt & lưu chuyến đi
+                  </Text>
+                </View>
+              )
+            ) : (readOnly || (!isDetailPage && !isOwner)) ? (
               <View
                 testID="btn-save-calendar-member-disabled"
                 style={{
@@ -2345,7 +2479,7 @@ export default function GoogleCalendarWorkspace({
               >
                 <Clock size={16} color="#6B7280" />
                 <Text style={{ color: '#4B5563', fontSize: 12, fontWeight: '700' }}>
-                  ⏳ Chờ trưởng nhóm chốt & lưu chuyến đi
+                  {readOnly && isOwner ? '👁️ Chế độ chỉ xem' : '⏳ Chờ trưởng nhóm chốt & lưu chuyến đi'}
                 </Text>
               </View>
             ) : (
@@ -2661,7 +2795,7 @@ export default function GoogleCalendarWorkspace({
                       }}
                     >
                       <View style={{ flex: 1, gap: 3 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <View
                             style={{
                               paddingHorizontal: 6,
@@ -2676,6 +2810,11 @@ export default function GoogleCalendarWorkspace({
                               {CATEGORY_NAMES_VI[item.category] || item.category || 'Địa điểm'}
                             </Text>
                           </View>
+                          {Boolean(item.partner_id || item.is_pro_partner || item.is_partner || (item.i18n as any)?.is_pro_partner || (item.i18n as any)?.partner_id) && (
+                            <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, borderWidth: 1, borderColor: '#F59E0B' }}>
+                              <Text style={{ fontSize: 9, fontWeight: '800', color: '#B45309' }}>Dữ liệu Pro</Text>
+                            </View>
+                          )}
                           <Text style={{ fontSize: 11, fontWeight: '800', color: '#137333' }}>
                             {new Intl.NumberFormat('vi-VN').format(item.cost || 0)} đ
                           </Text>
@@ -2903,7 +3042,9 @@ export default function GoogleCalendarWorkspace({
                             >
                               {isSlotHovered
                                 ? `👉 Thả vào đây để xếp lịch lúc ${hour < 10 ? '0' + hour : hour}:00`
-                                : '+ Trống (kéo thả địa điểm từ Giỏ chờ vào đây)'}
+                                : isUserPro
+                                ? '+ Trống (kéo thả địa điểm từ Giỏ chờ vào đây)'
+                                : '+ Trống'}
                             </Text>
                           </Pressable>
                         ) : (
@@ -2917,7 +3058,7 @@ export default function GoogleCalendarWorkspace({
                                 testID={`calendar-event-card-${ev.id}`}
                                 // @ts-ignore
                                 onPointerDown={(e: any) => {
-                                  if (readOnly) return;
+                                  if (readOnly || !isUserPro) return;
                                   if (e?.target?.closest?.('button, [role="button"], a, [data-no-drag], [data-testid^="btn-"]')) return;
                                   handleStartPointerDrag(ev, 'event', e);
                                 }}
@@ -2936,7 +3077,7 @@ export default function GoogleCalendarWorkspace({
                                     : ('0 2px 6px rgba(0,0,0,0.05)' as any),
                                   borderWidth: isCardHighlighted ? 1 : 0,
                                   borderColor: isCardHighlighted ? '#1A73E8' : 'transparent',
-                                  cursor: readOnly ? 'default' : ('grab' as any),
+                                  cursor: (readOnly || !isUserPro) ? 'default' : ('grab' as any),
                                 }}
                               >
                                 <View style={{ flex: 1, paddingRight: 8 }}>
@@ -2984,20 +3125,25 @@ export default function GoogleCalendarWorkspace({
                                       </View>
                                     ) : null;
                                   })()}
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                    <Text style={{ fontSize: 12 }}>{colors.emoji}</Text>
-                                    <Text
-                                      style={{
-                                        fontSize: 12,
-                                        fontWeight: '800',
-                                        color: '#1B2420',
-                                        flex: 1,
-                                      }}
-                                      numberOfLines={1}
-                                    >
-                                      {ev.title}
-                                    </Text>
-                                  </View>
+                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                     <Text style={{ fontSize: 12 }}>{colors.emoji}</Text>
+                                     <Text
+                                       style={{
+                                         fontSize: 12,
+                                         fontWeight: '800',
+                                         color: '#1B2420',
+                                         flex: 1,
+                                       }}
+                                       numberOfLines={1}
+                                     >
+                                       {ev.title}
+                                     </Text>
+                                     {Boolean(ev.partner_id || ev.is_pro_partner || ev.is_partner || (ev.i18n as any)?.is_pro_partner || (ev.i18n as any)?.partner_id) && (
+                                       <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#F59E0B' }}>
+                                         <Text style={{ fontSize: 9, fontWeight: '800', color: '#B45309' }}>Dữ liệu Pro</Text>
+                                       </View>
+                                     )}
+                                   </View>
 
                                   <View
                                     style={{
@@ -3102,7 +3248,7 @@ export default function GoogleCalendarWorkspace({
                                 </View>
 
                                 {/* Action Buttons: Shift Hour, Delete, Drag Grip */}
-                                {!readOnly && (
+                                {!readOnly && isUserPro && (
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                     <Pressable
                                       testID={`btn-shift-up-${ev.id}`}
@@ -3520,7 +3666,7 @@ export default function GoogleCalendarWorkspace({
                             boxShadow: '0 2px 6px rgba(0,0,0,0.04)' as any,
                           }}
                         >
-                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
                             <View
                               style={{
                                 flexDirection: 'row',
@@ -3537,6 +3683,12 @@ export default function GoogleCalendarWorkspace({
                                 {CATEGORY_NAMES_VI[item.category] || item.category}
                               </Text>
                             </View>
+
+                            {Boolean(item.partner_id || item.is_pro_partner || item.is_partner || (item.i18n as any)?.is_pro_partner || (item.i18n as any)?.partner_id) && (
+                              <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, borderWidth: 1, borderColor: '#F59E0B' }}>
+                                <Text style={{ fontSize: 8, fontWeight: '800', color: '#B45309' }}>Dữ liệu Pro</Text>
+                              </View>
+                            )}
 
                             <Text style={{ fontSize: 10, fontWeight: '800', color: '#137333' }}>
                               {Number(item.cost).toLocaleString('vi-VN')}đ

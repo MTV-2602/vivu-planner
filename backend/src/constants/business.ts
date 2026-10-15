@@ -172,7 +172,7 @@ export function getProCredits(profile: any, now: Date = new Date()): ProCreditsI
  * Lấy thông tin hạn mức chuyến miễn phí (Free Tier)
  */
 export function getFreeQuota(profile: any): FreeQuotaInfo {
-  const total = Math.max(0, Number(profile?.custom_quota ?? QUOTA_CONFIG.DEFAULT_FREE_TRIPS));
+  const total = Math.max(0, Number(profile?.quota_total ?? profile?.custom_quota ?? QUOTA_CONFIG.DEFAULT_FREE_TRIPS));
   const used = Math.max(0, Number(profile?.quota_used ?? 0));
   const remaining = Math.max(0, total - used);
   return { total, used, remaining };
@@ -193,11 +193,11 @@ export function isUserPremium(profile?: any, now: Date = new Date()): boolean {
  * Tính toán giá trị mới của pro_credits, monthly_credits, premium_until sau khi cộng gói cước.
  * Phân tách rạch ròi 2 loại gói cước:
  * 1. Gói theo lượt (duration_days <= 0): Không thời hạn. Cộng dồn pro_credits.
- *    - Nếu có gói ngày đang active (premium_until > now VÀ monthly_credits > 0): giữ nguyên monthly_credits và premium_until.
+ *    - Nếu gói ngày còn hạn (premium_until > now), giữ nguyên số lượt và hạn, kể cả đã dùng hết lượt.
  *    - Nếu không có gói ngày active: monthly_credits = 0, premium_until = null (tuyệt đối không để sót ngày hết hạn cũ).
  * 2. Gói theo ngày+lượt (duration_days > 0): Có thời hạn.
  *    - Nếu đang còn gói ngày active: cộng dồn cả lượt VÀ cộng dồn ngày gia hạn (baseTime + durationDays).
- *    - Nếu chưa có hoặc đã hết hạn (hoặc monthly_credits <= 0): lượt tháng = grant mới, hạn tính từ now().
+ *    - Nếu chưa có hoặc đã hết hạn: lượt tháng = grant mới, hạn tính từ now().
  */
 export function computeGrant(
   profile: any,
@@ -208,8 +208,7 @@ export function computeGrant(
   const currentMonthly = Math.max(0, Number(profile?.monthly_credits ?? 0));
   const hasActiveMonthly = Boolean(
     profile?.premium_until &&
-    new Date(profile.premium_until).getTime() > now.getTime() &&
-    currentMonthly > 0
+    new Date(profile.premium_until).getTime() > now.getTime()
   );
   const durationDays = Number(plan.duration_days ?? 0);
   const grant = Math.max(0, Number(plan.quota_total_grant ?? 0));
@@ -225,7 +224,7 @@ export function computeGrant(
 
   // Gói có thời hạn (theo ngày+lượt)
   if (hasActiveMonthly) {
-    // Đang còn hạn và còn lượt: cộng dồn cả lượt VÀ cộng dồn ngày
+    // Đang còn hạn: cộng dồn cả lượt VÀ cộng dồn ngày
     const baseTime = new Date(profile.premium_until).getTime();
     return {
       pro_credits: currentPro,
@@ -234,7 +233,7 @@ export function computeGrant(
     };
   }
 
-  // Chưa có, đã hết hạn, hoặc monthly_credits <= 0: lượt mới bắt đầu từ now
+  // Chưa có hoặc đã hết hạn: lượt mới bắt đầu từ now
   return {
     pro_credits: currentPro,
     monthly_credits: grant,

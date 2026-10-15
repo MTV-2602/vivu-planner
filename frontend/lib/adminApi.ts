@@ -203,6 +203,8 @@ export interface AdminUserItem {
   remainingTrips: number;
   freeUsed: number;
   freeTotal: number;
+  freeRemaining?: number;
+  rawMonthlyCredits?: number;
   tripsCount: number;
   totalSpent: number;
   ordersCount: number;
@@ -241,6 +243,9 @@ export interface AdminUsersQueryParams {
 
 export interface UpdateCreditsPayload {
   mode: 'set' | 'adjust' | 'revoke';
+  targetWallet?: 'free' | 'permanent' | 'monthly';
+  freeRemaining?: number;
+  freeDelta?: number;
   proCredits?: number;
   monthlyCredits?: number;
   monthlyDays?: number;
@@ -353,6 +358,10 @@ export interface PartnerRecord {
   description?: string | null;
   image_urls?: string[] | null;
   price_level: number;
+  original_price?: number | string | null;
+  opening_hours?: string | null;
+  avg_duration_minutes?: number | null;
+  duration_minutes?: number | null;
   cuisine_tags?: string[] | null;
   amenity_tags?: string[] | null;
   dietary_safe?: string[] | null;
@@ -360,9 +369,13 @@ export interface PartnerRecord {
   admin_notes?: string | null;
   partner_priority: number;
   active_status: boolean;
-  impression_count: number;
-  click_count: number;
-  booking_count: number;
+  location_verified?: boolean;
+  coordinate_source?: 'google_maps_pin' | 'unresolved' | string | null;
+  source_maps_url?: string | null;
+  i18n?: Record<string, any> | null;
+  impression_count?: number;
+  click_count?: number;
+  booking_count?: number;
   created_at: string;
   updated_at?: string;
   tags?: string[];
@@ -380,6 +393,66 @@ export interface AdminPartnersQueryParams {
   city?: string;
   category?: string;
   active_status?: boolean;
+}
+
+export interface QuickSeedPartnersResponse {
+  success: boolean;
+  message: string;
+  sourcePath?: string;
+  total: number;
+  imported: number;
+  failed: number;
+  skipped?: number;
+  qualityReport?: ImportQualityReport;
+  quality?: {
+    verified_coords?: number;
+    unresolved_coords?: number;
+    verified?: number;
+    unresolved?: number;
+    with_hours?: number;
+    with_price?: number;
+  };
+  cityCounts?: Record<string, number>;
+}
+
+export interface ImportPartnersExcelPayload {
+  base64?: string;
+  fileBase64?: string;
+  filename?: string;
+  filePath?: string;
+  resolveCoords?: boolean;
+}
+
+export interface ImportQualityReport {
+  total: number;
+  verified: number;
+  unresolved: number;
+  unresolvedReasons?: Record<string, number>;
+  coordinateSources?: {
+    google_maps_pin?: number;
+    unresolved?: number;
+  };
+}
+
+export interface ImportPartnersExcelResponse {
+  success: boolean;
+  total?: number;
+  imported?: number;
+  failed?: number;
+  skipped?: number;
+  qualityReport?: ImportQualityReport;
+  quality?: {
+    verified_coords?: number;
+    unresolved_coords?: number;
+    verified?: number;
+    unresolved?: number;
+    with_hours?: number;
+    with_price?: number;
+  };
+  cityCounts?: Record<string, number>;
+  errors?: string[];
+  message?: string;
+  sourcePath?: string;
 }
 
 // ============================================================================
@@ -610,10 +683,11 @@ export function useUpdateUserCredits() {
     { userId: string; payload: UpdateCreditsPayload }
   >({
     mutationFn: async ({ userId, payload }) => {
-      const body: any = { mode: payload.mode, note: payload.note };
+      const body: any = { mode: payload.mode, note: payload.note, targetWallet: payload.targetWallet };
       if (payload.mode === 'revoke') {
         // revoke
       } else if (payload.mode === 'set') {
+        if (payload.freeRemaining !== undefined) body.freeRemaining = payload.freeRemaining;
         if (payload.proCredits !== undefined) body.proCredits = payload.proCredits;
         if (payload.monthlyCredits !== undefined) body.monthlyCredits = payload.monthlyCredits;
         if (payload.monthlyUntil !== undefined) {
@@ -625,9 +699,10 @@ export function useUpdateUserCredits() {
               : null;
         }
       } else if (payload.mode === 'adjust') {
-        body.proDelta = payload.proDelta !== undefined ? payload.proDelta : (payload.proCredits ?? 0);
-        body.monthlyDelta = payload.monthlyDelta !== undefined ? payload.monthlyDelta : (payload.monthlyCredits ?? 0);
-        body.daysDelta = payload.daysDelta !== undefined ? payload.daysDelta : (payload.monthlyDays ?? 0);
+        if (payload.freeDelta !== undefined) body.freeDelta = payload.freeDelta;
+        if (payload.proDelta !== undefined) body.proDelta = payload.proDelta;
+        if (payload.monthlyDelta !== undefined) body.monthlyDelta = payload.monthlyDelta;
+        if (payload.daysDelta !== undefined) body.daysDelta = payload.daysDelta;
       }
       const res = await api.post(`/admin/users/${userId}/credits`, body);
       return res.data;
@@ -1005,6 +1080,45 @@ export function useDeletePartner() {
   return useMutation<{ success: boolean; message: string }, any, string>({
     mutationFn: async (id: string) => {
       const res = await api.delete(`/admin/partners/${id}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'overview'] });
+    },
+  });
+}
+
+/**
+ * Hook nạp nhanh 367 đối tác từ file Excel mặc định trên máy (POST /admin/partners/quick-seed)
+ */
+export function useQuickSeedPartners() {
+  const queryClient = useQueryClient();
+
+  return useMutation<QuickSeedPartnersResponse, any, { resolveCoords?: boolean } | void>({
+    mutationFn: async (payload) => {
+      const res = await api.post('/admin/partners/quick-seed', payload || {});
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'overview'] });
+    },
+  });
+}
+
+/**
+ * Hook nhập dữ liệu đối tác từ file Excel (POST /admin/partners/import-excel)
+ */
+export function useImportPartnersExcel() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ImportPartnersExcelResponse, any, ImportPartnersExcelPayload>({
+    mutationFn: async (payload) => {
+      const res = await api.post('/admin/partners/import-excel', {
+        fileBase64: payload.fileBase64 || payload.base64,
+        ...payload,
+      });
       return res.data;
     },
     onSuccess: () => {

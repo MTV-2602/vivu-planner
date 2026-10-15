@@ -30,7 +30,7 @@ export default function AdminNav() {
     { key: 'trips', path: APP_ROUTES.ADMIN_TRIPS, label: 'Chuyến đi' },
     { key: 'posts', path: APP_ROUTES.ADMIN_POSTS, label: 'Bài đăng 📝' },
     { key: 'keys', path: APP_ROUTES.ADMIN_KEYS, label: 'AI & Keys' },
-    { key: 'partners', path: APP_ROUTES.ADMIN_PARTNERS, label: 'Đối tác' },
+    { key: 'partners', path: APP_ROUTES.ADMIN_PARTNERS, label: 'Địa điểm bản địa' },
   ];
 
   return (

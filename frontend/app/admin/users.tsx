@@ -81,6 +81,8 @@ export default function AdminUsersPage() {
 
   // Credit Modal state
   const [creditUser, setCreditUser] = useState<AdminUserItem | null>(null);
+  const [creditWallet, setCreditWallet] = useState<'free' | 'permanent' | 'monthly'>('free');
+  const [freeCreditsInput, setFreeCreditsInput] = useState('0');
   const [creditMode, setCreditMode] = useState<'set' | 'adjust' | 'revoke'>('set');
   const [proCreditsInput, setProCreditsInput] = useState('0');
   const [monthlyCreditsInput, setMonthlyCreditsInput] = useState('0');
@@ -90,85 +92,50 @@ export default function AdminUsersPage() {
   const openCreditModal = (user: AdminUserItem) => {
     setCreditUser(user);
     setCreditMode('set');
+    setCreditWallet('free');
+    setFreeCreditsInput(String(user.freeRemaining ?? Math.max(0, user.freeTotal - user.freeUsed)));
     setProCreditsInput(String(user.proCredits ?? 0));
-    setMonthlyCreditsInput(String(user.monthlyCredits ?? 0));
+    setMonthlyCreditsInput(String(user.rawMonthlyCredits ?? user.monthlyCredits ?? 0));
     setMonthlyDaysInput(String(user.monthlyRemainingDays > 0 ? user.monthlyRemainingDays : 30));
     setCreditNote('');
   };
 
+  const resetCreditInputs = (wallet: 'free' | 'permanent' | 'monthly', mode: 'set' | 'adjust' | 'revoke') => {
+    setCreditWallet(wallet); setCreditMode(mode);
+    setFreeCreditsInput(mode === 'set' ? String(creditUser?.freeRemaining ?? Math.max(0, (creditUser?.freeTotal || 0) - (creditUser?.freeUsed || 0))) : '0');
+    setProCreditsInput(mode === 'set' ? String(creditUser?.proCredits || 0) : '0');
+    setMonthlyCreditsInput(mode === 'set' ? String(creditUser?.rawMonthlyCredits ?? creditUser?.monthlyCredits ?? 0) : '0');
+    setMonthlyDaysInput(mode === 'set' ? String(creditUser?.monthlyRemainingDays || 30) : '0');
+  };
   const creditPreview = useMemo(() => {
     if (!creditUser) return null;
-    const curPro = creditUser.proCredits ?? 0;
-    const curMonthly = creditUser.monthlyCredits ?? 0;
-    const curDays = creditUser.monthlyRemainingDays ?? 0;
-
-    if (creditMode === 'revoke') {
-      return { pro: 0, monthly: 0, days: 0, isPro: false };
-    }
-
-    const proVal = parseInt(proCreditsInput, 10) || 0;
-    const monthlyVal = parseInt(monthlyCreditsInput, 10) || 0;
-    const daysVal = parseInt(monthlyDaysInput, 10) || 0;
-
-    if (creditMode === 'set') {
-      const nextPro = Math.max(0, proVal);
-      const nextMonthly = Math.max(0, monthlyVal);
-      const nextDays = Math.max(0, daysVal);
-      return {
-        pro: nextPro,
-        monthly: nextMonthly,
-        days: nextDays,
-        isPro: nextPro + (nextDays > 0 ? nextMonthly : 0) > 0,
-      };
-    }
-
-    const nextPro = Math.max(0, curPro + proVal);
-    const nextMonthly = Math.max(0, curMonthly + monthlyVal);
-    const nextDays = Math.max(0, curDays + daysVal);
-    return {
-      pro: nextPro,
-      monthly: nextMonthly,
-      days: nextDays,
-      isPro: nextPro + (nextDays > 0 ? nextMonthly : 0) > 0,
-    };
-  }, [creditUser, creditMode, proCreditsInput, monthlyCreditsInput, monthlyDaysInput]);
-
+    const current = creditWallet === 'free' ? creditUser.freeRemaining ?? Math.max(0, creditUser.freeTotal - creditUser.freeUsed) : creditWallet === 'permanent' ? creditUser.proCredits : creditUser.monthlyCredits;
+    if (creditMode === 'revoke') return { current, next: 0 };
+    const text = creditWallet === 'free' ? freeCreditsInput : creditWallet === 'permanent' ? proCreditsInput : monthlyCreditsInput;
+    if (!/^-?\d+$/.test(text)) return null;
+    const value = Number(text);
+    const next = creditMode === 'adjust' ? current + value : value;
+    if (!Number.isSafeInteger(next) || next < 0) return null;
+    return { current, next };
+  }, [creditUser, creditWallet, creditMode, freeCreditsInput, proCreditsInput, monthlyCreditsInput]);
   const handleSaveCredits = async () => {
-    if (!creditUser) return;
-    try {
-      if (creditMode === 'revoke') {
-        await updateUserCredits.mutateAsync({
-          userId: creditUser.id,
-          payload: { mode: 'revoke', note: creditNote.trim() || undefined },
-        });
-      } else if (creditMode === 'set') {
-        await updateUserCredits.mutateAsync({
-          userId: creditUser.id,
-          payload: {
-            mode: 'set',
-            proCredits: Math.max(0, parseInt(proCreditsInput, 10) || 0),
-            monthlyCredits: Math.max(0, parseInt(monthlyCreditsInput, 10) || 0),
-            monthlyDays: Math.max(0, parseInt(monthlyDaysInput, 10) || 0),
-            note: creditNote.trim() || undefined,
-          },
-        });
-      } else {
-        await updateUserCredits.mutateAsync({
-          userId: creditUser.id,
-          payload: {
-            mode: 'adjust',
-            proDelta: parseInt(proCreditsInput, 10) || 0,
-            monthlyDelta: parseInt(monthlyCreditsInput, 10) || 0,
-            daysDelta: parseInt(monthlyDaysInput, 10) || 0,
-            note: creditNote.trim() || undefined,
-          },
-        });
+    if (!creditUser || updateUserCredits.isPending) return;
+    if (!creditPreview) return showToast('Nhập số nguyên hợp lệ; số lượt sau điều chỉnh không được âm.', 'error');
+    const payload: any = { mode: creditMode, targetWallet: creditWallet, note: creditNote.trim() || undefined };
+    if (creditMode !== 'revoke') {
+      const text = creditWallet === 'free' ? freeCreditsInput : creditWallet === 'permanent' ? proCreditsInput : monthlyCreditsInput;
+      if (creditMode === 'set' && Number(text) < 0) return showToast('Số lượt đặt lại không được âm.', 'error');
+      payload[creditWallet === 'free' ? (creditMode === 'set' ? 'freeRemaining' : 'freeDelta') : creditWallet === 'permanent' ? (creditMode === 'set' ? 'proCredits' : 'proDelta') : (creditMode === 'set' ? 'monthlyCredits' : 'monthlyDelta')] = Number(text);
+      if (creditWallet === 'monthly') {
+        if (!/^-?\d+$/.test(monthlyDaysInput) || !Number.isSafeInteger(Number(monthlyDaysInput)) || (creditMode === 'set' && Number(monthlyDaysInput) < 0)) return showToast('Nhập số ngày nguyên hợp lệ.', 'error');
+        if (creditMode === 'set' && Number(text) > 0 && Number(monthlyDaysInput) <= 0) return showToast('Lượt Pro có hạn phải có số ngày hiệu lực lớn hơn 0.', 'error');
+        payload[creditMode === 'set' ? 'monthlyDays' : 'daysDelta'] = Number(monthlyDaysInput);
       }
-      showToast('Đã cập nhật ví lượt thành công!', 'success');
-      setCreditUser(null);
-    } catch (err: any) {
-      showToast(err.response?.data?.error || err.message || 'Lỗi cập nhật ví lượt', 'error');
     }
+    try {
+      await updateUserCredits.mutateAsync({ userId: creditUser.id, payload });
+      showToast('Đã cập nhật ví đã chọn; hai ví còn lại được giữ nguyên.', 'success'); setCreditUser(null);
+    } catch (err: any) { showToast(err.response?.data?.error || err.message || 'Lỗi cập nhật ví lượt', 'error'); }
   };
 
   // Edit Profile Modal state
@@ -190,13 +157,16 @@ export default function AdminUsersPage() {
 
   const handleSaveProfile = async () => {
     if (!editUser) return;
+    if (!/^\d+$/.test(editQuotaTotal) || !Number.isSafeInteger(Number(editQuotaTotal)) || Number(editQuotaTotal) < editUser.freeUsed) {
+      return showToast('Tổng lượt Free phải là số nguyên và không nhỏ hơn số lượt đã dùng. Để cộng lượt còn lại, dùng Quản lý 3 ví lượt.', 'error');
+    }
     try {
       await updateUserProfile.mutateAsync({
         userId: editUser.id,
         payload: {
           fullName: editFullName.trim(),
           phone: editPhone.trim() || undefined,
-          quotaTotal: Math.max(0, parseInt(editQuotaTotal, 10) || 0),
+          quotaTotal: Number(editQuotaTotal),
           newPassword: editNewPassword.trim() ? editNewPassword.trim() : undefined,
         },
       });
@@ -317,18 +287,18 @@ export default function AdminUsersPage() {
               />
             </View>
             <Text className="text-[11px] text-brand-text font-medium">
-              • Mua lẻ: <Text className="font-bold text-brand-primary">{u.proCredits}</Text> lượt vĩnh viễn
+              • Pro không thời hạn: <Text className="font-bold text-brand-primary">{u.proCredits}</Text> lượt
             </Text>
             <Text className="text-[11px] text-brand-text font-medium">
-              • Theo tháng: <Text className="font-bold text-brand-primary">{u.monthlyCredits}</Text> lượt{' '}
+              • Pro có hạn: <Text className="font-bold text-brand-primary">{u.monthlyCredits}</Text> lượt{' '}
               {u.monthlyRemainingDays > 0 ? (
                 <Text className="text-emerald-700">({u.monthlyRemainingDays} ngày còn lại)</Text>
               ) : (
-                <Text className="text-brand-textMuted">(Hết hạn)</Text>
+                <Text className="text-brand-textMuted">({u.monthlyUntil ? `Hết hạn ${new Date(u.monthlyUntil).toLocaleDateString('vi-VN')}` : 'Chưa có thời hạn'})</Text>
               )}
             </Text>
             <Text className="text-[10px] text-brand-textMuted">
-              Quota miễn phí: {u.freeUsed} / {u.freeTotal} lượt
+              • Free: còn {u.freeRemaining ?? Math.max(0, u.freeTotal - u.freeUsed)} lượt • đã dùng {u.freeUsed} / {u.freeTotal}
             </Text>
           </View>
         );
@@ -389,6 +359,7 @@ export default function AdminUsersPage() {
               variant="secondary"
               icon={<Coins size={12} color={BRAND_COLORS.primary} />}
               label="Ví lượt"
+              testID={`admin-user-wallet-${u.id}`}
               disabled={isAdmin}
               onPress={() => openCreditModal(u)}
             />
@@ -545,11 +516,11 @@ export default function AdminUsersPage() {
         </View>
       </Card>
 
-      {/* 4. CreditModal: Quản lý 2 ví lượt Pro */}
+      {/* 4. CreditModal: Quản lý 3 ví lượt */}
       <Modal
         visible={Boolean(creditUser)}
-        onClose={() => setCreditUser(null)}
-        title="Quản lý Ví lượt Pro"
+        onClose={() => !updateUserCredits.isPending && setCreditUser(null)}
+        title="Quản lý 3 ví lượt"
         subtitle={creditUser ? `${creditUser.fullName} (${creditUser.email})` : ''}
         maxWidth={540}
         footer={
@@ -558,12 +529,14 @@ export default function AdminUsersPage() {
               variant="outline"
               size="sm"
               label="Hủy"
+              disabled={updateUserCredits.isPending}
               onPress={() => setCreditUser(null)}
             />
             <Button
               variant="primary"
               size="sm"
               label="Lưu thay đổi"
+              testID="admin-wallet-save"
               loading={updateUserCredits.isPending}
               onPress={handleSaveCredits}
             />
@@ -571,92 +544,38 @@ export default function AdminUsersPage() {
         }
       >
         <View className="gap-4">
+          <View className="p-3 rounded-xl bg-slate-50 border border-brand-line gap-1">
+            <Text className="text-xs font-bold">Free: còn {creditUser?.freeRemaining ?? Math.max(0, (creditUser?.freeTotal || 0) - (creditUser?.freeUsed || 0))} • đã dùng {creditUser?.freeUsed || 0} / tổng {creditUser?.freeTotal || 0}</Text>
+            <Text className="text-xs">Pro không thời hạn: {creditUser?.proCredits || 0} lượt</Text>
+            <Text className="text-xs">Pro có hạn: {creditUser?.monthlyCredits || 0} lượt khả dụng • {creditUser?.monthlyUntil ? `hạn ${new Date(creditUser.monthlyUntil).toLocaleDateString('vi-VN')}${creditUser.monthlyRemainingDays <= 0 ? ' (đã hết hạn)' : ''}` : 'chưa có thời hạn'}</Text>
+          </View>
+          <Field label="Ví cần điều chỉnh">
+            <Select value={creditWallet} disabled={updateUserCredits.isPending} options={[{value:'free',label:'Free — AI Tiêu chuẩn'},{value:'permanent',label:'Pro không thời hạn'},{value:'monthly',label:'Pro có hạn'}]} onChange={value=>resetCreditInputs(value as any, creditMode)} />
+          </Field>
           <Field label="Chế độ cập nhật">
             <FilterChips
               options={[
                 { value: 'set', label: 'Đặt lại (Set)' },
                 { value: 'adjust', label: 'Cộng/Trừ (+/-)' },
-                { value: 'revoke', label: 'Thu hồi toàn bộ (Revoke)' },
+                { value: 'revoke', label: 'Thu hồi ví đã chọn' },
               ]}
               value={creditMode}
-              onChange={(val) => setCreditMode(val as any)}
+              onChange={(val) => !updateUserCredits.isPending && resetCreditInputs(creditWallet, val as any)}
             />
           </Field>
 
           {creditMode === 'revoke' ? (
-            <View className="p-3.5 rounded-xl bg-red-50 border border-red-200 gap-1.5">
-              <Text className="text-xs font-bold text-red-800">
-                Cảnh báo thu hồi toàn bộ gói Pro:
-              </Text>
-              <Text className="text-xs text-red-700 leading-relaxed">
-                Thao tác này sẽ hạ toàn bộ số lượt mua lẻ về 0, lượt tháng về 0 và hủy
-                thời hạn gói Pro của tài khoản này ngay lập tức.
-              </Text>
-            </View>
+            <View className="p-3 rounded-xl bg-red-50 border border-red-200"><Text className="text-xs text-red-800">Thu hồi toàn bộ lượt của ví đã chọn. Hai ví khác và lịch sử Free đã dùng được giữ nguyên.</Text></View>
           ) : (
             <>
-              <Field
-                label={
-                  creditMode === 'set'
-                    ? 'Lượt mua lẻ vĩnh viễn (pro_credits)'
-                    : 'Thay đổi lượt mua lẻ (+ / -)'
-                }
-                hint={
-                  creditMode === 'set'
-                    ? 'Số lượt mua lẻ không thời hạn'
-                    : 'Nhập số dương để cộng thêm, số âm để trừ bớt'
-                }
-              >
-                <Input
-                  value={proCreditsInput}
-                  onChangeText={setProCreditsInput}
-                  keyboardType="numbers-and-punctuation"
-                  placeholder={creditMode === 'set' ? '0' : '+0'}
-                />
+              <Field label={creditMode === 'set' ? 'Số lượt còn lại của ví đã chọn' : 'Cộng / trừ lượt (+ / -)'} hint={creditWallet === 'free' ? 'Chỉ thay đổi lượt Free còn lại; giữ nguyên số lượt đã dùng.' : creditWallet === 'permanent' ? 'Lượt Pro này không có ngày hết hạn.' : 'Lượt Pro chỉ khả dụng trước ngày hết hạn.'}>
+                <Input testID="admin-wallet-amount" value={creditWallet === 'free' ? freeCreditsInput : creditWallet === 'permanent' ? proCreditsInput : monthlyCreditsInput} onChangeText={value=>{if(updateUserCredits.isPending)return; if(creditWallet==='free')setFreeCreditsInput(value);else if(creditWallet==='permanent')setProCreditsInput(value);else setMonthlyCreditsInput(value);}} keyboardType="numbers-and-punctuation" placeholder="0" />
               </Field>
-
-              <Field
-                label={
-                  creditMode === 'set'
-                    ? 'Lượt theo tháng (monthly_credits)'
-                    : 'Thay đổi lượt theo tháng (+ / -)'
-                }
-                hint={
-                  creditMode === 'set'
-                    ? 'Số lượt có thời hạn gắn với ngày hiệu lực'
-                    : 'Nhập số dương để cộng thêm, số âm để trừ bớt'
-                }
-              >
-                <Input
-                  value={monthlyCreditsInput}
-                  onChangeText={setMonthlyCreditsInput}
-                  keyboardType="numbers-and-punctuation"
-                  placeholder={creditMode === 'set' ? '0' : '+0'}
-                />
-              </Field>
-
-              <Field
-                label={
-                  creditMode === 'set'
-                    ? 'Số ngày hiệu lực (kể từ hiện tại)'
-                    : 'Thay đổi số ngày hiệu lực (+ / - ngày)'
-                }
-                hint={
-                  creditMode === 'set'
-                    ? 'Thời hạn lượt tháng (VD: 30 ngày)'
-                    : 'Kéo dài (+) hoặc rút ngắn (-) thời hạn gói'
-                }
-              >
-                <Input
-                  value={monthlyDaysInput}
-                  onChangeText={setMonthlyDaysInput}
-                  keyboardType="numbers-and-punctuation"
-                  placeholder={creditMode === 'set' ? '30' : '+0'}
-                />
-              </Field>
+              {creditWallet === 'monthly' && <Field label={creditMode === 'set' ? 'Số ngày hiệu lực kể từ hiện tại' : 'Cộng / trừ thời hạn (ngày)'} hint={creditMode === 'set' ? 'Ví Pro có hạn cần ngày hết hạn riêng.' : '0 giữ nguyên thời hạn; số dương gia hạn, số âm rút ngắn.'}><Input testID="admin-wallet-days" value={monthlyDaysInput} onChangeText={value=>!updateUserCredits.isPending && setMonthlyDaysInput(value)} keyboardType="numbers-and-punctuation" /></Field>}
             </>
           )}
 
+          {creditWallet === 'monthly' && creditMode === 'adjust' && creditUser?.monthlyUntil && creditUser.monthlyRemainingDays <= 0 && <Text className="text-xs text-amber-800">Gói cũ đã hết hạn. Lượt cũ không được khôi phục. Chỉ lượt cộng thêm được giữ; cần gia hạn thêm ngày để sử dụng.</Text>}
           <Field label="Lý do điều chỉnh (ghi chú hệ thống)">
             <Input
               value={creditNote}
@@ -665,28 +584,7 @@ export default function AdminUsersPage() {
             />
           </Field>
 
-          {/* Preview Box */}
-          {creditPreview && creditUser && (
-            <View className="p-3.5 bg-slate-50 border border-brand-line/40 rounded-xl gap-2">
-              <Text className="text-xs font-bold text-brand-text">
-                Đối soát thay đổi ví lượt:
-              </Text>
-              <View className="flex-row items-center justify-between text-xs py-1 border-b border-brand-line/20">
-                <Text className="text-[11px] text-brand-textSoft">Hiện tại:</Text>
-                <Text className="text-[11px] font-semibold text-brand-text">
-                  Mua lẻ: {creditUser.proCredits} | Tháng: {creditUser.monthlyCredits} (
-                  {creditUser.monthlyRemainingDays} ngày)
-                </Text>
-              </View>
-              <View className="flex-row items-center justify-between text-xs py-1">
-                <Text className="text-[11px] font-bold text-brand-primary">Dự kiến sau đổi:</Text>
-                <Text className="text-[11px] font-bold text-brand-primary">
-                  Mua lẻ: {creditPreview.pro} | Tháng: {creditPreview.monthly} (
-                  {creditPreview.days} ngày)
-                </Text>
-              </View>
-            </View>
-          )}
+          {creditPreview && <View className="p-3 rounded-xl bg-emerald-50 border border-emerald-200"><Text className="text-xs text-emerald-900">Ví đã chọn: {creditPreview.current} → {creditPreview.next} lượt. Hai ví khác giữ nguyên.</Text></View>}
         </View>
       </Modal>
 
@@ -735,7 +633,7 @@ export default function AdminUsersPage() {
 
           <Field
             label="Hạn mức chuyến miễn phí (Quota)"
-            hint="Số chuyến đi tạo miễn phí mặc định cho người dùng Free"
+            hint={`Tổng lượt gồm ${editUser?.freeUsed || 0} lượt đã dùng. Để cộng lượt còn lại, dùng Quản lý 3 ví lượt.`}
           >
             <Input
               value={editQuotaTotal}

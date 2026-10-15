@@ -18,6 +18,20 @@ export interface PlaceItem {
   google_map_url?: string;
   rating?: number;
   image_url?: string;
+  partner_id?: string;
+  is_partner?: boolean;
+  is_pro_partner?: boolean;
+  pro_badge?: string;
+  source?: string;
+  i18n?: Record<string, any>;
+  location_verified?: boolean;
+  coordinate_source?: string;
+  duration_minutes?: number;
+  original_price?: number;
+}
+
+export function isProLocalPlace(place: PlaceItem): boolean {
+  return Boolean(place.partner_id || place.is_partner || place.is_pro_partner || place.source === 'admin_partner' || place.i18n?.partner_id || place.i18n?.is_partner || place.i18n?.is_pro_partner || place.i18n?.source === 'admin_partner');
 }
 
 interface PlacePopupProps {
@@ -95,12 +109,19 @@ export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupPr
       {/* Header */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <View style={{ flex: 1, gap: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100, backgroundColor: `${catColor}15` }}>
               <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 11, color: catColor, textTransform: 'uppercase' }}>
                 {place.category === 'dining' ? '🔴 Ăn uống' : place.category === 'cafe' ? '🟡 Cafe' : place.category === 'hotel' ? '🔵 Khách sạn' : '🟣 Vui chơi'}
               </Text>
             </View>
+            {isProLocalPlace(place) && (
+              <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B' }}>
+                <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 11, color: '#B45309' }}>
+                  Dữ liệu Pro
+                </Text>
+              </View>
+            )}
           </View>
           <Text style={{ fontFamily: 'Lora_700Bold', fontSize: 17, color: '#1B2420' }}>
             {place.name}

@@ -5,6 +5,7 @@ import { supabaseAdmin, isDbMocked } from '../../config/supabase';
 
 import { autoCancelExpiredOrders, loadPlansFromDb, activatePremiumForUser } from '../payment/payment.router';
 import * as paymentRouter from '../payment/payment.router';
+import { grantCreditsToUser } from '../payment/payment.service';
 import { formatPostRow } from '../posts/posts.router';
 import {
   UserRole,
@@ -14,7 +15,6 @@ import {
   isUserPremium,
   getProCredits,
   getFreeQuota,
-  computeGrant,
 } from '../../constants';
 
 import {
@@ -756,7 +756,8 @@ router.get('/users', async (req: Request, res: Response) => {
         bannedUntil: p.banned_until || null,
         proCredits: proCreditsInfo.proCredits,
         monthlyCredits: proCreditsInfo.monthlyCredits,
-        monthlyUntil: proCreditsInfo.monthlyUntil,
+        monthlyUntil: p.premium_until || null,
+        rawMonthlyCredits: Number(p.monthly_credits ?? 0),
         monthlyRemainingDays: proCreditsInfo.monthlyRemainingDays,
         remainingTrips: proCreditsInfo.total,
         pro_credits: proCreditsInfo.proCredits,
@@ -766,6 +767,7 @@ router.get('/users', async (req: Request, res: Response) => {
         pro_status: proCreditsInfo.total > 0 ? 'active' : 'inactive',
         freeUsed: freeQuota.used,
         freeTotal: freeQuota.total,
+        freeRemaining: freeQuota.remaining,
         tripsCount: tripCountMap.get(p.id) || 0,
         totalSpent: userSpent.totalSpent,
         ordersCount: userSpent.ordersCount,
@@ -874,28 +876,35 @@ const handleUpdateUserCredits = async (req: Request, res: Response) => {
 
     const now = new Date();
     const currentCredits = {
+      quota_total: Number(targetProfile.quota_total ?? targetProfile.custom_quota ?? 3),
+      quota_used: Number(targetProfile.quota_used ?? 0),
       pro_credits: Number(targetProfile.pro_credits || 0),
       monthly_credits: Number(targetProfile.monthly_credits || 0),
       premium_until: targetProfile.premium_until || null,
       is_premium: Boolean(targetProfile.is_premium),
     };
 
-    const newCredits = calculateNewCredits(currentCredits, input, now);
+    let newCredits;
+    try { newCredits = calculateNewCredits(currentCredits, input, now); }
+    catch (err: any) { return res.status(400).json({ error: err.message }); }
 
     // 2. Cập nhật cơ sở dữ liệu
-    const { data: updatedProfile, error: updateErr } = await supabaseAdmin
-      .from('profiles')
-      .update({
-        pro_credits: newCredits.pro_credits,
-        monthly_credits: newCredits.monthly_credits,
-        premium_until: newCredits.premium_until,
-        is_premium: newCredits.is_premium,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId)
-      .select()
-      .single();
-
+    let { data: updatedProfile, error: updateErr } = await supabaseAdmin.rpc('admin_update_wallets', {
+      p_user_id: userId, p_expected: currentCredits, p_values: newCredits,
+    });
+    if (updateErr?.code === 'PGRST202') {
+      // Compatibility before migration: compare every wallet and usage counter.
+      let query = supabaseAdmin.from('profiles').update({ ...newCredits, updated_at: now.toISOString() })
+        .eq('id', userId).neq('role', UserRole.ADMIN)
+        .eq('quota_total', currentCredits.quota_total).eq('quota_used', currentCredits.quota_used)
+        .eq('pro_credits', currentCredits.pro_credits).eq('monthly_credits', currentCredits.monthly_credits);
+      query = currentCredits.premium_until === null ? query.is('premium_until', null) : query.eq('premium_until', currentCredits.premium_until);
+      const result = await query.select().maybeSingle();
+      updatedProfile = result.data; updateErr = result.error;
+    }
+    if (updateErr?.message?.includes('WALLET_CONFLICT') || (!updateErr && !updatedProfile)) {
+      return res.status(409).json({ error: 'Ví lượt vừa thay đổi. Vui lòng tải lại và thử lại.' });
+    }
     if (updateErr) throw updateErr;
 
     // 3. Ghi log console có cấu trúc
@@ -939,7 +948,8 @@ const handleUpdateUserCredits = async (req: Request, res: Response) => {
       bannedUntil: updatedProfile.banned_until || null,
       proCredits: proInfo.proCredits,
       monthlyCredits: proInfo.monthlyCredits,
-      monthlyUntil: proInfo.monthlyUntil,
+      rawMonthlyCredits: Number(updatedProfile.monthly_credits ?? 0),
+      monthlyUntil: updatedProfile.premium_until || null,
       monthlyRemainingDays: proInfo.monthlyRemainingDays,
       remainingTrips: proInfo.total,
       pro_credits: updatedProfile.pro_credits,
@@ -948,6 +958,7 @@ const handleUpdateUserCredits = async (req: Request, res: Response) => {
       is_premium: updatedProfile.is_premium,
       freeUsed: freeQuota.used,
       freeTotal: freeQuota.total,
+      freeRemaining: freeQuota.remaining,
       tripsCount: tripsCountRes.count || 0,
       totalSpent,
       ordersCount: userOrders.length,
@@ -958,6 +969,7 @@ const handleUpdateUserCredits = async (req: Request, res: Response) => {
       message: 'Cập nhật ví lượt thành công',
       user: userItem,
       item: userItem,
+      data: updatedProfile,
     });
   } catch (err: any) {
     console.error('[Admin] credits error:', err.message);
@@ -1228,7 +1240,7 @@ router.put('/users/:id', async (req: Request, res: Response) => {
   try {
     const { data: targetProfile, error: profileFetchErr } = await supabaseAdmin
       .from('profiles')
-      .select('id, email, role')
+      .select('id, email, role, quota_used, quota_total')
       .eq('id', userId)
       .maybeSingle();
 
@@ -1255,7 +1267,9 @@ router.put('/users/:id', async (req: Request, res: Response) => {
     if (full_name !== undefined) updateData.full_name = String(full_name).trim();
     if (phone !== undefined) updateData.phone = phone ? String(phone).trim() : null;
     if (quota_total !== undefined) {
-      updateData.quota_total = Math.max(0, parseInt(quota_total) || 0);
+      if (typeof quota_total !== 'number' || !Number.isSafeInteger(quota_total) || quota_total < Number(targetProfile?.quota_used ?? 0) || quota_total > 2147483647) return res.status(400).json({ error: 'Tổng lượt Free phải là số nguyên không nhỏ hơn lượt đã dùng.' });
+      if (targetProfile?.role === UserRole.ADMIN && quota_total !== targetProfile.quota_total) return res.status(400).json({ error: 'Không thể can thiệp ví lượt của Quản trị viên.' });
+      updateData.quota_total = quota_total;
     }
     if (role && [UserRole.USER, UserRole.ADMIN].includes(role)) {
       if ((req as any).user?.id !== userId) {
@@ -1263,14 +1277,15 @@ router.put('/users/:id', async (req: Request, res: Response) => {
       }
     }
 
-    const { data: updatedProfile, error: profileErr } = await supabaseAdmin
+    let profileQuery = supabaseAdmin
       .from('profiles')
       .update(updateData)
-      .eq('id', userId)
-      .select()
-      .maybeSingle();
+      .eq('id', userId);
+    if (quota_total !== undefined) profileQuery = profileQuery.eq('quota_total', targetProfile!.quota_total).eq('quota_used', targetProfile!.quota_used);
+    const { data: updatedProfile, error: profileErr } = await profileQuery.select().maybeSingle();
 
     if (profileErr) throw profileErr;
+    if (!updatedProfile) return res.status(409).json({ error: 'Thông tin hoặc ví lượt vừa thay đổi. Vui lòng tải lại.' });
 
     if (new_password && String(new_password).trim().length >= 6) {
       await supabaseAdmin.auth.admin.updateUserById(userId, {
@@ -1480,70 +1495,42 @@ router.put('/users/:id/package', async (req: Request, res: Response) => {
       const grantCredits = Number(dbPlan.quota_total_grant ?? 1);
       const durationDays = Number(dbPlan.duration_days ?? 0);
 
-      const { error: rpcErr } = await supabaseAdmin.rpc('grant_plan_credits', {
-        p_user_id: userId,
-        p_credits: grantCredits,
-        p_duration_days: durationDays,
-      });
-
-      if (rpcErr) {
-        console.warn('[Admin Package] RPC grant_plan_credits error, using fallback:', rpcErr.message);
-        const { data: currentProfile } = await supabaseAdmin
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .maybeSingle();
-
-        const computed = computeGrant(
-          currentProfile,
-          { quota_total_grant: grantCredits, duration_days: durationDays },
-          new Date()
-        );
-
-        await supabaseAdmin
-          .from('profiles')
-          .update({
-            pro_credits: computed.pro_credits,
-            monthly_credits: computed.monthly_credits,
-            premium_until: computed.premium_until,
-            is_premium: computed.pro_credits + computed.monthly_credits > 0,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', userId);
-      }
+      await grantCreditsToUser(userId, grantCredits, durationDays);
 
       // Tạo đơn hoàn tất tự động ghi vết admin (PaymentMethod.ADMIN)
       const orderId = `ADMIN_AUTO_${Date.now()}`;
-      await supabaseAdmin.from('payment_orders').insert({
+      const adminOrder = {
         id: orderId,
         user_id: userId,
         method: PaymentMethod.ADMIN,
         plan: dbPlan.id,
         amount: Number(dbPlan.amount ?? 0),
+        quota_granted: grantCredits,
+        duration_days_granted: durationDays,
         status: PaymentStatus.COMPLETED,
         order_code: String(Date.now()),
         created_at: new Date().toISOString(),
-      });
-    } else {
-      const updatePayload: Record<string, any> = {
-        updated_at: new Date().toISOString(),
       };
-
-      if (pro_credits !== undefined) updatePayload.pro_credits = Math.max(0, Number(pro_credits));
-      if (monthly_credits !== undefined) updatePayload.monthly_credits = Math.max(0, Number(monthly_credits));
-      if (premium_until !== undefined) updatePayload.premium_until = premium_until;
-      if (quota_used !== undefined) updatePayload.quota_used = Math.max(0, Number(quota_used));
-      if (custom_quota !== undefined) updatePayload.quota_total = Number(custom_quota);
-      if (is_premium !== undefined) {
-        updatePayload.is_premium = Boolean(is_premium);
-      } else if (pro_credits !== undefined || monthly_credits !== undefined) {
-        updatePayload.is_premium = Number(pro_credits || 0) + Number(monthly_credits || 0) > 0;
+      let { error: auditErr } = await supabaseAdmin.from('payment_orders').insert(adminOrder);
+      if (auditErr?.code === 'PGRST204' && auditErr.message?.includes('duration_days_granted')) {
+        const { duration_days_granted, ...legacyOrder } = adminOrder;
+        const retry = await supabaseAdmin.from('payment_orders').insert(legacyOrder);
+        auditErr = retry.error;
       }
-
-      const { error: updateErr } = await supabaseAdmin.from('profiles').update(updatePayload).eq('id', userId);
-      if (updateErr) throw updateErr;
+      if (auditErr) console.error('[Admin Package] Đã cấp lượt nhưng không ghi được đơn đối soát:', { userId, orderId, grantCredits, durationDays, error: auditErr.message });
+    } else {
+      if (quota_used !== undefined || is_premium !== undefined) return res.status(400).json({ error: 'Không được sửa lịch sử sử dụng hoặc quyền Pro trực tiếp. Hãy điều chỉnh ví lượt.' });
+      const { data: current } = await supabaseAdmin.from('profiles').select('*').eq('id', userId).maybeSingle();
+      if (!current) return res.status(404).json({ error: 'Không tìm thấy người dùng.' });
+      if (custom_quota !== undefined && (typeof custom_quota !== 'number' || !Number.isSafeInteger(custom_quota) || custom_quota < current.quota_used)) return res.status(400).json({ error: 'Tổng lượt Free phải là số nguyên không nhỏ hơn lượt đã dùng.' });
+      req.body = { mode: 'set',
+        ...(pro_credits !== undefined ? { proCredits: pro_credits } : {}),
+        ...(monthly_credits !== undefined ? { monthlyCredits: monthly_credits } : {}),
+        ...(premium_until !== undefined ? { monthlyUntil: premium_until } : {}),
+        ...(custom_quota !== undefined ? { freeRemaining: custom_quota - current.quota_used } : {}),
+      };
+      return handleUpdateUserCredits(req, res);
     }
-
     const { data: updatedProfile } = await supabaseAdmin.from('profiles').select('*').eq('id', userId).maybeSingle();
 
     try {

@@ -15,6 +15,13 @@ import { PREMIUM_PLANS } from '../payment.router';
 import { decideActivation, verifyPayOSWebhook, verifyMoMoIPN } from '../payment.service';
 
 describe('Payment & Pro Credits Business Rules', () => {
+  it('uses canonical Free quota and preserves a future timed window even when empty', () => {
+    assert.deepEqual(getFreeQuota({ quota_total: 8, custom_quota: 3, quota_used: 3 }), { total: 8, used: 3, remaining: 5 });
+    const current = { pro_credits: 2, monthly_credits: 0, premium_until: '2026-10-20T00:00:00.000Z' };
+    const now = new Date('2026-10-14T00:00:00Z');
+    assert.deepEqual(computeGrant(current, { quota_total_grant: 1, duration_days: 0 }, now), { ...current, pro_credits: 3 });
+    assert.deepEqual(computeGrant(current, { quota_total_grant: 10, duration_days: 30 }, now), { pro_credits: 2, monthly_credits: 10, premium_until: '2026-11-19T00:00:00.000Z' });
+  });
   it('should initialize default plans correctly (single_trip: duration 0, monthly: duration 30)', () => {
     // 1. Gói chuyến đơn (không thời hạn)
     assert.ok(PREMIUM_PLANS.single_trip);
