@@ -2755,12 +2755,19 @@ export default function GoogleCalendarWorkspace({
           {/* Bản đồ Map View: Luôn hiển thị bản đồ trực quan Leaflet cả trên Web & Mobile Viewport */}
           <View
             testID="mobile-route-map-card"
-            style={{
-              height: windowWidth < 640 ? 260 : 320,
-              width: '100%',
-              position: 'relative',
-              backgroundColor: '#F8F9FA',
-            }}
+            style={
+              Platform.OS === 'web'
+                ? {
+                    height: windowWidth < 640 ? 260 : 320,
+                    width: '100%',
+                    position: 'relative',
+                    backgroundColor: '#F8F9FA',
+                  }
+                : {
+                    width: '100%',
+                    position: 'relative',
+                  }
+            }
           >
             {Platform.OS === 'web' ? (
               <>
@@ -2880,7 +2887,148 @@ export default function GoogleCalendarWorkspace({
                   </View>
                 )}
               </>
-            ) : null}
+            ) : (
+              /* Mobile Native Route & Map Explorer Card: Hiển thị đẹp mắt trên Android APK / iOS */
+              <View
+                style={{
+                  width: '100%',
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: '#E2E8F0',
+                  padding: 14,
+                  marginBottom: 10,
+                  gap: 10,
+                }}
+              >
+                {/* Header card */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                    <Car size={18} color="#1A73E8" />
+                    <Text style={{ fontSize: 13.5, fontWeight: '800', color: '#0F172A', flex: 1 }}>
+                      🗺️ Lộ trình Ngày {activeDay} ({currentDayEvents.length} điểm đến)
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Nút bấm to nổi bật mở Google Maps dẫn đường */}
+                {currentDayEvents.length > 0 ? (
+                  <Pressable
+                    testID="btn-open-day-route-google-maps"
+                    onPress={handleOpenGoogleMapsRoute}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      backgroundColor: '#1A73E8',
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      borderRadius: 12,
+                      elevation: 2,
+                    }}
+                  >
+                    <Car size={16} color="#FFFFFF" />
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>
+                      🗺️ Mở Bản đồ Lộ trình trên Google Maps
+                    </Text>
+                    <ExternalLink size={14} color="#FFFFFF" />
+                  </Pressable>
+                ) : (
+                  <View
+                    style={{
+                      backgroundColor: '#F8FAFC',
+                      padding: 12,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: '#E2E8F0',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: '#64748B', textAlign: 'center', lineHeight: 18 }}>
+                      💡 Ngày {activeDay} chưa có địa điểm nào trên lịch trình. Hãy thêm địa điểm từ giỏ chờ để bắt đầu khám phá lộ trình!
+                    </Text>
+                  </View>
+                )}
+
+                {/* Danh sách các điểm dừng trong ngày */}
+                {currentDayEvents.length > 0 && (
+                  <View style={{ gap: 8, marginTop: 4 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      Các chặng dừng chân trong ngày:
+                    </Text>
+                    {currentDayEvents.map((event, idx) => {
+                      const startTime = `${String(event.startHour).padStart(2, '0')}:${String(event.startMinute).padStart(2, '0')}`;
+                      const totalMin = event.startHour * 60 + event.startMinute + (event.durationMinutes || 60);
+                      const endTime = `${String(Math.floor(totalMin / 60) % 24).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`;
+
+                      return (
+                        <View
+                          key={event.id || idx}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            backgroundColor: '#F8FAFC',
+                            padding: 10,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: '#E2E8F0',
+                            gap: 10,
+                          }}
+                        >
+                          {/* Huy hiệu số thứ tự */}
+                          <View
+                            style={{
+                              width: 24,
+                              height: 24,
+                              borderRadius: 12,
+                              backgroundColor: '#1A73E8',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>
+                              {idx + 1}
+                            </Text>
+                          </View>
+
+                          {/* Thông tin chặng */}
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
+                              {event.title}
+                            </Text>
+                            <Text numberOfLines={1} style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                              ⏰ {startTime} - {endTime} {event.address ? `• 📍 ${event.address}` : ''}
+                            </Text>
+                          </View>
+
+                          {/* Nút chỉ đường 1 chạm */}
+                          <Pressable
+                            onPress={() => handleOpenSinglePlaceMap(event)}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 3,
+                              backgroundColor: '#EFF6FF',
+                              paddingHorizontal: 8,
+                              paddingVertical: 6,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: '#BFDBFE',
+                            }}
+                          >
+                            <MapPin size={12} color="#1A73E8" />
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#1A73E8' }}>
+                              Chỉ đường
+                            </Text>
+                          </Pressable>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
           </View>
 
           {/* Khối Địa điểm chờ xếp ở Cột Trái */}

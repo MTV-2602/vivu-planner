@@ -424,6 +424,7 @@ export default function TripWizard() {
   const [editingCostPlaceId, setEditingCostPlaceId] = useState<string | null>(null);
   const [editCostInput, setEditCostInput] = useState('');
   const [hoveredPoolPlaceId, setHoveredPoolPlaceId] = useState<string | null>(null);
+  const [isCartSheetOpen, setIsCartSheetOpen] = useState(false);
   const cartMapIframeRef = useRef<any>(null);
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -3573,8 +3574,19 @@ export default function TripWizard() {
               gap: 10,
             }}
           >
-            {/* Info giỏ hàng */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {/* Info giỏ hàng: Bấm vào mở Bottom Sheet 3/4 màn hình xem lại & xóa khỏi giỏ */}
+            <Pressable
+              testID="btn-open-cart-bottom-sheet"
+              onPress={() => setIsCartSheetOpen(true)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                flex: 1,
+                minWidth: 0,
+                cursor: 'pointer' as any,
+              }}
+            >
               <View
                 style={{
                   width: 36,
@@ -3587,16 +3599,21 @@ export default function TripWizard() {
               >
                 <ShoppingBag size={18} color="#D97706" />
               </View>
-              <View>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: '#9A5B00' }}>
-                  🛒 Giỏ hàng: {cartItems.length} địa điểm
-                </Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#9A5B00' }}>
+                    🛒 Giỏ hàng: {cartItems.length} địa điểm
+                  </Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: BRAND_COLORS.primary }}>
+                    (Xem & Xóa ↑)
+                  </Text>
+                </View>
                 <Text style={{ fontSize: 11, color: '#7A5210' }} numberOfLines={1}>
                   Dự tính: {new Intl.NumberFormat('vi-VN').format(currentCartTotal)} đ / Ngân sách:{' '}
                   {new Intl.NumberFormat('vi-VN').format(budgetTotal)} đ
                 </Text>
               </View>
-            </View>
+            </Pressable>
 
             {/* Nút Chốt danh sách hoặc Thông báo thành viên */}
             {isGroupMember ? (
@@ -3669,6 +3686,247 @@ export default function TripWizard() {
           </View>
         </View>
       )}
+
+      {/* Bottom Sheet xem lại & quản lý giỏ hàng (Chiếm 3/4 màn hình - 75% height) */}
+      <Modal
+        visible={isCartSheetOpen && cartItems.length > 0}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsCartSheetOpen(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0, 0, 0, 0.45)',
+            justifyContent: 'flex-end',
+          }}
+        >
+          {/* Backdrop dismiss */}
+          <Pressable
+            style={{ flex: 1 }}
+            onPress={() => setIsCartSheetOpen(false)}
+          />
+
+          {/* Sheet container: chiếm 3/4 màn hình (75% height) */}
+          <View
+            style={{
+              height: '75%',
+              backgroundColor: '#FFFFFF',
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingTop: 12,
+              paddingHorizontal: 16,
+              paddingBottom: Math.max(16, insets.bottom),
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: -4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 20,
+            }}
+          >
+            {/* Thanh gạt nhỏ ở đỉnh */}
+            <View
+              style={{
+                width: 44,
+                height: 5,
+                borderRadius: 2.5,
+                backgroundColor: '#CBD5E1',
+                alignSelf: 'center',
+                marginBottom: 12,
+              }}
+            />
+
+            {/* Header Sheet */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingBottom: 12,
+                borderBottomWidth: 1,
+                borderBottomColor: '#F1F5F9',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ShoppingBag size={20} color={BRAND_COLORS.primary} />
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A' }}>
+                  Giỏ hàng của bạn ({cartItems.length} địa điểm)
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setIsCartSheetOpen(false)}
+                style={{
+                  padding: 6,
+                  borderRadius: 20,
+                  backgroundColor: '#F1F5F9',
+                }}
+              >
+                <X size={18} color="#64748B" />
+              </Pressable>
+            </View>
+
+            {/* Danh sách địa điểm trong giỏ */}
+            <ScrollView
+              style={{ flex: 1, marginVertical: 10 }}
+              contentContainerStyle={{ gap: 10, paddingBottom: 16 }}
+              showsVerticalScrollIndicator={true}
+            >
+              {cartItems.map((item, idx) => {
+                const place = item.place;
+                const isHotel = ['hotel', 'accommodation', 'homestay', 'resort'].includes(String(place.category || '').toLowerCase());
+                const hotelItems = cartItems.filter(it =>
+                  ['hotel', 'accommodation', 'homestay', 'resort'].includes(String(it.place.category || '').toLowerCase())
+                );
+                const nights = isHotel ? (item.nights || (hotelItems.length === 1 ? Math.max(1, nightsCount) : 1)) : 1;
+                const itemTotalCost = (Number(item.custom_cost) || 0) * nights;
+
+                return (
+                  <View
+                    key={`cart-sheet-item-${place.id}-${idx}`}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: '#F8FAFC',
+                      padding: 12,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: '#E2E8F0',
+                      gap: 12,
+                    }}
+                  >
+                    {/* Ảnh đại diện / Icon */}
+                    {place.image_url ? (
+                      <Image
+                        source={{ uri: place.image_url }}
+                        style={{ width: 56, height: 56, borderRadius: 10, backgroundColor: '#E2E8F0' }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          width: 56,
+                          height: 56,
+                          borderRadius: 10,
+                          backgroundColor: '#EFF6FF',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <MapPin size={24} color={BRAND_COLORS.primary} />
+                      </View>
+                    )}
+
+                    {/* Chi tiết địa điểm */}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} style={{ fontSize: 13.5, fontWeight: '700', color: '#0F172A' }}>
+                        {place.name}
+                      </Text>
+                      {place.address ? (
+                        <Text numberOfLines={1} style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                          📍 {place.address}
+                        </Text>
+                      ) : null}
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: BRAND_COLORS.primary, marginTop: 4 }}>
+                        💰 {new Intl.NumberFormat('vi-VN').format(itemTotalCost)} đ
+                        {isHotel && nights > 1 ? ` (${nights} đêm)` : ''}
+                      </Text>
+                    </View>
+
+                    {/* Nút Xóa khỏi giỏ hàng màu đỏ nổi bật */}
+                    <Pressable
+                      testID={`btn-remove-from-cart-sheet-${place.id}`}
+                      onPress={() => {
+                        handleRemoveFromCart(place.id);
+                        if (cartItems.length <= 1) {
+                          setIsCartSheetOpen(false);
+                        }
+                      }}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                        backgroundColor: '#FEE2E2',
+                        borderWidth: 1,
+                        borderColor: '#FECACA',
+                      }}
+                    >
+                      <Trash2 size={14} color="#EF4444" />
+                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#DC2626' }}>
+                        Xóa
+                      </Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            {/* Footer Bottom Sheet: Tóm tắt ngân sách & Nút chốt danh sách */}
+            <View
+              style={{
+                borderTopWidth: 1,
+                borderTopColor: '#F1F5F9',
+                paddingTop: 12,
+                gap: 10,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, color: '#64748B', fontWeight: '600' }}>
+                  Tổng dự tính giỏ hàng:
+                </Text>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: BRAND_COLORS.primary }}>
+                  {new Intl.NumberFormat('vi-VN').format(currentCartTotal)} đ
+                </Text>
+              </View>
+
+              {isGroupMember ? (
+                <View
+                  style={{
+                    padding: 10,
+                    borderRadius: 10,
+                    backgroundColor: '#F1F5F9',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ fontSize: 11.5, color: '#64748B', fontStyle: 'italic', textAlign: 'center' }}>
+                    ℹ️ Bạn đang tham gia nhóm. Trưởng nhóm sẽ chốt danh sách và chuyển sang xếp lịch trình.
+                  </Text>
+                </View>
+              ) : (
+                <Pressable
+                  testID="btn-confirm-cart-from-sheet"
+                  onPress={() => {
+                    setIsCartSheetOpen(false);
+                    handleCaptainAdvanceToScheduling();
+                  }}
+                  style={{
+                    backgroundColor: BRAND_COLORS.primary,
+                    paddingVertical: 13,
+                    paddingHorizontal: 16,
+                    borderRadius: 14,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.15,
+                    shadowRadius: 4,
+                    elevation: 3,
+                  }}
+                >
+                  <Calendar size={16} color="#FFFFFF" />
+                  <Text style={{ fontSize: 13.5, fontWeight: '800', color: '#FFFFFF' }}>
+                    🚀 Chốt danh sách & Xếp lịch ({cartItems.length} điểm) →
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Premium Upgrade Modal */}
       <PremiumModal

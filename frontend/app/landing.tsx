@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, Pressable, Platform, Animated, useWindowDimensions, TextInput, ImageBackground } from 'react-native';
+import { View, Text, Pressable, Platform, Animated, useWindowDimensions, TextInput, ImageBackground, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -669,29 +669,45 @@ export default function Landing() {
                 </Reveal>
               </Animated.View>
 
-              {/* Quick Destination Chips */}
-              <Animated.View style={{ transform: [{ translateY: citiesY }] }}>
+              {/* Quick Destination Chips: Thanh cuộn ngang mượt mà trên di động */}
+              <Animated.View style={{ transform: [{ translateY: citiesY }], width: '100%', marginTop: 8 }}>
                 <Reveal delay={280}>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 4 }}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                      paddingHorizontal: isMobile ? 16 : 0,
+                      justifyContent: isMobile ? 'flex-start' : 'center',
+                      minWidth: isMobile ? undefined : '100%',
+                    }}
+                  >
                     {VIETNAMESE_CITIES.map((city) => (
                       <Pressable
                         key={city}
                         onPress={() => handleStartTrip(city)}
                         style={({ pressed }) => [{
-                          flexDirection: 'row', alignItems: 'center', gap: 6,
-                          paddingHorizontal: 13, paddingVertical: 7, borderRadius: 100,
-                          backgroundColor: 'rgba(255, 255, 255, 0.25)',
-                          borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.4)',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
+                          paddingHorizontal: 14,
+                          paddingVertical: 8,
+                          borderRadius: 100,
+                          backgroundColor: 'rgba(255, 255, 255, 0.22)',
+                          borderWidth: 1,
+                          borderColor: 'rgba(255, 255, 255, 0.35)',
                           opacity: pressed ? 0.75 : 1,
                           transform: [{ scale: pressed ? 0.95 : 1 }],
                           ...(isWeb ? { backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', cursor: 'pointer' } as any : {}),
                         }]}
                       >
-                        <Text style={{ fontSize: 12 }}>{CITY_EMOJIS[city]}</Text>
-                        <Text style={{ fontFamily: F.semiBold, fontSize: 12, color: '#FFFFFF' }}>{city}</Text>
+                        <Text style={{ fontSize: 13, lineHeight: 16 }}>{CITY_EMOJIS[city]}</Text>
+                        <Text style={{ fontFamily: F.semiBold, fontSize: 12.5, color: '#FFFFFF', lineHeight: 16 }}>{city}</Text>
                       </Pressable>
                     ))}
-                  </View>
+                  </ScrollView>
                 </Reveal>
               </Animated.View>
 

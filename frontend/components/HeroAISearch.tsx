@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, Pressable, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { Sparkles, ArrowRight } from 'lucide-react-native';
 
 interface HeroAISearchProps {
@@ -42,23 +42,25 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
     }
   };
 
+  const isWeb = Platform.OS === 'web';
+
   return (
     <View style={{
       width: '100%',
       maxWidth: 860,
       alignSelf: 'center',
-      borderRadius: 28,
-      backgroundColor: 'rgba(15, 23, 42, 0.78)',
+      borderRadius: 24,
+      backgroundColor: 'rgba(15, 23, 42, 0.82)',
       borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.25)',
-      padding: 16,
+      borderColor: 'rgba(255, 255, 255, 0.22)',
+      padding: isWeb ? 16 : 12,
       shadowColor: '#000000',
       shadowOffset: { width: 0, height: 16 },
       shadowOpacity: 0.35,
       shadowRadius: 36,
       elevation: 12,
       zIndex: 50,
-      ...(Platform.OS === 'web' ? {
+      ...(isWeb ? {
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
         boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
@@ -67,52 +69,60 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
     }}>
       {/* Input Bar Container */}
       <View style={{
-        flexDirection: Platform.OS === 'web' ? 'row' : 'column',
-        alignItems: 'center',
-        gap: 12,
+        flexDirection: isWeb ? 'row' : 'column',
+        alignItems: isWeb ? 'center' : 'stretch',
+        gap: 10,
         backgroundColor: 'rgba(255, 255, 255, 0.08)',
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.15)',
-        borderRadius: 20,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
+        borderRadius: 18,
+        padding: isWeb ? 12 : 10,
       }}>
-        {/* Left Glowing Sparkles Icon */}
+        {/* Row for Sparkles Icon + Text Input */}
         <View style={{
-          width: 42,
-          height: 42,
-          borderRadius: 14,
-          backgroundColor: 'rgba(56, 189, 248, 0.2)',
+          flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'center',
-          borderWidth: 1,
-          borderColor: 'rgba(56, 189, 248, 0.4)',
-          ...(Platform.OS === 'web' ? {
-            boxShadow: '0 0 16px rgba(56, 189, 248, 0.35)',
-          } as any : {}),
+          gap: 10,
+          flex: isWeb ? 1 : undefined,
+          width: isWeb ? undefined : '100%',
         }}>
-          <Sparkles size={22} color="#38BDF8" />
-        </View>
+          {/* Left Glowing Sparkles Icon */}
+          <View style={{
+            width: 38,
+            height: 38,
+            borderRadius: 12,
+            backgroundColor: 'rgba(56, 189, 248, 0.2)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: 'rgba(56, 189, 248, 0.4)',
+            flexShrink: 0,
+            ...(isWeb ? {
+              boxShadow: '0 0 16px rgba(56, 189, 248, 0.35)',
+            } as any : {}),
+          }}>
+            <Sparkles size={18} color="#38BDF8" />
+          </View>
 
-        {/* Center Text Input */}
-        <TextInput
-          value={promptText}
-          onChangeText={setPromptText}
-          onSubmitEditing={handleGenerate}
-          placeholder="Lên lịch trình: '3 ngày ở Đà Lạt tìm quán cà phê yên tĩnh, ngân sách 2 triệu'..."
-          placeholderTextColor="rgba(255, 255, 255, 0.6)"
-          style={{
-            flex: 1,
-            width: '100%',
-            color: '#FFFFFF',
-            fontSize: 15,
-            fontWeight: '500',
-            fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-            paddingVertical: 10,
-            paddingHorizontal: 6,
-            outlineStyle: 'none',
-          } as any}
-        />
+          {/* Center Text Input */}
+          <TextInput
+            value={promptText}
+            onChangeText={setPromptText}
+            onSubmitEditing={handleGenerate}
+            placeholder="Ví dụ: 3 ngày ở Đà Lạt cà phê chill, ngân sách 2 triệu..."
+            placeholderTextColor="rgba(255, 255, 255, 0.6)"
+            style={{
+              flex: 1,
+              color: '#FFFFFF',
+              fontSize: 14,
+              fontWeight: '500',
+              fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
+              paddingVertical: 8,
+              paddingHorizontal: 4,
+              outlineStyle: 'none',
+            } as any}
+          />
+        </View>
 
         {/* Right CTA Button */}
         <Pressable
@@ -120,17 +130,17 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           disabled={isLoading}
           style={({ pressed }) => [{
             backgroundColor: '#0284C7',
-            paddingHorizontal: 24,
-            paddingVertical: 13,
+            paddingHorizontal: 22,
+            paddingVertical: 12,
             borderRadius: 100,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 8,
-            width: Platform.OS === 'web' ? 'auto' : '100%',
+            width: isWeb ? 'auto' : '100%',
             opacity: pressed ? 0.85 : 1,
             transform: [{ scale: pressed ? 0.97 : 1 }],
-            ...(Platform.OS === 'web' ? {
+            ...(isWeb ? {
               boxShadow: '0 4px 20px rgba(2, 132, 199, 0.45)',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
@@ -140,27 +150,31 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           {isLoading ? (
             <>
               <ActivityIndicator size="small" color="#FFFFFF" />
-              <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 14 }}>Đang xử lý AI...</Text>
+              <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 13.5 }}>Đang xử lý AI...</Text>
             </>
           ) : (
             <>
-              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>Lập lịch ngay</Text>
-              <ArrowRight size={17} color="#FFFFFF" />
+              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13.5 }}>Lập lịch ngay</Text>
+              <ArrowRight size={16} color="#FFFFFF" />
             </>
           )}
         </Pressable>
       </View>
 
-      {/* Quick Context Tags (Below the input bar) */}
-      <View style={{
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        gap: 8,
-        marginTop: 14,
-        paddingHorizontal: 4,
-      }}>
-        <Text style={{ color: 'rgba(255, 255, 255, 0.75)', fontSize: 12, fontWeight: '600', marginRight: 4 }}>
+      {/* Quick Context Tags (Thanh cuộn ngang mượt mà trên di động) */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          paddingVertical: 4,
+          paddingHorizontal: 2,
+        }}
+        style={{ marginTop: 10 }}
+      >
+        <Text style={{ color: 'rgba(255, 255, 255, 0.75)', fontSize: 11.5, fontWeight: '600', marginRight: 4 }}>
           Gợi ý nhanh:
         </Text>
 
@@ -173,23 +187,23 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
               borderWidth: 1,
               borderColor: 'rgba(255, 255, 255, 0.22)',
               borderRadius: 100,
-              paddingHorizontal: 14,
-              paddingVertical: 6,
+              paddingHorizontal: 12,
+              paddingVertical: 5,
               opacity: pressed ? 0.75 : 1,
               transform: [{ scale: pressed ? 0.95 : 1 }],
-              ...(Platform.OS === 'web' ? {
+              ...(isWeb ? {
                 backdropFilter: 'blur(8px)',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
               } as any : {}),
             }]}
           >
-            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>
+            <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontWeight: '600' }}>
               {tag}
             </Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
 
       {/* Loading Skeleton Simulation Overlay */}
       {isLoading && (

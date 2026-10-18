@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
 import { User, MapPin, Calendar, Heart, ArrowLeft, LogOut, Sparkles, ChevronRight, ChevronLeft, Star, Trash2, Plus, Tag, X, ExternalLink, ThumbsUp, MessageSquare, Camera, Edit3, KeyRound, Lock } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PREFERENCE_OPTIONS, APP_ROUTES, POST_CATEGORIES } from '../../constants';
 import CreatePostModal from '../../components/CreatePostModal';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -38,6 +39,7 @@ const formatRelativeTime = (dateString: string) => {
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { session, user, profile, signOut, refreshProfile } = useAuth();
   const [trips, setTrips] = useState<TripItem[]>([]);
   const [loadingTrips, setLoadingTrips] = useState(true);
@@ -169,7 +171,7 @@ export default function ProfileScreen() {
           alignItems: 'center',
           justifyContent: 'space-between',
           paddingHorizontal: 20,
-          paddingTop: isWeb ? 20 : 48,
+          paddingTop: Math.max(isWeb ? 20 : 48, insets.top + 10),
           paddingBottom: 16,
           backgroundColor: '#FFFFFF',
           borderBottomWidth: 1,
@@ -184,27 +186,38 @@ export default function ProfileScreen() {
               router.replace((APP_ROUTES.TRIPS || '/(app)/chuyen-di') as any);
             }
           }}
-          style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+          style={({ pressed }) => [{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            minWidth: 80,
+            opacity: pressed ? 0.7 : 1,
+          }]}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <ArrowLeft size={20} color="#1B2420" />
-            <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 14, color: '#1B2420' }}>
-              Quay lại
-            </Text>
-          </View>
+          <ArrowLeft size={20} color="#1B2420" />
+          <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 14, color: '#1B2420' }}>
+            Quay lại
+          </Text>
         </Pressable>
 
-        <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 17, color: '#1B2420' }}>
+        <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 17, color: '#1B2420', textAlign: 'center' }}>
           Hồ Sơ Cá Nhân
         </Text>
 
-        <Pressable
-          testID="btn-header-signout"
-          onPress={signOut}
-          style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
-        >
-          <LogOut size={20} color="#B23B3B" />
-        </Pressable>
+        <View style={{ minWidth: 80, alignItems: 'flex-end' }}>
+          <Pressable
+            testID="btn-header-signout"
+            onPress={signOut}
+            style={({ pressed }) => [{
+              padding: 6,
+              borderRadius: 20,
+              backgroundColor: '#FEF2F2',
+              opacity: pressed ? 0.7 : 1,
+            }]}
+          >
+            <LogOut size={18} color="#B23B3B" />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -274,14 +287,14 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
-          <Text style={{ fontFamily: 'Lora_700Bold', fontSize: 22, color: '#1B2420', marginBottom: 4 }}>
+          <Text style={{ fontFamily: 'Lora_700Bold', fontSize: 22, color: '#1B2420', marginBottom: 4, textAlign: 'center' }}>
             {profile?.full_name || 'Người dùng ViVu'}
           </Text>
-          <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 13, color: '#6E7B70', marginBottom: 12 }}>
+          <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 13, color: '#6E7B70', marginBottom: 12, textAlign: 'center' }}>
             {user?.email || 'Chưa cập nhật email'}
           </Text>
 
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
             <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: 'rgba(31,111,84,0.1)' }}>
               <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#1F6F54' }}>
                 {profile?.is_premium ? '⭐ Thành viên Premium' : '🌱 Thành viên Miễn phí'}
@@ -298,6 +311,7 @@ export default function ProfileScreen() {
               width: '100%',
               maxWidth: 420,
               justifyContent: 'center',
+              alignItems: 'center',
             }}
           >
             {/* Nút Chỉnh sửa hồ sơ */}
@@ -311,7 +325,7 @@ export default function ProfileScreen() {
                 justifyContent: 'center',
                 gap: 6,
                 backgroundColor: '#1F6F54',
-                paddingVertical: 10,
+                paddingVertical: 11,
                 paddingHorizontal: 12,
                 borderRadius: 12,
                 opacity: pressed ? 0.85 : 1,
@@ -337,7 +351,7 @@ export default function ProfileScreen() {
                 backgroundColor: '#FFFFFF',
                 borderWidth: 1.5,
                 borderColor: '#CBD5E1',
-                paddingVertical: 10,
+                paddingVertical: 11,
                 paddingHorizontal: 12,
                 borderRadius: 12,
                 opacity: pressed ? 0.85 : 1,
@@ -394,7 +408,7 @@ export default function ProfileScreen() {
           </Text>
 
           {/* Preset 18 Tags Grid */}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
             {PREFERENCE_OPTIONS.map((opt) => {
               const isSelected = userPrefs.includes(opt.label);
               return (
@@ -402,12 +416,14 @@ export default function ProfileScreen() {
                   key={opt.id}
                   onPress={() => togglePreference(opt.label)}
                   style={({ pressed }) => [{
-                    paddingHorizontal: 13,
-                    paddingVertical: 7,
-                    borderRadius: 100,
-                    backgroundColor: isSelected ? '#1F6F54' : '#F3ECDC',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                    backgroundColor: isSelected ? '#1F6F54' : '#F1F5F9',
                     borderWidth: 1,
-                    borderColor: isSelected ? '#1F6F54' : 'rgba(27,36,32,0.08)',
+                    borderColor: isSelected ? '#1F6F54' : '#E2E8F0',
                     opacity: pressed ? 0.8 : 1,
                   }]}
                 >
@@ -415,7 +431,8 @@ export default function ProfileScreen() {
                     style={{
                       fontFamily: isSelected ? 'BeVietnamPro_700Bold' : 'BeVietnamPro_600SemiBold',
                       fontSize: 12,
-                      color: isSelected ? '#FFFFFF' : '#1B2420',
+                      lineHeight: 16,
+                      color: isSelected ? '#FFFFFF' : '#1E293B',
                     }}
                   >
                     {opt.label}
@@ -432,14 +449,18 @@ export default function ProfileScreen() {
                   key={idx}
                   onPress={() => togglePreference(customTag)}
                   style={({ pressed }) => [{
-                    paddingHorizontal: 13,
-                    paddingVertical: 7,
-                    borderRadius: 100,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 20,
                     backgroundColor: '#E2703A',
+                    borderWidth: 1,
+                    borderColor: '#EA580C',
                     opacity: pressed ? 0.8 : 1,
                   }]}
                 >
-                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#FFFFFF' }}>
+                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, lineHeight: 16, color: '#FFFFFF' }}>
                     ✨ {customTag} ✕
                   </Text>
                 </Pressable>

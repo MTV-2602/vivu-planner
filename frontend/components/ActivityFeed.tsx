@@ -149,11 +149,19 @@ export default function ActivityFeed({
     }
   }, [visible, tripId, fetchActivities]);
 
-  // 2. Subscribe postgres_changes và broadcast trên channel cố định trip-activity-${tripId}
+  // 2. Subscribe postgres_changes và broadcast trên channel
   useEffect(() => {
     if (!tripId) return;
 
-    const channelName = `trip-activity-${tripId}`;
+    // Hủy bỏ toàn bộ channel cũ có topic trùng để tránh lỗi cannot add callbacks after subscribe
+    const existingChannels = supabase.getChannels().filter(
+      (c) => c.topic === `realtime:trip-activity-${tripId}` || c.topic.startsWith(`realtime:trip-activity-${tripId}`)
+    );
+    for (const c of existingChannels) {
+      supabase.removeChannel(c);
+    }
+
+    const channelName = `trip-activity-${tripId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const channel = supabase
       .channel(channelName)
       .on(
