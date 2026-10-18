@@ -3305,57 +3305,8 @@ export default function TripWizard() {
                           );
                         })()}
 
-                        {/* Thanh tổng kết giỏ hàng & Nút mở Calendar */}
-                        <View
-                          style={{ flexDirection: windowWidth < 640 ? 'column' : 'row', alignItems: windowWidth < 640 ? 'stretch' : 'center' }}
-                          className="p-3.5 sm:p-4 rounded-2xl bg-[#FFFBF0] border border-[#F5D599] justify-between gap-3 shadow-md mt-2"
-                        >
-                          <View className="flex-row items-center gap-3 flex-1 min-w-0">
-                            <View className="w-10 h-10 rounded-xl bg-brand-accent/20 items-center justify-center shrink-0">
-                              <ShoppingBag size={20} color={BRAND_COLORS.accent} />
-                            </View>
-                            <View className="flex-1 min-w-0">
-                              <Text className="text-sm font-extrabold text-[#9A5B00]">
-                                🛒 Giỏ hàng: {cartItems.length} địa điểm
-                              </Text>
-                              <Text className="text-xs text-[#7A5210]" numberOfLines={1}>
-                                Dự tính: {new Intl.NumberFormat('vi-VN').format(currentCartTotal)} đ / Ngân sách:{' '}
-                                {new Intl.NumberFormat('vi-VN').format(budgetTotal)} đ
-                              </Text>
-                            </View>
-                          </View>
-
-                          {isGroupMember ? (
-                            <View className="flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                              <Text className="text-[11px] text-gray-500 italic max-w-xs text-left sm:text-right">
-                                ℹ️ Bạn đang tham gia nhóm chọn giỏ hàng. Chỉ trưởng nhóm mới có quyền chốt danh sách và chuyển sang bước xếp lịch trình.
-                              </Text>
-                              <View
-                                testID="btn-open-calendar-member-disabled"
-                                className="w-full sm:w-auto px-4 sm:px-5 py-3 rounded-xl flex-row items-center justify-center gap-2 bg-gray-200 opacity-80"
-                              >
-                                <Clock size={16} color="#6B7280" />
-                                <Text className="text-xs font-extrabold text-gray-500 text-center">
-                                  ⏳ Chờ trưởng nhóm chốt danh sách ({cartItems.length} địa điểm)
-                                </Text>
-                              </View>
-                            </View>
-                          ) : (
-                            <Pressable
-                              testID="btn-open-calendar-from-cart"
-                              disabled={cartItems.length === 0}
-                              onPress={handleCaptainAdvanceToScheduling}
-                              className={`w-full sm:w-auto px-4 sm:px-5 py-3 rounded-xl flex-row items-center justify-center gap-2 shadow-sm ${
-                                cartItems.length === 0 ? 'bg-gray-300 opacity-60' : 'bg-brand-primary active:opacity-90'
-                              }`}
-                            >
-                              <Calendar size={16} color="#FFFFFF" />
-                              <Text className="text-xs font-extrabold text-white text-center">
-                                🚀 Chốt danh sách & Sang bước xếp lịch ({cartItems.length} điểm) →
-                              </Text>
-                            </Pressable>
-                          )}
-                        </View>
+                        {/* Spacer đệm để địa điểm cuối cùng không bị che khuất */}
+                        <View style={{ height: 110 }} />
                       </View>
                     ) : (
                       /* BƯỚC 4B: KHÔNG GIAN LẬP LỊCH TRỰC QUAN & BẢN ĐỒ VIVU */
@@ -3589,6 +3540,135 @@ export default function TripWizard() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Sticky Bottom Cart Bar (Thanh cố định ghim ở đáy màn hình, ngoài Reveal để không bị trôi) */}
+      {step === 4 && useProWorkspace && workspaceStage === 'collecting' && cartItems.length > 0 && (
+        <View
+          style={{
+            position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 9999,
+            backgroundColor: '#FFFBF0',
+            borderTopWidth: 1.5,
+            borderTopColor: '#F5D599',
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: -3 },
+            shadowOpacity: 0.12,
+            shadowRadius: 8,
+            elevation: 10,
+          }}
+        >
+          <View
+            style={{
+              maxWidth: 1200,
+              width: '100%',
+              alignSelf: 'center',
+              flexDirection: windowWidth < 640 ? 'column' : 'row',
+              alignItems: windowWidth < 640 ? 'stretch' : 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+            }}
+          >
+            {/* Info giỏ hàng */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  backgroundColor: 'rgba(217, 119, 6, 0.15)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <ShoppingBag size={18} color="#D97706" />
+              </View>
+              <View>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#9A5B00' }}>
+                  🛒 Giỏ hàng: {cartItems.length} địa điểm
+                </Text>
+                <Text style={{ fontSize: 11, color: '#7A5210' }} numberOfLines={1}>
+                  Dự tính: {new Intl.NumberFormat('vi-VN').format(currentCartTotal)} đ / Ngân sách:{' '}
+                  {new Intl.NumberFormat('vi-VN').format(budgetTotal)} đ
+                </Text>
+              </View>
+            </View>
+
+            {/* Nút Chốt danh sách hoặc Thông báo thành viên */}
+            {isGroupMember ? (
+              <View
+                style={{
+                  flexDirection: windowWidth < 640 ? 'column' : 'row',
+                  alignItems: windowWidth < 640 ? 'stretch' : 'center',
+                  gap: 8,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: '#6B7280',
+                    fontStyle: 'italic',
+                    maxWidth: 320,
+                    textAlign: windowWidth < 640 ? 'left' : 'right',
+                  }}
+                >
+                  ℹ️ Bạn đang tham gia nhóm chọn giỏ hàng. Chỉ trưởng nhóm mới có quyền chốt danh sách và chuyển sang bước xếp lịch trình.
+                </Text>
+                <View
+                  testID="btn-open-calendar-member-disabled"
+                  style={{
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    borderRadius: 12,
+                    backgroundColor: '#E5E7EB',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    opacity: 0.8,
+                  }}
+                >
+                  <Clock size={16} color="#6B7280" />
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#6B7280' }}>
+                    ⏳ Chờ trưởng nhóm chốt danh sách ({cartItems.length} địa điểm)
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <Pressable
+                testID="btn-open-calendar-from-cart"
+                disabled={cartItems.length === 0}
+                onPress={handleCaptainAdvanceToScheduling}
+                style={{
+                  backgroundColor: cartItems.length === 0 ? '#CBD5E1' : BRAND_COLORS.primary,
+                  paddingVertical: 12,
+                  paddingHorizontal: 18,
+                  borderRadius: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 4,
+                  elevation: 2,
+                  cursor: (cartItems.length === 0 ? 'not-allowed' : 'pointer') as any,
+                }}
+              >
+                <Calendar size={16} color="#FFFFFF" />
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF', textAlign: 'center' }}>
+                  🚀 Chốt danh sách & Xếp lịch ({cartItems.length} điểm) →
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      )}
 
       {/* Premium Upgrade Modal */}
       <PremiumModal
