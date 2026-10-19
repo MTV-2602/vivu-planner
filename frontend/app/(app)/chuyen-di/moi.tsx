@@ -425,6 +425,7 @@ export default function TripWizard() {
   const [editCostInput, setEditCostInput] = useState('');
   const [hoveredPoolPlaceId, setHoveredPoolPlaceId] = useState<string | null>(null);
   const [isCartSheetOpen, setIsCartSheetOpen] = useState(false);
+  const cartTouchStartY = useRef<number>(0);
   const cartMapIframeRef = useRef<any>(null);
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -3545,6 +3546,16 @@ export default function TripWizard() {
       {/* Sticky Bottom Cart Bar (Thanh cố định ghim ở đáy màn hình, ngoài Reveal để không bị trôi) */}
       {step === 4 && useProWorkspace && workspaceStage === 'collecting' && cartItems.length > 0 && (
         <View
+          onTouchStart={(e) => {
+            cartTouchStartY.current = e.nativeEvent.pageY;
+          }}
+          onTouchEnd={(e) => {
+            const deltaY = cartTouchStartY.current - e.nativeEvent.pageY;
+            // Nếu người dùng vuốt lên trên 25px -> mở ngay Bottom Sheet 3/4
+            if (deltaY > 25) {
+              setIsCartSheetOpen(true);
+            }
+          }}
           style={{
             position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
             bottom: 0,
@@ -3574,10 +3585,19 @@ export default function TripWizard() {
               gap: 10,
             }}
           >
-            {/* Info giỏ hàng: Bấm vào mở Bottom Sheet 3/4 màn hình xem lại & xóa khỏi giỏ */}
+            {/* Info giỏ hàng: Bấm vào hoặc vuốt lên mở Bottom Sheet 3/4 màn hình xem lại & xóa khỏi giỏ */}
             <Pressable
               testID="btn-open-cart-bottom-sheet"
               onPress={() => setIsCartSheetOpen(true)}
+              onTouchStart={(e) => {
+                cartTouchStartY.current = e.nativeEvent.pageY;
+              }}
+              onTouchEnd={(e) => {
+                const deltaY = cartTouchStartY.current - e.nativeEvent.pageY;
+                if (deltaY > 25) {
+                  setIsCartSheetOpen(true);
+                }
+              }}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',

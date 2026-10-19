@@ -916,6 +916,42 @@ export default function ProfileScreen() {
             )}
           </View>
         )}
+
+        {/* Nút Đăng xuất */}
+        <View style={{ marginTop: 20, marginBottom: 4, alignItems: 'center' }}>
+          <Pressable
+            testID="btn-profile-bottom-signout"
+            onPress={signOut}
+            style={({ pressed }) => [{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingVertical: 10,
+              paddingHorizontal: 20,
+              borderRadius: 12,
+              backgroundColor: '#FEF2F2',
+              borderWidth: 1,
+              borderColor: '#FECACA',
+              opacity: pressed ? 0.7 : 1,
+              cursor: 'pointer' as any,
+            }]}
+          >
+            <LogOut size={16} color="#DC2626" />
+            <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 13, color: '#DC2626' }}>
+              Đăng xuất
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Badge phiên bản app */}
+        <View style={{ alignItems: 'center', marginTop: 24, marginBottom: 16 }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>
+            ViVu Planner • Phiên bản v1.0.1 (Build 2)
+          </Text>
+          <Text style={{ fontSize: 10.5, color: '#94A3B8', marginTop: 2 }}>
+            Đã cập nhật tính năng Giỏ hàng 3/4, Bản đồ số & Sửa lỗi Realtime
+          </Text>
+        </View>
       </ScrollView>
 
       {/* Modal Đăng Bài */}
