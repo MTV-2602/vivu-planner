@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.vivuplanner.app",
-      "versionCode": 4,
+      "versionCode": 6,
       "adaptiveIcon": {
         "backgroundColor": "#FBF5EA",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -46,9 +46,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "0f565804-58c1-44c4-8a5c-90105859f7e0"
+        "projectId": "cceb7289-3639-4e85-9146-3f0305206422"
       }
     },
-    "owner": "bach1712"
+    "owner": "bach1712s-team"
   }
 }
