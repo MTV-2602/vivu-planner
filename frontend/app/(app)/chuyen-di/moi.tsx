@@ -3546,13 +3546,24 @@ export default function TripWizard() {
       {/* Sticky Bottom Cart Bar (Thanh cố định ghim ở đáy màn hình, ngoài Reveal để không bị trôi) */}
       {step === 4 && useProWorkspace && workspaceStage === 'collecting' && cartItems.length > 0 && (
         <View
+          onStartShouldSetResponder={() => true}
+          onMoveShouldSetResponder={() => true}
+          onResponderGrant={(e) => {
+            cartTouchStartY.current = e.nativeEvent.pageY;
+          }}
+          onResponderRelease={(e) => {
+            const deltaY = cartTouchStartY.current - e.nativeEvent.pageY;
+            if (deltaY > 20) {
+              setIsCartSheetOpen(true);
+            }
+          }}
           onTouchStart={(e) => {
             cartTouchStartY.current = e.nativeEvent.pageY;
           }}
           onTouchEnd={(e) => {
             const deltaY = cartTouchStartY.current - e.nativeEvent.pageY;
-            // Nếu người dùng vuốt lên trên 25px -> mở ngay Bottom Sheet 3/4
-            if (deltaY > 25) {
+            // Nếu người dùng vuốt lên trên 20px -> mở ngay Bottom Sheet 3/4
+            if (deltaY > 20) {
               setIsCartSheetOpen(true);
             }
           }}
@@ -3594,41 +3605,47 @@ export default function TripWizard() {
               }}
               onTouchEnd={(e) => {
                 const deltaY = cartTouchStartY.current - e.nativeEvent.pageY;
-                if (deltaY > 25) {
+                if (deltaY > 20) {
                   setIsCartSheetOpen(true);
                 }
               }}
-              style={{
+              style={({ pressed }) => [{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 10,
+                gap: 12,
                 flex: 1,
                 minWidth: 0,
+                paddingVertical: 4,
+                paddingHorizontal: 4,
+                borderRadius: 12,
+                backgroundColor: pressed ? 'rgba(217, 119, 6, 0.08)' : 'transparent',
                 cursor: 'pointer' as any,
-              }}
+              }]}
             >
               <View
                 style={{
-                  width: 36,
-                  height: 36,
+                  width: 38,
+                  height: 38,
                   borderRadius: 10,
                   backgroundColor: 'rgba(217, 119, 6, 0.15)',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <ShoppingBag size={18} color="#D97706" />
+                <ShoppingBag size={20} color="#D97706" />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   <Text style={{ fontSize: 13, fontWeight: '800', color: '#9A5B00' }}>
                     🛒 Giỏ hàng: {cartItems.length} địa điểm
                   </Text>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: BRAND_COLORS.primary }}>
-                    (Xem & Xóa ↑)
-                  </Text>
+                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: BRAND_COLORS.primary }}>
+                      (Xem & Xóa ↑)
+                    </Text>
+                  </View>
                 </View>
-                <Text style={{ fontSize: 11, color: '#7A5210' }} numberOfLines={1}>
+                <Text style={{ fontSize: 11, color: '#7A5210', marginTop: 1 }} numberOfLines={1}>
                   Dự tính: {new Intl.NumberFormat('vi-VN').format(currentCartTotal)} đ / Ngân sách:{' '}
                   {new Intl.NumberFormat('vi-VN').format(budgetTotal)} đ
                 </Text>

@@ -388,7 +388,19 @@ export default function TripDetail() {
     // Assign màu theo thứ tự join
     const myColor = CURSOR_COLORS[collaborators.length % CURSOR_COLORS.length];
 
-    const channel = supabase.channel(`trip-presence:${tripData.id}`, {
+    // Dọn dẹp sạch toàn bộ channel cũ có topic trip-presence trước khi khởi tạo channel mới
+    const existingChannels = supabase.getChannels().filter(c =>
+      c.topic === `realtime:trip-presence:${tripData.id}` ||
+      c.topic.startsWith(`realtime:trip-presence:${tripData.id}`) ||
+      c.topic === `trip-presence:${tripData.id}` ||
+      c.topic.startsWith(`trip-presence:${tripData.id}`)
+    );
+    for (const c of existingChannels) {
+      supabase.removeChannel(c);
+    }
+
+    const channelName = `trip-presence:${tripData.id}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const channel = supabase.channel(channelName, {
       config: { presence: { key: user.id } }
     });
 

@@ -187,17 +187,16 @@ export default function ProfileScreen() {
             }
           }}
           style={({ pressed }) => [{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
             minWidth: 80,
             opacity: pressed ? 0.7 : 1,
           }]}
         >
-          <ArrowLeft size={20} color="#1B2420" />
-          <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 14, color: '#1B2420' }}>
-            Quay lại
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, paddingHorizontal: 6 }}>
+            <ArrowLeft size={18} color="#1B2420" />
+            <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 14, color: '#1B2420' }}>
+              Quay lại
+            </Text>
+          </View>
         </Pressable>
 
         <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 17, color: '#1B2420', textAlign: 'center' }}>
@@ -320,22 +319,27 @@ export default function ProfileScreen() {
               onPress={() => setShowEditProfileModal(true)}
               style={({ pressed }) => [{
                 flex: 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                backgroundColor: '#1F6F54',
-                paddingVertical: 11,
-                paddingHorizontal: 12,
-                borderRadius: 12,
                 opacity: pressed ? 0.85 : 1,
                 cursor: 'pointer' as any,
               }]}
             >
-              <Edit3 size={14} color="#FFFFFF" />
-              <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12.5, color: '#FFFFFF' }}>
-                Chỉnh sửa hồ sơ
-              </Text>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  backgroundColor: '#1F6F54',
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  borderRadius: 12,
+                }}
+              >
+                <Edit3 size={15} color="#FFFFFF" />
+                <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>
+                  Chỉnh sửa hồ sơ
+                </Text>
+              </View>
             </Pressable>
 
             {/* Nút Đổi mật khẩu */}
@@ -344,24 +348,29 @@ export default function ProfileScreen() {
               onPress={() => setShowChangePasswordModal(true)}
               style={({ pressed }) => [{
                 flex: 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                backgroundColor: '#FFFFFF',
-                borderWidth: 1.5,
-                borderColor: '#CBD5E1',
-                paddingVertical: 11,
-                paddingHorizontal: 12,
-                borderRadius: 12,
                 opacity: pressed ? 0.85 : 1,
                 cursor: 'pointer' as any,
               }]}
             >
-              <KeyRound size={14} color="#1B2420" />
-              <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12.5, color: '#1B2420' }}>
-                Đổi mật khẩu
-              </Text>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1.5,
+                  borderColor: '#CBD5E1',
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  borderRadius: 12,
+                }}
+              >
+                <KeyRound size={15} color="#1B2420" />
+                <Text numberOfLines={1} style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#1B2420' }}>
+                  Đổi mật khẩu
+                </Text>
+              </View>
             </Pressable>
           </View>
         </View>
@@ -416,27 +425,33 @@ export default function ProfileScreen() {
                   key={opt.id}
                   onPress={() => togglePreference(opt.label)}
                   style={({ pressed }) => [{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 20,
-                    backgroundColor: isSelected ? '#1F6F54' : '#F1F5F9',
-                    borderWidth: 1,
-                    borderColor: isSelected ? '#1F6F54' : '#E2E8F0',
                     opacity: pressed ? 0.8 : 1,
                   }]}
                 >
-                  <Text
+                  <View
                     style={{
-                      fontFamily: isSelected ? 'BeVietnamPro_700Bold' : 'BeVietnamPro_600SemiBold',
-                      fontSize: 12,
-                      lineHeight: 16,
-                      color: isSelected ? '#FFFFFF' : '#1E293B',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderRadius: 20,
+                      backgroundColor: isSelected ? '#1F6F54' : '#F1F5F9',
+                      borderWidth: 1.5,
+                      borderColor: isSelected ? '#1F6F54' : '#E2E8F0',
                     }}
                   >
-                    {opt.label}
-                  </Text>
+                    <Text
+                      style={{
+                        fontFamily: isSelected ? 'BeVietnamPro_700Bold' : 'BeVietnamPro_600SemiBold',
+                        fontSize: 12.5,
+                        fontWeight: isSelected ? '700' : '600',
+                        color: isSelected ? '#FFFFFF' : '#1E293B',
+                      }}
+                    >
+                      {opt.label}
+                    </Text>
+                  </View>
                 </Pressable>
               );
             })}
@@ -449,20 +464,26 @@ export default function ProfileScreen() {
                   key={idx}
                   onPress={() => togglePreference(customTag)}
                   style={({ pressed }) => [{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 20,
-                    backgroundColor: '#E2703A',
-                    borderWidth: 1,
-                    borderColor: '#EA580C',
                     opacity: pressed ? 0.8 : 1,
                   }]}
                 >
-                  <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, lineHeight: 16, color: '#FFFFFF' }}>
-                    ✨ {customTag} ✕
-                  </Text>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderRadius: 20,
+                      backgroundColor: '#E2703A',
+                      borderWidth: 1.5,
+                      borderColor: '#EA580C',
+                    }}
+                  >
+                    <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12.5, color: '#FFFFFF' }}>
+                      ✨ {customTag} ✕
+                    </Text>
+                  </View>
                 </Pressable>
               ))}
           </View>
@@ -923,30 +944,35 @@ export default function ProfileScreen() {
             testID="btn-profile-bottom-signout"
             onPress={signOut}
             style={({ pressed }) => [{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              paddingVertical: 10,
-              paddingHorizontal: 20,
-              borderRadius: 12,
-              backgroundColor: '#FEF2F2',
-              borderWidth: 1,
-              borderColor: '#FECACA',
               opacity: pressed ? 0.7 : 1,
               cursor: 'pointer' as any,
             }]}
           >
-            <LogOut size={16} color="#DC2626" />
-            <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 13, color: '#DC2626' }}>
-              Đăng xuất
-            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                paddingVertical: 10,
+                paddingHorizontal: 20,
+                borderRadius: 12,
+                backgroundColor: '#FEF2F2',
+                borderWidth: 1,
+                borderColor: '#FECACA',
+              }}
+            >
+              <LogOut size={16} color="#DC2626" />
+              <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#DC2626' }}>
+                Đăng xuất
+              </Text>
+            </View>
           </Pressable>
         </View>
 
         {/* Badge phiên bản app */}
         <View style={{ alignItems: 'center', marginTop: 24, marginBottom: 16 }}>
           <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>
-            ViVu Planner • Phiên bản v1.0.1 (Build 2)
+            ViVu Planner • Phiên bản v1.0.1 (Build 4)
           </Text>
           <Text style={{ fontSize: 10.5, color: '#94A3B8', marginTop: 2 }}>
             Đã cập nhật tính năng Giỏ hàng 3/4, Bản đồ số & Sửa lỗi Realtime
