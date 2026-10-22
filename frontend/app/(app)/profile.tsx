@@ -972,7 +972,7 @@ export default function ProfileScreen() {
         {/* Badge phiên bản app */}
         <View style={{ alignItems: 'center', marginTop: 24, marginBottom: 16 }}>
           <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>
-            ViVu Planner • Phiên bản v1.0.1 (Build 4)
+            ViVu Planner • Phiên bản v1.0.1 (Build 7)
           </Text>
           <Text style={{ fontSize: 10.5, color: '#94A3B8', marginTop: 2 }}>
             Đã cập nhật tính năng Giỏ hàng 3/4, Bản đồ số & Sửa lỗi Realtime

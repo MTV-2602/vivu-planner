@@ -10,6 +10,16 @@ if (Platform.OS === 'web') {
     // ignore
   }
 }
+
+// Thư viện WebView cho Mobile Native (Android APK / iOS) để hiển thị bản đồ Leaflet
+let WebView: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    WebView = require('react-native-webview').WebView;
+  } catch (e) {
+    console.warn('Cannot load react-native-webview on this platform:', e);
+  }
+}
 import {
   Calendar,
   Clock,
@@ -2901,40 +2911,53 @@ export default function GoogleCalendarWorkspace({
                   gap: 10,
                 }}
               >
-                {/* Header card */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                {/* Header card: Thanh tiêu đề lộ trình ngày & nút mở Google Maps */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
                     <Car size={18} color="#1A73E8" />
-                    <Text style={{ fontSize: 13.5, fontWeight: '800', color: '#0F172A', flex: 1 }}>
-                      🗺️ Lộ trình Ngày {activeDay} ({currentDayEvents.length} điểm đến)
+                    <Text numberOfLines={1} style={{ fontSize: 13.5, fontWeight: '800', color: '#0F172A', flex: 1 }}>
+                      🗺️ Lộ trình Ngày {activeDay} ({currentDayEvents.length} điểm)
                     </Text>
                   </View>
+                  {currentDayEvents.length > 0 && (
+                    <Pressable
+                      testID="btn-open-day-route-google-maps"
+                      onPress={handleOpenGoogleMapsRoute}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 8,
+                        backgroundColor: '#1A73E8',
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>
+                        Mở Google Maps ↗
+                      </Text>
+                    </Pressable>
+                  )}
                 </View>
 
-                {/* Nút bấm to nổi bật mở Google Maps dẫn đường */}
-                {currentDayEvents.length > 0 ? (
-                  <Pressable
-                    testID="btn-open-day-route-google-maps"
-                    onPress={handleOpenGoogleMapsRoute}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      backgroundColor: '#1A73E8',
-                      paddingVertical: 12,
-                      paddingHorizontal: 16,
-                      borderRadius: 12,
-                      elevation: 2,
-                    }}
-                  >
-                    <Car size={16} color="#FFFFFF" />
-                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>
-                      🗺️ Mở Bản đồ Lộ trình trên Google Maps
-                    </Text>
-                    <ExternalLink size={14} color="#FFFFFF" />
-                  </Pressable>
-                ) : (
+                {/* WebView Map hiển thị bản đồ trực tiếp trên Mobile Native */}
+                {WebView ? (
+                  <View style={{ width: '100%', height: windowWidth < 640 ? 280 : 340, borderRadius: 14, overflow: 'hidden', backgroundColor: '#F8F9FA' }}>
+                    <WebView
+                      originWhitelist={['*']}
+                      source={{ html: mapIframeHTML }}
+                      style={{ flex: 1, backgroundColor: '#F8F9FA' }}
+                      javaScriptEnabled={true}
+                      domStorageEnabled={true}
+                      startInLoadingState={true}
+                      nestedScrollEnabled={true}
+                      scalesPageToFit={true}
+                    />
+                  </View>
+                ) : null}
+
+                {/* Thông báo hướng dẫn nếu ngày chưa có điểm nào */}
+                {currentDayEvents.length === 0 && (
                   <View
                     style={{
                       backgroundColor: '#F8FAFC',
