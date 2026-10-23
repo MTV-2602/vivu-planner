@@ -319,12 +319,8 @@ export default function AuthScreen({ mode }: Props) {
       return;
     }
     if (isSignUp) {
-      if (Platform.OS !== 'web') {
-        setErrorMsg('Đăng ký tài khoản yêu cầu xác minh bảo mật trên Web. Vui lòng mở trang web để đăng ký.');
-        return;
-      }
       if (!turnstileSiteKey) {
-        setErrorMsg('Đăng ký tạm thời bị vô hiệu hóa do thiếu cấu hình CAPTCHA. Vui lòng liên hệ quản trị viên.');
+        setErrorMsg('Đăng ký tạm thời bị vô hiệu hóa do thiếu cấu hình CAPTCHA.');
         return;
       }
       if (!captchaToken) {
@@ -332,16 +328,9 @@ export default function AuthScreen({ mode }: Props) {
         return;
       }
     } else {
-      // Khi CAPTCHA được cấu hình trên server Supabase, bắt buộc xác minh trên Web đối với đăng nhập email/mật khẩu
-      if (turnstileSiteKey) {
-        if (Platform.OS !== 'web') {
-          setErrorMsg('Đăng nhập tài khoản với xác minh bảo mật (CAPTCHA) yêu cầu thực hiện trên trình duyệt Web. Vui lòng mở trang web để đăng nhập.');
-          return;
-        }
-        if (!captchaToken) {
-          setErrorMsg('Vui lòng hoàn thành xác minh bảo vệ (CAPTCHA) trước khi đăng nhập.');
-          return;
-        }
+      if (turnstileSiteKey && !captchaToken) {
+        setErrorMsg('Vui lòng hoàn thành xác minh bảo vệ (CAPTCHA) trước khi đăng nhập.');
+        return;
       }
     }
     setLoading(true);
@@ -358,7 +347,14 @@ export default function AuthScreen({ mode }: Props) {
             captchaToken,
           }),
         });
-        if (error) throw error;
+        if (error) {
+          const errCode = (error as any)?.code || (error as any)?.error_code || '';
+          const errMsg = (error?.message || '').toLowerCase();
+          if (errCode === 'captcha_failed' || errMsg.includes('captcha')) {
+            throw new Error('Xác thực bảo vệ CAPTCHA thất bại hoặc đã hết hạn. Vui lòng xác thực lại.');
+          }
+          throw error;
+        }
 
         if (data.session) {
           let isAdmin = decodeJwtRole(data.session.access_token) === UserRole.ADMIN;
@@ -378,7 +374,14 @@ export default function AuthScreen({ mode }: Props) {
           password,
           ...(signInOptions ? { options: signInOptions } : {}),
         });
-        if (error) throw new Error('Email hoặc mật khẩu không chính xác!');
+        if (error) {
+          const errCode = (error as any)?.code || (error as any)?.error_code || '';
+          const errMsg = (error?.message || '').toLowerCase();
+          if (errCode === 'captcha_failed' || errMsg.includes('captcha')) {
+            throw new Error('Xác thực bảo vệ CAPTCHA thất bại hoặc đã hết hạn. Vui lòng xác thực lại.');
+          }
+          throw new Error('Email hoặc mật khẩu không chính xác!');
+        }
         
         let isAdmin = data.session?.access_token
           ? decodeJwtRole(data.session.access_token) === UserRole.ADMIN

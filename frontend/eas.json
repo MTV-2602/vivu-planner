@@ -16,7 +16,8 @@
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://goggcbmjkypkhyegyvlp.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdvZ2djYm1qa3lwa2h5ZWd5dmxwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0NDU4MjEsImV4cCI6MjEwNTAyMTgyMX0.sA2eEqsiW8v6K7Cht55NpH9hK841QUE0KOxsQYy--vs",
-        "EXPO_PUBLIC_API_BASE_URL": "https://vivuai.vercel.app/api"
+        "EXPO_PUBLIC_API_BASE_URL": "https://vivuai.vercel.app/api",
+        "EXPO_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAAFTw7hrMgVa79FF0"
       }
     },
     "production": {

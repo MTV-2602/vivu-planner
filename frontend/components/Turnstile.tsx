@@ -1,7 +1,16 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
-import { View, Text, ActivityIndicator, Pressable, Platform, Linking } from 'react-native';
+import { View, Text, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { AlertCircle } from 'lucide-react-native';
 import { BRAND_COLORS } from '../constants';
+
+let WebView: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    WebView = require('react-native-webview').WebView;
+  } catch (e) {
+    console.warn('Cannot load react-native-webview in Turnstile:', e);
+  }
+}
 
 export interface TurnstileRef {
   reset: () => void;
@@ -49,10 +58,10 @@ export function getTurnstileSiteKey(): string {
     return (
       process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY ||
       process.env.VITE_TURNSTILE_SITE_KEY ||
-      ''
+      '0x4AAAAAAFTw7hrMgVa79FF0'
     );
   }
-  return '';
+  return '0x4AAAAAAFTw7hrMgVa79FF0';
 }
 
 /**
@@ -67,13 +76,11 @@ export function isSignupSubmissionAllowed(params: {
   googleLoading: boolean;
   platform?: string;
 }): { allowed: boolean; reason?: 'missing_key' | 'missing_token' | 'busy' | 'native_unsupported' } {
-  const { isSignUp, siteKey, captchaToken, loading, googleLoading, platform } = params;
+  const { isSignUp, siteKey, captchaToken, loading, googleLoading } = params;
 
   if (loading || googleLoading) {
     return { allowed: false, reason: 'busy' };
   }
-
-  const currentPlatform = platform ?? Platform.OS;
 
   // Chế độ đăng nhập (isSignUp = false):
   if (!isSignUp) {
@@ -82,18 +89,10 @@ export function isSignupSubmissionAllowed(params: {
       return { allowed: true };
     }
     // Nếu CÓ cấu hình site key: Server Supabase bảo vệ cả sign-in nên yêu cầu CAPTCHA
-    if (currentPlatform !== 'web') {
-      return { allowed: false, reason: 'native_unsupported' };
-    }
     if (!captchaToken || captchaToken.trim() === '') {
       return { allowed: false, reason: 'missing_token' };
     }
     return { allowed: true };
-  }
-
-  // Chế độ đăng ký (isSignUp = true): Fail-Closed trên native vì Turnstile chỉ hỗ trợ Web
-  if (currentPlatform !== 'web') {
-    return { allowed: false, reason: 'native_unsupported' };
   }
 
   // Chế độ đăng ký: Fail-Closed nếu thiếu site key
@@ -259,6 +258,7 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
     const siteKey = propSiteKey || getTurnstileSiteKey();
     const containerRef = useRef<HTMLDivElement | null>(null);
     const widgetIdRef = useRef<string | null>(null);
+    const webViewRef = useRef<any>(null);
     const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error' | 'missing_key'>(
       !siteKey ? 'missing_key' : 'loading'
     );
@@ -267,7 +267,9 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
 
     useImperativeHandle(ref, () => ({
       reset: () => {
-        if (widgetIdRef.current && typeof window !== 'undefined' && window.turnstile) {
+        if (Platform.OS !== 'web') {
+          webViewRef.current?.reload();
+        } else if (widgetIdRef.current && typeof window !== 'undefined' && window.turnstile) {
           try {
             window.turnstile.reset(widgetIdRef.current);
           } catch {}
@@ -416,70 +418,106 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
       );
     }
 
-    // Nền tảng Native (iOS/Android): Turnstile JS SDK không chạy được native
-    // Hiển thị cảnh báo trực quan hướng dẫn người dùng xác thực trên Web thay vì widget trắng
-    // Đồng thời duy trì Fail-Closed không cho phép bypass bảo mật (không tuyên bố bypass)
     if (Platform.OS !== 'web') {
-      const isLoginAction = action === 'login';
-      const webUrl = isLoginAction
-        ? 'https://vivu-planner.vercel.app/dang-nhap'
-        : 'https://vivu-planner.vercel.app/dang-ky';
-      const buttonLabel = isLoginAction ? 'Mở trang đăng nhập Web' : 'Mở trang đăng ký Web';
-      const message = isLoginAction
-        ? 'Tính năng đăng nhập với bảo vệ CAPTCHA yêu cầu thực hiện trên trình duyệt Web. Vui lòng truy cập trang web để đăng nhập an toàn.'
-        : 'Tính năng đăng ký tài khoản yêu cầu xác minh bảo mật (CAPTCHA) trên trình duyệt Web. Vui lòng truy cập trang web để đăng ký an toàn.';
+      const turnstileHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div id="cf-turnstile"></div>
+  <script>
+    function post(type, val) {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, value: val }));
+      }
+    }
+    function init() {
+      if (window.turnstile) {
+        try {
+          window.turnstile.render('#cf-turnstile', {
+            sitekey: '${siteKey}',
+            action: '${action || 'login'}',
+            theme: '${theme || 'light'}',
+            size: '${size || 'normal'}',
+            callback: function(token) { post('success', token); },
+            'error-callback': function(err) { post('error', err || 'Lỗi xác thực'); },
+            'expired-callback': function() { post('expired'); }
+          });
+        } catch(e) {
+          post('error', e.message);
+        }
+      } else {
+        setTimeout(init, 50);
+      }
+    }
+    window.onload = init;
+  </script>
+</body>
+</html>`;
 
       return (
         <View
-          testID="cf-turnstile-native-unsupported"
+          testID="cf-turnstile-native-container"
           style={{
-            padding: 14,
+            width: '100%',
+            height: 75,
             borderRadius: 12,
-            backgroundColor: 'rgba(217,119,6,0.08)',
-            borderWidth: 1,
-            borderColor: 'rgba(217,119,6,0.25)',
+            overflow: 'hidden',
             alignItems: 'center',
-            gap: 10,
+            justifyContent: 'center',
+            backgroundColor: '#FFFFFF',
+            borderWidth: 1,
+            borderColor: '#E2E8F0',
             marginVertical: 8,
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, width: '100%' }}>
-            <AlertCircle size={16} color="#D97706" style={{ marginTop: 2, flexShrink: 0 }} />
-            <Text
-              style={{
-                fontFamily: 'BeVietnamPro_400Regular',
-                fontSize: 12,
-                color: '#92400E',
-                flex: 1,
-                lineHeight: 18,
+          {WebView ? (
+            <WebView
+              ref={webViewRef}
+              originWhitelist={['*']}
+              source={{
+                html: turnstileHtml,
+                baseUrl: 'https://vivuai.vercel.app',
               }}
-            >
-              {message}
-            </Text>
-          </View>
-          <Pressable
-            testID="cf-turnstile-open-web-signup-btn"
-            onPress={() => {
-              Linking.openURL(webUrl).catch(() => {});
-            }}
-            style={{
-              paddingHorizontal: 14,
-              paddingVertical: 7,
-              borderRadius: 8,
-              backgroundColor: '#D97706',
-              alignSelf: 'flex-end',
-            }}
-          >
-            <Text
-              style={{
-                fontFamily: 'BeVietnamPro_600SemiBold',
-                fontSize: 12,
-                color: '#ffffff',
+              style={{ width: '100%', height: 75, backgroundColor: 'transparent' }}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              scrollEnabled={false}
+              onMessage={(event: any) => {
+                try {
+                  const data = JSON.parse(event.nativeEvent.data);
+                  if (data.type === 'success' && data.value) {
+                    setStatus('ready');
+                    onSuccess(data.value);
+                  } else if (data.type === 'error') {
+                    setStatus('error');
+                    onError?.(data.value);
+                  } else if (data.type === 'expired') {
+                    onExpire?.();
+                  }
+                } catch (e) {
+                  console.warn('[Turnstile WebView] message error:', e);
+                }
               }}
-            >
-              {buttonLabel}
-            </Text>
-          </Pressable>
+            />
+          ) : (
+            <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
+          )}
         </View>
       );
     }
