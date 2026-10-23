@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import { View, Text, ActivityIndicator, Pressable, Platform } from 'react-native';
-import { AlertCircle } from 'lucide-react-native';
+import { AlertCircle, ShieldCheck, CheckCircle2 } from 'lucide-react-native';
 import { BRAND_COLORS } from '../constants';
 
 let WebView: any = null;
@@ -259,6 +259,7 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
     const containerRef = useRef<HTMLDivElement | null>(null);
     const widgetIdRef = useRef<string | null>(null);
     const webViewRef = useRef<any>(null);
+    const [isVerified, setIsVerified] = useState(false);
     const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error' | 'missing_key'>(
       !siteKey ? 'missing_key' : 'loading'
     );
@@ -267,6 +268,7 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
 
     useImperativeHandle(ref, () => ({
       reset: () => {
+        setIsVerified(false);
         if (Platform.OS !== 'web') {
           webViewRef.current?.reload();
         } else if (widgetIdRef.current && typeof window !== 'undefined' && window.turnstile) {
@@ -277,6 +279,7 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
         onExpire?.();
       },
       remove: () => {
+        setIsVerified(false);
         if (widgetIdRef.current && typeof window !== 'undefined' && window.turnstile) {
           try {
             window.turnstile.remove(widgetIdRef.current);
@@ -323,17 +326,20 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
             action,
             callback: (token: string) => {
               if (isSubscribed) {
+                setIsVerified(true);
                 setStatus('ready');
                 onSuccess(token);
               }
             },
             'expired-callback': () => {
               if (isSubscribed) {
+                setIsVerified(false);
                 onExpire?.();
               }
             },
             'error-callback': (err: any) => {
               if (isSubscribed) {
+                setIsVerified(false);
                 setStatus('error');
                 const msg = typeof err === 'string' ? err : 'Mã bảo vệ CAPTCHA gặp lỗi khi xác thực.';
                 setErrorMessage(msg);
@@ -418,13 +424,13 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
       );
     }
 
-    if (Platform.OS !== 'web') {
-      const turnstileHtml = `<!DOCTYPE html>
+    const turnstileHtml =
+      Platform.OS !== 'web'
+        ? `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     html, body {
@@ -432,188 +438,250 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
       height: 100%;
       background: transparent;
       display: flex;
+      flex-direction: column;
       justify-content: center;
       align-items: center;
       overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #loading-placeholder {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #64748B;
+      font-size: 12px;
+      font-weight: 600;
     }
   </style>
 </head>
 <body>
-  <div id="cf-turnstile"></div>
+  <div id="loading-placeholder">
+    <span>⏳ Đang tải mã bảo vệ Cloudflare...</span>
+  </div>
+  <div id="cf-turnstile" style="display:none;"></div>
   <script>
     function post(type, val) {
       if (window.ReactNativeWebView) {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, value: val }));
       }
     }
-    function init() {
-      if (window.turnstile) {
-        try {
-          window.turnstile.render('#cf-turnstile', {
-            sitekey: '${siteKey}',
-            action: '${action || 'login'}',
-            theme: '${theme || 'light'}',
-            size: '${size || 'normal'}',
-            callback: function(token) { post('success', token); },
-            'error-callback': function(err) { post('error', err || 'Lỗi xác thực'); },
-            'expired-callback': function() { post('expired'); }
-          });
-        } catch(e) {
-          post('error', e.message);
-        }
-      } else {
-        setTimeout(init, 50);
+    window.onerror = function(msg, url, line) {
+      post('error', msg + ' at ' + line);
+    };
+    function onTurnstileLoaded() {
+      var loader = document.getElementById('loading-placeholder');
+      var container = document.getElementById('cf-turnstile');
+      if (loader) loader.style.display = 'none';
+      if (container) container.style.display = 'block';
+      try {
+        turnstile.render('#cf-turnstile', {
+          sitekey: '${siteKey}',
+          action: '${action || 'login'}',
+          theme: '${theme || 'light'}',
+          size: 'normal',
+          callback: function(token) { post('success', token); },
+          'error-callback': function(err) { post('error', err || 'Lỗi xác thực'); },
+          'expired-callback': function() { post('expired'); }
+        });
+      } catch(e) {
+        post('error', e.message);
       }
     }
-    window.onload = init;
   </script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoaded" async defer></script>
 </body>
-</html>`;
-
-      return (
-        <View
-          testID="cf-turnstile-native-container"
-          style={{
-            width: '100%',
-            height: 75,
-            borderRadius: 12,
-            overflow: 'hidden',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#FFFFFF',
-            borderWidth: 1,
-            borderColor: '#E2E8F0',
-            marginVertical: 8,
-          }}
-        >
-          {WebView ? (
-            <WebView
-              ref={webViewRef}
-              originWhitelist={['*']}
-              source={{
-                html: turnstileHtml,
-                baseUrl: 'https://vivuai.vercel.app',
-              }}
-              style={{ width: '100%', height: 75, backgroundColor: 'transparent' }}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-              scrollEnabled={false}
-              onMessage={(event: any) => {
-                try {
-                  const data = JSON.parse(event.nativeEvent.data);
-                  if (data.type === 'success' && data.value) {
-                    setStatus('ready');
-                    onSuccess(data.value);
-                  } else if (data.type === 'error') {
-                    setStatus('error');
-                    onError?.(data.value);
-                  } else if (data.type === 'expired') {
-                    onExpire?.();
-                  }
-                } catch (e) {
-                  console.warn('[Turnstile WebView] message error:', e);
-                }
-              }}
-            />
-          ) : (
-            <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
-          )}
-        </View>
-      );
-    }
+</html>`
+        : '';
 
     return (
-      <View
-        testID="cf-turnstile-container"
-        style={{
-          width: '100%',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: 65,
-          marginVertical: 6,
-        }}
-      >
-        {status === 'loading' && (
-          <View
-            testID="cf-turnstile-loading"
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 }}
-          >
-            <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
-            <Text
-              style={{
-                fontFamily: 'BeVietnamPro_400Regular',
-                fontSize: 12,
-                color: BRAND_COLORS.textSoft,
-              }}
-            >
-              Đang tải mã bảo vệ...
+      <View testID="cf-turnstile-outer-wrapper" style={{ width: '100%', marginVertical: 8 }}>
+        {/* Cụm Header nhận diện bảo mật dùng chung cho cả Web & Native */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 6,
+            paddingHorizontal: 2,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <ShieldCheck size={16} color={isVerified ? '#16A34A' : '#1F6F54'} />
+            <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 13, color: '#1B2420' }}>
+              Xác minh bảo mật chống bot
             </Text>
           </View>
-        )}
-
-        {status === 'error' && (
-          <View
-            testID="cf-turnstile-error"
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              backgroundColor: 'rgba(178,59,59,0.08)',
-              borderWidth: 1,
-              borderColor: 'rgba(178,59,59,0.25)',
-              alignItems: 'center',
-              gap: 8,
-              width: '100%',
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <AlertCircle size={16} color={BRAND_COLORS.danger} style={{ flexShrink: 0 }} />
-              <Text
-                style={{
-                  fontFamily: 'BeVietnamPro_400Regular',
-                  fontSize: 12,
-                  color: BRAND_COLORS.danger,
-                  flex: 1,
-                }}
-              >
-                {errorMessage || 'Không thể tải mã bảo vệ CAPTCHA.'}
+          {isVerified ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <CheckCircle2 size={13} color="#16A34A" />
+              <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 11.5, color: '#16A34A' }}>
+                Đã xác minh ✓
               </Text>
             </View>
-            <Pressable
-              testID="cf-turnstile-retry-btn"
-              onPress={() => {
-                onExpire?.();
-                setRetryCount((c) => c + 1);
-              }}
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 8,
-                backgroundColor: BRAND_COLORS.danger,
-              }}
-            >
-              <Text
+          ) : (
+            <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 11, color: '#64748B' }}>
+              Cloudflare Turnstile
+            </Text>
+          )}
+        </View>
+
+        {/* Khung widget bên trong: */}
+        {Platform.OS !== 'web' ? (
+          /* Khung WebView trên Native */
+          <View
+            testID="cf-turnstile-native-container"
+            style={{
+              width: '100%',
+              minHeight: 75,
+              height: 75,
+              borderRadius: 14,
+              overflow: 'hidden',
+              backgroundColor: '#FFFFFF',
+              borderWidth: 1.5,
+              borderColor: isVerified ? '#16A34A' : '#E2E8F0',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {WebView ? (
+              <WebView
+                ref={webViewRef}
+                originWhitelist={['*']}
+                source={{
+                  html: turnstileHtml,
+                  baseUrl: 'https://vivuai.vercel.app',
+                }}
+                userAgent="Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                style={{ width: '100%', height: 75, backgroundColor: 'transparent' }}
+                javaScriptEnabled={true}
+                domStorageEnabled={true}
+                mixedContentMode="always"
+                thirdPartyCookiesEnabled={true}
+                scrollEnabled={false}
+                onMessage={(event: any) => {
+                  try {
+                    const data = JSON.parse(event.nativeEvent.data);
+                    if (data.type === 'success' && data.value) {
+                      setIsVerified(true);
+                      setStatus('ready');
+                      onSuccess(data.value);
+                    } else if (data.type === 'error') {
+                      setIsVerified(false);
+                      setStatus('error');
+                      onError?.(data.value);
+                    } else if (data.type === 'expired') {
+                      setIsVerified(false);
+                      onExpire?.();
+                    }
+                  } catch (e) {
+                    console.warn('[Turnstile WebView] message error:', e);
+                  }
+                }}
+              />
+            ) : (
+              <ActivityIndicator size="small" color="#1F6F54" />
+            )}
+          </View>
+        ) : (
+          /* Khung Web DOM container */
+          <View
+            testID="cf-turnstile-container"
+            style={{
+              width: '100%',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 65,
+              borderRadius: 14,
+              backgroundColor: '#FFFFFF',
+              borderWidth: 1.5,
+              borderColor: isVerified ? '#16A34A' : '#E2E8F0',
+              paddingVertical: 6,
+            }}
+          >
+            {status === 'loading' && (
+              <View
+                testID="cf-turnstile-loading"
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 }}
+              >
+                <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
+                <Text
+                  style={{
+                    fontFamily: 'BeVietnamPro_400Regular',
+                    fontSize: 12,
+                    color: BRAND_COLORS.textSoft,
+                  }}
+                >
+                  Đang tải mã bảo vệ...
+                </Text>
+              </View>
+            )}
+
+            {status === 'error' && (
+              <View
+                testID="cf-turnstile-error"
                 style={{
-                  fontFamily: 'BeVietnamPro_600SemiBold',
-                  fontSize: 12,
-                  color: '#ffffff',
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: 'rgba(178,59,59,0.08)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(178,59,59,0.25)',
+                  alignItems: 'center',
+                  gap: 8,
+                  width: '100%',
                 }}
               >
-                Thử tải lại
-              </Text>
-            </Pressable>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <AlertCircle size={16} color={BRAND_COLORS.danger} style={{ flexShrink: 0 }} />
+                  <Text
+                    style={{
+                      fontFamily: 'BeVietnamPro_400Regular',
+                      fontSize: 12,
+                      color: BRAND_COLORS.danger,
+                      flex: 1,
+                    }}
+                  >
+                    {errorMessage || 'Không thể tải mã bảo vệ CAPTCHA.'}
+                  </Text>
+                </View>
+                <Pressable
+                  testID="cf-turnstile-retry-btn"
+                  onPress={() => {
+                    setIsVerified(false);
+                    onExpire?.();
+                    setRetryCount((c) => c + 1);
+                  }}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    backgroundColor: BRAND_COLORS.danger,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: 'BeVietnamPro_600SemiBold',
+                      fontSize: 12,
+                      color: '#ffffff',
+                    }}
+                  >
+                    Thử tải lại
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
+            <div
+              ref={containerRef}
+              data-testid="cf-turnstile-container"
+              style={{
+                display: status === 'ready' || status === 'idle' ? 'flex' : 'none',
+                justifyContent: 'center',
+                width: '100%',
+                minHeight: '65px',
+              }}
+            />
           </View>
         )}
-
-        <div
-          ref={containerRef}
-          data-testid="cf-turnstile-container"
-          style={{
-            display: status === 'ready' || status === 'idle' ? 'flex' : 'none',
-            justifyContent: 'center',
-            width: '100%',
-            minHeight: '65px',
-          }}
-        />
       </View>
     );
   }
