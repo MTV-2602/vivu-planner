@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.vivuplanner.app",
-      "versionCode": 9,
+      "versionCode": 10,
       "adaptiveIcon": {
         "backgroundColor": "#FBF5EA",
         "foregroundImage": "./assets/android-icon-foreground.png",
