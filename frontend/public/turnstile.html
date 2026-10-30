@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Cloudflare Turnstile</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #FFFFFF;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      color: #1F6F54;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px;
+    }
+    #turnstile-container {
+      width: 300px;
+      min-height: 50px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .spinner {
+      display: inline-block;
+      animation: rotate 1.5s linear infinite;
+    }
+    @keyframes rotate {
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="status-bar">
+    <span id="status-icon" class="spinner">⏳</span>
+    <span id="status-text">Đang kết nối xác thực Cloudflare...</span>
+  </div>
+  <div id="turnstile-container"></div>
+
+  <script>
+    var lastToken = null;
+    var hasSolved = false;
+
+    function sendMsg(type, val) {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, value: val }));
+      }
+    }
+
+    function updateStatus(text, icon, isDone) {
+      try {
+        var t = document.getElementById('status-text');
+        var ic = document.getElementById('status-icon');
+        if (t) t.innerText = text;
+        if (ic) {
+          ic.innerText = icon;
+          if (isDone) ic.className = '';
+        }
+      } catch (e) {}
+    }
+
+    function checkTokenPoll() {
+      if (hasSolved) return;
+      try {
+        var input = document.querySelector('input[name="cf-turnstile-response"]');
+        var token = (input && input.value) || (window.turnstile && typeof window.turnstile.getResponse === 'function' && window.turnstile.getResponse());
+        if (token && token.length > 20 && token !== lastToken) {
+          lastToken = token;
+          hasSolved = true;
+          updateStatus('Cloudflare xác minh thành công', '🛡️', true);
+          sendMsg('success', token);
+        }
+      } catch (e) {}
+    }
+
+    setInterval(checkTokenPoll, 300);
+
+    function onTurnstileReady() {
+      updateStatus('Đang xác minh bảo mật thiết bị...', '⚙️', false);
+      var container = document.getElementById('turnstile-container');
+
+      try {
+        var siteKey = '0x4AAAAAAFTw7hrMgVa79FF0';
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('sitekey')) siteKey = params.get('sitekey');
+        var action = params.get('action') || 'login';
+
+        window.turnstile.render(container, {
+          sitekey: siteKey,
+          action: action,
+          theme: 'light',
+          callback: function(token) {
+            lastToken = token;
+            hasSolved = true;
+            updateStatus('Cloudflare xác minh thành công', '✓', true);
+            sendMsg('success', token);
+          },
+          'error-callback': function(err) {
+            updateStatus('Lỗi xác thực Cloudflare', '⚠️', true);
+            sendMsg('error', err || 'Lỗi xác thực Cloudflare');
+          },
+          'expired-callback': function() {
+            hasSolved = false;
+            lastToken = null;
+            updateStatus('Mã xác thực đã hết hạn', '🔄', true);
+            sendMsg('expired', null);
+          }
+        });
+
+      } catch(e) {
+        updateStatus('Lỗi: ' + e.message, '❌', true);
+        sendMsg('error', e.message);
+      }
+    }
+  </script>
+  <script
+    src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onTurnstileReady"
+    async
+    defer
+  ></script>
+</body>
+</html>

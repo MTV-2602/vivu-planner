@@ -40,15 +40,15 @@
       ],
       "expo-web-browser"
     ],
+    "updates": {
+      "enabled": false,
+      "checkAutomatically": "NEVER"
+    },
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "cceb7289-3639-4e85-9146-3f0305206422"
-      }
-    },
-    "owner": "bach1712s-team"
+      "router": {}
+    }
   }
 }

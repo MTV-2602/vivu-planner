@@ -270,7 +270,9 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
       reset: () => {
         setIsVerified(false);
         if (Platform.OS !== 'web') {
-          webViewRef.current?.reload();
+          setStatus('ready');
+          setErrorMessage('');
+          setRetryCount((c) => c + 1);
         } else if (widgetIdRef.current && typeof window !== 'undefined' && window.turnstile) {
           try {
             window.turnstile.reset(widgetIdRef.current);
@@ -431,26 +433,34 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="referrer" content="always" />
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     html, body {
+      margin: 0;
+      padding: 0;
       width: 100%;
       height: 100%;
-      background: transparent;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
+      background: #FFFFFF;
       overflow: hidden;
+      display: block;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     #loading-placeholder {
       display: flex;
       align-items: center;
+      justify-content: center;
+      height: 65px;
       gap: 8px;
       color: #64748B;
       font-size: 12px;
       font-weight: 600;
+    }
+    #cf-turnstile {
+      width: 300px;
+      height: 65px;
+      margin: 6px auto;
+      display: block;
     }
   </style>
 </head>
@@ -458,37 +468,86 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
   <div id="loading-placeholder">
     <span>⏳ Đang tải mã bảo vệ Cloudflare...</span>
   </div>
-  <div id="cf-turnstile" style="display:none;"></div>
+  <div id="cf-turnstile"></div>
   <script>
     function post(type, val) {
       if (window.ReactNativeWebView) {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, value: val }));
       }
     }
-    window.onerror = function(msg, url, line) {
-      post('error', msg + ' at ' + line);
+    window.onerror = function(msg, url, line, col, err) {
+      post("error", "Turnstile JS error: " + msg + " (" + line + ":" + col + ")");
     };
+    var loadTimeout = setTimeout(function() {
+      var loader = document.getElementById('loading-placeholder');
+      if (loader && loader.style.display !== 'none') {
+        post('error', 'Hết thời gian tải mã bảo vệ CAPTCHA. Vui lòng thử lại.');
+      }
+    }, 20000);
+    function onTurnstileScriptError(event) {
+      clearTimeout(loadTimeout);
+      post('error', 'Không thể kết nối đến máy chủ Cloudflare.');
+    }
     function onTurnstileLoaded() {
+      clearTimeout(loadTimeout);
       var loader = document.getElementById('loading-placeholder');
       var container = document.getElementById('cf-turnstile');
       if (loader) loader.style.display = 'none';
-      if (container) container.style.display = 'block';
+      post('debug', 'origin: ' + window.location.origin + ', href: ' + window.location.href);
+      post('debug', 'Script loaded. turnstile exists: ' + Boolean(window.turnstile));
       try {
-        turnstile.render('#cf-turnstile', {
-          sitekey: '${siteKey}',
-          action: '${action || 'login'}',
-          theme: '${theme || 'light'}',
-          size: 'normal',
-          callback: function(token) { post('success', token); },
-          'error-callback': function(err) { post('error', err || 'Lỗi xác thực'); },
-          'expired-callback': function() { post('expired'); }
+        if (!window.turnstile) {
+          post('error', 'Khong tim thay window.turnstile');
+          return;
+        }
+        window.addEventListener('message', function(e) {
+          try {
+            var d = typeof e.data === 'object' ? JSON.stringify(e.data) : String(e.data);
+            post('debug', 'CF postMessage: ' + d);
+          } catch(err) {}
         });
+        var wid = window.turnstile.render(container, {
+          sitekey: '${siteKey}',
+          action: '${action || "login"}',
+          theme: '${theme || "light"}',
+          callback: function(token) {
+            post('debug', 'CF token received: ' + token.substring(0, 15) + '...');
+            post('success', token);
+          },
+          'error-callback': function(err) {
+            post('debug', 'CF error-callback: ' + JSON.stringify(err));
+            post('error', typeof err === 'string' ? err : ('Mã lỗi CAPTCHA: ' + JSON.stringify(err)));
+          },
+          'expired-callback': function() {
+            post('debug', 'CF expired-callback');
+            post('expired');
+          }
+        });
+        post('debug', 'Rendered Turnstile widget ID: ' + wid);
+        setTimeout(function() {
+          try {
+            post('debug', 'BODY HTML: ' + document.body.innerHTML);
+            var iframes = document.querySelectorAll('iframe');
+            post('debug', 'Total iframes in doc: ' + iframes.length);
+            for (var m = 0; m < iframes.length; m++) {
+              var f = iframes[m];
+              post('debug', 'Iframe ' + m + ': src=' + f.src.substring(0, 80) + ', w=' + f.offsetWidth + ', h=' + f.offsetHeight + ', p=' + f.parentElement.tagName);
+            }
+          } catch(err) {
+            post('debug', 'Inspect error: ' + err.message);
+          }
+        }, 1500);
       } catch(e) {
-        post('error', e.message);
+        post('error', 'Render catch: ' + e.message);
       }
     }
   </script>
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoaded" async defer></script>
+  <script
+    src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onTurnstileLoaded"
+    async
+    defer
+    onerror="onTurnstileScriptError(event)"
+  ></script>
 </body>
 </html>`
         : '';
@@ -532,43 +591,134 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
             testID="cf-turnstile-native-container"
             style={{
               width: '100%',
-              minHeight: 75,
-              height: 75,
+              minHeight: 80,
+              height: status === 'error' ? undefined : 80,
               borderRadius: 14,
-              overflow: 'hidden',
               backgroundColor: '#FFFFFF',
               borderWidth: 1.5,
-              borderColor: isVerified ? '#16A34A' : '#E2E8F0',
+              borderColor: isVerified ? '#16A34A' : status === 'error' ? 'rgba(178,59,59,0.3)' : '#E2E8F0',
               alignItems: 'center',
               justifyContent: 'center',
+              paddingVertical: status === 'error' ? 10 : 0,
+              paddingHorizontal: status === 'error' ? 10 : 0,
             }}
           >
-            {WebView ? (
+            {status === 'error' ? (
+              <View
+                testID="cf-turnstile-error"
+                style={{
+                  width: '100%',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 }}>
+                  <AlertCircle size={16} color={BRAND_COLORS.danger} style={{ flexShrink: 0 }} />
+                  <Text
+                    style={{
+                      fontFamily: 'BeVietnamPro_400Regular',
+                      fontSize: 12,
+                      color: BRAND_COLORS.danger,
+                      flex: 1,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {errorMessage || 'Không thể tải mã bảo vệ CAPTCHA.'}
+                  </Text>
+                </View>
+                <Pressable
+                  testID="cf-turnstile-retry-btn"
+                  onPress={() => {
+                    setIsVerified(false);
+                    setStatus('ready');
+                    setErrorMessage('');
+                    setRetryCount((c) => c + 1);
+                    onExpire?.();
+                  }}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    backgroundColor: BRAND_COLORS.danger,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: 'BeVietnamPro_600SemiBold',
+                      fontSize: 12,
+                      color: '#FFFFFF',
+                    }}
+                  >
+                    Thử tải lại
+                  </Text>
+                </Pressable>
+              </View>
+            ) : WebView ? (
               <WebView
+                key={'cf-turnstile-wv-' + retryCount}
                 ref={webViewRef}
                 originWhitelist={['*']}
+                androidLayerType="hardware"
+                androidHardwareAccelerationDisabled={false}
                 source={{
-                  html: turnstileHtml,
-                  baseUrl: 'https://vivuai.vercel.app',
+                  uri: `http://localhost:8081/turnstile.html?sitekey=${encodeURIComponent(siteKey)}&action=${encodeURIComponent(action || 'login')}&v=${retryCount}`,
                 }}
-                userAgent="Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-                style={{ width: '100%', height: 75, backgroundColor: 'transparent' }}
+                userAgent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+                containerStyle={{ width: '100%', height: 80 }}
+                style={{ width: '100%', height: 80, backgroundColor: '#FFFFFF' }}
                 javaScriptEnabled={true}
                 domStorageEnabled={true}
                 mixedContentMode="always"
                 thirdPartyCookiesEnabled={true}
+                sharedCookiesEnabled={true}
+                scalesPageToFit={false}
                 scrollEnabled={false}
+
+                onError={(syntheticEvent: any) => {
+                  const { nativeEvent } = syntheticEvent;
+                  setIsVerified(false);
+                  setStatus('error');
+                  const msg = nativeEvent?.description || 'Lỗi mạng khi tải CAPTCHA';
+                  setErrorMessage(msg);
+                  onError?.(msg);
+                }}
+                onHttpError={(syntheticEvent: any) => {
+                  const { nativeEvent } = syntheticEvent;
+                  if (nativeEvent && nativeEvent.statusCode >= 400) {
+                    setIsVerified(false);
+                    setStatus('error');
+                    const msg = `Lỗi máy chủ khi tải CAPTCHA (HTTP ${nativeEvent.statusCode})`;
+                    setErrorMessage(msg);
+                    onError?.(msg);
+                  }
+                }}
+                onRenderProcessGone={(syntheticEvent: any) => {
+                  const { nativeEvent } = syntheticEvent;
+                  setIsVerified(false);
+                  setStatus('error');
+                  const msg = 'Tiến trình WebView bị gián đoạn.';
+                  setErrorMessage(msg);
+                  onError?.(msg);
+                }}
                 onMessage={(event: any) => {
                   try {
                     const data = JSON.parse(event.nativeEvent.data);
-                    if (data.type === 'success' && data.value) {
+                    if (data.type === 'debug') {
+                      console.log('[Turnstile Native Debug]:', data.value);
+                    } else if (data.type === 'success' && data.value) {
                       setIsVerified(true);
                       setStatus('ready');
+                      setErrorMessage('');
                       onSuccess(data.value);
                     } else if (data.type === 'error') {
                       setIsVerified(false);
                       setStatus('error');
-                      onError?.(data.value);
+                      const msg =
+                        typeof data.value === 'string'
+                          ? data.value
+                          : 'Mã bảo vệ CAPTCHA gặp lỗi khi xác thực.';
+                      setErrorMessage(msg);
+                      onError?.(msg);
                     } else if (data.type === 'expired') {
                       setIsVerified(false);
                       onExpire?.();

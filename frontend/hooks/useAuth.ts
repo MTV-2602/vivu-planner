@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, getRoleFromToken } from '../lib/supabase';
 import { UserRole, isUserPremium } from '../constants';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export interface UserProfile {
   id:            string;
@@ -162,15 +166,26 @@ export function useAuth(): AuthState {
     if (session?.user) await fetchProfile(session.user.id);
   };
 
+  const refreshSession = async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData?.user) {
+      setSession((prev) => (prev ? { ...prev, user: userData.user } : prev));
+      await fetchProfile(userData.user.id);
+    } else {
+      const { data: { session: updatedSession } } = await supabase.auth.getSession();
+      setSession(updatedSession);
+    }
+  };
+
   const linkGoogleAccount = async () => {
     const origin = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) 
       ? window.location.origin 
       : 'https://vivu-planner.vercel.app';
     const redirectTo = Platform.OS === 'web'
       ? `${origin}/dang-nhap`
-      : 'vivuplanner://';
+      : Linking.createURL('dang-nhap');
 
-    const { error } = await supabase.auth.linkIdentity({
+    const { data, error } = await supabase.auth.linkIdentity({
       provider: 'google',
       options: {
         redirectTo,
@@ -181,6 +196,20 @@ export function useAuth(): AuthState {
       },
     });
     if (error) throw error;
+
+    if (Platform.OS !== 'web' && data?.url) {
+      const res = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (res.type === 'success' && res.url) {
+        const parsed = Linking.parse(res.url);
+        if (parsed.queryParams?.error_description) {
+          throw new Error(String(parsed.queryParams.error_description));
+        }
+        if (parsed.queryParams?.error) {
+          throw new Error(String(parsed.queryParams.error));
+        }
+      }
+      await refreshSession();
+    }
   };
 
   const unlinkGoogleAccount = async () => {

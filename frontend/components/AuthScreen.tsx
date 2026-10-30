@@ -111,6 +111,10 @@ export default function AuthScreen({ mode }: Props) {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const turnstileRef = useRef<TurnstileRef>(null);
   const turnstileSiteKey = getTurnstileSiteKey();
+  const isMountedRef = useRef(true);
+  const exchangedCodesRef = useRef<Set<string>>(new Set());
+  const isExchangingCodeRef = useRef<boolean>(false);
+  const authHandledRef = useRef<boolean>(false);
 
   // Quên mật khẩu state
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -208,19 +212,143 @@ export default function AuthScreen({ mode }: Props) {
     router.replace(APP_ROUTES.TRIPS as any);
   };
 
+  const processOAuthUrl = async (url: string): Promise<boolean> => {
+    if (!isMountedRef.current || !url) return false;
+    console.log('[Google Auth] Processing OAuth callback URL:', url);
+
+    let code: string | null = null;
+    let accessToken: string | null = null;
+    let refreshToken: string | null = null;
+    let error: string | null = null;
+    let errorDescription: string | null = null;
+
+    try {
+      const qIdx = url.indexOf('?');
+      const hIdx = url.indexOf('#');
+
+      if (qIdx !== -1) {
+        const qStr = hIdx !== -1 && hIdx > qIdx ? url.substring(qIdx + 1, hIdx) : url.substring(qIdx + 1);
+        const qParams = new URLSearchParams(qStr);
+        code = qParams.get('code');
+        error = qParams.get('error');
+        errorDescription = qParams.get('error_description') || qParams.get('error_message');
+      }
+
+      if (hIdx !== -1) {
+        const hStr = url.substring(hIdx + 1);
+        const hParams = new URLSearchParams(hStr);
+        if (!accessToken) accessToken = hParams.get('access_token');
+        if (!refreshToken) refreshToken = hParams.get('refresh_token');
+        if (!code && hParams.get('code')) code = hParams.get('code');
+        if (!error && hParams.get('error')) error = hParams.get('error');
+        if (!errorDescription && (hParams.get('error_description') || hParams.get('error_message'))) {
+          errorDescription = hParams.get('error_description') || hParams.get('error_message');
+        }
+      }
+    } catch (parseErr) {
+      console.warn('[Google Auth] URL parameter parsing error:', parseErr);
+    }
+
+    // 1. Process OAuth error query/hash parameters
+    if (error) {
+      console.warn('[Google Auth] OAuth error received:', error, errorDescription);
+      authHandledRef.current = true;
+      if (isMountedRef.current) {
+        setGoogleLoading(false);
+        let friendlyMsg = 'Đăng nhập bằng Google không thành công. Vui lòng thử lại sau.';
+        if (error === 'access_denied') {
+          friendlyMsg = 'Đăng nhập bằng Google đã bị hủy hoặc từ chối.';
+        } else if (error === 'bad_oauth_callback' || error === 'invalid_request') {
+          friendlyMsg = 'Yêu cầu đăng nhập không hợp lệ hoặc đã hết hạn. Vui lòng thử lại.';
+        } else if (errorDescription) {
+          try {
+            friendlyMsg = `Lỗi đăng nhập Google: ${decodeURIComponent(errorDescription.replace(/\+/g, ' '))}`;
+          } catch {
+            friendlyMsg = `Lỗi đăng nhập Google: ${errorDescription}`;
+          }
+        }
+        setErrorMsg(friendlyMsg);
+      }
+      return false;
+    }
+
+    // 2. Process implicit flow hash tokens
+    if (accessToken && refreshToken) {
+      if (isExchangingCodeRef.current) return false;
+      isExchangingCodeRef.current = true;
+      try {
+        const { data, error: sErr } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (sErr) throw sErr;
+        if (isMountedRef.current && data.session) {
+          authHandledRef.current = true;
+          let isAdmin = decodeJwtRole(data.session.access_token) === UserRole.ADMIN;
+          await handleNavigateAfterAuth(isAdmin);
+          return true;
+        }
+      } catch (err: any) {
+        console.warn('[Google Auth] setSession error:', err);
+        if (isMountedRef.current) {
+          setErrorMsg(parseErrorMessage(err, 'Không thể thiết lập phiên đăng nhập. Vui lòng thử lại.'));
+        }
+      } finally {
+        isExchangingCodeRef.current = false;
+        if (isMountedRef.current) setGoogleLoading(false);
+      }
+      return false;
+    }
+
+    // 3. Process PKCE authorization code with single-use guard
+    if (code) {
+      if (exchangedCodesRef.current.has(code)) {
+        console.log('[Google Auth] Code already exchanged, skipping duplicate:', code);
+        return false;
+      }
+      if (isExchangingCodeRef.current) {
+        console.log('[Google Auth] Exchange already in progress, skipping concurrent call');
+        return false;
+      }
+
+      exchangedCodesRef.current.add(code);
+      isExchangingCodeRef.current = true;
+
+      try {
+        console.log('[Google Auth] Exchanging authorization code for session...');
+        const { data: sData, error: sErr } = await supabase.auth.exchangeCodeForSession(code);
+        if (sErr) throw sErr;
+        if (isMountedRef.current && sData.session) {
+          authHandledRef.current = true;
+          let isAdmin = decodeJwtRole(sData.session.access_token) === UserRole.ADMIN;
+          await handleNavigateAfterAuth(isAdmin);
+          return true;
+        }
+      } catch (err: any) {
+        console.warn('[Google Auth] exchangeCodeForSession error:', err);
+        if (isMountedRef.current) {
+          setErrorMsg(parseErrorMessage(err, 'Không thể đăng nhập bằng Google. Vui lòng thử lại sau.'));
+        }
+      } finally {
+        isExchangingCodeRef.current = false;
+        if (isMountedRef.current) setGoogleLoading(false);
+      }
+      return false;
+    }
+
+    return false;
+  };
+
   useEffect(() => {
-    let isMounted = true;
+    isMountedRef.current = true;
 
     const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (!isMounted || !session) return;
+        if (!isMountedRef.current || !session) return;
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
           let isAdmin = decodeJwtRole(session.access_token) === UserRole.ADMIN;
           if (!isAdmin && session.user?.id) {
             const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
             if (p?.role === UserRole.ADMIN) isAdmin = true;
           }
-          if (isMounted) {
+          if (isMountedRef.current) {
             await handleNavigateAfterAuth(isAdmin);
           }
         }
@@ -234,7 +362,7 @@ export default function AuthScreen({ mode }: Props) {
       const refresh_token = params.get('refresh_token');
       if (access_token && refresh_token) {
         supabase.auth.setSession({ access_token, refresh_token }).then(async ({ data, error }) => {
-          if (isMounted && !error && data.session) {
+          if (isMountedRef.current && !error && data.session) {
             let isAdmin = decodeJwtRole(data.session.access_token) === UserRole.ADMIN;
             await handleNavigateAfterAuth(isAdmin);
           }
@@ -243,45 +371,22 @@ export default function AuthScreen({ mode }: Props) {
     }
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (isMounted && session) {
+      if (isMountedRef.current && session) {
         let isAdmin = decodeJwtRole(session.access_token) === UserRole.ADMIN;
         if (!isAdmin && session.user?.id) {
           const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
           if (p?.role === UserRole.ADMIN) isAdmin = true;
         }
-        if (isMounted) {
+        if (isMountedRef.current) {
           await handleNavigateAfterAuth(isAdmin);
         }
       }
     });
 
     const handleDeepLink = async (event: { url: string }) => {
-      if (!isMounted || !event.url) return;
+      if (!isMountedRef.current || !event.url) return;
       try {
-        if (event.url.includes('access_token')) {
-          const hash = event.url.split('#')[1];
-          if (hash) {
-            const params = new URLSearchParams(hash);
-            const access_token = params.get('access_token');
-            const refresh_token = params.get('refresh_token');
-            if (access_token && refresh_token) {
-              const { data, error } = await supabase.auth.setSession({ access_token, refresh_token });
-              if (isMounted && !error && data.session) {
-                let isAdmin = decodeJwtRole(data.session.access_token) === UserRole.ADMIN;
-                await handleNavigateAfterAuth(isAdmin);
-              }
-            }
-          }
-        } else if (event.url.includes('code=')) {
-          const parsed = Linking.parse(event.url);
-          if (parsed.queryParams?.code) {
-            const { data, error } = await supabase.auth.exchangeCodeForSession(parsed.queryParams.code as string);
-            if (isMounted && !error && data.session) {
-              let isAdmin = decodeJwtRole(data.session.access_token) === UserRole.ADMIN;
-              await handleNavigateAfterAuth(isAdmin);
-            }
-          }
-        }
+        await processOAuthUrl(event.url);
       } catch (err) {
         console.warn('[DeepLink] OAuth callback error:', err);
       }
@@ -289,15 +394,15 @@ export default function AuthScreen({ mode }: Props) {
 
     const sub = Linking.addEventListener('url', handleDeepLink);
     Linking.getInitialURL().then((url) => {
-      if (isMounted && url) {
+      if (isMountedRef.current && url) {
         setTimeout(() => {
-          if (isMounted) handleDeepLink({ url });
+          if (isMountedRef.current) handleDeepLink({ url });
         }, 50);
       }
     });
 
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
       sub.remove();
       authSub.unsubscribe();
     };
@@ -408,6 +513,7 @@ export default function AuthScreen({ mode }: Props) {
       setErrorMsg('Vui lòng đọc và đồng ý với cam kết bảo mật dữ liệu');
       return;
     }
+    authHandledRef.current = false;
     setGoogleLoading(true);
     setErrorMsg('');
     setInfoMsg('');
@@ -454,48 +560,33 @@ export default function AuthScreen({ mode }: Props) {
           const res = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
           console.log('[Google Auth] WebBrowser result:', res.type, res);
 
-          if (res.type === 'cancel' || res.type === 'dismiss') {
-            console.log('[Google Auth] Sign-in cancelled or dismissed by user');
-            setGoogleLoading(false);
+          if (res.type === 'success' && res.url) {
+            await processOAuthUrl(res.url);
             return;
           }
 
-          if (res.type === 'success' && res.url) {
-            if (res.url.includes('access_token')) {
-              const hash = res.url.split('#')[1];
-              if (hash) {
-                const params = new URLSearchParams(hash);
-                const access_token = params.get('access_token');
-                const refresh_token = params.get('refresh_token');
-                if (access_token && refresh_token) {
-                  const { data: sData, error: sErr } = await supabase.auth.setSession({ access_token, refresh_token });
-                  if (sErr) throw sErr;
-                  if (sData.session) {
-                    let isAdmin = decodeJwtRole(sData.session.access_token) === UserRole.ADMIN;
-                    await handleNavigateAfterAuth(isAdmin);
-                    return;
-                  }
-                }
-              }
-            } else if (res.url.includes('code=')) {
-              const parsed = Linking.parse(res.url);
-              if (parsed.queryParams?.code) {
-                const { data: sData, error: sErr } = await supabase.auth.exchangeCodeForSession(parsed.queryParams.code as string);
-                if (sErr) throw sErr;
-                if (sData.session) {
-                  let isAdmin = decodeJwtRole(sData.session.access_token) === UserRole.ADMIN;
-                  await handleNavigateAfterAuth(isAdmin);
-                  return;
-                }
-              }
+          if (res.type === 'cancel' || res.type === 'dismiss') {
+            // Android OS dismisses Chrome Custom Tab when intercepting the deep link intent.
+            // Allow a grace period for Linking.addEventListener('url') to deliver the callback.
+            console.log(`[Google Auth] Browser ${res.type}ed. Waiting grace period for deep link...`);
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+
+            if (isMountedRef.current && !authHandledRef.current && !isExchangingCodeRef.current) {
+              console.log('[Google Auth] Sign-in cancelled or dismissed by user');
+              setGoogleLoading(false);
             }
+            return;
           }
         }
       }
     } catch (err: any) {
-      setErrorMsg(parseErrorMessage(err, 'Không thể đăng nhập bằng Google. Vui lòng thử lại sau.'));
+      if (isMountedRef.current) {
+        setErrorMsg(parseErrorMessage(err, 'Không thể đăng nhập bằng Google. Vui lòng thử lại sau.'));
+      }
     } finally {
-      setGoogleLoading(false);
+      if (isMountedRef.current && !isExchangingCodeRef.current && !authHandledRef.current) {
+        setGoogleLoading(false);
+      }
     }
   };
 
@@ -689,7 +780,21 @@ export default function AuthScreen({ mode }: Props) {
             )}
 
             <View style={{ gap: 7 }}>
-              <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: '#1B2420' }}>Email</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: '#1B2420' }}>Email</Text>
+                {Boolean(__DEV__) && (
+                  <Pressable
+                    testID="btn-fill-test-pro"
+                    onPress={() => {
+                      setEmail('test_pro@vivuplanner.com');
+                      setPassword('Password123@');
+                    }}
+                    style={{ paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#E8F5E9', borderRadius: 6 }}
+                  >
+                    <Text style={{ fontSize: 11, color: '#1F6F54', fontWeight: 'bold' }}>⚡ Test PRO</Text>
+                  </Pressable>
+                )}
+              </View>
               <TextInput
                 style={fieldStyle('email')}
                 placeholder="you@example.com"
