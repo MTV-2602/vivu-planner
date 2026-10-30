@@ -36,3 +36,6 @@ Thumbs.db
 # Kilo agent worktrees
 .kilo/worktrees/
 .kilo/agent-manager.json
+
+# AI agent teamwork metadata
+.agents/
