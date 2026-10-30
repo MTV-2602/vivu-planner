@@ -44,6 +44,70 @@ app.get(["/", "/api"], (_req, res) => res.json({
   name: "ViVu Planner API", version: "2.0.0"
 }));
 
+// Turnstile widget endpoint phuc vu Mobile WebView
+app.get(["/turnstile-widget", "/api/turnstile-widget"], (req, res) => {
+  const siteKey = (req.query.sitekey as string) || process.env.TURNSTILE_SITE_KEY || "0x4AAAAAAFTw7hrMgVa79FF0";
+  const action = (req.query.action as string) || "login";
+  const theme = (req.query.theme as string) || "light";
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+  </style>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head>
+<body>
+  <div class="cf-turnstile"
+       data-sitekey="${siteKey}"
+       data-action="${action}"
+       data-theme="${theme}"
+       data-callback="onSuccess"
+       data-error-callback="onError"
+       data-expired-callback="onExpired"></div>
+  <script>
+    function post(type, val) {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, value: val }));
+      }
+    }
+    window.onerror = function(msg, url, line, col, err) {
+      post('error', 'Turnstile Page JS error: ' + msg + ' (line ' + line + ')');
+    };
+    function onSuccess(token) { post('success', token); }
+    function onError(err) { post('error', err || 'Lỗi xác thực Turnstile'); }
+    function onExpired() { post('expired'); }
+    function init() {
+      post('debug', 'Turnstile Page loaded. window.turnstile: ' + Boolean(window.turnstile));
+      setTimeout(function() {
+        var ifr = document.querySelector('iframe');
+        var widget = document.querySelector('.cf-turnstile');
+        post('debug', 'iframe in page: ' + Boolean(ifr) + ', widget HTML: ' + (widget ? widget.innerHTML.slice(0, 150) : 'null'));
+      }, 2000);
+    }
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      init();
+    } else {
+      window.addEventListener('DOMContentLoaded', init);
+    }
+  </script>
+</body>
+</html>`);
+});
+
 // Auth middleware (global - set req.user neu co token, khong block)
 app.use(authMiddleware);
 

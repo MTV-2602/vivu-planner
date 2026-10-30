@@ -44,6 +44,7 @@ export async function createPayOSOrder(params: {
   accountNumber?: string;
   accountName?: string;
   bin?: string;
+  description?: string;
 }> {
   const clientId = (process.env.PAYOS_CLIENT_ID || '').trim();
   const apiKey = (process.env.PAYOS_API_KEY || '').trim();
@@ -92,6 +93,7 @@ export async function createPayOSOrder(params: {
       accountNumber: resData.accountNumber || '',
       accountName: resData.accountName || '',
       bin: resData.bin || '',
+      description: resData.description || description,
       orderCode,
     };
   } catch (err: any) {

@@ -39,6 +39,7 @@ import {
   Car,
   Check,
   RotateCcw,
+  CornerUpLeft,
   ExternalLink,
   Crown,
   Lock
@@ -59,7 +60,7 @@ export interface CalendarEventItem {
   lng?: number;
   cost: number;
   dayNumber: number;
-  startHour: number; // 7..21
+  startHour: number; // 6..23
   startMinute: number; // 0, 15, 30...
   durationMinutes: number; // 60, 90...
   notes?: string;
@@ -305,7 +306,7 @@ export interface GoogleCalendarWorkspaceProps {
   externalDelta?: CalendarDeltaAction | null;
 }
 
-const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 07:00 -> 21:00
+const HOURS = Array.from({ length: 18 }, (_, i) => i + 6); // 06:00 -> 23:00
 
 const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string; lightBg: string; emoji: string }> = {
   dining: { bg: '#E6F4EA', border: '#137333', text: '#137333', lightBg: '#CEEAD6', emoji: '🍽️' },
@@ -485,6 +486,14 @@ export default function GoogleCalendarWorkspace({
   // State chọn điểm để gán nhanh (1-click place)
   const [selectedPlaceToPlace, setSelectedPlaceToPlace] = useState<StandbyPlaceItem | null>(null);
 
+  // State chọn mốc giờ mục tiêu trên mobile (R3)
+  const [selectedTargetHour, setSelectedTargetHour] = useState<number | null>(null);
+
+  // Xóa slot mục tiêu khi đổi ngày để tránh gán nhầm
+  useEffect(() => {
+    setSelectedTargetHour(null);
+  }, [activeDay]);
+
   // State toast thông báo kết quả tối ưu
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -492,6 +501,8 @@ export default function GoogleCalendarWorkspace({
   const [isExploringMore, setIsExploringMore] = useState(false);
   const [exploreUserInput, setExploreUserInput] = useState('');
   const [showExplorePrompt, setShowExplorePrompt] = useState(false);
+
+
 
   // ── STATE CHI TIÊU THỰC TẾ & NHẬT KÝ THEO TỪNG NGÀY & ĐỊA ĐIỂM ──
   const [expenseLogs, setExpenseLogs] = useState<ExpenseLogItem[]>(() => {
@@ -600,9 +611,9 @@ export default function GoogleCalendarWorkspace({
         }
       })
       .catch(() => {
-        fetch(`/api/trips/${tripId}/expenses`)
-          .then((r) => (r.ok ? r.json() : []))
-          .then((raw: any[]) => {
+        api.get(`/trips/${tripId}/expenses`)
+          .then((r: any) => {
+            const raw = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []);
             const mapped = mapResponse(raw);
             if (mapped.length > 0) {
               setExpenseLogs((prev) => {
@@ -797,6 +808,25 @@ export default function GoogleCalendarWorkspace({
   const [hoveredCartZone, setHoveredCartZone] = useState(false);
   const [hoveredDayTab, setHoveredDayTab] = useState<number | null>(null);
   const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null);
+
+  // Bộ lọc khung giờ và điều hướng thời gian trên Mobile (06:00 -> 23:00)
+  const [mobileTimeFilter, setMobileTimeFilter] = useState<'all' | 'morning' | 'afternoon' | 'evening'>('all');
+  const [movingEvent, setMovingEvent] = useState<CalendarEventItem | null>(null);
+  const [selectedMoveDay, setSelectedMoveDay] = useState<number>(activeDay);
+
+  useEffect(() => {
+    if (movingEvent) {
+      setSelectedMoveDay(movingEvent.dayNumber);
+    }
+  }, [movingEvent]);
+
+  const displayedHours = useMemo(() => {
+    if (isDesktop || mobileTimeFilter === 'all') return HOURS;
+    if (mobileTimeFilter === 'morning') return HOURS.filter((h) => h >= 6 && h < 12);
+    if (mobileTimeFilter === 'afternoon') return HOURS.filter((h) => h >= 12 && h < 18);
+    if (mobileTimeFilter === 'evening') return HOURS.filter((h) => h >= 18 && h <= 23);
+    return HOURS;
+  }, [isDesktop, mobileTimeFilter]);
 
   // Sự kiện của ngày đang kích hoạt (sắp xếp theo thời gian)
   const currentDayEvents = useMemo(() => {
@@ -1153,13 +1183,9 @@ export default function GoogleCalendarWorkspace({
             }
           })
           .catch(() => {
-            fetch(`/api/trips/${tripId}/expenses`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            })
-              .then((r) => (r.ok ? r.json() : null))
-              .then((serverLog) => {
+            api.post(`/trips/${tripId}/expenses`, payload)
+              .then((res: any) => {
+                const serverLog = res?.data;
                 if (serverLog?.id) {
                   setExpenseLogs((prev) => prev.map((l) => (l.id === tempId ? { ...l, id: String(serverLog.id) } : l)));
                 }
@@ -1190,9 +1216,7 @@ export default function GoogleCalendarWorkspace({
 
     // 3. API xóa trên database
     if (tripId && isDetailPage) {
-      api.delete(`/trips/${tripId}/expenses/${logId}`).catch(() => {
-        fetch(`/api/trips/${tripId}/expenses/${logId}`, { method: 'DELETE' }).catch(() => {});
-      });
+      api.delete(`/trips/${tripId}/expenses/${logId}`).catch(() => {});
     }
   };
 
@@ -1313,10 +1337,10 @@ export default function GoogleCalendarWorkspace({
     ];
 
     const newEvents: CalendarEventItem[] = [];
-    const totalDays = Math.max(1, daysCount);
+    const safeTotalDays = Math.max(1, daysCount);
 
     // 1. Luôn xếp accommodation vào slot 14:00 Ngày 1 (dayIndex=0, dayNumber=1) TRƯỚC KHI xếp các hoạt động khác
-    const nightsCount = Math.max(1, totalDays - 1);
+    const nightsCount = Math.max(1, safeTotalDays - 1);
     if (hotels.length > 0) {
       hotels.forEach((h, hIdx) => {
         newEvents.push({
@@ -1339,8 +1363,8 @@ export default function GoogleCalendarWorkspace({
 
     // 2. Sau đó xếp các items còn lại vào các slots còn trống
     ordered.forEach((p, idx) => {
-      const targetDay = (idx % totalDays) + 1;
-      const dayOrder = Math.floor(idx / totalDays);
+      const targetDay = (idx % safeTotalDays) + 1;
+      const dayOrder = Math.floor(idx / safeTotalDays);
       const slotsForDay = (hotels.length > 0 && targetDay === 1) ? day1TimeSlotsWithHotel : normalTimeSlots;
       const slot = slotsForDay[dayOrder % slotsForDay.length] || { hour: 8 + (dayOrder * 2) % 12, minute: 0, dur: 90 };
 
@@ -1422,7 +1446,7 @@ export default function GoogleCalendarWorkspace({
           .filter((ev) => Number(ev.dayNumber) === Number(activeDayRef.current))
           .map((e) => e.startHour)
       );
-      for (let h = 8; h <= 21; h++) {
+      for (let h = 8; h <= 23; h++) {
         if (!usedHours.has(h)) {
           hour = h;
           break;
@@ -1470,6 +1494,7 @@ export default function GoogleCalendarWorkspace({
     setStandbyList(nextStandby);
     standbyListRef.current = nextStandby;
     setSelectedPlaceToPlace(null);
+    setSelectedTargetHour(null);
     notifyChanges(nextEvents, nextStandby);
     onEventDelta?.({
       type: 'assign_standby',
@@ -1548,10 +1573,10 @@ export default function GoogleCalendarWorkspace({
     }
     const dayEvents = eventsRef.current.filter((e) => e.dayNumber === targetDay);
     const occupiedHours = new Set(dayEvents.map((e) => e.startHour));
-    const candidateHours = [8, 10, 12, 14, 16, 18, 20];
+    const candidateHours = [8, 10, 12, 14, 16, 18, 20, 22];
     let targetHour = candidateHours.find((h) => !occupiedHours.has(h));
     if (!targetHour) {
-      for (let h = 7; h <= 21; h++) {
+      for (let h = 6; h <= 23; h++) {
         if (!occupiedHours.has(h)) {
           targetHour = h;
           break;
@@ -1562,6 +1587,25 @@ export default function GoogleCalendarWorkspace({
     addPlaceToCalendar(item, targetHour, true);
     setToastMsg(`✓ Đã xếp "${item.name}" vào Ngày ${targetDay} lúc ${targetHour < 10 ? '0' + targetHour : targetHour}:00!`);
     setTimeout(() => setToastMsg(null), 3000);
+  };
+
+  // Xử lý nút bấm gán nhanh từ khay giỏ chờ (R3): ưu tiên mốc giờ đã chọn hoặc tự tìm slot trống đầu tiên
+  const handleQuickAddPress = (item: StandbyPlaceItem) => {
+    if (readOnly) return;
+    if (!isUserPro) {
+      if (onUpgradePro) onUpgradePro();
+      setToastMsg('🔒 Tính năng Khay Giỏ Hàng và Xếp lịch dành riêng cho thành viên Gói PRO!');
+      setTimeout(() => setToastMsg(null), 3000);
+      return;
+    }
+    if (selectedTargetHour !== null) {
+      addPlaceToCalendar(item, selectedTargetHour, true);
+      setToastMsg(`✓ Đã xếp "${item.name}" vào Ngày ${activeDay} lúc ${selectedTargetHour < 10 ? '0' + selectedTargetHour : selectedTargetHour}:00!`);
+      setTimeout(() => setToastMsg(null), 3000);
+      setSelectedTargetHour(null);
+    } else {
+      handleQuickAddStandbyToDay(item, activeDay);
+    }
   };
 
   // Đổi giờ bắt đầu của sự kiện
@@ -1578,7 +1622,7 @@ export default function GoogleCalendarWorkspace({
     const nextEvents = eventsRef.current.map((ev) => {
       if (ev.id === eventId) {
         movedTitle = ev.title;
-        const newHour = Math.max(7, Math.min(21, ev.startHour + deltaHours));
+        const newHour = Math.max(6, Math.min(23, ev.startHour + deltaHours));
         const updated = { ...ev, startHour: newHour };
         changedEvent = updated;
         return updated;
@@ -1604,11 +1648,56 @@ export default function GoogleCalendarWorkspace({
     onUserAction?.(`đang di chuyển "${movedTitle}"`, 'drag_item', movedTitle, eventId);
   };
 
-  // Tải thêm địa điểm gợi ý vào giỏ chờ cho Pro user
-  const handleLoadMoreStandbyPlaces = async () => {
-    if (!isUserPro) return;
-    // Hiện prompt hỏi user muốn gì trước
-    setShowExplorePrompt(true);
+  const moveToHourAndDay = (eventId: string, targetHour: number, targetDay?: number) => {
+    if (readOnly) return;
+    if (!isUserPro) {
+      if (onUpgradePro) onUpgradePro();
+      setToastMsg('🔒 Tính năng Thay đổi giờ Lịch trình dành riêng cho thành viên Gói PRO!');
+      setTimeout(() => setToastMsg(null), 3000);
+      return;
+    }
+    let movedTitle = 'Hoạt động';
+    let changedEvent: CalendarEventItem | undefined;
+    const nextEvents = eventsRef.current.map((ev) => {
+      if (ev.id === eventId) {
+        movedTitle = ev.title;
+        const validHour = Math.max(6, Math.min(23, targetHour));
+        const validDay = targetDay !== undefined ? targetDay : ev.dayNumber;
+        const updated = { ...ev, startHour: validHour, dayNumber: validDay };
+        changedEvent = updated;
+        return updated;
+      }
+      return ev;
+    });
+    setEvents(nextEvents);
+    eventsRef.current = nextEvents;
+    debouncedEventsChange(nextEvents);
+    notifyChanges(nextEvents, standbyListRef.current);
+    if (changedEvent) {
+      onEventDelta?.({
+        type: 'move_event',
+        eventId: (changedEvent as any).id,
+        placeId: (changedEvent as any).placeId,
+        dayNumber: (changedEvent as any).dayNumber,
+        startHour: (changedEvent as any).startHour,
+        startMinute: (changedEvent as any).startMinute,
+        durationMinutes: (changedEvent as any).durationMinutes,
+        timestamp: Date.now(),
+      });
+    }
+    setToastMsg(`✓ Đã chuyển "${movedTitle}" sang lúc ${targetHour < 10 ? '0' + targetHour : targetHour}:00!`);
+    setTimeout(() => setToastMsg(null), 3000);
+    onUserAction?.(`đang di chuyển "${movedTitle}"`, 'drag_item', movedTitle, eventId);
+  };
+
+  // Thêm địa điểm vào giỏ chờ: Mở thẳng Live Map để người dùng nhặt tiếp vào giỏ
+  const handleLoadMoreStandbyPlaces = () => {
+    if (onBackToCollecting) {
+      onBackToCollecting();
+    } else {
+      setToastMsg(`💡 Bạn có thể xem và chọn thêm các địa điểm trên bản đồ của ${cityName}!`);
+      setTimeout(() => setToastMsg(null), 3000);
+    }
   };
 
   const handleExploreMore = async (userRequest?: string) => {
@@ -1632,29 +1721,38 @@ export default function GoogleCalendarWorkspace({
       // Thử gọi AI API
       try {
         if (tripId) {
-          const resp = await fetch(`/api/trips/${tripId}/explore-more`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              currentItinerary: itinerarySnapshot,
-              standbyList: standbyList.map((s) => ({ id: s.id, name: s.name })),
-              userRequest: userRequest || 'Gợi ý thêm địa điểm hay'
-            })
+          const resp = await api.post('/trips/pregen-places', {
+            trip_id: tripId,
+            destination_city: cityName,
+            days_count: daysCount,
+            budget_total: totalBudget,
+            preferences: { user_request: userRequest || 'Gợi ý thêm địa điểm hay' }
           });
-          if (resp.ok) {
-            const data = await resp.json();
-            const newPlaces = (data.places || []).filter(
+          const rawPlaces = resp?.data?.places || [];
+          const newPlaces = rawPlaces
+            .filter(
               (p: any) => !currentStandbyIds.has(p.id) && !currentEventTitles.has((p.name || '').toLowerCase().trim())
-            );
-            if (newPlaces.length > 0) {
-              const nextStandby = [...standbyList, ...newPlaces];
-              setStandbyList(nextStandby);
-              notifyChanges(events, nextStandby);
-              setToastMsg(`✓ AI gợi ý thêm ${newPlaces.length} địa điểm vào Giỏ chờ!`);
-              setTimeout(() => setToastMsg(null), 3500);
-              setIsExploringMore(false);
-              return;
-            }
+            )
+            .map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              category: p.category || 'attraction',
+              address: p.address || '',
+              lat: p.lat,
+              lng: p.lng,
+              cost: p.estimated_cost || p.cost || 50000,
+              suggestedDuration: p.suggestedDuration || 90,
+              time: p.suggested_time || p.time || '10:00 - 11:30',
+              image: p.image_url || p.image || null,
+            }));
+          if (newPlaces.length > 0) {
+            const nextStandby = [...standbyList, ...newPlaces];
+            setStandbyList(nextStandby);
+            notifyChanges(events, nextStandby);
+            setToastMsg(`✓ AI gợi ý thêm ${newPlaces.length} địa điểm vào Giỏ chờ!`);
+            setTimeout(() => setToastMsg(null), 3500);
+            setIsExploringMore(false);
+            return;
           }
         }
       } catch (apiErr) {
@@ -1697,6 +1795,8 @@ export default function GoogleCalendarWorkspace({
     e: any
   ) => {
     if (readOnly) return;
+    // Trên mobile hoặc native, tắt DnD chuột web để giải phóng cử chỉ vuốt chạm tự nhiên (R3)
+    if (!isDesktop || Platform.OS !== 'web') return;
     const itemTitle = (item as any).title || (item as any).name || 'Hoạt động';
     const currentLocked = lockedItemsRef.current || lockedItems;
     const lockUserId = currentLocked && (
@@ -1798,7 +1898,7 @@ export default function GoogleCalendarWorkspace({
       const targetHour = findTargetHourFromPoint(clientX, clientY);
       setHoveredHourSlot(targetHour);
 
-      const cartEl = elem?.closest('[data-cart-dropzone], [data-testid="cart-dropzone"]');
+      const cartEl = elem?.closest('[data-cart-dropzone], [data-cartdropzone], [data-testid*="cart-dropzone"]');
       setHoveredCartZone(!!cartEl);
 
       const dayEl = elem?.closest('[data-day-tab], [data-testid*="tab-day-"]');
@@ -1832,7 +1932,7 @@ export default function GoogleCalendarWorkspace({
 
       const elem = document.elementFromPoint(clientX, clientY);
       const targetHour = findTargetHourFromPoint(clientX, clientY);
-      const cartEl = elem?.closest('[data-cart-dropzone], [data-testid="cart-dropzone"]');
+      const cartEl = elem?.closest('[data-cart-dropzone], [data-cartdropzone], [data-testid*="cart-dropzone"]');
       const dayEl = elem?.closest('[data-day-tab], [data-testid*="tab-day-"]');
 
       if (!isUserPro) {
@@ -1847,7 +1947,18 @@ export default function GoogleCalendarWorkspace({
         return;
       }
 
-      if (targetHour !== null && !isNaN(targetHour)) {
+      if (cartEl) {
+        if (!isUserPro) {
+          if (onUpgradePro) onUpgradePro();
+          setToastMsg('🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!');
+          setTimeout(() => setToastMsg(null), 3000);
+        } else if (cur.type === 'event') {
+          removeEventToStandby(cur.id, true);
+          const evTitle = (cur.item as CalendarEventItem).title || (cur.item as any).name || 'Hoạt động';
+          setToastMsg(`✓ Đã đưa "${evTitle}" về Giỏ chờ! Bạn có thể chọn ngày khác để kéo thả lại.`);
+          setTimeout(() => setToastMsg(null), 3000);
+        }
+      } else if (targetHour !== null && !isNaN(targetHour)) {
         if (cur.type === 'standby') {
           const standbyItem =
             standbyListRef.current.find((s) => s.id === cur.id) || (cur.item as StandbyPlaceItem);
@@ -1881,17 +1992,6 @@ export default function GoogleCalendarWorkspace({
           notifyChanges(nextEvents, standbyListRef.current);
           const evTitle = (cur.item as CalendarEventItem).title || (cur.item as any).name || 'Hoạt động';
           setToastMsg(`✓ Đã chuyển "${evTitle}" sang ${targetHour < 10 ? '0' + targetHour : targetHour}:00!`);
-          setTimeout(() => setToastMsg(null), 3000);
-        }
-      } else if (cartEl) {
-        if (!isUserPro) {
-          if (onUpgradePro) onUpgradePro();
-          setToastMsg('🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!');
-          setTimeout(() => setToastMsg(null), 3000);
-        } else if (cur.type === 'event') {
-          removeEventToStandby(cur.id, true);
-          const evTitle = (cur.item as CalendarEventItem).title || (cur.item as any).name || 'Hoạt động';
-          setToastMsg(`✓ Đã chuyển "${evTitle}" về Giỏ chờ!`);
           setTimeout(() => setToastMsg(null), 3000);
         }
       } else if (dayEl) {
@@ -1941,7 +2041,7 @@ export default function GoogleCalendarWorkspace({
                   .map((e) => e.startHour)
               );
               let hour = 9;
-              for (let h = 8; h <= 21; h++) {
+              for (let h = 8; h <= 23; h++) {
                 if (!usedHours.has(h)) {
                   hour = h;
                   break;
@@ -3072,6 +3172,29 @@ export default function GoogleCalendarWorkspace({
               maxHeight: isDesktop ? 440 : undefined,
             }}
           >
+            {pointerDrag?.type === 'event' && (
+              <View
+                style={{
+                  backgroundColor: hoveredCartZone ? '#FEF3C7' : '#FFFBEB',
+                  borderColor: hoveredCartZone ? '#D97706' : '#F59E0B',
+                  borderWidth: 2,
+                  borderStyle: 'dashed',
+                  borderRadius: 10,
+                  padding: 10,
+                  alignItems: 'center',
+                  gap: 3,
+                }}
+              >
+                <ShoppingBag size={18} color="#D97706" />
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#B45309' }}>
+                  📥 Thả vào đây để đưa về Giỏ chờ
+                </Text>
+                <Text style={{ fontSize: 10, color: '#92400E' }}>
+                  (Để đổi sang ngày khác hoặc xếp lại)
+                </Text>
+              </View>
+            )}
+
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <ShoppingBag size={15} color="#B06000" />
@@ -3103,6 +3226,30 @@ export default function GoogleCalendarWorkspace({
                   </Text>
                 </Pressable>
               )}
+
+              {!readOnly && (
+                <Pressable
+                  testID="btn-open-cart-add-options-left"
+                  onPress={handleLoadMoreStandbyPlaces}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingVertical: 5,
+                    paddingHorizontal: 9,
+                    borderRadius: 9,
+                    backgroundColor: '#E8F0FE',
+                    borderWidth: 1,
+                    borderColor: '#1A73E8',
+                    cursor: 'pointer' as any,
+                  }}
+                >
+                  <MapPin size={12} color="#1A73E8" />
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>
+                    🗺️ Thêm từ Live Map
+                  </Text>
+                </Pressable>
+              )}
             </View>
 
             {standbyList.length === 0 ? (
@@ -3117,7 +3264,7 @@ export default function GoogleCalendarWorkspace({
                   borderColor: 'rgba(27,36,32,0.15)',
                   borderRadius: 12,
                   backgroundColor: '#FAFAFA',
-                  gap: 6,
+                  gap: 8,
                 }}
               >
                 <Text style={{ fontSize: 12, fontWeight: '700', color: '#1B2420', textAlign: 'center' }}>
@@ -3126,6 +3273,27 @@ export default function GoogleCalendarWorkspace({
                 <Text style={{ fontSize: 11, color: '#5F6368', textAlign: 'center' }}>
                   Kéo thẻ từ lịch trình thả về đây nếu bạn muốn chuyển lại giỏ chờ.
                 </Text>
+                {!readOnly && (
+                  <Pressable
+                    testID="btn-open-cart-add-options-empty"
+                    onPress={handleLoadMoreStandbyPlaces}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 5,
+                      paddingVertical: 6,
+                      paddingHorizontal: 12,
+                      borderRadius: 8,
+                      backgroundColor: '#1F6F54',
+                      cursor: 'pointer' as any,
+                    }}
+                  >
+                    <MapPin size={13} color="#FFFFFF" />
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>
+                      🗺️ Mở Live Map nhặt thêm điểm
+                    </Text>
+                  </Pressable>
+                )}
               </View>
             ) : (
               <ScrollView
@@ -3200,36 +3368,40 @@ export default function GoogleCalendarWorkspace({
                         {!readOnly && (
                           <Pressable
                             testID={`btn-quick-add-${item.id}`}
-                            onPress={() => handleQuickAddStandbyToDay(item, activeDay)}
+                            onPress={() => handleQuickAddPress(item)}
                             style={{
                               paddingHorizontal: 9,
                               paddingVertical: 6,
                               borderRadius: 8,
-                              backgroundColor: '#E8F0FE',
+                              backgroundColor: selectedTargetHour !== null ? '#1A73E8' : '#E8F0FE',
                               borderWidth: 1,
                               borderColor: '#1A73E8',
                               cursor: 'pointer' as any,
                             }}
                           >
-                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>
-                              + Ngày {activeDay}
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: selectedTargetHour !== null ? '#FFFFFF' : '#1A73E8' }}>
+                              {selectedTargetHour !== null
+                                ? `+ Gán ${selectedTargetHour < 10 ? '0' + selectedTargetHour : selectedTargetHour}:00`
+                                : `+ Ngày ${activeDay}`}
                             </Text>
                           </Pressable>
                         )}
-                        <View
-                          // @ts-ignore
-                          onPointerDown={(e: any) => {
-                            e?.stopPropagation?.();
-                            handleStartPointerDrag(item, 'standby', e);
-                          }}
-                          style={{
-                            padding: 4,
-                            cursor: 'grab' as any,
-                            touchAction: 'none' as any,
-                          }}
-                        >
-                          <GripVertical size={16} color="#80868B" />
-                        </View>
+                        {isDesktop && (
+                          <View
+                            // @ts-ignore
+                            onPointerDown={(e: any) => {
+                              e?.stopPropagation?.();
+                              handleStartPointerDrag(item, 'standby', e);
+                            }}
+                            style={{
+                              padding: 4,
+                              cursor: 'grab' as any,
+                              touchAction: 'none' as any,
+                            }}
+                          >
+                            <GripVertical size={16} color="#80868B" />
+                          </View>
+                        )}
                       </View>
                     </View>
                   );
@@ -3306,14 +3478,66 @@ export default function GoogleCalendarWorkspace({
               )}
             </View>
 
-            {/* Lưới thời gian trực quan (07:00 -> 21:00) */}
+            {/* Thanh lọc khung giờ nhanh cho Mobile */}
+            {!isDesktop && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  paddingHorizontal: 14,
+                  paddingBottom: 8,
+                  flexWrap: 'wrap',
+                }}
+              >
+                {[
+                  { key: 'all', label: 'Tất cả (06h - 23h)' },
+                  { key: 'morning', label: 'Sáng (06h - 12h)' },
+                  { key: 'afternoon', label: 'Chiều (12h - 18h)' },
+                  { key: 'evening', label: 'Tối (18h - 23h)' },
+                ].map((tab) => {
+                  const isSelected = mobileTimeFilter === tab.key;
+                  return (
+                    <Pressable
+                      key={tab.key}
+                      testID={`filter-tab-${tab.key}`}
+                      onPress={() => setMobileTimeFilter(tab.key as any)}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 16,
+                        backgroundColor: isSelected ? '#1A73E8' : '#F1F3F4',
+                        borderWidth: 1,
+                        borderColor: isSelected ? '#1A73E8' : 'rgba(0,0,0,0.06)',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: isSelected ? '800' : '600',
+                          color: isSelected ? '#FFFFFF' : '#5F6368',
+                        }}
+                      >
+                        {tab.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Lưới thời gian trực quan (06:00 -> 23:00) */}
             <ScrollView
               testID="calendar-time-grid"
+              nestedScrollEnabled={true}
+              scrollEnabled={isDesktop}
+              persistentScrollbar={Platform.OS === 'android'}
               // @ts-ignore
               data-calendar-grid="true"
               {...({ dataSet: { calendarGrid: 'true' } } as any)}
-              style={{ flex: 1, maxHeight: 400, paddingHorizontal: 14 }}
-              showsVerticalScrollIndicator={true}
+              style={{ flex: 1, maxHeight: isDesktop ? 520 : undefined, paddingHorizontal: 14 }}
+              contentContainerStyle={{ paddingBottom: 20 }}
+              showsVerticalScrollIndicator={isDesktop}
             >
               <View
                 testID="calendar-grid-container"
@@ -3322,32 +3546,58 @@ export default function GoogleCalendarWorkspace({
                 {...({ dataSet: { calendarGrid: 'true' } } as any)}
                 style={{ paddingVertical: 8 }}
               >
-                {HOURS.map((hour) => {
+                {displayedHours.map((hour) => {
                   const hourEvents = currentDayEvents.filter((ev) => ev.startHour === hour);
                   const isSlotHovered = hoveredHourSlot === hour;
+                  const isSlotSelected = selectedTargetHour === hour;
+
+                  const handleSlotPress = () => {
+                    if (readOnly) return;
+                    if (selectedPlaceToPlace) {
+                      addPlaceToCalendar(selectedPlaceToPlace, hour, true);
+                      setToastMsg(`✓ Đã xếp "${selectedPlaceToPlace.name}" vào Ngày ${activeDay} lúc ${hour < 10 ? '0' + hour : hour}:00!`);
+                      setTimeout(() => setToastMsg(null), 3000);
+                      setSelectedPlaceToPlace(null);
+                      setSelectedTargetHour(null);
+                    } else {
+                      setSelectedTargetHour((prev) => (prev === hour ? null : hour));
+                    }
+                  };
 
                   return (
-                    <View
+                    <Pressable
                       key={hour}
                       testID={`calendar-hour-row-${hour}`}
                       // @ts-ignore
                       data-hour={hour}
                       data-hour-row="true"
                       {...({ dataSet: { hour: String(hour), hourRow: 'true' } } as any)}
+                      onPress={handleSlotPress}
                       style={{
                         flexDirection: 'row',
                         alignItems: 'flex-start',
                         minHeight: 56,
                         borderTopWidth: 1,
-                        borderTopColor: isSlotHovered ? '#1A73E8' : 'rgba(27,36,32,0.08)',
-                        backgroundColor: isSlotHovered ? 'rgba(26,115,232,0.12)' : 'transparent',
+                        borderTopColor: isSlotSelected ? '#1A73E8' : isSlotHovered ? '#1A73E8' : 'rgba(27,36,32,0.08)',
+                        borderBottomWidth: isSlotSelected ? 2 : 0,
+                        borderBottomColor: isSlotSelected ? '#1A73E8' : 'transparent',
+                        borderLeftWidth: isSlotSelected ? 3 : 0,
+                        borderLeftColor: isSlotSelected ? '#1A73E8' : 'transparent',
+                        backgroundColor: isSlotSelected
+                          ? 'rgba(26,115,232,0.12)'
+                          : isSlotHovered
+                          ? 'rgba(26,115,232,0.12)'
+                          : 'transparent',
                         paddingVertical: 4,
+                        paddingHorizontal: isSlotSelected ? 4 : 0,
+                        borderRadius: isSlotSelected ? 8 : 0,
                         transition: 'background-color 0.15s ease',
+                        cursor: 'pointer' as any,
                       } as any}
                     >
                       {/* Cột mốc giờ bên trái */}
                       <View style={{ width: 50, paddingRight: 8, paddingTop: 4 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#5F6368', textAlign: 'right' }}>
+                        <Text style={{ fontSize: 11, fontWeight: isSlotSelected ? '900' : '700', color: isSlotSelected ? '#1A73E8' : '#5F6368', textAlign: 'right' }}>
                           {hour < 10 ? `0${hour}:00` : `${hour}:00`}
                         </Text>
                       </View>
@@ -3357,7 +3607,13 @@ export default function GoogleCalendarWorkspace({
                         {selectedPlaceToPlace && (
                           <Pressable
                             testID={`btn-place-to-hour-${hour}`}
-                            onPress={() => addPlaceToCalendar(selectedPlaceToPlace, hour)}
+                            onPress={() => {
+                              addPlaceToCalendar(selectedPlaceToPlace, hour, true);
+                              setToastMsg(`✓ Đã xếp "${selectedPlaceToPlace.name}" vào Ngày ${activeDay} lúc ${hour < 10 ? '0' + hour : hour}:00!`);
+                              setTimeout(() => setToastMsg(null), 3000);
+                              setSelectedPlaceToPlace(null);
+                              setSelectedTargetHour(null);
+                            }}
                             style={{
                               paddingVertical: 6,
                               paddingHorizontal: 10,
@@ -3380,40 +3636,57 @@ export default function GoogleCalendarWorkspace({
                           </Pressable>
                         )}
 
-                        {hourEvents.length === 0 && !selectedPlaceToPlace ? (
-                          <Pressable
-                            onPress={() => {
-                              if (standbyList.length > 0) {
-                                addPlaceToCalendar(standbyList[0], hour);
-                              }
+                        {isSlotSelected && !selectedPlaceToPlace && hourEvents.length === 0 && (
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 6,
+                              backgroundColor: '#E8F0FE',
+                              borderWidth: 1,
+                              borderColor: '#1A73E8',
+                              borderRadius: 8,
+                              paddingHorizontal: 8,
+                              paddingVertical: 4,
                             }}
+                          >
+                            <CheckCircle2 size={13} color="#1A73E8" />
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>
+                              ✓ Đang chọn slot {hour < 10 ? `0${hour}:00` : `${hour}:00`} · Bấm nút "+ {hour < 10 ? `0${hour}:00` : `${hour}:00`}" ở giỏ chờ để gán
+                            </Text>
+                          </View>
+                        )}
+
+                        {hourEvents.length === 0 && !selectedPlaceToPlace ? (
+                          <View
                             style={{
                               height: 40,
                               borderRadius: 8,
-                              borderWidth: isSlotHovered ? 2 : 1,
-                              borderStyle: 'dashed',
-                              borderColor: isSlotHovered ? '#1A73E8' : 'rgba(27,36,32,0.06)',
-                              backgroundColor: isSlotHovered ? 'rgba(26,115,232,0.15)' : 'transparent',
+                              borderWidth: isSlotSelected ? 1.5 : isSlotHovered ? 2 : 1,
+                              borderStyle: isSlotSelected ? 'solid' : 'dashed',
+                              borderColor: isSlotSelected ? '#1A73E8' : isSlotHovered ? '#1A73E8' : 'rgba(27,36,32,0.06)',
+                              backgroundColor: isSlotSelected ? 'rgba(26,115,232,0.08)' : isSlotHovered ? 'rgba(26,115,232,0.15)' : 'transparent',
                               justifyContent: 'center',
                               paddingHorizontal: 10,
-                              cursor: isSlotHovered ? 'copy' : 'default' as any,
                             }}
                           >
                             <Text
                               style={{
                                 fontSize: 10,
-                                color: isSlotHovered ? '#1A73E8' : 'rgba(27,36,32,0.3)',
+                                color: isSlotSelected ? '#1A73E8' : isSlotHovered ? '#1A73E8' : 'rgba(27,36,32,0.4)',
                                 fontStyle: 'italic',
-                                fontWeight: isSlotHovered ? '800' : '400',
+                                fontWeight: isSlotSelected || isSlotHovered ? '800' : '500',
                               }}
                             >
                               {isSlotHovered
                                 ? `👉 Thả vào đây để xếp lịch lúc ${hour < 10 ? '0' + hour : hour}:00`
+                                : isSlotSelected
+                                ? `✓ Slot ${hour < 10 ? '0' + hour : hour}:00 đang sẵn sàng nhận địa điểm`
                                 : isUserPro
-                                ? '+ Trống (kéo thả địa điểm từ Giỏ chờ vào đây)'
+                                ? '+ Trống (chạm chọn giờ này hoặc kéo thả từ giỏ)'
                                 : '+ Trống'}
                             </Text>
-                          </Pressable>
+                          </View>
                         ) : (
                           hourEvents.map((ev) => {
                             const colors = CATEGORY_COLORS[ev.category] || CATEGORY_COLORS.default;
@@ -3433,270 +3706,341 @@ export default function GoogleCalendarWorkspace({
                                   backgroundColor: colors.bg,
                                   borderLeftWidth: 4,
                                   borderLeftColor: colors.border,
-                                  borderRadius: 8,
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 7,
-                                  flexDirection: 'row',
-                                  alignItems: 'center',
+                                  borderRadius: 10,
+                                  paddingHorizontal: 12,
+                                  paddingVertical: 10,
+                                  flexDirection: isDesktop ? 'row' : 'column',
+                                  alignItems: isDesktop ? 'center' : 'stretch',
                                   justifyContent: 'space-between',
+                                  gap: isDesktop ? 8 : 6,
+                                  borderWidth: isCardHighlighted ? 1.5 : 1,
+                                  borderColor: isCardHighlighted ? '#1A73E8' : 'rgba(0,0,0,0.06)',
                                   boxShadow: isCardHighlighted
                                     ? '0 0 0 2px #1A73E8, 0 4px 12px rgba(26,115,232,0.35)'
                                     : ('0 2px 6px rgba(0,0,0,0.05)' as any),
-                                  borderWidth: isCardHighlighted ? 1 : 0,
-                                  borderColor: isCardHighlighted ? '#1A73E8' : 'transparent',
                                   cursor: (readOnly || !isUserPro) ? 'default' : ('grab' as any),
                                 }}
                               >
-                                <View style={{ flex: 1, paddingRight: 8 }}>
-                                  {(() => {
-                                    const currentLocked = lockedItemsRef.current || lockedItems;
-                                    const lockUserId = currentLocked
-                                      ? (
-                                          currentLocked[ev.id] ||
-                                          (ev.id ? currentLocked[String(ev.id)] : null) ||
-                                          ((ev as any).item_id ? currentLocked[(ev as any).item_id] : null) ||
-                                          ((ev as any).item_id ? currentLocked[String((ev as any).item_id)] : null) ||
-                                          currentLocked[ev.title]
+                                {isDesktop ? (
+                                  /* ── DESKTOP LAYOUT (Ngang gọn gàng với Drag Grip) ── */
+                                  <>
+                                    <View style={{ flex: 1, paddingRight: 8 }}>
+                                      {(() => {
+                                        const currentLocked = lockedItemsRef.current || lockedItems;
+                                        const lockUserId = currentLocked
+                                          ? (currentLocked[ev.id] || (ev.id ? currentLocked[String(ev.id)] : null) || ((ev as any).item_id ? currentLocked[(ev as any).item_id] : null) || currentLocked[ev.title])
+                                          : null;
+                                        const members = onlineMembersRef.current || onlineMembers;
+                                        const lockUserName = lockUserId ? (members?.find((m: any) => m.user_id === lockUserId)?.display_name || 'Thành viên') : null;
+                                        return lockUserName ? (
+                                          <View
+                                            testID={`lock-badge-${ev.id}`}
+                                            style={{
+                                              flexDirection: 'row',
+                                              alignItems: 'center',
+                                              gap: 3,
+                                              paddingHorizontal: 6,
+                                              paddingVertical: 2,
+                                              borderRadius: 6,
+                                              backgroundColor: '#FEF3C7',
+                                              borderWidth: 1,
+                                              borderColor: '#F59E0B',
+                                              marginBottom: 4,
+                                              alignSelf: 'flex-start',
+                                            }}
+                                          >
+                                            <Lock size={10} color="#D97706" />
+                                            <Text style={{ fontSize: 9, fontWeight: '800', color: '#B45309' }}>
+                                              {lockUserName} đang giữ
+                                            </Text>
+                                          </View>
+                                        ) : null;
+                                      })()}
+
+                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                        <Text style={{ fontSize: 13 }}>{colors.emoji}</Text>
+                                        <Text style={{ fontSize: 13, fontWeight: '800', color: '#1B2420', flex: 1 }} numberOfLines={1}>
+                                          {ev.title}
+                                        </Text>
+                                        {Boolean(ev.partner_id || ev.is_pro_partner || ev.is_partner) && (
+                                          <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, borderWidth: 1, borderColor: '#F59E0B' }}>
+                                            <Text style={{ fontSize: 8.5, fontWeight: '800', color: '#B45309' }}>Dữ liệu Pro</Text>
+                                          </View>
+                                        )}
+                                      </View>
+
+                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 }}>
+                                        <Text style={{ fontSize: 10.5, color: '#5F6368' }}>
+                                          {ev.startHour < 10 ? `0${ev.startHour}:00` : `${ev.startHour}:00`} · {ev.durationMinutes} phút
+                                        </Text>
+                                        <Text style={{ fontSize: 10.5, fontWeight: '700', color: colors.text }}>
+                                          {Number(ev.cost).toLocaleString('vi-VN')}đ
+                                        </Text>
+                                        {canEditBudget !== false && (
+                                          <Pressable
+                                            testID={`btn-record-expense-ev-${ev.id}`}
+                                            onPress={() => openAddExpenseModal(ev.dayNumber, ev.id)}
+                                            style={{
+                                              flexDirection: 'row',
+                                              alignItems: 'center',
+                                              gap: 3,
+                                              paddingHorizontal: 6,
+                                              paddingVertical: 2,
+                                              borderRadius: 6,
+                                              backgroundColor: 'rgba(26,115,232,0.08)',
+                                            }}
+                                          >
+                                            <DollarSign size={10} color="#1A73E8" />
+                                            <Text style={{ fontSize: 9, fontWeight: '700', color: '#1A73E8' }}>+ Ghi tiền</Text>
+                                          </Pressable>
+                                        )}
+                                      </View>
+                                    </View>
+
+                                    {!readOnly && isUserPro && (
+                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Pressable
+                                          testID={`btn-shift-up-${ev.id}`}
+                                          onPress={() => moveEventHour(ev.id, -1)}
+                                          style={{ padding: 6, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.06)' }}
+                                        >
+                                          <ArrowUp size={14} color="#3C4043" />
+                                        </Pressable>
+                                        <Pressable
+                                          testID={`btn-shift-down-${ev.id}`}
+                                          onPress={() => moveEventHour(ev.id, 1)}
+                                          style={{ padding: 6, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.06)' }}
+                                        >
+                                          <ArrowDown size={14} color="#3C4043" />
+                                        </Pressable>
+                                        <Pressable
+                                          testID={`btn-return-to-cart-${ev.id}`}
+                                          onPress={() => removeEventToStandby(ev.id, true)}
+                                          style={{ paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, backgroundColor: '#FEF3C7' }}
+                                        >
+                                          <Text style={{ fontSize: 9.5, fontWeight: '800', color: '#B45309' }}>Về giỏ</Text>
+                                        </Pressable>
+                                        <Pressable
+                                          testID={`btn-remove-to-cart-${ev.id}`}
+                                          onPress={() => removeEventToStandby(ev.id)}
+                                          style={{ padding: 4, borderRadius: 6, backgroundColor: 'rgba(197,34,31,0.08)' }}
+                                        >
+                                          <Trash2 size={13} color="#C5221F" />
+                                        </Pressable>
+                                        <View style={{ padding: 4, cursor: 'grab' as any }}>
+                                          <GripVertical size={14} color="#80868B" />
+                                        </View>
+                                      </View>
+                                    )}
+                                  </>
+                                ) : (
+                                  /* ── MOBILE LAYOUT (Dọc sắc nét, cân đối, chuẩn UX điện thoại) ── */
+                                  <>
+                                    {/* Dòng 1: Emoji + Tên địa điểm + Nút Thao tác Giỏ/Xóa */}
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                                        <Text style={{ fontSize: 14 }}>{colors.emoji}</Text>
+                                        <Text
+                                          style={{
+                                            fontSize: 13,
+                                            fontWeight: '800',
+                                            color: '#1B2420',
+                                            flex: 1,
+                                          }}
+                                          numberOfLines={1}
+                                        >
+                                          {ev.title}
+                                        </Text>
+                                        {Boolean(ev.partner_id || ev.is_pro_partner || ev.is_partner) && (
+                                          <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, borderWidth: 1, borderColor: '#F59E0B' }}>
+                                            <Text style={{ fontSize: 8.5, fontWeight: '800', color: '#B45309' }}>Pro</Text>
+                                          </View>
+                                        )}
+                                      </View>
+
+                                      {!readOnly && isUserPro && (
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                          <Pressable
+                                            testID={`btn-return-to-cart-${ev.id}`}
+                                            onPress={() => {
+                                              removeEventToStandby(ev.id, true);
+                                              setToastMsg(`✓ Đã đưa "${ev.title}" về Giỏ chờ!`);
+                                              setTimeout(() => setToastMsg(null), 3000);
+                                            }}
+                                            style={{
+                                              flexDirection: 'row',
+                                              alignItems: 'center',
+                                              gap: 3,
+                                              paddingHorizontal: 7,
+                                              paddingVertical: 3.5,
+                                              borderRadius: 6,
+                                              backgroundColor: '#FEF3C7',
+                                              borderWidth: 1,
+                                              borderColor: '#FDE68A',
+                                            }}
+                                          >
+                                            <CornerUpLeft size={10} color="#B45309" />
+                                            <Text style={{ fontSize: 10, fontWeight: '800', color: '#B45309' }}>Về giỏ</Text>
+                                          </Pressable>
+
+                                          <Pressable
+                                            testID={`btn-remove-to-cart-${ev.id}`}
+                                            onPress={() => removeEventToStandby(ev.id)}
+                                            style={{
+                                              padding: 5,
+                                              borderRadius: 6,
+                                              backgroundColor: 'rgba(197,34,31,0.08)',
+                                            }}
+                                          >
+                                            <Trash2 size={13} color="#C5221F" />
+                                          </Pressable>
+                                        </View>
+                                      )}
+                                    </View>
+
+                                    {/* Dòng 2: Mốc giờ + Chi phí + Ghi tiền */}
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                          <Clock size={11} color="#5F6368" />
+                                          <Text style={{ fontSize: 11, fontWeight: '600', color: '#5F6368' }}>
+                                            {ev.startHour < 10 ? `0${ev.startHour}:00` : `${ev.startHour}:00`} · {ev.durationMinutes}p
+                                          </Text>
+                                        </View>
+                                        <Text style={{ fontSize: 11, fontWeight: '800', color: colors.text }}>
+                                          {Number(ev.cost).toLocaleString('vi-VN')}đ
+                                        </Text>
+                                      </View>
+
+                                      {/* Nút Ghi tiền ngang chuẩn đẹp */}
+                                      {eventExpenseMap[ev.id] && eventExpenseMap[ev.id].total > 0 ? (
+                                        <Pressable
+                                          testID={`btn-edit-expense-ev-${ev.id}`}
+                                          onPress={() => openEditExpenseLog(eventExpenseMap[ev.id].logs[0])}
+                                          style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            gap: 3,
+                                            paddingHorizontal: 8,
+                                            paddingVertical: 3.5,
+                                            borderRadius: 6,
+                                            backgroundColor: '#E6F4EA',
+                                            borderWidth: 1,
+                                            borderColor: '#A8DAB5',
+                                          }}
+                                        >
+                                          <Check size={10} color="#137333" />
+                                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#137333' }}>
+                                            Đã chi: {(eventExpenseMap[ev.id].total / 1000).toLocaleString('vi-VN')}k (Sửa)
+                                          </Text>
+                                        </Pressable>
+                                      ) : (
+                                        canEditBudget !== false && (
+                                          <Pressable
+                                            testID={`btn-record-expense-ev-${ev.id}`}
+                                            onPress={() => openAddExpenseModal(ev.dayNumber, ev.id)}
+                                            style={{
+                                              flexDirection: 'row',
+                                              alignItems: 'center',
+                                              gap: 3,
+                                              paddingHorizontal: 8,
+                                              paddingVertical: 3.5,
+                                              borderRadius: 6,
+                                              backgroundColor: 'rgba(26,115,232,0.08)',
+                                              borderWidth: 1,
+                                              borderColor: 'rgba(26,115,232,0.2)',
+                                            }}
+                                          >
+                                            <DollarSign size={10} color="#1A73E8" />
+                                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#1A73E8' }}>
+                                              + Ghi tiền
+                                            </Text>
+                                          </Pressable>
                                         )
-                                      : null;
-                                    const members = onlineMembersRef.current || onlineMembers;
-                                    const lockUserName = lockUserId
-                                      ? (members?.find((m: any) => m.user_id === lockUserId)?.display_name || 'Thành viên')
-                                      : null;
-                                    return lockUserName ? (
+                                      )}
+                                    </View>
+
+                                    {/* Dòng 3: Thanh điều khiển đổi mốc giờ trên Mobile */}
+                                    {!readOnly && isUserPro && (
                                       <View
-                                        testID={`lock-badge-${ev.id}`}
-                                        {...({ 'data-testid': `lock-badge-${ev.id}` } as any)}
                                         style={{
                                           flexDirection: 'row',
                                           alignItems: 'center',
-                                          gap: 3,
-                                          paddingHorizontal: 6,
-                                          paddingVertical: 2,
-                                          borderRadius: 6,
-                                          backgroundColor: '#FEF3C7',
-                                          borderWidth: 1,
-                                          borderColor: '#F59E0B',
-                                          marginBottom: 4,
-                                          alignSelf: 'flex-start',
+                                          justifyContent: 'space-between',
+                                          marginTop: 6,
+                                          paddingTop: 8,
+                                          borderTopWidth: 1,
+                                          borderTopColor: 'rgba(0,0,0,0.06)',
                                         }}
                                       >
-                                        <Lock size={10} color="#D97706" />
-                                        <Text
-                                          testID={`lock-badge-text-${ev.id}`}
-                                          {...({ 'data-testid': `lock-badge-text-${ev.id}` } as any)}
-                                          style={{ fontSize: 9, fontWeight: '800', color: '#B45309' }}
+                                        <Pressable
+                                          testID={`btn-move-earlier-${ev.id}`}
+                                          disabled={ev.startHour <= 6}
+                                          onPress={() => moveEventHour(ev.id, -1)}
+                                          style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            gap: 3,
+                                            paddingHorizontal: 9,
+                                            paddingVertical: 4.5,
+                                            borderRadius: 8,
+                                            backgroundColor: ev.startHour <= 6 ? '#F1F3F4' : '#EFF6FF',
+                                            opacity: ev.startHour <= 6 ? 0.35 : 1,
+                                          }}
                                         >
-                                          {lockUserName} đang giữ
-                                        </Text>
+                                          <ArrowUp size={11} color="#1D4ED8" />
+                                          <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#1D4ED8' }}>Sớm 1h</Text>
+                                        </Pressable>
+
+                                        <Pressable
+                                          testID={`btn-pick-hour-${ev.id}`}
+                                          onPress={() => setMovingEvent(ev)}
+                                          style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            gap: 4,
+                                            paddingHorizontal: 12,
+                                            paddingVertical: 4.5,
+                                            borderRadius: 8,
+                                            backgroundColor: '#FEF3C7',
+                                            borderWidth: 1,
+                                            borderColor: '#FDE68A',
+                                          }}
+                                        >
+                                          <Clock size={11} color="#B45309" />
+                                          <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#B45309' }}>
+                                            Đổi mốc giờ
+                                          </Text>
+                                        </Pressable>
+
+                                        <Pressable
+                                          testID={`btn-move-later-${ev.id}`}
+                                          disabled={ev.startHour >= 23}
+                                          onPress={() => moveEventHour(ev.id, 1)}
+                                          style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            gap: 3,
+                                            paddingHorizontal: 9,
+                                            paddingVertical: 4.5,
+                                            borderRadius: 8,
+                                            backgroundColor: ev.startHour >= 23 ? '#F1F3F4' : '#EFF6FF',
+                                            opacity: ev.startHour >= 23 ? 0.35 : 1,
+                                          }}
+                                        >
+                                          <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#1D4ED8' }}>Muộn 1h</Text>
+                                          <ArrowDown size={11} color="#1D4ED8" />
+                                        </Pressable>
                                       </View>
-                                    ) : null;
-                                  })()}
-                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                     <Text style={{ fontSize: 12 }}>{colors.emoji}</Text>
-                                     <Text
-                                       style={{
-                                         fontSize: 12,
-                                         fontWeight: '800',
-                                         color: '#1B2420',
-                                         flex: 1,
-                                       }}
-                                       numberOfLines={1}
-                                     >
-                                       {ev.title}
-                                     </Text>
-                                     {Boolean(ev.partner_id || ev.is_pro_partner || ev.is_partner || (ev.i18n as any)?.is_pro_partner || (ev.i18n as any)?.partner_id) && (
-                                       <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#F59E0B' }}>
-                                         <Text style={{ fontSize: 9, fontWeight: '800', color: '#B45309' }}>Dữ liệu Pro</Text>
-                                       </View>
-                                     )}
-                                   </View>
-
-                                  <View
-                                    style={{
-                                      flexDirection: 'row',
-                                      alignItems: 'center',
-                                      gap: 8,
-                                      marginTop: 3,
-                                      flexWrap: 'wrap',
-                                    }}
-                                  >
-                                    <Text style={{ fontSize: 10, color: '#5F6368' }}>
-                                      {ev.startHour < 10 ? `0${ev.startHour}:00` : `${ev.startHour}:00`} · {ev.durationMinutes} phút
-                                    </Text>
-                                    <Text style={{ fontSize: 10, fontWeight: '700', color: colors.text }}>
-                                      {Number(ev.cost).toLocaleString('vi-VN')}đ
-                                    </Text>
-
-                                     {/* Nút / Badge ghi nhận & sửa chi phí thực tế trực tiếp trên thẻ */}
-                                     {eventExpenseMap[ev.id] && eventExpenseMap[ev.id].total > 0 ? (
-                                       canEditBudget !== false ? (
-                                         <Pressable
-                                           testID={`btn-edit-expense-ev-${ev.id}`}
-                                           onPress={() => openEditExpenseLog(eventExpenseMap[ev.id].logs[0])}
-                                           // @ts-ignore
-                                           onPointerDown={(e: any) => e?.stopPropagation?.()}
-                                           // @ts-ignore
-                                           role="button"
-                                           // @ts-ignore
-                                           dataSet={{ noDrag: 'true' }}
-                                           style={{
-                                             flexDirection: 'row',
-                                             alignItems: 'center',
-                                             gap: 3,
-                                             paddingHorizontal: 6,
-                                             paddingVertical: 2,
-                                             borderRadius: 6,
-                                             backgroundColor: '#E6F4EA',
-                                             borderWidth: 1,
-                                             borderColor: '#A8DAB5',
-                                             cursor: 'pointer' as any,
-                                           }}
-                                           accessibilityLabel="Sửa chi phí thực tế đã ghi nhận"
-                                         >
-                                           <Check size={10} color="#137333" />
-                                           <Text style={{ fontSize: 9, fontWeight: '800', color: '#137333' }}>
-                                             Đã chi: {(eventExpenseMap[ev.id].total / 1000).toLocaleString('vi-VN')}k (Sửa)
-                                           </Text>
-                                         </Pressable>
-                                       ) : (
-                                         <View
-                                           style={{
-                                             flexDirection: 'row',
-                                             alignItems: 'center',
-                                             gap: 3,
-                                             paddingHorizontal: 6,
-                                             paddingVertical: 2,
-                                             borderRadius: 6,
-                                             backgroundColor: '#E6F4EA',
-                                             borderWidth: 1,
-                                             borderColor: '#A8DAB5',
-                                           }}
-                                         >
-                                           <Check size={10} color="#137333" />
-                                           <Text style={{ fontSize: 9, fontWeight: '800', color: '#137333' }}>
-                                             Đã chi: {(eventExpenseMap[ev.id].total / 1000).toLocaleString('vi-VN')}k
-                                           </Text>
-                                         </View>
-                                       )
-                                     ) : (
-                                       canEditBudget !== false && (
-                                         <Pressable
-                                           testID={`btn-record-expense-ev-${ev.id}`}
-                                           onPress={() => openAddExpenseModal(ev.dayNumber, ev.id)}
-                                           // @ts-ignore
-                                           onPointerDown={(e: any) => e?.stopPropagation?.()}
-                                           // @ts-ignore
-                                           role="button"
-                                           // @ts-ignore
-                                           dataSet={{ noDrag: 'true' }}
-                                           style={{
-                                             flexDirection: 'row',
-                                             alignItems: 'center',
-                                             gap: 3,
-                                             paddingHorizontal: 6,
-                                             paddingVertical: 2,
-                                             borderRadius: 6,
-                                             backgroundColor: 'rgba(26,115,232,0.08)',
-                                             borderWidth: 1,
-                                             borderColor: 'rgba(26,115,232,0.2)',
-                                             cursor: 'pointer' as any,
-                                           }}
-                                           accessibilityLabel="Ghi nhận số tiền thực tế"
-                                         >
-                                           <DollarSign size={10} color="#1A73E8" />
-                                           <Text style={{ fontSize: 9, fontWeight: '700', color: '#1A73E8' }}>
-                                             + Ghi tiền
-                                           </Text>
-                                         </Pressable>
-                                       )
-                                     )}
-                                  </View>
-                                </View>
-
-                                {/* Action Buttons: Shift Hour, Delete, Drag Grip */}
-                                {!readOnly && isUserPro && (
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                    <Pressable
-                                      testID={`btn-shift-up-${ev.id}`}
-                                      onPress={() => moveEventHour(ev.id, -1)}
-                                      // @ts-ignore
-                                      onPointerDown={(e: any) => e?.stopPropagation?.()}
-                                      // @ts-ignore
-                                      role="button"
-                                      // @ts-ignore
-                                      dataSet={{ noDrag: 'true' }}
-                                      style={{
-                                        padding: 3,
-                                        borderRadius: 4,
-                                        backgroundColor: 'rgba(0,0,0,0.05)',
-                                        cursor: 'pointer' as any,
-                                      }}
-                                    >
-                                      <ArrowUp size={12} color="#5F6368" />
-                                    </Pressable>
-
-                                    <Pressable
-                                      testID={`btn-shift-down-${ev.id}`}
-                                      onPress={() => moveEventHour(ev.id, 1)}
-                                      // @ts-ignore
-                                      onPointerDown={(e: any) => e?.stopPropagation?.()}
-                                      // @ts-ignore
-                                      role="button"
-                                      // @ts-ignore
-                                      dataSet={{ noDrag: 'true' }}
-                                      style={{
-                                        padding: 3,
-                                        borderRadius: 4,
-                                        backgroundColor: 'rgba(0,0,0,0.05)',
-                                        cursor: 'pointer' as any,
-                                      }}
-                                    >
-                                      <ArrowDown size={12} color="#5F6368" />
-                                    </Pressable>
-
-                                    <Pressable
-                                      testID={`btn-remove-to-cart-${ev.id}`}
-                                      onPress={() => removeEventToStandby(ev.id)}
-                                      // @ts-ignore
-                                      onPointerDown={(e: any) => e?.stopPropagation?.()}
-                                      // @ts-ignore
-                                      role="button"
-                                      // @ts-ignore
-                                      dataSet={{ noDrag: 'true' }}
-                                      style={{
-                                        padding: 3,
-                                        borderRadius: 4,
-                                        backgroundColor: 'rgba(197,34,31,0.08)',
-                                        cursor: 'pointer' as any,
-                                      }}
-                                    >
-                                      <Trash2 size={12} color="#C5221F" />
-                                    </Pressable>
-
-                                    {/* Grip Handle for Pointer Drag */}
-                                    <View
-                                      // @ts-ignore
-                                      onPointerDown={(e: any) => {
-                                        e?.stopPropagation?.();
-                                        handleStartPointerDrag(ev, 'event', e);
-                                      }}
-                                      style={{
-                                        padding: 4,
-                                        cursor: 'grab' as any,
-                                        touchAction: 'none' as any,
-                                      }}
-                                    >
-                                      <GripVertical size={14} color="#80868B" />
-                                    </View>
-                                  </View>
+                                    )}
+                                  </>
                                 )}
                               </View>
                             );
                           })
                         )}
                       </View>
-                    </View>
+                    </Pressable>
                   );
                 })}
               </View>
@@ -3860,6 +4204,29 @@ export default function GoogleCalendarWorkspace({
                   transition: 'background-color 0.15s ease',
                 } as any}
               >
+                {pointerDrag?.type === 'event' && (
+                  <View
+                    style={{
+                      backgroundColor: hoveredCartZone ? '#FEF3C7' : '#FFFBEB',
+                      borderColor: hoveredCartZone ? '#D97706' : '#F59E0B',
+                      borderWidth: 2,
+                      borderStyle: 'dashed',
+                      borderRadius: 10,
+                      padding: 10,
+                      alignItems: 'center',
+                      gap: 3,
+                    }}
+                  >
+                    <ShoppingBag size={18} color="#D97706" />
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#B45309' }}>
+                      📥 Thả vào đây để đưa về Giỏ chờ
+                    </Text>
+                    <Text style={{ fontSize: 10, color: '#92400E' }}>
+                      (Để đổi sang ngày khác hoặc xếp lại)
+                    </Text>
+                  </View>
+                )}
+
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <ShoppingBag size={15} color="#B06000" />
@@ -3883,6 +4250,30 @@ export default function GoogleCalendarWorkspace({
                   </View>
 
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {!readOnly && (
+                      <Pressable
+                        testID="btn-open-cart-add-options-bottom"
+                        onPress={handleLoadMoreStandbyPlaces}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 5,
+                          paddingVertical: 5,
+                          paddingHorizontal: 11,
+                          borderRadius: 10,
+                          backgroundColor: '#E8F0FE',
+                          borderWidth: 1,
+                          borderColor: '#1A73E8',
+                          cursor: 'pointer' as any,
+                        }}
+                      >
+                        <MapPin size={12} color="#1A73E8" />
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#1A73E8' }}>
+                          🗺️ Thêm từ Live Map
+                        </Text>
+                      </Pressable>
+                    )}
+
                     {/* Nút AI Tối ưu lịch trình tự động từ giỏ hàng */}
                     {standbyList.length > 0 && (
                       <Pressable
@@ -3943,64 +4334,26 @@ export default function GoogleCalendarWorkspace({
                     <Text style={{ fontSize: 11, color: '#5F6368', fontWeight: '500' }}>
                       🎉 Đã xếp toàn bộ địa điểm vào Lịch trình! Kéo sự kiện từ lịch thả vào đây nếu muốn đưa lại giỏ chờ.
                     </Text>
-                    <Pressable
-                      testID="btn-load-more-standby"
-                      onPress={handleLoadMoreStandbyPlaces}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 5,
-                        paddingVertical: 6,
-                        paddingHorizontal: 12,
-                        borderRadius: 10,
-                        backgroundColor: '#E8F0FE',
-                        borderWidth: 1,
-                        borderColor: '#1A73E8',
-                        cursor: 'pointer' as any,
-                      }}
-                    >
-                      <Plus size={12} color="#1A73E8" />
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1A73E8' }}>
-                        {isExploringMore ? '⏳ AI đang tìm...' : '+ Khám phá thêm địa điểm vào giỏ'}
-                      </Text>
-                    </Pressable>
-                    {showExplorePrompt && (
-                      <View style={{
-                        position: 'absolute' as any, bottom: 60, left: 0, right: 0,
-                        backgroundColor: '#FFFFFF', padding: 12, borderRadius: 12,
-                        borderWidth: 1, borderColor: 'rgba(27,36,32,0.1)',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)' as any, zIndex: 100,
-                      }}>
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#1B2420', marginBottom: 8 }}>
-                          🤖 AI gợi ý theo yêu cầu của bạn:
+                    {!readOnly && (
+                      <Pressable
+                        testID="btn-load-more-standby"
+                        onPress={handleLoadMoreStandbyPlaces}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 5,
+                          paddingVertical: 7,
+                          paddingHorizontal: 14,
+                          borderRadius: 10,
+                          backgroundColor: '#1F6F54',
+                          cursor: 'pointer' as any,
+                        }}
+                      >
+                        <MapPin size={13} color="#FFFFFF" />
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>
+                          🗺️ Mở Live Map nhặt thêm điểm
                         </Text>
-                        <TextInput
-                          value={exploreUserInput}
-                          onChangeText={setExploreUserInput}
-                          placeholder="Ví dụ: quán cafe view đẹp, nhà hàng hải sản..."
-                          style={{
-                            borderWidth: 1, borderColor: 'rgba(27,36,32,0.15)',
-                            borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
-                            fontSize: 12, marginBottom: 8,
-                          }}
-                        />
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
-                          <Pressable
-                            onPress={() => handleExploreMore(exploreUserInput || undefined)}
-                            style={{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: '#1F6F54', alignItems: 'center' }}
-                          >
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
-                              {isExploringMore ? '⏳ Đang tìm...' : '🔍 Tìm ngay'}
-                            </Text>
-                          </Pressable>
-                          <Pressable
-                            onPress={() => setShowExplorePrompt(false)}
-                            style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#F1F3F4', alignItems: 'center' }}
-                          >
-                            <Text style={{ fontSize: 12, color: '#5F6368' }}>Hủy</Text>
-                          </Pressable>
-                        </View>
-                      </View>
+                      </Pressable>
                     )}
                   </View>
                 ) : (
@@ -4023,7 +4376,7 @@ export default function GoogleCalendarWorkspace({
                             handleStartPointerDrag(item, 'standby', e);
                           }}
                           style={{
-                            width: 195,
+                            width: 205,
                             backgroundColor: isSelected ? '#E8F0FE' : '#FFFFFF',
                             borderRadius: 12,
                             borderWidth: 1.5,
@@ -4111,26 +4464,54 @@ export default function GoogleCalendarWorkspace({
                             {item.name}
                           </Text>
 
-                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-                            {/* Grip Handle for Pointer Drag */}
-                            <View
-                              // @ts-ignore
-                              onPointerDown={(e: any) => handleStartPointerDrag(item, 'standby', e)}
-                              style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                gap: 2,
-                                paddingVertical: 3,
-                                paddingHorizontal: 6,
-                                borderRadius: 6,
-                                backgroundColor: '#F1F3F4',
-                                cursor: 'grab' as any,
-                                touchAction: 'none' as any,
-                              }}
-                            >
-                              <GripVertical size={12} color="#5F6368" />
-                              <Text style={{ fontSize: 9, color: '#5F6368', fontWeight: '700' }}>Kéo thẻ</Text>
-                            </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 4 }}>
+                            {/* Grip Handle for Pointer Drag (Desktop only) */}
+                            {isDesktop ? (
+                              <View
+                                // @ts-ignore
+                                onPointerDown={(e: any) => handleStartPointerDrag(item, 'standby', e)}
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 2,
+                                  paddingVertical: 4,
+                                  paddingHorizontal: 6,
+                                  borderRadius: 6,
+                                  backgroundColor: '#F1F3F4',
+                                  cursor: 'grab' as any,
+                                  touchAction: 'none' as any,
+                                }}
+                              >
+                                <GripVertical size={12} color="#5F6368" />
+                                <Text style={{ fontSize: 9, color: '#5F6368', fontWeight: '700' }}>Kéo</Text>
+                              </View>
+                            ) : null}
+
+                            {!readOnly && (
+                              <Pressable
+                                testID={`btn-quick-add-${item.id}`}
+                                onPress={() => handleQuickAddPress(item)}
+                                style={{
+                                  flex: 1,
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 6,
+                                  borderRadius: 6,
+                                  backgroundColor: '#1A73E8',
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: 3,
+                                  cursor: 'pointer' as any,
+                                }}
+                              >
+                                <Plus size={11} color="#FFFFFF" />
+                                <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }} numberOfLines={1}>
+                                  {selectedTargetHour !== null
+                                    ? `+ ${selectedTargetHour < 10 ? '0' + selectedTargetHour : selectedTargetHour}:00`
+                                    : `+ Ngày ${activeDay}`}
+                                </Text>
+                              </Pressable>
+                            )}
 
                             <Pressable
                               testID={`btn-quick-place-${item.id}`}
@@ -4142,8 +4523,8 @@ export default function GoogleCalendarWorkspace({
                                 }
                               }}
                               style={{
-                                paddingHorizontal: 8,
-                                paddingVertical: 4,
+                                paddingHorizontal: 7,
+                                paddingVertical: 6,
                                 borderRadius: 6,
                                 backgroundColor: isSelected ? '#1A73E8' : 'rgba(26,115,232,0.08)',
                                 cursor: 'pointer' as any,
@@ -4233,16 +4614,30 @@ export default function GoogleCalendarWorkspace({
                 </View>
               </View>
 
-              <View
-                style={{
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: 'rgba(27,36,32,0.12)',
-                  overflow: 'hidden',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)' as any,
-                }}
+              {!isDesktop && (
+                <Text style={{ fontSize: 10, color: '#1A73E8', fontStyle: 'italic', marginBottom: 2, paddingHorizontal: 4 }}>
+                  👉 Vuốt ngang để xem chi tiết đầy đủ 7 cột bảng đối soát
+                </Text>
+              )}
+
+              <ScrollView
+                horizontal
+                nestedScrollEnabled={true}
+                showsHorizontalScrollIndicator={true}
+                contentContainerStyle={{ minWidth: isDesktop ? '100%' : 540 }}
               >
+                <View
+                  style={{
+                    flex: 1,
+                    minWidth: isDesktop ? '100%' : 540,
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: 'rgba(27,36,32,0.12)',
+                    overflow: 'hidden',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)' as any,
+                  }}
+                >
                 {/* Header Excel Bar (Yellow #FFF275) */}
                 <View
                   style={{
@@ -4608,6 +5003,7 @@ export default function GoogleCalendarWorkspace({
                 </View>
               </View>
             </View>
+          </ScrollView>
             {effectiveRemaining.isActual && (
               <Text style={{ fontSize: 9, color: '#137333', fontStyle: 'italic', paddingHorizontal: 4 }}>
                 *Số dư còn lại đang được tính theo chi phí thực tế đã dùng bạn đã ghi chép.
@@ -5417,6 +5813,114 @@ export default function GoogleCalendarWorkspace({
         </View>
       </View>
 
+      {/* Modal Đổi giờ & Đổi ngày cho Mobile */}
+      {movingEvent && (
+        <Modal
+          visible={!!movingEvent}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setMovingEvent(null)}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              justifyContent: 'flex-end',
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                padding: 20,
+                maxHeight: '80%',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#1B2420' }}>
+                    Chuyển mốc giờ hoạt động
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#5F6368', marginTop: 2 }} numberOfLines={1}>
+                    {movingEvent.title} (Hiện tại: {movingEvent.startHour}:00 - Ngày {movingEvent.dayNumber})
+                  </Text>
+                </View>
+                <Pressable onPress={() => setMovingEvent(null)} style={{ padding: 4 }}>
+                  <X size={20} color="#5F6368" />
+                </Pressable>
+              </View>
+
+              {/* Chọn Ngày (nếu chuyến đi > 1 ngày) */}
+              {daysCount > 1 && (
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#3C4043', marginBottom: 6 }}>
+                    Chọn Ngày:
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                    {Array.from({ length: daysCount }, (_, i) => i + 1).map((d) => (
+                      <Pressable
+                        key={d}
+                        onPress={() => setSelectedMoveDay(d)}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                          backgroundColor: selectedMoveDay === d ? '#1A73E8' : '#F1F3F4',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: selectedMoveDay === d ? '#FFFFFF' : '#3C4043' }}>
+                          Ngày {d}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Lưới chọn mốc giờ (06:00 -> 23:00) */}
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#3C4043', marginBottom: 8 }}>
+                Chọn khung giờ mới:
+              </Text>
+              <ScrollView style={{ maxHeight: 260 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {HOURS.map((h) => {
+                    const isCurrent = movingEvent.startHour === h && movingEvent.dayNumber === selectedMoveDay;
+                    return (
+                      <Pressable
+                        key={h}
+                        testID={`hour-choice-${h}`}
+                        onPress={() => {
+                          moveToHourAndDay(movingEvent.id, h, selectedMoveDay);
+                          setMovingEvent(null);
+                        }}
+                        style={{
+                          width: '22%',
+                          paddingVertical: 10,
+                          borderRadius: 10,
+                          backgroundColor: isCurrent ? '#E8F0FE' : '#F8F9FA',
+                          borderWidth: 1,
+                          borderColor: isCurrent ? '#1A73E8' : '#E8EAED',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: isCurrent ? '800' : '600', color: isCurrent ? '#1A73E8' : '#1B2420' }}>
+                          {h < 10 ? `0${h}:00` : `${h}:00`}
+                        </Text>
+                        {isCurrent && (
+                          <Text style={{ fontSize: 9, color: '#1A73E8', fontWeight: '700' }}>Hiện tại</Text>
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+
       {/* ── FLOATING TOAST THÔNG BÁO TỐI ƯU HÓA LỊCH TRÌNH ── */}
       {toastMsg && (
         <View
@@ -5513,6 +6017,7 @@ export default function GoogleCalendarWorkspace({
         </div>,
         document.body
       )}
+
     </View>
   );
 }

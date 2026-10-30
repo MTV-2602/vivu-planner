@@ -448,6 +448,34 @@ export default function TripWizard() {
   const [customPlaceCategory, setCustomPlaceCategory] = useState<'dining' | 'cafe' | 'hotel' | 'attraction' | 'other'>('dining');
   const [customPlaceCost, setCustomPlaceCost] = useState('');
   const [customPlaceAddress, setCustomPlaceAddress] = useState('');
+  const [customPlaceGmapsUrl, setCustomPlaceGmapsUrl] = useState('');
+  const [isResolvingGmaps, setIsResolvingGmaps] = useState(false);
+  const [customPlaceCoords, setCustomPlaceCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [gmapsResolveSuccess, setGmapsResolveSuccess] = useState(false);
+
+  const handleResolveGmaps = async (urlToParse?: string) => {
+    const target = (urlToParse || customPlaceGmapsUrl).trim();
+    if (!target) return;
+    setIsResolvingGmaps(true);
+    setGmapsResolveSuccess(false);
+    try {
+      const res = await api.post('/places/parse-google-maps', { url: target });
+      if (res.data?.success && res.data?.data) {
+        const d = res.data.data;
+        if (d.name) setCustomPlaceTitle(d.name);
+        if (d.address) setCustomPlaceAddress(d.address);
+        if (d.category) setCustomPlaceCategory(d.category);
+        if (d.lat && d.lng) {
+          setCustomPlaceCoords({ lat: d.lat, lng: d.lng });
+          setGmapsResolveSuccess(true);
+        }
+      }
+    } catch (err: any) {
+      console.warn('Lỗi phân tích Google Maps link:', err?.message);
+    } finally {
+      setIsResolvingGmaps(false);
+    }
+  };
 
   const { minBudget, daysCount, nightsCount } = useMemo(() => {
     return calculateMinimumBudget(startDate, endDate, travelerCount);
@@ -831,11 +859,14 @@ export default function TripWizard() {
     });
   };
 
-  // Thêm địa điểm thủ công theo ý muốn (không phụ thuộc vào danh sách mock)
+  // Thêm địa điểm thủ công theo ý muốn (hỗ trợ vị trí chuẩn từ link Google Maps)
   const handleAddNewCustomPlace = () => {
     if (!customPlaceTitle.trim()) return;
     const costNum = parseInt(customPlaceCost.replace(/\D/g, ''), 10) || 50000;
     const center = getCityCenterCoords(destinationCity);
+    const finalLat = customPlaceCoords?.lat ?? (center.lat + (Math.random() - 0.5) * 0.02);
+    const finalLng = customPlaceCoords?.lng ?? (center.lng + (Math.random() - 0.5) * 0.02);
+
     const newCustomPlace: PlaceItem = {
       id: `custom-p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       name: customPlaceTitle.trim(),
@@ -844,14 +875,17 @@ export default function TripWizard() {
       address: customPlaceAddress.trim() || destinationCity,
       estimated_cost: costNum,
       price_level: Math.min(4, Math.max(1, Math.ceil(costNum / 100000))),
-      lat: center.lat + (Math.random() - 0.5) * 0.02,
-      lng: center.lng + (Math.random() - 0.5) * 0.02,
+      lat: finalLat,
+      lng: finalLng,
     };
     handleAddToCart(newCustomPlace, 'manual', costNum);
     setShowCustomPlaceModal(false);
     setCustomPlaceTitle('');
     setCustomPlaceCost('');
     setCustomPlaceAddress('');
+    setCustomPlaceGmapsUrl('');
+    setCustomPlaceCoords(null);
+    setGmapsResolveSuccess(false);
   };
 
   // Lắng nghe params.draft_id nếu người dùng mở từ link mời nhóm cùng chọn giỏ hàng
@@ -2349,6 +2383,7 @@ export default function TripWizard() {
     >
       <ScrollView
         className="flex-1"
+        nestedScrollEnabled={true}
         contentContainerStyle={{
           flexGrow: 1,
           padding: isMobile ? 16 : 24,
@@ -4480,6 +4515,41 @@ export default function TripWizard() {
             </View>
 
             <View style={{ gap: 12 }}>
+              {/* Google Maps Link Helper */}
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#1B2420' }}>
+                  Link Google Maps (Tùy chọn - Dán link để tự nhận diện vị trí)
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <TextInput
+                    value={customPlaceGmapsUrl}
+                    onChangeText={(val) => {
+                      setCustomPlaceGmapsUrl(val);
+                      if (val.includes('maps.app.goo.gl') || val.includes('google.com/maps')) {
+                        handleResolveGmaps(val);
+                      }
+                    }}
+                    placeholder="https://maps.app.goo.gl/... hoặc google.com/maps..."
+                    placeholderTextColor="#9CA3AF"
+                    style={{ flex: 1, borderWidth: 1, borderColor: gmapsResolveSuccess ? '#059669' : '#E5DFD3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, color: '#1B2420' }}
+                  />
+                  <Pressable
+                    onPress={() => handleResolveGmaps()}
+                    disabled={isResolvingGmaps || !customPlaceGmapsUrl.trim()}
+                    style={{ backgroundColor: BRAND_COLORS.primary, paddingHorizontal: 12, borderRadius: 12, justifyContent: 'center', alignItems: 'center', opacity: (isResolvingGmaps || !customPlaceGmapsUrl.trim()) ? 0.6 : 1 }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                      {isResolvingGmaps ? 'Đang đọc...' : '⚡ Lấy vị trí'}
+                    </Text>
+                  </Pressable>
+                </View>
+                {gmapsResolveSuccess && (
+                  <Text style={{ fontSize: 11, color: '#059669', fontWeight: '700' }}>
+                    ✓ Đã nhận diện vị trí và tọa độ chuẩn xác từ Google Maps
+                  </Text>
+                )}
+              </View>
+
               <View style={{ gap: 4 }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: '#1B2420' }}>Tên địa điểm *</Text>
                 <TextInput

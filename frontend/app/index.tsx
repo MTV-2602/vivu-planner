@@ -1,4 +1,4 @@
-﻿import { Redirect } from 'expo-router';
+import { Redirect } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 import { useAuth } from '../hooks/useAuth';
 
@@ -13,7 +13,7 @@ export default function Index() {
     );
   }
 
-  if (!session) return <Redirect href="/(auth)/dang-nhap" />;
+  if (!session) return <Redirect href="/landing" />;
   if (isAdmin)  return <Redirect href="/admin" />;
   return <Redirect href="/(app)/chuyen-di" />;
 }

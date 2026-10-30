@@ -1,8 +1,27 @@
 import { Router, Request, Response } from 'express';
 import { searchPlaces } from './places.service';
 import { geocodeOnline } from './geocoding.service';
+import { parseGoogleMapsUrl } from './googleMapsParser';
 
 const router = Router();
+
+// POST /api/places/parse-google-maps - Bóc tách tên, tọa độ, địa chỉ từ link Google Maps
+router.post('/parse-google-maps', async (req: Request, res: Response) => {
+  const { url } = req.body;
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'URL Google Maps là bắt buộc' });
+  }
+
+  try {
+    const result = await parseGoogleMapsUrl(url);
+    if (!result) {
+      return res.status(422).json({ error: 'Không thể trích xuất vị trí từ liên kết Google Maps này. Vui lòng kiểm tra lại link hoặc nhập thủ công.' });
+    }
+    return res.json({ success: true, data: result });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Lỗi xử lý liên kết Google Maps', details: err.message });
+  }
+});
 
 // GET /api/places/geocode - Tra cứu tọa độ địa lý trực tuyến chuẩn xác theo tên và thành phố
 router.get('/geocode', async (req: Request, res: Response) => {

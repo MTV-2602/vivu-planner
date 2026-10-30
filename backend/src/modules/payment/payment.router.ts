@@ -229,6 +229,7 @@ router.post('/create-order', requireAuth, async (req: any, res: Response) => {
           accountNumber: payosData.accountNumber,
           accountName: payosData.accountName,
           bin: payosData.bin,
+          description: payosData.description,
           orderCode: payosData.orderCode,
           orderId,
           amount,

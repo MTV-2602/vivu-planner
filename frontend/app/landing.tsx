@@ -757,9 +757,20 @@ export default function Landing() {
                           )}
                         </View>
                       </View>
-                      <View style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, backgroundColor: T.statsBg, borderWidth: 0.5, borderColor: T.cardBorder }}>
+                      <Pressable
+                        onPress={() => handleStartTrip()}
+                        style={({ pressed }) => [{
+                          paddingHorizontal: 14,
+                          paddingVertical: 7,
+                          borderRadius: 100,
+                          backgroundColor: T.statsBg,
+                          borderWidth: 0.5,
+                          borderColor: T.cardBorder,
+                          opacity: pressed ? 0.7 : 1,
+                        }]}
+                      >
                         <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: T.text }}>+ Tạo Chuyến Đi</Text>
-                      </View>
+                      </Pressable>
                     </View>
 
                     {/* Tablet Main App View */}
