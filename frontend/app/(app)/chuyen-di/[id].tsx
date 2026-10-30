@@ -24,7 +24,8 @@ import BackToTop from '../../../components/BackToTop';
 import { BRAND_COLORS, ItineraryItemType, APP_ROUTES } from '../../../constants';
 import InteractiveMap, { MapItem } from '../../../components/InteractiveMap';
 import GoogleMapsRoutePlanner, { RouteWaypoint } from '../../../components/map/GoogleMapsRoutePlanner';
-import GoogleCalendarWorkspace, { CalendarEventItem, CalendarDeltaAction } from '../../../components/workspace/GoogleCalendarWorkspace';
+import GoogleCalendarWorkspace, { CalendarEventItem, CalendarDeltaAction, StandbyPlaceItem } from '../../../components/workspace/GoogleCalendarWorkspace';
+import { getCityCenterCoords } from '../../../components/map/CuratedMap';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
 import BookingModal, { BookableItem } from '../../../components/BookingModal';
 import PremiumModal from '../../../components/PremiumModal';
@@ -200,6 +201,42 @@ export default function TripDetail() {
   const [editCost, setEditCost] = useState('');
   const [editStatus, setEditStatus] = useState('planned');
   const [editItemType, setEditItemType] = useState('attraction');
+  const [editGmapsUrl, setEditGmapsUrl] = useState('');
+  const [isResolvingDetailGmaps, setIsResolvingDetailGmaps] = useState(false);
+  const [editCoords, setEditCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [detailGmapsSuccess, setDetailGmapsSuccess] = useState(false);
+
+  const handleResolveDetailGmaps = async (urlToParse?: string) => {
+    const target = (urlToParse || editGmapsUrl).trim();
+    if (!target) return;
+    setIsResolvingDetailGmaps(true);
+    setDetailGmapsSuccess(false);
+    try {
+      const res = await api.post('/places/parse-google-maps', { url: target });
+      if (res.data?.success && res.data?.data) {
+        const d = res.data.data;
+        if (d.name) setEditTitle(d.name);
+        if (d.category) {
+          const catMap: Record<string, string> = {
+            dining: 'dining',
+            cafe: 'cafe',
+            hotel: 'hotel',
+            attraction: 'attraction',
+            other: 'attraction'
+          };
+          setEditItemType(catMap[d.category] || 'attraction');
+        }
+        if (d.lat && d.lng) {
+          setEditCoords({ lat: d.lat, lng: d.lng });
+          setDetailGmapsSuccess(true);
+        }
+      }
+    } catch (err: any) {
+      console.warn('Lỗi phân tích Google Maps link:', err?.message);
+    } finally {
+      setIsResolvingDetailGmaps(false);
+    }
+  };
 
   // AI replace modal
   const [aiReplaceOpen, setAiReplaceOpen] = useState(false);
@@ -212,6 +249,14 @@ export default function TripDetail() {
   const [aiAlternatives, setAiAlternatives] = useState<any[]>([]);
   const [aiRequirement, setAiRequirement] = useState('');
   const [fetchingAlts, setFetchingAlts] = useState(false);
+
+  // Live Map Modal state để mở khay nhặt tiếp địa điểm vào giỏ chờ
+  const [showDetailLiveMapModal, setShowDetailLiveMapModal] = useState<boolean>(false);
+  const [detailLiveMapCategory, setDetailLiveMapCategory] = useState<string>('all');
+  const [detailLiveMapSearch, setDetailLiveMapSearch] = useState<string>('');
+  const [tempSelectedPlaces, setTempSelectedPlaces] = useState<any[]>([]);
+  const [extraStandbyPlaces, setExtraStandbyPlaces] = useState<StandbyPlaceItem[]>([]);
+  const hasRestoredStandbyRef = useRef(false);
 
   // App Toast state
   const [appToast, setAppToast] = useState<AppToastMessage | null>(null);
@@ -320,7 +365,8 @@ export default function TripDetail() {
   const tripData = trip ?? cachedTrip;
   // Authoritative Trip Entitlement: Chỉ dựa trên cờ của chuyến đi từ backend, không kế thừa từ pro_credits ví của user
   const isTripPro = Boolean((tripData as any)?.is_ai_pro || tripData?.preferences?.is_ai_pro === true || (tripData as any)?.preferences?.ai_tier === 'pro' || (tripData as any)?.is_pro);
-  const canUseProFeatures = Boolean(isTripPro || isAdmin);
+  const isUserHasProWallet = Boolean(statusData?.isPremium || (statusData?.pro_credits || 0) > 0 || (statusData?.monthly_credits || 0) > 0);
+  const canUseProFeatures = Boolean(isTripPro || isAdmin || (isOwner && isUserHasProWallet));
   const isOwner = Boolean(tripData?.user_id && user?.id && tripData.user_id === user.id) || (!tripData?.user_id && !collaborators.length);
   const myCollab = collaborators.find((c: any) => c.user_id === user?.id) || (tripData?.collaborators || []).find((c: any) => c.user_id === user?.id);
   const isCollaborator = Boolean(myCollab);
@@ -341,8 +387,30 @@ export default function TripDetail() {
     return () => setTripId(null);
   }, [id, setTripId]);
 
+  // Khởi tạo poolPlaces từ pregen_places hoặc candidate_pool trong chuyến đi để dùng offline ngay lập tức
   useEffect(() => {
-    if (aiReplaceOpen && trip?.destination_city && poolPlaces.length === 0) {
+    const pref = trip?.preferences || cachedTrip?.preferences;
+    const offlinePool = pref?.pregen_places || pref?.candidate_pool;
+    if (Array.isArray(offlinePool) && offlinePool.length > 0 && poolPlaces.length === 0) {
+      setPoolPlaces(offlinePool);
+    }
+  }, [trip?.preferences, cachedTrip?.preferences, poolPlaces.length]);
+
+  // Khôi phục giỏ chờ đã lưu từ preferences.standby_places
+  useEffect(() => {
+    if (hasRestoredStandbyRef.current) return;
+    const pref = trip?.preferences || cachedTrip?.preferences;
+    const savedStandby = pref?.standby_places;
+    if (Array.isArray(savedStandby) && savedStandby.length > 0 && extraStandbyPlaces.length === 0) {
+      hasRestoredStandbyRef.current = true;
+      setExtraStandbyPlaces(savedStandby);
+    } else if (trip?.preferences) {
+      hasRestoredStandbyRef.current = true;
+    }
+  }, [trip?.preferences, cachedTrip?.preferences, extraStandbyPlaces.length]);
+
+  useEffect(() => {
+    if ((aiReplaceOpen || showDetailLiveMapModal) && trip?.destination_city && poolPlaces.length === 0) {
       setLoadingPool(true);
       api.post('/trips/pregen-places', {
         ...(typeof trip.id === 'string' && trip.id.trim() ? { trip_id: trip.id } : {}),
@@ -361,7 +429,7 @@ export default function TripDetail() {
         setLoadingPool(false);
       });
     }
-  }, [aiReplaceOpen, trip?.destination_city, poolPlaces.length]);
+  }, [aiReplaceOpen, showDetailLiveMapModal, trip?.destination_city, poolPlaces.length]);
 
   // Fetch collaborators
   const fetchCollaborators = useCallback(async () => {
@@ -834,10 +902,13 @@ export default function TripDetail() {
     setEditTitle('');
     setEditDesc('');
     setEditStartTime('09:00');
-    setEditEndTime('11:00');
+    setEditEndTime('10:30');
     setEditCost('');
     setEditStatus('planned');
     setEditItemType('attraction');
+    setEditGmapsUrl('');
+    setEditCoords(null);
+    setDetailGmapsSuccess(false);
     setEditOpen(true);
   };
 
@@ -915,7 +986,7 @@ export default function TripDetail() {
           lng: it.location_lng,
           cost: costVal,
           dayNumber: day.day_number,
-          startHour: Math.max(7, Math.min(21, startH)),
+          startHour: Math.max(6, Math.min(23, startH)),
           startMinute: startM,
           durationMinutes: dur,
           notes: it.description || '',
@@ -940,20 +1011,19 @@ export default function TripDetail() {
     // 1. Chỉ chuyến đi Pro mới có giỏ hàng chờ xếp lịch
     if (!canUseProFeatures) return [];
 
-    // 2. Chuyến đi tạo nhanh 1-Click (creation_mode === 'ai_auto' hoặc không có giỏ ban đầu)
-    const creationMode = trip?.preferences?.creation_mode || 'ai_auto';
-    if (creationMode === 'ai_auto') {
-      return [];
-    }
-
-    // 3. Chuyến đi tạo từ Bản đồ Pro (manual):
-    // Chỉ lấy những địa điểm trong giỏ ban đầu mà CHƯA xếp vào lịch trình ("mấy cái chưa hết")
     const candidatePool = (trip?.preferences?.candidate_pool as any[]) || [];
     const existingTitles = new Set(calendarEvents.map((e) => (e.title || '').toLowerCase().trim()));
+    const extraIds = new Set(extraStandbyPlaces.map((s) => s.id));
+    const extraTitles = new Set(extraStandbyPlaces.map((s) => (s.name || '').toLowerCase().trim()));
 
+    let baseList: StandbyPlaceItem[] = [];
     if (Array.isArray(candidatePool) && candidatePool.length > 0) {
-      return candidatePool
-        .filter((p) => !existingTitles.has((p.name || '').toLowerCase().trim()))
+      baseList = candidatePool
+        .filter((p) =>
+          !existingTitles.has((p.name || '').toLowerCase().trim()) &&
+          !extraIds.has(p.id) &&
+          !extraTitles.has((p.name || '').toLowerCase().trim())
+        )
         .map((p) => ({
           id: p.id || String(Math.random()),
           name: p.name,
@@ -975,8 +1045,8 @@ export default function TripDetail() {
         }));
     }
 
-    return [];
-  }, [canUseProFeatures, trip, calendarEvents]);
+    return [...extraStandbyPlaces, ...baseList];
+  }, [canUseProFeatures, trip, calendarEvents, extraStandbyPlaces]);
 
   const handleSaveCalendarWorkspace = async (newEvents: CalendarEventItem[]) => {
     if (!canEdit || !canUseProFeatures) {
@@ -987,6 +1057,15 @@ export default function TripDetail() {
     }
     try {
       await api.put(`/trips/${id}/sync-calendar`, { events: newEvents });
+      if (canEdit && id) {
+        const currentPrefs = trip?.preferences || {};
+        await api.put(`/trips/${id}`, {
+          preferences: {
+            ...currentPrefs,
+            standby_places: extraStandbyPlaces,
+          },
+        }).catch((e) => console.warn('Could not persist standby_places:', e));
+      }
       await refetch();
       setAppToast({ text: '✓ Đã lưu lịch trình và đồng bộ thời gian thành công!', type: 'success' });
       broadcastAction('đã lưu lịch trình', 'save_schedule', trip?.title);
@@ -1297,9 +1376,10 @@ export default function TripDetail() {
     <View className="flex-1 bg-brand-bg">
       <View className="no-print flex-1">
         <ScrollView
-        ref={scrollRef}
-        className="flex-1"
-        onScroll={e => setShowBackToTop(e.nativeEvent.contentOffset.y > 400)}
+          ref={scrollRef}
+          className="flex-1"
+          nestedScrollEnabled={true}
+          onScroll={e => setShowBackToTop(e.nativeEvent.contentOffset.y > 400)}
         scrollEventThrottle={200}
       >
         {/* Navbar */}
@@ -1667,6 +1747,7 @@ export default function TripDetail() {
               initialEvents={calendarEvents}
               standbyPlaces={standbySuggestions}
               onEventsChange={handleEventsChange}
+              onStandbyChange={(newStandby) => setExtraStandbyPlaces(newStandby)}
               externalPatch={patchedEvents || undefined}
               patchTimestamp={patchTimestamp}
               externalDelta={externalDelta}
@@ -1679,6 +1760,7 @@ export default function TripDetail() {
               tripId={trip.id}
               creationMode={trip?.preferences?.creation_mode || 'ai_auto'}
               onUpgradePro={handleUpgradeTripToPro}
+              onBackToCollecting={() => setShowDetailLiveMapModal(true)}
               onOpenManualAdd={openAddItem}
               onOpenAiAssistant={() => {
                 if (openChatbot) {
@@ -1959,9 +2041,16 @@ export default function TripDetail() {
               <View className="flex-row justify-between items-center border-b border-brand-line/35 pb-4">
                 <View className="flex-row items-center gap-2">
                   {isAddingNewItem ? <Plus size={20} color={BRAND_COLORS.primary} /> : <PenLine size={20} color={BRAND_COLORS.primary} />}
-                  <Text className="font-display font-extrabold text-lg text-brand-text">
-                    {isAddingNewItem ? 'Thêm hoạt động mới' : 'Chỉnh sửa hoạt động'}
-                  </Text>
+                  <View>
+                    <Text className="font-display font-extrabold text-lg text-brand-text">
+                      {isAddingNewItem ? 'Thêm địa điểm vào Giỏ chờ' : 'Chỉnh sửa hoạt động'}
+                    </Text>
+                    {isAddingNewItem && (
+                      <Text className="text-xs text-brand-textSoft">
+                        Địa điểm sẽ vào Giỏ chờ để bạn tự do kéo thả xếp ngày & giờ trên lịch trình.
+                      </Text>
+                    )}
+                  </View>
                 </View>
                 <Pressable onPress={() => setEditOpen(false)} className="p-1 rounded bg-brand-line/10">
                   <X size={16} color={BRAND_COLORS.textSoft} />
@@ -1969,35 +2058,66 @@ export default function TripDetail() {
               </View>
 
               <View className="gap-4">
+                {/* Google Maps Link Helper */}
                 <View className="gap-1.5">
-                  <Text className="text-sm font-bold text-brand-textSoft">Tên hoạt động</Text>
-                  <TextInput testID="input-activity-title" value={editTitle} onChangeText={setEditTitle} className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
+                  <Text className="text-sm font-bold text-brand-textSoft">Link Google Maps (Tùy chọn - Dán để tự lấy vị trí)</Text>
+                  <View className="flex-row gap-2">
+                    <TextInput
+                      value={editGmapsUrl}
+                      onChangeText={(val) => {
+                        setEditGmapsUrl(val);
+                        if (val.includes('maps.app.goo.gl') || val.includes('google.com/maps')) {
+                          handleResolveDetailGmaps(val);
+                        }
+                      }}
+                      placeholder="https://maps.app.goo.gl/... hoặc google.com/maps..."
+                      placeholderTextColor={BRAND_COLORS.textMuted}
+                      className="flex-1 px-4 py-2.5 rounded-xl border border-brand-line text-sm bg-brand-bg text-brand-text"
+                    />
+                    <Pressable
+                      onPress={() => handleResolveDetailGmaps()}
+                      disabled={isResolvingDetailGmaps || !editGmapsUrl.trim()}
+                      className="px-4 py-2.5 rounded-xl bg-brand-primary justify-center items-center"
+                      style={{ opacity: (isResolvingDetailGmaps || !editGmapsUrl.trim()) ? 0.6 : 1 }}
+                    >
+                      <Text className="text-white text-xs font-bold">
+                        {isResolvingDetailGmaps ? 'Đang đọc...' : '⚡ Lấy vị trí'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {detailGmapsSuccess && (
+                    <Text className="text-xs text-emerald-700 font-bold">
+                      ✓ Đã nhận diện vị trí và tọa độ chuẩn xác từ Google Maps
+                    </Text>
+                  )}
                 </View>
+
                 <View className="gap-1.5">
-                  <Text className="text-sm font-bold text-brand-textSoft">Mô tả</Text>
-                  <TextInput value={editDesc} onChangeText={setEditDesc} multiline numberOfLines={2} className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} style={{ minHeight: 70, textAlignVertical: 'top' }} />
+                  <Text className="text-sm font-bold text-brand-textSoft">Tên hoạt động / Địa điểm *</Text>
+                  <TextInput testID="input-activity-title" value={editTitle} onChangeText={setEditTitle} placeholder="VD: Thưởng thức Phở Gia Truyền, Check-in Hồ Gươm..." className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
                 </View>
-                <View className="flex-row gap-4">
-                  <View className="flex-1 gap-1.5">
-                    <Text className="text-sm font-bold text-brand-textSoft">Giờ bắt đầu</Text>
+
+                {/* Khi sửa hoạt động trên lịch mới cần chỉnh giờ, khi thêm mới vào giỏ không cần giờ */}
+                {!isAddingNewItem && (
+                  <View className="gap-1.5">
+                    <Text className="text-sm font-bold text-brand-textSoft">Giờ đến (Thời gian bắt đầu)</Text>
                     <TimeInput value={editStartTime} onChange={setEditStartTime} />
                   </View>
-                  <View className="flex-1 gap-1.5">
-                    <Text className="text-sm font-bold text-brand-textSoft">Giờ kết thúc</Text>
-                    <TimeInput value={editEndTime} onChange={setEditEndTime} />
-                  </View>
-                </View>
-                <View className="gap-1.5">
-                  <Text className="text-sm font-bold text-brand-textSoft">Chi phí (VND)</Text>
-                  <TextInput testID="input-activity-cost" value={editCost} onChangeText={setEditCost} keyboardType="numeric" placeholder="Để trống nếu chưa có giá" className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
-                </View>
-                <View className="gap-1.5">
-                  <Text className="text-sm font-bold text-brand-textSoft">Trạng thái</Text>
-                  <SelectPicker options={STATUS_OPTIONS} value={editStatus} onChange={setEditStatus} />
-                </View>
+                )}
+
                 <View className="gap-1.5">
                   <Text className="text-sm font-bold text-brand-textSoft">Loại hoạt động</Text>
                   <SelectPicker options={ITEM_TYPE_OPTIONS} value={editItemType} onChange={setEditItemType} />
+                </View>
+
+                <View className="gap-1.5">
+                  <Text className="text-sm font-bold text-brand-textSoft">Chi phí ước tính (VND)</Text>
+                  <TextInput testID="input-activity-cost" value={editCost} onChangeText={setEditCost} keyboardType="numeric" placeholder="Để trống nếu chưa có giá (mặc định 50.000 đ)" className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm font-semibold bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} />
+                </View>
+
+                <View className="gap-1.5">
+                  <Text className="text-sm font-bold text-brand-textSoft">Ghi chú / Địa chỉ (Tùy chọn)</Text>
+                  <TextInput value={editDesc} onChangeText={setEditDesc} multiline numberOfLines={2} className="w-full px-4 py-3 rounded-xl border border-brand-line text-sm bg-brand-bg text-brand-text" placeholderTextColor={BRAND_COLORS.textMuted} style={{ minHeight: 60, textAlignVertical: 'top' }} />
                 </View>
               </View>
 
@@ -2006,31 +2126,59 @@ export default function TripDetail() {
                   <Text className="text-xs font-bold text-brand-textSoft">Hủy bỏ</Text>
                 </Pressable>
                 <Pressable
-                  testID="btn-save-activity"
+                  testID={isAddingNewItem ? "btn-add-to-cart-submit" : "btn-save-activity"}
                   onPress={() => {
-                    if (!editTitle) return;
+                    if (!editTitle.trim()) return;
+
+                    if (isAddingNewItem) {
+                      const center = getCityCenterCoords(trip?.destination_city || 'Hà Nội');
+                      const newStandbyItem: StandbyPlaceItem = {
+                        id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                        name: editTitle.trim(),
+                        category: editItemType || 'attraction',
+                        address: editDesc.trim() || (trip?.destination_city ? trip.destination_city : ''),
+                        cost: editCost.trim() === '' ? 50000 : Number(editCost),
+                        suggestedDuration: (editItemType === 'dining' || editItemType === 'cafe') ? 60 : 90,
+                        lat: editCoords?.lat ?? center.lat,
+                        lng: editCoords?.lng ?? center.lng,
+                      };
+                      setExtraStandbyPlaces(prev => [newStandbyItem, ...prev]);
+                      setEditOpen(false);
+                      setAppToast({
+                        text: `✓ Đã thêm "${editTitle.trim()}" vào Giỏ chờ! Bạn có thể kéo thả lên lịch trình ngày bất kỳ.`,
+                        type: 'cart',
+                      });
+                      return;
+                    }
+
+                    let finalEndTime = editEndTime;
+                    if (editStartTime) {
+                      const [h, m] = editStartTime.split(':').map(Number);
+                      const duration = (editItemType === 'dining' || editItemType === 'cafe') ? 60 : 90;
+                      const totalM = (h || 9) * 60 + (m || 0) + duration;
+                      const endH = Math.min(23, Math.floor(totalM / 60));
+                      const endM = totalM % 60;
+                      finalEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+                    }
                     const payload = {
                       title: editTitle,
                       description: editDesc,
                       start_time: editStartTime || null,
-                      end_time: editEndTime || null,
+                      end_time: finalEndTime || null,
                       estimated_cost: editCost.trim() === '' ? null : Number(editCost),
                       status: editStatus,
-                      item_type: editItemType
+                      item_type: editItemType,
+                      ...(editCoords ? { lat: editCoords.lat, lng: editCoords.lng } : {})
                     };
-                    if (isAddingNewItem) {
-                      addItemMutation.mutate(payload);
-                    } else {
-                      editMutation.mutate(payload);
-                    }
+                    editMutation.mutate(payload);
                   }}
-                  disabled={editMutation.isPending || addItemMutation.isPending}
+                  disabled={!isAddingNewItem && editMutation.isPending}
                   className="flex-row items-center gap-1.5 px-5 py-3 rounded-xl bg-brand-primary"
-                  style={(editMutation.isPending || addItemMutation.isPending) ? { opacity: 0.5 } : undefined}
+                  style={(!isAddingNewItem && editMutation.isPending) ? { opacity: 0.5 } : undefined}
                 >
-                  {(editMutation.isPending || addItemMutation.isPending) ? <ActivityIndicator size="small" color="white" /> : <Check size={16} color="white" />}
+                  {(!isAddingNewItem && editMutation.isPending) ? <ActivityIndicator size="small" color="white" /> : <Check size={16} color="white" />}
                   <Text className="text-white text-xs font-bold">
-                    {(editMutation.isPending || addItemMutation.isPending) ? 'Đang lưu...' : (isAddingNewItem ? 'Thêm hoạt động' : 'Lưu thay đổi')}
+                    {(!isAddingNewItem && editMutation.isPending) ? 'Đang lưu...' : (isAddingNewItem ? '🛒 Thêm vào Giỏ chờ' : 'Lưu thay đổi')}
                   </Text>
                 </Pressable>
               </View>
@@ -2172,7 +2320,7 @@ export default function TripDetail() {
                       <Text className="text-xs text-brand-textSoft font-semibold">Đang tải kho địa điểm thực tế...</Text>
                     </View>
                   ) : (
-                    <View className="gap-2" style={{ maxHeight: 340, overflow: 'auto' as any }}>
+                    <ScrollView className="gap-2" style={{ maxHeight: 340 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                       {(() => {
                         const rawPool = poolPlaces.length > 0 ? poolPlaces : getCuratedPlacesForCity(trip.destination_city);
                         const filtered = rawPool.filter(p => {
@@ -2240,7 +2388,7 @@ export default function TripDetail() {
                           );
                         });
                       })()}
-                    </View>
+                    </ScrollView>
                   )}
                 </View>
               ) : (
@@ -2319,6 +2467,242 @@ export default function TripDetail() {
           </ScrollView>
         </ModalShell>
       )}
+
+      {/* ── MODAL LIVE MAP PICKER: NHẶT ĐỊA ĐIỂM TIẾP VÀO GIỎ CHỜ VÀ QUAY LẠI LỊCH TRÌNH ── */}
+      {showDetailLiveMapModal && (
+        <ModalShell
+          visible={showDetailLiveMapModal}
+          onClose={() => {
+            setShowDetailLiveMapModal(false);
+            setTempSelectedPlaces([]);
+          }}
+        >
+          <View className="bg-brand-bg rounded-3xl border border-brand-line/50 p-6 gap-4" style={{ width: '100%', maxWidth: 640, maxHeight: 680 }}>
+            {/* Header */}
+            <View className="flex-row justify-between items-center border-b border-brand-line/35 pb-3">
+              <View className="flex-row items-center gap-2">
+                <View className="w-9 h-9 rounded-xl bg-brand-primary/10 items-center justify-center">
+                  <MapPin size={20} color={BRAND_COLORS.primary} />
+                </View>
+                <View>
+                  <Text className="font-display font-extrabold text-base text-brand-text">
+                    🗺️ Mở Live Map nhặt địa điểm ({trip?.destination_city || 'Điểm đến'})
+                  </Text>
+                  <Text className="text-xs text-brand-textSoft">
+                    Chọn địa điểm thực tế thêm tiếp vào giỏ chờ (giữ nguyên lịch cũ)
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setShowDetailLiveMapModal(false);
+                  setTempSelectedPlaces([]);
+                }}
+                className="p-1 rounded bg-brand-line/10"
+              >
+                <X size={16} color={BRAND_COLORS.textSoft} />
+              </Pressable>
+            </View>
+
+            {/* Search & Category Filter */}
+            <View className="gap-2">
+              <TextInput
+                value={detailLiveMapSearch}
+                onChangeText={setDetailLiveMapSearch}
+                placeholder={`🔎 Tìm quán ăn, cà phê, điểm đến tại ${trip?.destination_city || ''}...`}
+                placeholderTextColor={BRAND_COLORS.textMuted}
+                className="px-3.5 py-2.5 rounded-xl border border-brand-line text-xs bg-brand-bg text-brand-text"
+              />
+              <View className="flex-row gap-1.5 flex-wrap">
+                {[
+                  { id: 'all', label: 'Tất cả' },
+                  { id: 'dining', label: '🍽️ Ăn uống' },
+                  { id: 'cafe', label: '☕ Cà phê' },
+                  { id: 'hotel', label: '🏨 Khách sạn' },
+                  { id: 'attraction', label: '🏔️ Vui chơi' },
+                ].map(cat => (
+                  <Pressable
+                    key={cat.id}
+                    onPress={() => setDetailLiveMapCategory(cat.id)}
+                    className={`px-3 py-1.5 rounded-lg border ${detailLiveMapCategory === cat.id ? 'bg-brand-primary border-brand-primary' : 'bg-brand-bgAlt border-brand-line/40'}`}
+                  >
+                    <Text className={`text-[11px] font-bold ${detailLiveMapCategory === cat.id ? 'text-white' : 'text-brand-textSoft'}`}>
+                      {cat.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            {/* List of real places */}
+            <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={true}>
+              <View className="gap-2.5">
+                {(() => {
+                  const rawPool = poolPlaces.length > 0 ? poolPlaces : (trip?.destination_city ? getCuratedPlacesForCity(trip.destination_city) : []);
+                  if (loadingPool && rawPool.length === 0) {
+                    return (
+                      <View className="py-8 items-center justify-center gap-2 border border-dashed border-brand-line rounded-2xl bg-brand-bgAlt/50">
+                        <ActivityIndicator size="small" color="#0D9488" />
+                        <Text className="text-xs text-brand-textSoft font-semibold">Đang tải danh sách địa điểm...</Text>
+                      </View>
+                    );
+                  }
+
+                  const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+                  const q = norm(detailLiveMapSearch.trim());
+                  const filtered = rawPool.filter((p: any) => {
+                    const cat = (p.category || '').toLowerCase().trim();
+                    let matchCat = detailLiveMapCategory === 'all';
+                    if (!matchCat) {
+                      if (detailLiveMapCategory === 'hotel') {
+                        matchCat = cat === 'hotel' || cat === 'accommodation' || cat === 'resort' || cat === 'homestay';
+                      } else if (detailLiveMapCategory === 'dining') {
+                        matchCat = cat === 'dining' || cat === 'restaurant' || cat === 'food';
+                      } else if (detailLiveMapCategory === 'attraction') {
+                        matchCat = cat === 'attraction' || cat === 'experience' || cat === 'sightseeing';
+                      } else if (detailLiveMapCategory === 'cafe') {
+                        matchCat = cat === 'cafe' || cat === 'coffee';
+                      } else {
+                        matchCat = cat === detailLiveMapCategory;
+                      }
+                    }
+                    const matchQuery = !q || norm(p.name).includes(q) || norm(p.address).includes(q);
+                    return matchCat && matchQuery;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <View className="py-8 items-center border border-dashed border-brand-line rounded-2xl bg-brand-bgAlt/50">
+                        <Text className="text-xs text-brand-textSoft font-semibold">Không tìm thấy địa điểm phù hợp</Text>
+                      </View>
+                    );
+                  }
+
+                  const scheduledTitles = new Set(calendarEvents.map(e => (e.title || '').toLowerCase().trim()));
+                  const standbyTitles = new Set(standbySuggestions.map(s => (s.name || '').toLowerCase().trim()));
+
+                  return filtered.map((place: any, idx: number) => {
+                    const placeName = place.name || '';
+                    const isScheduled = scheduledTitles.has(placeName.toLowerCase().trim());
+                    const isInStandby = standbyTitles.has(placeName.toLowerCase().trim());
+                    const isSelected = tempSelectedPlaces.some(tp => tp.name === placeName);
+
+                    return (
+                      <View
+                        key={place.id || `p-${idx}`}
+                        className={`p-3 rounded-2xl border flex-row justify-between items-center gap-3 ${
+                          isSelected
+                            ? 'bg-emerald-50 border-emerald-500'
+                            : isScheduled || isInStandby
+                            ? 'bg-brand-bgAlt/50 border-brand-line/30 opacity-70'
+                            : 'bg-white border-brand-line/50'
+                        }`}
+                      >
+                        <View className="flex-1 gap-0.5">
+                          <View className="flex-row items-center gap-1.5 flex-wrap">
+                            <Text className="text-xs font-extrabold text-brand-text">{placeName}</Text>
+                            {place.category && (
+                              <View className="px-1.5 py-0.5 rounded bg-brand-line/20">
+                                <Text className="text-[9px] font-bold text-brand-textSoft uppercase">{place.category}</Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text numberOfLines={1} className="text-[11px] text-brand-textSoft">{place.address || trip?.destination_city || ''}</Text>
+                          <Text className="text-[10px] font-bold text-brand-primary">
+                            💰 {new Intl.NumberFormat('vi-VN').format(place.estimated_cost || 50000)} đ
+                          </Text>
+                        </View>
+
+                        {isScheduled ? (
+                          <View className="px-2.5 py-1.5 rounded-lg bg-emerald-100 border border-emerald-300">
+                            <Text className="text-[10px] font-bold text-emerald-800">✓ Đã trên lịch</Text>
+                          </View>
+                        ) : isInStandby ? (
+                          <View className="px-2.5 py-1.5 rounded-lg bg-amber-100 border border-amber-300">
+                            <Text className="text-[10px] font-bold text-amber-800">✓ Đã trong giỏ</Text>
+                          </View>
+                        ) : (
+                          <Pressable
+                            testID={`btn-pick-live-place-${idx}`}
+                            onPress={() => {
+                              if (isSelected) {
+                                setTempSelectedPlaces(prev => prev.filter(tp => tp.name !== placeName));
+                              } else {
+                                setTempSelectedPlaces(prev => [...prev, place]);
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-xl flex-row items-center gap-1 ${
+                              isSelected ? 'bg-emerald-600' : 'bg-brand-primary'
+                            }`}
+                          >
+                            <Text className="text-white text-xs font-bold">
+                              {isSelected ? '✓ Đã chọn' : '+ Thêm vào giỏ'}
+                            </Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    );
+                  });
+                })()}
+              </View>
+            </ScrollView>
+
+            {/* Footer */}
+            <View className="flex-row justify-between items-center pt-3 border-t border-brand-line/35">
+              <Text className="text-xs font-bold text-brand-text">
+                {tempSelectedPlaces.length > 0
+                  ? `Đã chọn thêm: ${tempSelectedPlaces.length} địa điểm`
+                  : 'Chưa chọn thêm địa điểm nào'}
+              </Text>
+              <View className="flex-row gap-2">
+                <Pressable
+                  onPress={() => {
+                    setShowDetailLiveMapModal(false);
+                    setTempSelectedPlaces([]);
+                  }}
+                  className="px-4 py-2 rounded-xl border border-brand-line"
+                >
+                  <Text className="text-xs font-bold text-brand-textSoft">Hủy</Text>
+                </Pressable>
+                <Pressable
+                  testID="btn-confirm-live-map-done"
+                  onPress={() => {
+                    if (tempSelectedPlaces.length > 0) {
+                      const center = getCityCenterCoords(trip?.destination_city || 'Hà Nội');
+                      const newStandbyItems: StandbyPlaceItem[] = tempSelectedPlaces.map((p, i) => ({
+                        id: p.id || `live-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+                        name: p.name,
+                        category: p.category || 'attraction',
+                        address: p.address || trip?.destination_city || '',
+                        cost: p.estimated_cost || 50000,
+                        suggestedDuration: p.category === 'dining' || p.category === 'cafe' ? 60 : 90,
+                        lat: p.lat ?? center.lat,
+                        lng: p.lng ?? center.lng,
+                      }));
+                      setExtraStandbyPlaces(prev => [...newStandbyItems, ...prev]);
+                      setAppToast({
+                        text: `✓ Đã bổ sung ${tempSelectedPlaces.length} địa điểm mới vào Giỏ chờ! Bạn có thể kéo thả lên lịch trình ngay.`,
+                        type: 'cart',
+                      });
+                    }
+                    setShowDetailLiveMapModal(false);
+                    setTempSelectedPlaces([]);
+                  }}
+                  className={`px-5 py-2 rounded-xl flex-row items-center gap-1.5 ${
+                    tempSelectedPlaces.length > 0 ? 'bg-brand-primary' : 'bg-brand-primary/60'
+                  }`}
+                >
+                  <Check size={14} color="#FFFFFF" />
+                  <Text className="text-white text-xs font-bold">
+                    ✓ OK - Quay lại lịch trình {tempSelectedPlaces.length > 0 ? `(+${tempSelectedPlaces.length})` : ''}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </ModalShell>
+      )}
+
       <ConfirmModal
         visible={!!confirmModal?.visible}
         title={confirmModal?.title || ''}

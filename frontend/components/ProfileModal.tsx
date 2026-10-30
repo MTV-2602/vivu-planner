@@ -143,6 +143,7 @@ export default function ProfileModal({ visible, onClose }: ProfileModalProps) {
       } else {
         showToast(msg || 'Không thể khởi chạy liên kết tài khoản Google.', 'error');
       }
+    } finally {
       setLinkingGoogle(false);
     }
   };

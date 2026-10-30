@@ -18,7 +18,12 @@ const getBaseURL = () => {
     // Web production / Vercel
     return process.env.EXPO_PUBLIC_API_BASE_URL || '/api';
   }
-  // Mobile Expo Go / Native
+  // Mobile Android (Máy ảo Android Studio dùng 10.0.2.2 để gọi tới host PC)
+  if (Platform.OS === 'android') {
+    const raw = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://10.0.2.2:4000/api';
+    return raw.replace('localhost', '10.0.2.2').replace('127.0.0.1', '10.0.2.2');
+  }
+  // Mobile iOS / Native fallback
   return process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:4000/api';
 };
 

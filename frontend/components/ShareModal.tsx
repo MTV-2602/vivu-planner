@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Pressable, Modal, Platform } from 'react-native';
+import { View, Text, Pressable, Modal, Platform, Image, Share } from 'react-native';
 import { X, Link, Copy, Check } from 'lucide-react-native';
 import { BRAND_COLORS } from '../constants';
 
@@ -25,22 +25,34 @@ export default function ShareModal({ visible, onClose, tripId, tripTitle }: Shar
 
   const handleCopy = async () => {
     try {
-      if (Platform.OS === 'web' && navigator.clipboard) {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(shareUrl);
+      } else {
+        await Share.share({
+          message: shareUrl,
+          title: `ViVu Planner - ${tripTitle}`,
+          url: shareUrl,
+        });
       }
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch (err) {
-      alert('Không thể sao chép. Vui lòng copy thủ công: ' + shareUrl);
+      // Graceful fallback
     }
   };
 
   const handleNativeShare = async () => {
-    if (Platform.OS === 'web' && navigator.share) {
-      try {
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.share) {
         await navigator.share({ title: `ViVu Planner - ${tripTitle}`, url: shareUrl });
-      } catch {}
-    }
+      } else {
+        await Share.share({
+          message: shareUrl,
+          title: `ViVu Planner - ${tripTitle}`,
+          url: shareUrl,
+        });
+      }
+    } catch {}
   };
 
   return (
@@ -60,15 +72,11 @@ export default function ShareModal({ visible, onClose, tripId, tripTitle }: Shar
           <View style={{ padding: 24, alignItems: 'center', gap: 16 }}>
             {/* QR Code */}
             <View style={{ padding: 12, backgroundColor: '#f8f4ec', borderRadius: 16 }}>
-              {Platform.OS === 'web' ? (
-                // @ts-ignore
-                <img src={qrApiUrl} alt="QR Code" width={180} height={180} style={{ borderRadius: 8 }} />
-              ) : (
-                <View style={{ width: 180, height: 180, backgroundColor: '#e8f5f0', borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 40 }}>📱</Text>
-                  <Text style={{ color: '#888', fontSize: 12, marginTop: 8, textAlign: 'center', padding: 8 }}>Quét QR trên trình duyệt</Text>
-                </View>
-              )}
+              <Image
+                source={{ uri: qrApiUrl }}
+                style={{ width: 180, height: 180, borderRadius: 8 }}
+                resizeMode="contain"
+              />
             </View>
 
             <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>
@@ -99,8 +107,8 @@ export default function ShareModal({ visible, onClose, tripId, tripTitle }: Shar
               </Text>
             </Pressable>
 
-            {/* Native Share (mobile web) */}
-            {Platform.OS === 'web' && typeof navigator !== 'undefined' && 'share' in navigator && (
+            {/* Native Share (mobile and web) */}
+            {(Platform.OS !== 'web' || (typeof navigator !== 'undefined' && 'share' in navigator)) && (
               <Pressable
                 onPress={handleNativeShare}
                 style={{ width: '100%', borderRadius: 14, padding: 14, alignItems: 'center', backgroundColor: '#f0ebe0' }}

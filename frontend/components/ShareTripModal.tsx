@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Modal, View, Text, TouchableOpacity, FlatList,
-  ActivityIndicator, StyleSheet, Alert, Platform, ScrollView,
+  ActivityIndicator, StyleSheet, Alert, Platform, ScrollView, Share,
 } from 'react-native';
 import { X, Users, Crown, Clock, Trash2, Link, RefreshCw } from 'lucide-react-native';
 import { api } from '../lib/api';
@@ -97,6 +97,12 @@ export default function ShareTripModal({
     try {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(inviteUrl);
+      } else {
+        await Share.share({
+          message: inviteUrl,
+          title: `Mời tham gia chuyến đi - ${tripTitle}`,
+          url: inviteUrl,
+        });
       }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);

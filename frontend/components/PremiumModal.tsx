@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, Pressable, Modal, ScrollView,
   ActivityIndicator, Platform, Linking, Image,
-  useWindowDimensions,
+  useWindowDimensions, Share,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -58,6 +58,11 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
     try {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(text);
+      } else {
+        await Share.share({
+          message: text,
+          title: 'Sao chép thông tin thanh toán',
+        });
       }
       setCopiedField(field);
       setTimeout(() => setCopiedField(null), 2000);
@@ -591,11 +596,11 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
                         borderColor: orderData.method === 'momo' ? '#A21CAF' : '#10B981',
                         alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10,
                       }}>
-                        {Platform.OS === 'web' ? (
-                          <img src={qrImage} alt="QR Thanh toán" style={{ width: 220, height: 220, borderRadius: 8 }} />
-                        ) : (
-                          <Text style={{ fontSize: 12, color: '#64748B' }}>Đang nạp mã QR...</Text>
-                        )}
+                        <Image
+                          source={{ uri: qrImage }}
+                          style={{ width: 220, height: 220, borderRadius: 8 }}
+                          resizeMode="contain"
+                        />
                         <Text style={{ marginTop: 10, fontSize: 16, fontWeight: '800', color: orderData.method === 'momo' ? '#86198F' : '#065F46' }}>
                           {formatVND(orderData.amount || selectedPlanObj?.amount || 0)}
                         </Text>

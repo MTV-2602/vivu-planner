@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, Pressable, Platform, ScrollView, Linking } from 'react-native';
+
+let WebView: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    WebView = require('react-native-webview').WebView;
+  } catch (e) {
+    console.warn('Cannot load react-native-webview on this platform:', e);
+  }
+}
 import {
   Car,
   Bike,
@@ -944,6 +953,17 @@ export default function GoogleMapsRoutePlanner({
                 border: 'none',
               }}
             />
+          ) : WebView ? (
+            <View style={{ flex: 1, minHeight: mapHeight, borderRadius: 12, overflow: 'hidden' }}>
+              <WebView
+                originWhitelist={['*']}
+                source={{ html: iframeHTML }}
+                style={{ flex: 1, minHeight: mapHeight }}
+                javaScriptEnabled={true}
+                domStorageEnabled={true}
+                scalesPageToFit={true}
+              />
+            </View>
           ) : (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
               <Text style={{ fontSize: 13, color: '#888' }}>

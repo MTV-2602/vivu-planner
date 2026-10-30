@@ -3,6 +3,15 @@ import { View, Text, ScrollView, Pressable, Platform, Linking } from 'react-nati
 import { Map, MapPin } from 'lucide-react-native';
 import { BRAND_COLORS } from '../constants';
 
+let WebView: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    WebView = require('react-native-webview').WebView;
+  } catch (e) {
+    console.warn('Cannot load react-native-webview on this platform:', e);
+  }
+}
+
 export interface MapItem {
   id: string;
   title: string;
@@ -142,16 +151,6 @@ export default function InteractiveMap({ items, centerLat = 10.8231, centerLng =
     else Linking.openURL(mapsUrl);
   };
 
-  if (Platform.OS !== 'web') {
-    return (
-      <View style={{ backgroundColor: '#f8f4ec', borderRadius: 16, padding: 24, alignItems: 'center', gap: 8 }}>
-        <Map size={32} color={BRAND_COLORS.primary} />
-        <Text style={{ fontWeight: '700', color: '#1B3A2D', textAlign: 'center' }}>Bản đồ Google Maps tương tác</Text>
-        <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>Mở vivu-planner.vercel.app để xem bản đồ Google Maps đầy đủ.</Text>
-      </View>
-    );
-  }
-
   const leafletHTML = buildLeafletHTML(filteredItems, centerLat, centerLng, cityName);
 
   return (
@@ -200,7 +199,24 @@ export default function InteractiveMap({ items, centerLat = 10.8231, centerLng =
             style={{ width: '100%', height: 420, border: 'none', borderRadius: 18, boxShadow: '0 4px 16px rgba(0,0,0,0.12)' }}
             title="Google Maps ViVu Planner"
           />
-        ) : null
+        ) : WebView ? (
+          <View style={{ width: '100%', height: 420, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0' }}>
+            <WebView
+              originWhitelist={['*']}
+              source={{ html: leafletHTML }}
+              style={{ flex: 1 }}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              scalesPageToFit={true}
+            />
+          </View>
+        ) : (
+          <View style={{ backgroundColor: '#f8f4ec', borderRadius: 16, padding: 24, alignItems: 'center', gap: 8 }}>
+            <Map size={32} color={BRAND_COLORS.primary} />
+            <Text style={{ fontWeight: '700', color: '#1B3A2D', textAlign: 'center' }}>Bản đồ Google Maps tương tác</Text>
+            <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>Mở vivu-planner.vercel.app để xem bản đồ Google Maps đầy đủ.</Text>
+          </View>
+        )
       ) : (
         <View style={{ backgroundColor: '#f8f4ec', borderRadius: 16, padding: 32, alignItems: 'center' }}>
           <MapPin size={28} color="#bbb" />

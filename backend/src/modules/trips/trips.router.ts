@@ -2238,7 +2238,9 @@ router.put('/:id', requireAuth, async (req: any, res: Response) => {
       return res.status(404).json({ error: 'Trip not found' });
     }
 
-    if (currentTrip.user_id !== req.user!.id && !req.isAdmin) {
+    const access = await verifyTripAccess(tripId, req.user!.id, Boolean(req.isAdmin));
+    const canEdit = access.isOwner || Boolean(req.isAdmin) || access.role === 'owner' || access.role === 'admin' || access.role === 'editor';
+    if (!canEdit) {
       return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa chuyến đi này' });
     }
 
@@ -2254,7 +2256,9 @@ router.put('/:id', requireAuth, async (req: any, res: Response) => {
       is_public,
       status,
       cover_image_url,
-      notes
+      notes,
+      preferences,
+      budget_breakdown
     } = req.body;
 
     const updatePayload: Record<string, any> = {};
@@ -2269,6 +2273,14 @@ router.put('/:id', requireAuth, async (req: any, res: Response) => {
     if (is_public !== undefined) updatePayload.is_public = !!is_public;
     if (cover_image_url !== undefined) updatePayload.cover_image_url = cover_image_url;
     if (notes !== undefined) updatePayload.notes = notes;
+    if (preferences !== undefined) {
+      updatePayload.preferences = typeof preferences === 'object' && preferences !== null
+        ? { ...(currentTrip.preferences || {}), ...preferences }
+        : preferences;
+    }
+    if (budget_breakdown !== undefined) {
+      updatePayload.budget_breakdown = budget_breakdown;
+    }
 
     if (status !== undefined) {
       const allowedStatuses = [TripStatus.DRAFT, TripStatus.ACTIVE, TripStatus.COMPLETED, TripStatus.ARCHIVED];
@@ -3284,12 +3296,22 @@ router.put('/days/:dayId/reorder-items', requireAuth, async (req: any, res: Resp
     }
 
     const client = req.token ? getSupabaseUserClient(req.token) : supabaseAdmin;
+    const { data: existingItems } = await client
+      .from('itinerary_items')
+      .select('id, start_time, end_time')
+      .eq('day_id', dayId);
+    const existingMap = new Map((existingItems || []).map((it: any) => [it.id, it]));
+
     const updatePromises = item_ids.map((itemId: string, index: number) => {
       const explicit = Array.isArray(schedule) ? schedule.find((s: any) => s.id === itemId) : null;
+      const existing = existingMap.get(itemId);
       const updateData: any = { order_index: index + 1 };
       if (explicit?.start_time) {
         updateData.start_time = formatTimeForDb(explicit.start_time);
         updateData.end_time = formatTimeForDb(explicit.end_time) || null;
+      } else if (existing?.start_time) {
+        updateData.start_time = existing.start_time;
+        updateData.end_time = existing.end_time;
       } else if (index < DEFAULT_TIMES.length) {
         updateData.start_time = DEFAULT_TIMES[index].start;
         updateData.end_time = DEFAULT_TIMES[index].end;
