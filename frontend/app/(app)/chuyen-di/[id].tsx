@@ -365,9 +365,9 @@ export default function TripDetail() {
   const tripData = trip ?? cachedTrip;
   // Authoritative Trip Entitlement: Chỉ dựa trên cờ của chuyến đi từ backend, không kế thừa từ pro_credits ví của user
   const isTripPro = Boolean((tripData as any)?.is_ai_pro || tripData?.preferences?.is_ai_pro === true || (tripData as any)?.preferences?.ai_tier === 'pro' || (tripData as any)?.is_pro);
+  const isOwner = Boolean(tripData?.user_id && user?.id && tripData.user_id === user.id) || (!tripData?.user_id && !collaborators.length);
   const isUserHasProWallet = Boolean(statusData?.isPremium || (statusData?.pro_credits || 0) > 0 || (statusData?.monthly_credits || 0) > 0);
   const canUseProFeatures = Boolean(isTripPro || isAdmin || (isOwner && isUserHasProWallet));
-  const isOwner = Boolean(tripData?.user_id && user?.id && tripData.user_id === user.id) || (!tripData?.user_id && !collaborators.length);
   const myCollab = collaborators.find((c: any) => c.user_id === user?.id) || (tripData?.collaborators || []).find((c: any) => c.user_id === user?.id);
   const isCollaborator = Boolean(myCollab);
   const isViewer = myCollab?.role === 'viewer';
