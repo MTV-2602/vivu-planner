@@ -1139,7 +1139,7 @@ export default function CreatePostModal({
                 paddingHorizontal: 20,
                 paddingVertical: 10,
                 borderRadius: 12,
-                backgroundColor: BRAND_COLORS.primary,
+                backgroundColor: '#0c77b0',
                 opacity: submitting ? 0.7 : 1,
                 cursor: 'pointer' as any,
               }}

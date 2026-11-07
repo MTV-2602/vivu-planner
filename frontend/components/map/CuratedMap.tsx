@@ -440,7 +440,7 @@ export default function CuratedMap({
                     gap: 6,
                     paddingVertical: 8,
                     borderRadius: 10,
-                    backgroundColor: isAlreadyInTrip ? '#09343f' : (isAddedInCart ? '#0f4c5c' : (Platform.OS === 'web' ? '#0c77b0' : '#0c77b0')),
+                    backgroundColor: isAlreadyInTrip ? '#09343f' : (isAddedInCart ? '#0f4c5c' : '#0c77b0'),
                     opacity: (pressed && !isAlreadyInTrip) ? 0.85 : 1,
                     marginTop: 4,
                   }]}

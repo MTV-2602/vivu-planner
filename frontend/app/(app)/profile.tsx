@@ -759,9 +759,9 @@ export default function ProfileScreen() {
 
                           {/* 2 Tags Bắt Buộc */}
                           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                              <MapPin size={11} color="#2E7D32" />
-                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#1B5E20' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#E0F2FE', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                              <MapPin size={11} color="#0f4c5c" />
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#0f4c5c' }}>
                                 {post.province}
                               </Text>
                             </View>
