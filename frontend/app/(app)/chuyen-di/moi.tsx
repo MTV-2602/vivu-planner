@@ -1589,7 +1589,7 @@ export default function TripWizard() {
         '<div style="font-size:13px; font-weight:800; color:#202124; margin-bottom:4px;">' + p.name + '</div>' +
         '<div style="font-size:11px; font-weight:800; color:#137333; margin-bottom:4px;">' + costFormatted + '</div>' +
         (p.address ? '<div style="font-size:10px; color:#5F6368; margin-bottom:8px;">📍 ' + p.address + '</div>' : '') +
-        '<button onclick="window.parent.postMessage({ type: \\'MAP_TOGGLE_CART\\', placeId: \\'' + p.id + '\\' }, \\'*\\')" style="width:100%; padding:7px 10px; border-radius:8px; border:none; cursor:pointer; font-weight:800; font-size:11px; background:' + (inCart ? '#E6F4EA' : '#1A73E8') + '; color:' + (inCart ? '#137333' : '#FFFFFF') + ';">' +
+        '<button onclick="window.parent.postMessage({ type: \\'MAP_TOGGLE_CART\\', placeId: \\'' + p.id + '\\' }, \\'*\\')" style="width:100%; padding:7px 10px; border-radius:8px; border:none; cursor:pointer; font-weight:800; font-size:11px; background:' + (inCart ? '#E6F4EA' : '#0c77b0') + '; color:' + (inCart ? '#137333' : '#FFFFFF') + ';">' +
         (inCart ? '✓ Đã trong giỏ (Bấm để bỏ)' : '+ Thêm vào giỏ') +
         '</button>' +
         '</div>';
@@ -2841,9 +2841,18 @@ export default function TripWizard() {
                             testID="btn-open-custom-place-modal"
                             onPress={() => setShowCustomPlaceModal(true)}
                             className="px-3 py-2 rounded-xl bg-brand-bgAlt border border-brand-line/60 flex-row items-center gap-1.5 active:opacity-80"
+                            style={Platform.OS === 'web' ? {
+                              backgroundColor: '#F0F9FF',
+                              borderColor: '#0c77b0',
+                            } : undefined}
                           >
-                            <Plus size={13} color={BRAND_COLORS.primary} />
-                            <Text className="text-xs font-bold text-brand-text">+ Tự thêm điểm</Text>
+                            <Plus size={13} color={Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary} />
+                            <Text
+                              className="text-xs font-bold text-brand-text"
+                              style={Platform.OS === 'web' ? { color: '#0c77b0' } : undefined}
+                            >
+                              + Tự thêm điểm
+                            </Text>
                           </Pressable>
 
                           <Pressable
@@ -2855,6 +2864,9 @@ export default function TripWizard() {
                                 ? 'bg-emerald-600 active:opacity-90'
                                 : 'bg-brand-primary active:opacity-90'
                             }`}
+                            style={Platform.OS === 'web' ? {
+                              backgroundColor: draftTripId ? '#059669' : '#0c77b0',
+                            } : undefined}
                           >
                             {isCreatingDraftGroup ? (
                               <ActivityIndicator size="small" color="#FFFFFF" />
@@ -2888,8 +2900,11 @@ export default function TripWizard() {
                   {useProWorkspace && canAccessWorkspace ? (
                     loadingPregen ? (
                       <View className="py-20 items-center justify-center gap-4 bg-brand-bgAlt/50 rounded-3xl border border-dashed border-brand-line/60">
-                        <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-                        <Text className="text-base font-extrabold text-brand-primary">
+                        <ActivityIndicator size="large" color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                        <Text
+                          className="text-base font-extrabold text-brand-primary"
+                          style={Platform.OS === 'web' ? { color: '#0f4c5c' } : undefined}
+                        >
                           Gemini đang khảo sát & sinh kho địa điểm thực tế...
                         </Text>
                         <Text className="text-xs text-brand-textSoft text-center max-w-md px-4">
@@ -3213,6 +3228,9 @@ export default function TripWizard() {
 
                                             <Pressable
                                               testID={`btn-toggle-cart-${place.id}`}
+                                              style={Platform.OS === 'web' ? {
+                                                backgroundColor: isInCart ? '#059669' : '#0c77b0',
+                                              } : undefined}
                                               onPress={() => handleAddToCart(place)}
                                               className={`w-full py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-1.5 transition-all shadow-sm ${
                                                 isInCart
@@ -3357,7 +3375,9 @@ export default function TripWizard() {
                                                     paddingVertical: 8,
                                                     borderRadius: 8,
                                                     alignItems: 'center',
-                                                    backgroundColor: inCart ? '#10B981' : isPro ? '#D97706' : BRAND_COLORS.primary,
+                                                    backgroundColor: Platform.OS === 'web'
+                                                      ? (inCart ? '#10B981' : '#0c77b0')
+                                                      : (inCart ? '#10B981' : isPro ? '#D97706' : BRAND_COLORS.primary),
                                                   }}
                                                 >
                                                   <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
@@ -4675,7 +4695,18 @@ export default function TripWizard() {
                 testID="btn-confirm-add-custom-place"
                 onPress={handleAddNewCustomPlace}
                 disabled={!customPlaceTitle.trim()}
-                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: customPlaceTitle.trim() ? BRAND_COLORS.primary : '#D1D5DB', alignItems: 'center', justifyContent: 'center' }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: !customPlaceTitle.trim()
+                    ? '#D1D5DB'
+                    : Platform.OS === 'web'
+                    ? '#0c77b0'
+                    : BRAND_COLORS.primary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
               >
                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>+ Thêm vào giỏ</Text>
               </Pressable>

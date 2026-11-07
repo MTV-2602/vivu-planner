@@ -2705,6 +2705,7 @@ export default function TripDetail() {
                         ) : (
                           <Pressable
                             testID={`btn-pick-live-place-${idx}`}
+                            style={Platform.OS === 'web' ? { backgroundColor: isSelected ? '#059669' : '#0c77b0' } : undefined}
                             onPress={() => {
                               if (isSelected) {
                                 setTempSelectedPlaces(prev => prev.filter(tp => tp.name !== placeName));
