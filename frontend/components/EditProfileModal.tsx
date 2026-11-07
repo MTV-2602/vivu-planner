@@ -260,7 +260,7 @@ export default function EditProfileModal({
                       height: 80,
                       borderRadius: 40,
                       borderWidth: 3,
-                      borderColor: '#1F6F54',
+                      borderColor: '#0f4c5c',
                     }}
                   />
                 ) : (
@@ -269,14 +269,14 @@ export default function EditProfileModal({
                       width: 80,
                       height: 80,
                       borderRadius: 40,
-                      backgroundColor: 'rgba(31,111,84,0.12)',
+                      backgroundColor: 'rgba(15,76,92,0.12)',
                       alignItems: 'center',
                       justifyContent: 'center',
                       borderWidth: 2,
-                      borderColor: '#1F6F54',
+                      borderColor: '#0f4c5c',
                     }}
                   >
-                    <User size={38} color="#1F6F54" />
+                    <User size={38} color="#0f4c5c" />
                   </View>
                 )}
 
@@ -291,7 +291,7 @@ export default function EditProfileModal({
                     width: 32,
                     height: 32,
                     borderRadius: 16,
-                    backgroundColor: '#1F6F54',
+                    backgroundColor: '#0c77b0',
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderWidth: 2,
@@ -332,11 +332,11 @@ export default function EditProfileModal({
                 }}
               >
                 {uploadingAvatar ? (
-                  <ActivityIndicator size="small" color="#1F6F54" />
+                  <ActivityIndicator size="small" color="#0c77b0" />
                 ) : (
-                  <Camera size={14} color="#1F6F54" />
+                  <Camera size={14} color="#0c77b0" />
                 )}
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#1F6F54' }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#0c77b0' }}>
                   {uploadingAvatar ? 'Đang tải ảnh lên...' : 'Chọn ảnh đại diện mới'}
                 </Text>
               </Pressable>
@@ -423,7 +423,7 @@ export default function EditProfileModal({
                   testID="btn-add-custom-pref"
                   onPress={handleAddCustomPref}
                   style={{
-                    backgroundColor: '#1F6F54',
+                    backgroundColor: '#0c77b0',
                     paddingHorizontal: 14,
                     paddingVertical: 8,
                     borderRadius: 10,
@@ -452,9 +452,9 @@ export default function EditProfileModal({
                         paddingHorizontal: 12,
                         paddingVertical: 6,
                         borderRadius: 100,
-                        backgroundColor: isSelected ? '#1F6F54' : '#F8FAFC',
+                        backgroundColor: isSelected ? '#0f4c5c' : '#F8FAFC',
                         borderWidth: 1,
-                        borderColor: isSelected ? '#1F6F54' : '#CBD5E1',
+                        borderColor: isSelected ? '#0f4c5c' : '#CBD5E1',
                         cursor: 'pointer' as any,
                       }}
                     >
@@ -493,14 +493,14 @@ export default function EditProfileModal({
                           borderRadius: 100,
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#1F6F54' }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#0f4c5c' }}>
                           {customTag}
                         </Text>
                         <Pressable
                           onPress={() => handleRemovePref(customTag)}
                           style={{ cursor: 'pointer' as any }}
                         >
-                          <X size={12} color="#1F6F54" />
+                          <X size={12} color="#0f4c5c" />
                         </Pressable>
                       </View>
                     ))}
@@ -548,7 +548,7 @@ export default function EditProfileModal({
                 paddingHorizontal: 22,
                 paddingVertical: 10,
                 borderRadius: 12,
-                backgroundColor: '#1F6F54',
+                backgroundColor: '#0c77b0',
                 opacity: saving || uploadingAvatar ? 0.7 : 1,
                 cursor: 'pointer' as any,
               }}

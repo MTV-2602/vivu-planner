@@ -84,8 +84,8 @@ export default function LocalizedBentoGrid() {
           borderWidth: 1,
           borderColor: '#CBE0E6',
         }}>
-          <Sparkles size={14} color="#3B7A8C" />
-          <Text style={{ color: '#3B7A8C', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+          <Sparkles size={14} color="#0f4c5c" />
+          <Text style={{ color: '#0f4c5c', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>
             Kho Địa Điểm Ngách (Hidden Gems)
           </Text>
         </View>
@@ -165,9 +165,9 @@ export default function LocalizedBentoGrid() {
                         width: 36,
                         height: 36,
                         borderRadius: 18,
-                        backgroundColor: isSaved ? '#3B7A8C' : 'rgba(255, 255, 255, 0.25)',
+                        backgroundColor: isSaved ? '#0c77b0' : 'rgba(255, 255, 255, 0.25)',
                         borderWidth: 1,
-                        borderColor: isSaved ? '#3B7A8C' : 'rgba(255, 255, 255, 0.4)',
+                        borderColor: isSaved ? '#0c77b0' : 'rgba(255, 255, 255, 0.4)',
                         alignItems: 'center',
                         justifyContent: 'center',
                         opacity: pressed ? 0.8 : 1,
@@ -226,7 +226,7 @@ export default function LocalizedBentoGrid() {
                         paddingHorizontal: 8,
                         paddingVertical: 4,
                         borderRadius: 8,
-                        backgroundColor: 'rgba(59, 122, 140, 0.9)',
+                        backgroundColor: 'rgba(15, 76, 92, 0.9)',
                       }}>
                         <Leaf size={11} color="#FFFFFF" />
                         <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>
@@ -310,9 +310,9 @@ export default function LocalizedBentoGrid() {
                         width: 38,
                         height: 38,
                         borderRadius: 19,
-                        backgroundColor: isSaved ? '#3B7A8C' : 'rgba(255, 255, 255, 0.25)',
+                        backgroundColor: isSaved ? '#0c77b0' : 'rgba(255, 255, 255, 0.25)',
                         borderWidth: 1,
-                        borderColor: isSaved ? '#3B7A8C' : 'rgba(255, 255, 255, 0.4)',
+                        borderColor: isSaved ? '#0c77b0' : 'rgba(255, 255, 255, 0.4)',
                         alignItems: 'center',
                         justifyContent: 'center',
                         opacity: pressed ? 0.8 : 1,
@@ -371,7 +371,7 @@ export default function LocalizedBentoGrid() {
                         paddingHorizontal: 10,
                         paddingVertical: 5,
                         borderRadius: 8,
-                        backgroundColor: 'rgba(59, 122, 140, 0.9)',
+                        backgroundColor: 'rgba(15, 76, 92, 0.9)',
                       }}>
                         <Leaf size={12} color="#FFFFFF" />
                         <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>

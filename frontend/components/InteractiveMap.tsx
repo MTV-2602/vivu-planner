@@ -69,7 +69,7 @@ function buildLeafletHTML(items: MapItem[], centerLat: number, centerLng: number
   const markers = items
     .filter(item => item.location_lat && item.location_lng)
     .map(item => {
-      const color = TYPE_COLORS[item.item_type] || '#1F6F54';
+      const color = TYPE_COLORS[item.item_type] || '#0f4c5c';
       const emoji = TYPE_EMOJI[item.item_type] || '📍';
       const label = TYPE_LABELS[item.item_type] || item.item_type;
       const cost = formatCost(item.estimated_cost);
@@ -89,8 +89,8 @@ function buildLeafletHTML(items: MapItem[], centerLat: number, centerLng: number
             <div style="font-size:11px;color:${color};font-weight:700;text-transform:uppercase;margin-bottom:4px;">${label}</div>
             <div style="font-size:14px;font-weight:700;color:#1B3A2D;margin-bottom:6px;">${safeTitle}</div>
             ${time ? `<div style="font-size:12px;color:#666;margin-bottom:4px;">🕐 ${time}</div>` : ''}
-            <div style="font-size:12px;color:#1F6F54;font-weight:600;margin-bottom:8px;">💰 ${cost}</div>
-            <a href="${googleMapsUrl}" target="_blank" style="display:block;text-align:center;background:#1F6F54;color:#ffffff;text-decoration:none;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:bold;box-shadow:0 2px 8px rgba(31,111,84,0.3);">
+            <div style="font-size:12px;color:#0f4c5c;font-weight:600;margin-bottom:8px;">💰 ${cost}</div>
+            <a href="${googleMapsUrl}" target="_blank" style="display:block;text-align:center;background:#0c77b0;color:#ffffff;text-decoration:none;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:bold;box-shadow:0 2px 8px rgba(12,119,176,0.3);">
               📍 Mở Google Maps chỉ đường ↗
             </a>
           </div>

@@ -382,11 +382,11 @@ export default function Dashboard() {
                       width: 24,
                       height: 24,
                       borderRadius: 12,
-                      backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.2)' : 'rgba(31,111,84,0.15)',
+                      backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.2)' : 'rgba(15, 76, 92,0.15)',
                       alignItems: 'center',
                       justifyContent: 'center',
                       borderWidth: 1,
-                      borderColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.4)' : 'rgba(31,111,84,0.3)',
+                      borderColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.4)' : 'rgba(15, 76, 92,0.3)',
                     }}
                   >
                     <User size={12} color={Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary} />
@@ -498,7 +498,7 @@ export default function Dashboard() {
                     style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1, borderColor: Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary }}
                   />
                 ) : (
-                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.2)' : 'rgba(31,111,84,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.2)' : 'rgba(15, 76, 92,0.15)', alignItems: 'center', justifyContent: 'center' }}>
                     <User size={12} color={Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary} />
                   </View>
                 )}
@@ -620,8 +620,8 @@ export default function Dashboard() {
               <View
                 className="w-16 h-16 rounded-3xl items-center justify-center border shadow-sm"
                 style={{
-                  backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(31,111,84,0.1)',
-                  borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.2)' : 'rgba(31,111,84,0.2)',
+                  backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(15, 76, 92,0.1)',
+                  borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.2)' : 'rgba(15, 76, 92,0.2)',
                 }}
               >
                 <Compass size={32} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
@@ -631,8 +631,8 @@ export default function Dashboard() {
                 <View
                   className="flex-row items-center gap-1.5 px-3 py-1 rounded-full border"
                   style={{
-                    backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(31,111,84,0.1)',
-                    borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.2)' : 'rgba(31,111,84,0.2)',
+                    backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(15, 76, 92,0.1)',
+                    borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.2)' : 'rgba(15, 76, 92,0.2)',
                   }}
                 >
                   <Sparkles size={12} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
@@ -685,7 +685,7 @@ export default function Dashboard() {
                     minWidth: 200,
                     cursor: 'pointer' as any,
                     borderWidth: 1,
-                    borderColor: Platform.OS === 'web' ? '#0c77b0' : 'rgba(31,111,84,0.3)',
+                    borderColor: Platform.OS === 'web' ? '#0c77b0' : 'rgba(15, 76, 92,0.3)',
                   }}
                 >
                   <MessageSquare size={17} color={Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary} />
@@ -768,7 +768,7 @@ export default function Dashboard() {
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap', flex: 1, marginRight: 4 }}>
                               <View
                                 className="flex-row items-center gap-1 px-2 py-0.5 rounded-full"
-                                style={Platform.OS === 'web' ? { backgroundColor: 'rgba(15, 76, 92, 0.08)' } : { backgroundColor: 'rgba(31,111,84,0.1)' }}
+                                style={Platform.OS === 'web' ? { backgroundColor: 'rgba(15, 76, 92, 0.08)' } : { backgroundColor: 'rgba(15, 76, 92,0.1)' }}
                               >
                                 <MapPin size={10} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                                 <Text
@@ -819,7 +819,7 @@ export default function Dashboard() {
                             })()}
                             {trip.is_shared && (
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 999, backgroundColor: '#E8F5E9', borderWidth: 1, borderColor: '#A7F3D0' }}>
-                                <Text style={{ fontSize: 8.5, fontWeight: '700', color: '#1F6F54' }}>👥 {trip.member_count ? `${trip.member_count}` : 'Nhóm'}</Text>
+                                <Text style={{ fontSize: 8.5, fontWeight: '700', color: '#0f4c5c' }}>👥 {trip.member_count ? `${trip.member_count}` : 'Nhóm'}</Text>
                               </View>
                             )}
                           </View>
@@ -829,7 +829,7 @@ export default function Dashboard() {
                           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginRight: 4 }}>
                             <View
                               className="flex-row items-center gap-1 px-2.5 py-1 rounded-full"
-                              style={Platform.OS === 'web' ? { backgroundColor: 'rgba(15, 76, 92, 0.08)' } : { backgroundColor: 'rgba(31,111,84,0.1)' }}
+                              style={Platform.OS === 'web' ? { backgroundColor: 'rgba(15, 76, 92, 0.08)' } : { backgroundColor: 'rgba(15, 76, 92,0.1)' }}
                             >
                               <MapPin size={12} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                               <Text
@@ -848,7 +848,7 @@ export default function Dashboard() {
                             )}
                             {trip.is_shared && (
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, backgroundColor: '#E8F5E9', borderWidth: 1, borderColor: '#A7F3D0' }}>
-                                <Text style={{ fontSize: 9, fontWeight: '700', color: '#1F6F54' }}>👥 {trip.member_count ? `${trip.member_count}` : 'Nhóm'}</Text>
+                                <Text style={{ fontSize: 9, fontWeight: '700', color: '#0f4c5c' }}>👥 {trip.member_count ? `${trip.member_count}` : 'Nhóm'}</Text>
                               </View>
                             )}
                           </View>

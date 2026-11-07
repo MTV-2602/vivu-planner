@@ -236,7 +236,7 @@ function LoadingScreen({ stage, onCancel }: { stage: number; onCancel: () => voi
           <Animated.View
             style={{
               position: 'absolute', width: 96, height: 96, borderRadius: 48,
-              borderWidth: 2, borderColor: 'rgba(31,111,84,0.2)',
+              borderWidth: 2, borderColor: 'rgba(15, 76, 92,0.2)',
             }}
           />
           <Animated.View
@@ -3605,7 +3605,7 @@ export default function TripWizard() {
                   className="flex-row items-center gap-1.5 px-5 py-3 rounded-xl"
                   style={{
                     backgroundColor: !!errorMsg
-                      ? (Platform.OS === 'web' ? 'rgba(12, 119, 176, 0.4)' : 'rgba(31,111,84,0.4)')
+                      ? (Platform.OS === 'web' ? 'rgba(12, 119, 176, 0.4)' : 'rgba(15, 76, 92,0.4)')
                       : (Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary),
                     opacity: !!errorMsg ? 0.5 : 1,
                     boxShadow: Platform.OS === 'web' && !errorMsg ? ('0 4px 14px rgba(12, 119, 176, 0.25)' as any) : undefined,
@@ -4188,21 +4188,21 @@ export default function TripWizard() {
                   borderWidth: 1.5,
                   borderColor: canAccessWorkspace ? BRAND_COLORS.primary : '#F5D599',
                   backgroundColor: canAccessWorkspace
-                    ? (pressed ? 'rgba(31,111,84,0.08)' : 'rgba(31,111,84,0.03)')
+                    ? (pressed ? 'rgba(15, 76, 92,0.08)' : 'rgba(15, 76, 92,0.03)')
                     : '#FFFBF0',
                   gap: 8,
                 }]}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: canAccessWorkspace ? 'rgba(31,111,84,0.12)' : 'rgba(212,160,23,0.15)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: canAccessWorkspace ? 'rgba(15, 76, 92,0.12)' : 'rgba(212,160,23,0.15)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <Crown size={18} color={canAccessWorkspace ? BRAND_COLORS.primary : '#D4A017'} />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 14, color: canAccessWorkspace ? BRAND_COLORS.primary : '#9A5B00', flexShrink: 1 }}>
                         🗺️ Không gian Bản đồ Trực quan & Lập lịch
                       </Text>
-                      <Text style={{ fontSize: 11, color: canAccessWorkspace ? '#1F6F54' : '#7A5210', fontWeight: '500' }}>
+                      <Text style={{ fontSize: 11, color: canAccessWorkspace ? '#0f4c5c' : '#7A5210', fontWeight: '500' }}>
                         Bản đồ Trực quan & Lịch trình ViVu
                       </Text>
                     </View>
@@ -4391,7 +4391,7 @@ export default function TripWizard() {
           >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(31,111,84,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(15, 76, 92,0.12)', alignItems: 'center', justifyContent: 'center' }}>
                   <Crown size={22} color={BRAND_COLORS.primary} />
                 </View>
                 <View style={{ flex: 1, paddingRight: 8 }}>
@@ -4475,7 +4475,7 @@ export default function TripWizard() {
           <View style={{ width: '100%', maxWidth: 500, backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, gap: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 10 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(31,111,84,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(15, 76, 92,0.12)', alignItems: 'center', justifyContent: 'center' }}>
                   <Users size={20} color={BRAND_COLORS.primary} />
                 </View>
                 <View>
@@ -4748,7 +4748,7 @@ export default function TripWizard() {
                     paddingVertical: 13,
                     paddingHorizontal: 12,
                     borderRadius: 12,
-                    backgroundColor: destinationCity === city ? 'rgba(31,111,84,0.08)' : (pressed ? '#FBF5EA' : 'transparent'),
+                    backgroundColor: destinationCity === city ? 'rgba(15, 76, 92,0.08)' : (pressed ? '#FBF5EA' : 'transparent'),
                     marginVertical: 2,
                   }]}
                 >

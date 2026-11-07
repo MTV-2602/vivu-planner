@@ -78,7 +78,7 @@ export default function SuggestPlaceModal({ visible, onClose, cityName = 'Đà L
           {/* Header */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Sparkles size={20} color="#E2703A" />
+              <Sparkles size={20} color="#0c77b0" />
               <Text style={{ fontFamily: 'Lora_700Bold', fontSize: 18, color: '#1B2420' }}>
                 Đóng Góp Quán Mới (UGC)
               </Text>
@@ -121,7 +121,7 @@ export default function SuggestPlaceModal({ visible, onClose, cityName = 'Đà L
                       paddingHorizontal: 12,
                       paddingVertical: 6,
                       borderRadius: 100,
-                      backgroundColor: category === c.key ? '#1F6F54' : '#F3ECDC',
+                      backgroundColor: category === c.key ? '#0f4c5c' : '#F3ECDC',
                     }}
                   >
                     <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: category === c.key ? '#FFFFFF' : '#1B2420' }}>
@@ -182,8 +182,8 @@ export default function SuggestPlaceModal({ visible, onClose, cityName = 'Đà L
 
           {/* Success Message */}
           {success && (
-            <View style={{ padding: 10, borderRadius: 10, backgroundColor: 'rgba(31,111,84,0.1)', alignItems: 'center' }}>
-              <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#1F6F54' }}>
+            <View style={{ padding: 10, borderRadius: 10, backgroundColor: 'rgba(15,76,92,0.1)', alignItems: 'center' }}>
+              <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#0f4c5c' }}>
                 🎉 Đã gửi đóng góp thành công! Đang chờ Admin duyệt.
               </Text>
             </View>
@@ -200,7 +200,7 @@ export default function SuggestPlaceModal({ visible, onClose, cityName = 'Đà L
               gap: 8,
               paddingVertical: 12,
               borderRadius: 100,
-              backgroundColor: '#1F6F54',
+              backgroundColor: '#0f4c5c',
               opacity: pressed || submitting || !name.trim() ? 0.7 : 1,
             }]}
           >

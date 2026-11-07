@@ -540,7 +540,7 @@ export default function PhotoTheaterModal({
                     width: 32,
                     height: 32,
                     borderRadius: 16,
-                    backgroundColor: 'rgba(31,111,84,0.1)',
+                    backgroundColor: 'rgba(15, 76, 92,0.1)',
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginTop: 2,
@@ -1210,7 +1210,7 @@ export default function PhotoTheaterModal({
                     width: 42,
                     height: 42,
                     borderRadius: 21,
-                    backgroundColor: 'rgba(31,111,84,0.1)',
+                    backgroundColor: 'rgba(15, 76, 92,0.1)',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}

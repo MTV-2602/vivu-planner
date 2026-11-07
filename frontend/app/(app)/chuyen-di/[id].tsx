@@ -1524,7 +1524,7 @@ export default function TripDetail() {
                   <View
                     className="flex-row items-center gap-1.5 self-start px-3 py-1 rounded-full"
                     style={{
-                      backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(31,111,84,0.1)',
+                      backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(15, 76, 92,0.1)',
                     }}
                   >
                     <MapPin size={14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
@@ -1694,7 +1694,7 @@ export default function TripDetail() {
                       onPress={() => setDisruptionOpen(true)}
                       className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl"
                       style={{
-                        backgroundColor: Platform.OS === 'web' ? '#E2703A' : BRAND_COLORS.danger,
+                        backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.danger,
                         cursor: 'pointer' as any,
                       }}
                     >

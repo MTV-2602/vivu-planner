@@ -40,7 +40,7 @@ export default function RootLayout() {
   if (!fontsLoaded) {
     return (
       <View className="flex-1 bg-brand-bg items-center justify-center">
-        <ActivityIndicator color="#1F6F54" />
+        <ActivityIndicator color="#0c77b0" />
       </View>
     );
   }

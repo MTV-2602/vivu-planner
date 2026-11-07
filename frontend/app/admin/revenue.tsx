@@ -44,7 +44,7 @@ import {
   PaymentMethodFilter,
 } from '../../lib/adminApi';
 
-const PLAN_PALETTE = ['#1F6F54', '#E2703A', '#F0B255', '#3B82F6', '#8B5CF6', '#10B981'];
+const PLAN_PALETTE = ['#0f4c5c', '#0c77b0', '#F0B255', '#3B82F6', '#8B5CF6', '#10B981'];
 
 export default function AdminRevenuePage() {
   const [range, setRange] = useState<AdminRange>('30d');
@@ -146,7 +146,7 @@ export default function AdminRevenuePage() {
     if (!revenueData?.byMethod || revenueData.byMethod.length === 0) return [];
     const getMethodMeta = (m: string) => {
       const lower = m.toLowerCase();
-      if (lower === 'payos') return { label: 'QR ngân hàng (PayOS)', color: '#1F6F54' };
+      if (lower === 'payos') return { label: 'QR ngân hàng (PayOS)', color: '#0f4c5c' };
       if (lower === 'momo') return { label: 'Ví MoMo', color: '#A50064' };
       if (lower === 'admin') return { label: 'Admin tặng', color: '#D97706' };
       return { label: m.toUpperCase(), color: '#6B7280' };
@@ -351,7 +351,7 @@ export default function AdminRevenuePage() {
               delta={revenueDelta}
               subtext="Giao dịch thành công"
               icon={<TrendingUp size={18} color={BRAND_COLORS.primary} />}
-              iconBg="rgba(31, 111, 84, 0.1)"
+              iconBg="rgba(15, 76, 92, 0.1)"
               loading={revenueLoading}
             />
 

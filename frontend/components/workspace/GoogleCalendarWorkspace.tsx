@@ -2721,7 +2721,7 @@ export default function GoogleCalendarWorkspace({
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 6,
-                  backgroundColor: Platform.OS === 'web' ? '#0c77b0' : '#134A37',
+                  backgroundColor: Platform.OS === 'web' ? '#0c77b0' : '#09343f',
                   paddingHorizontal: 16,
                   paddingVertical: 9,
                   borderRadius: 10,
@@ -3284,7 +3284,7 @@ export default function GoogleCalendarWorkspace({
                       paddingVertical: 6,
                       paddingHorizontal: 12,
                       borderRadius: 8,
-                      backgroundColor: '#1F6F54',
+                      backgroundColor: '#0f4c5c',
                       cursor: 'pointer' as any,
                     }}
                   >
@@ -4345,7 +4345,7 @@ export default function GoogleCalendarWorkspace({
                           paddingVertical: 7,
                           paddingHorizontal: 14,
                           borderRadius: 10,
-                          backgroundColor: '#1F6F54',
+                          backgroundColor: '#0f4c5c',
                           cursor: 'pointer' as any,
                         }}
                       >

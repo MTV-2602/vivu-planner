@@ -263,8 +263,8 @@ export default function AdminTripsPage() {
           <StatCard
             label="Tổng chuyến đi"
             value={summary?.total ?? 0}
-            icon={<Compass size={18} color="#1F6F54" />}
-            iconBg="rgba(31, 111, 84, 0.1)"
+            icon={<Compass size={18} color="#0f4c5c" />}
+            iconBg="rgba(15, 76, 92, 0.1)"
             loading={isLoading}
           />
         </View>

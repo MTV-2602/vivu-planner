@@ -251,13 +251,13 @@ export default function Landing() {
       ? (scrolled ? 'rgba(10, 10, 12, 0.92)' : 'transparent')
       : (scrolled ? 'rgba(244, 248, 250, 0.95)' : 'transparent'),
     navBorder: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#D4E3E8',
-    logoBg: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(59, 122, 140, 0.15)',
-    logoBorder: isDarkMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(59, 122, 140, 0.3)',
-    logoColor: isDarkMode ? '#FFFFFF' : '#3B7A8C',
+    logoBg: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(15, 76, 92, 0.12)',
+    logoBorder: isDarkMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(15, 76, 92, 0.25)',
+    logoColor: isDarkMode ? '#FFFFFF' : '#0f4c5c',
     text: isDarkMode ? '#FFFFFF' : '#2D4B54',
     textMuted: isDarkMode ? 'rgba(255, 255, 255, 0.75)' : '#4B6E79',
     textSoft: isDarkMode ? 'rgba(255, 255, 255, 0.55)' : '#769FA9',
-    accent: isDarkMode ? '#38BDF8' : '#3B7A8C',
+    accent: isDarkMode ? '#38BDF8' : '#0c77b0',
     heroBg: isDarkMode
       ? 'linear-gradient(180deg, #1C323D 0%, #0E1B22 40%, #0A0A0C 100%)'
       : 'linear-gradient(180deg, #4A707D 0%, #6F98A5 30%, #A3C4CE 65%, #F0F6F8 100%)',
@@ -272,8 +272,8 @@ export default function Landing() {
     chipBg: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : '#E6F0F3',
     chipBorder: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : '#CBE0E6',
     chipText: isDarkMode ? '#FFFFFF' : '#2D4B54',
-    heroCtaBg: isDarkMode ? '#38BDF8' : '#3B7A8C',
-    heroCtaBorder: isDarkMode ? '#38BDF8' : '#3B7A8C',
+    heroCtaBg: isDarkMode ? '#38BDF8' : '#0c77b0',
+    heroCtaBorder: isDarkMode ? '#38BDF8' : '#0c77b0',
     heroCtaText: '#FFFFFF',
     mockupBg: isDarkMode ? '#11141A' : '#FFFFFF',
     mockupBorder: isDarkMode ? '#1D212A' : '#D4E3E8',
@@ -294,11 +294,11 @@ export default function Landing() {
       : 'linear-gradient(180deg, #FFFFFF 0%, #F4F8FA 100%)',
     ctaBoxBg: isDarkMode
       ? 'linear-gradient(135deg, rgba(56, 189, 248, 0.16) 0%, rgba(10, 10, 12, 0.6) 100%)'
-      : 'linear-gradient(135deg, #2D4B54 0%, #3B7A8C 100%)',
-    ctaBoxBorder: isDarkMode ? 'rgba(56, 189, 248, 0.25)' : '#4A707D',
-    ctaButtonBg: isDarkMode ? '#38BDF8' : '#FFFFFF',
-    ctaButtonText: isDarkMode ? '#0A0A0C' : '#2D4B54',
-    footerBg: isDarkMode ? '#050505' : '#1C323D',
+      : 'linear-gradient(135deg, #09343f 0%, #0f4c5c 100%)',
+    ctaBoxBorder: isDarkMode ? 'rgba(56, 189, 248, 0.25)' : '#0f4c5c',
+    ctaButtonBg: isDarkMode ? '#38BDF8' : '#0c77b0',
+    ctaButtonText: '#FFFFFF',
+    footerBg: isDarkMode ? '#050505' : '#09343f',
     footerBorder: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : '#2D4B54',
     watermarkColor: isDarkMode ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.06)',
   };
@@ -308,7 +308,7 @@ export default function Landing() {
       flexDirection: 'row', gap: 16, alignItems: 'flex-start',
       padding: 22, borderRadius: 16,
       backgroundColor: step.dark
-        ? (isDarkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(224, 122, 95, 0.12)')
+        ? (isDarkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(15, 76, 92, 0.12)')
         : T.cardBg,
       borderWidth: 1,
       borderColor: step.dark ? T.accent : T.cardBorder,
@@ -316,7 +316,7 @@ export default function Landing() {
     }}>
       <View style={{
         width: 46, height: 46, borderRadius: 13,
-        backgroundColor: step.dark ? (isDarkMode ? 'rgba(249, 158, 117, 0.2)' : 'rgba(224, 122, 95, 0.2)') : (isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(224, 122, 95, 0.1)'),
+        backgroundColor: step.dark ? (isDarkMode ? 'rgba(12, 119, 176, 0.2)' : 'rgba(12, 119, 176, 0.2)') : (isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(15, 76, 92, 0.1)'),
         alignItems: 'center', justifyContent: 'center', flexShrink: 0,
       }}>
         {step.dark ? <Sparkles size={20} color={T.accent} /> : step.icon}
@@ -440,7 +440,7 @@ export default function Landing() {
               ...(isWeb ? { backdropFilter: 'blur(8px)', cursor: 'pointer', transition: 'all 0.2s ease' } as any : {}),
             }]}
           >
-            {isDarkMode ? <Sun size={18} color="#F99E75" /> : <Moon size={18} color="#E07A5F" />}
+            {isDarkMode ? <Sun size={18} color="#38BDF8" /> : <Moon size={18} color="#0f4c5c" />}
           </Pressable>
 
           {isLoggedIn ? (
@@ -742,7 +742,7 @@ export default function Landing() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                         <Text style={{ fontFamily: F.loraBold, fontSize: 18, color: T.text }}>vivu</Text>
                         <View style={{ flexDirection: 'row', gap: 6 }}>
-                          <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: 'rgba(249, 158, 117, 0.25)', borderWidth: 1, borderColor: T.cardBorder }}>
+                          <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: 'rgba(15, 76, 92, 0.15)', borderWidth: 1, borderColor: T.cardBorder }}>
                             <Text style={{ fontFamily: F.bold, fontSize: 11, color: T.text }}>🤖 AI Chat</Text>
                           </View>
                           {!isMobile && (
@@ -785,7 +785,7 @@ export default function Landing() {
                       }}>
                         <View style={{
                           width: 56, height: 56, borderRadius: 28,
-                          backgroundColor: 'rgba(249, 158, 117, 0.3)',
+                          backgroundColor: 'rgba(12, 119, 176, 0.2)',
                           alignItems: 'center', justifyContent: 'center',
                           borderWidth: 2, borderColor: T.accent,
                           shadowColor: T.accent, shadowRadius: 16, shadowOpacity: 0.4,
@@ -807,7 +807,7 @@ export default function Landing() {
                           flex: 1, borderRadius: 16, backgroundColor: T.cardBg,
                           borderWidth: 0.5, borderColor: T.cardBorder, padding: 14, gap: 10,
                         }}>
-                          <View style={{ height: 110, borderRadius: 12, backgroundColor: 'rgba(249, 158, 117, 0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                          <View style={{ height: 110, borderRadius: 12, backgroundColor: 'rgba(15, 76, 92, 0.1)', alignItems: 'center', justifyContent: 'center' }}>
                             <Text style={{ fontSize: 32 }}>🏛️</Text>
                           </View>
                           <Text style={{ fontFamily: F.bold, fontSize: 13, color: T.text }}>Hà Nội · Phố Cổ</Text>
@@ -889,8 +889,8 @@ export default function Landing() {
             <Reveal>
               <View style={{
                 alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100,
-                backgroundColor: isDarkMode ? 'rgba(249, 158, 117, 0.12)' : 'rgba(224, 122, 95, 0.12)',
-                borderWidth: 1, borderColor: isDarkMode ? 'rgba(249, 158, 117, 0.3)' : 'rgba(224, 122, 95, 0.3)',
+                backgroundColor: isDarkMode ? 'rgba(56, 189, 248, 0.12)' : 'rgba(15, 76, 92, 0.12)',
+                borderWidth: 1, borderColor: isDarkMode ? 'rgba(56, 189, 248, 0.3)' : 'rgba(15, 76, 92, 0.25)',
               }}>
                 <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: T.accent, letterSpacing: 0.8, textTransform: 'uppercase' }}>
                   Cách hoạt động
@@ -952,8 +952,8 @@ export default function Landing() {
             <Reveal>
               <View style={{
                 alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100,
-                backgroundColor: isDarkMode ? 'rgba(249, 158, 117, 0.12)' : 'rgba(224, 122, 95, 0.12)',
-                borderWidth: 1, borderColor: isDarkMode ? 'rgba(249, 158, 117, 0.3)' : 'rgba(224, 122, 95, 0.3)',
+                backgroundColor: isDarkMode ? 'rgba(56, 189, 248, 0.12)' : 'rgba(15, 76, 92, 0.12)',
+                borderWidth: 1, borderColor: isDarkMode ? 'rgba(56, 189, 248, 0.3)' : 'rgba(15, 76, 92, 0.25)',
               }}>
                 <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: T.accent, letterSpacing: 0.8, textTransform: 'uppercase' }}>
                   Tính năng
@@ -984,13 +984,13 @@ export default function Landing() {
                 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text style={{ fontFamily: F.regular, fontSize: 11, color: T.textSoft }}>{feat.num}</Text>
-                    <View style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7, backgroundColor: isDarkMode ? 'rgba(249, 158, 117, 0.15)' : 'rgba(224, 122, 95, 0.12)' }}>
+                    <View style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7, backgroundColor: isDarkMode ? 'rgba(56, 189, 248, 0.15)' : 'rgba(12, 119, 176, 0.12)' }}>
                       <Text style={{ fontFamily: F.regular, fontSize: 9.5, color: T.accent, letterSpacing: 0.3 }}>
                         {feat.tag}
                       </Text>
                     </View>
                   </View>
-                  <View style={{ width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(224, 122, 95, 0.1)' }}>
+                  <View style={{ width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(15, 76, 92, 0.1)' }}>
                     {feat.icon}
                   </View>
                   <Text style={{ fontFamily: F.bold, fontSize: 17, lineHeight: 24, color: T.text }}>{feat.title}</Text>
@@ -1038,8 +1038,8 @@ export default function Landing() {
             <Reveal>
               <View style={{
                 alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100,
-                backgroundColor: isDarkMode ? 'rgba(249, 158, 117, 0.12)' : 'rgba(224, 122, 95, 0.12)',
-                borderWidth: 1, borderColor: isDarkMode ? 'rgba(249, 158, 117, 0.3)' : 'rgba(224, 122, 95, 0.3)',
+                backgroundColor: isDarkMode ? 'rgba(56, 189, 248, 0.12)' : 'rgba(15, 76, 92, 0.12)',
+                borderWidth: 1, borderColor: isDarkMode ? 'rgba(56, 189, 248, 0.3)' : 'rgba(15, 76, 92, 0.25)',
               }}>
                 <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: T.accent, letterSpacing: 0.8, textTransform: 'uppercase' }}>
                   Bảng giá & Định hướng
@@ -1079,7 +1079,7 @@ export default function Landing() {
                 <Reveal key={pkg.id || i} delay={i * 100} style={isMobile ? undefined : { flex: 1, minWidth: 280 }}>
                   <View style={{
                     flex: isMobile ? undefined : 1,
-                    backgroundColor: isPopular ? (isDarkMode ? 'rgba(249, 158, 117, 0.08)' : '#FFFBF8') : T.cardBg,
+                    backgroundColor: isPopular ? (isDarkMode ? 'rgba(56, 189, 248, 0.08)' : '#F0F8FA') : T.cardBg,
                     borderWidth: isPopular ? 2 : 1,
                     borderColor: isPopular ? T.accent : T.cardBorder,
                     borderRadius: 20,
@@ -1091,7 +1091,7 @@ export default function Landing() {
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <Text style={{ fontSize: 20 }}>{pkg.icon || (pkg.duration_days > 0 ? '👑' : '🎫')}</Text>
-                        <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(224, 122, 95, 0.12)' }}>
+                        <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(15, 76, 92, 0.12)' }}>
                           <Text style={{ fontFamily: F.bold, fontSize: 10, color: T.text, letterSpacing: 0.5 }}>
                             {badge}
                           </Text>
@@ -1128,7 +1128,7 @@ export default function Landing() {
                             width: 14, 
                             height: 14, 
                             borderRadius: 7, 
-                            backgroundColor: feat.enabled ? (isDarkMode ? 'rgba(249, 158, 117, 0.2)' : 'rgba(224, 122, 95, 0.15)') : 'rgba(239, 68, 68, 0.15)', 
+                            backgroundColor: feat.enabled ? (isDarkMode ? 'rgba(56, 189, 248, 0.2)' : 'rgba(12, 119, 176, 0.15)') : 'rgba(239, 68, 68, 0.15)', 
                             alignItems: 'center', 
                             justifyContent: 'center', 
                             marginTop: 3, 
@@ -1170,7 +1170,7 @@ export default function Landing() {
         }}>
           <View style={{ gap: 14 }}>
             <Reveal>
-              <View style={{ alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: isDarkMode ? 'rgba(249, 158, 117, 0.12)' : 'rgba(224, 122, 95, 0.12)', borderWidth: 1, borderColor: isDarkMode ? 'rgba(249, 158, 117, 0.3)' : 'rgba(224, 122, 95, 0.3)' }}>
+              <View style={{ alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: isDarkMode ? 'rgba(56, 189, 248, 0.12)' : 'rgba(15, 76, 92, 0.12)', borderWidth: 1, borderColor: isDarkMode ? 'rgba(56, 189, 248, 0.3)' : 'rgba(15, 76, 92, 0.25)' }}>
                 <Text style={{ fontFamily: F.semiBold, fontSize: 11, color: T.accent, letterSpacing: 0.8, textTransform: 'uppercase' }}>
                   Đánh giá
                 </Text>
@@ -1204,7 +1204,7 @@ export default function Landing() {
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(224, 122, 95, 0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                      <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(15, 76, 92, 0.15)', alignItems: 'center', justifyContent: 'center' }}>
                         <Text style={{ fontFamily: F.bold, fontSize: 12, color: T.text }}>{t.initial}</Text>
                       </View>
                       <View>
@@ -1212,7 +1212,7 @@ export default function Landing() {
                         <Text style={{ fontFamily: F.regular, fontSize: 11, color: T.textSoft, marginTop: 1 }}>{t.location}</Text>
                       </View>
                     </View>
-                    <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(224, 122, 95, 0.1)', borderWidth: 1, borderColor: T.cardBorder }}>
+                    <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(15, 76, 92, 0.1)', borderWidth: 1, borderColor: T.cardBorder }}>
                       <Text style={{ fontFamily: F.regular, fontSize: 10, color: T.textMuted }}>{t.tag}</Text>
                     </View>
                   </View>

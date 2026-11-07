@@ -228,7 +228,7 @@ function buildGoogleMapsRouteHTML(
           '<div class="gmap-popup-badge">' + (isFirst ? 'Điểm xuất phát (' + letter + ')' : (isLast ? 'Điểm kết thúc (' + letter + ')' : 'Điểm dừng ' + letter)) + '</div>' +
           '<div class="gmap-popup-title" style="margin-top:6px;">' + wp.title + '</div>' +
           '<div class="gmap-popup-sub">' + (wp.address || '${cityName}') + '</div>' +
-          (wp.estimated_cost ? '<div style="font-size:12px;font-weight:700;color:#1F6F54;">Chi phí: ' + Number(wp.estimated_cost).toLocaleString('vi-VN') + ' đ</div>' : '') +
+          (wp.estimated_cost ? '<div style="font-size:12px;font-weight:700;color:#0f4c5c;">Chi phí: ' + Number(wp.estimated_cost).toLocaleString('vi-VN') + ' đ</div>' : '') +
         '</div>'
       );
     });
@@ -561,7 +561,7 @@ export default function GoogleMapsRoutePlanner({
                 paddingHorizontal: 14,
                 paddingVertical: 8,
                 borderRadius: 10,
-                backgroundColor: justSaved ? '#134A37' : '#1A73E8',
+                backgroundColor: justSaved ? '#09343f' : '#1A73E8',
                 cursor: 'pointer' as any,
               }}
             >

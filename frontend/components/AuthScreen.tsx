@@ -791,7 +791,7 @@ export default function AuthScreen({ mode }: Props) {
                     }}
                     style={{ paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#E8F5E9', borderRadius: 6 }}
                   >
-                    <Text style={{ fontSize: 11, color: '#1F6F54', fontWeight: 'bold' }}>⚡ Test PRO</Text>
+                    <Text style={{ fontSize: 11, color: '#0f4c5c', fontWeight: 'bold' }}>⚡ Test PRO</Text>
                   </Pressable>
                 )}
               </View>

@@ -168,7 +168,7 @@ export default function ReactionsListModal({
 
           {loading ? (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-              <ActivityIndicator size="large" color="#1F6F54" />
+              <ActivityIndicator size="large" color="#0c77b0" />
             </View>
           ) : reactions.length === 0 ? (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
@@ -192,7 +192,7 @@ export default function ReactionsListModal({
                     style={{
                       paddingBottom: 8,
                       borderBottomWidth: activeTab === 'ALL' ? 2 : 0,
-                      borderBottomColor: '#1F6F54',
+                      borderBottomColor: '#0c77b0',
                       cursor: isWeb ? 'pointer' : undefined,
                     } as any}
                   >
@@ -200,7 +200,7 @@ export default function ReactionsListModal({
                       style={{
                         fontFamily: activeTab === 'ALL' ? 'BeVietnamPro_700Bold' : 'BeVietnamPro_600SemiBold',
                         fontSize: 14,
-                        color: activeTab === 'ALL' ? '#1F6F54' : '#64748B',
+                        color: activeTab === 'ALL' ? '#0c77b0' : '#64748B',
                       }}
                     >
                       Tất cả {reactions.length > 0 ? reactions.length : totalReactions}
@@ -214,7 +214,7 @@ export default function ReactionsListModal({
                       style={{
                         paddingBottom: 8,
                         borderBottomWidth: activeTab === tab.type ? 2 : 0,
-                        borderBottomColor: '#1F6F54',
+                        borderBottomColor: '#0c77b0',
                         flexDirection: 'row',
                         alignItems: 'center',
                         gap: 6,
@@ -226,7 +226,7 @@ export default function ReactionsListModal({
                         style={{
                           fontFamily: activeTab === tab.type ? 'BeVietnamPro_700Bold' : 'BeVietnamPro_600SemiBold',
                           fontSize: 14,
-                          color: activeTab === tab.type ? '#1F6F54' : '#64748B',
+                          color: activeTab === tab.type ? '#0c77b0' : '#64748B',
                         }}
                       >
                         {tab.count}

@@ -26,8 +26,8 @@ export default function AppToast({ toast, onClose }: AppToastProps) {
 
   const getBgColor = () => {
     switch (toast.type) {
-      case 'cart': return '#1F6F54'; // Brand green for cart action
-      case 'success': return '#1F6F54';
+      case 'cart': return '#0f4c5c'; // Brand green for cart action
+      case 'success': return '#0f4c5c';
       case 'error': return '#B23B3B';
       default: return '#14201B';
     }

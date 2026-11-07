@@ -10,8 +10,8 @@ interface LiveBudgetBarProps {
 export default function LiveBudgetBar({ totalBudget, currentCartTotal }: LiveBudgetBarProps) {
   const percentage = totalBudget > 0 ? (currentCartTotal / totalBudget) * 100 : 0;
 
-  let statusColor = '#1F6F54'; // 🟢 Green (Safe)
-  let statusBg = 'rgba(31,111,84,0.1)';
+  let statusColor = '#0f4c5c'; // 🟢 Green (Safe)
+  let statusBg = 'rgba(15, 76, 92,0.1)';
   let statusText = 'An toàn trong ngân sách';
   let StatusIcon = ShieldCheck;
 

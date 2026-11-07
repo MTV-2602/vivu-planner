@@ -565,7 +565,7 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <ShieldCheck size={16} color={isVerified ? '#16A34A' : '#1F6F54'} />
+            <ShieldCheck size={16} color={isVerified ? '#16A34A' : '#0f4c5c'} />
             <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 13, color: '#1B2420' }}>
               Xác minh bảo mật chống bot
             </Text>
@@ -729,7 +729,7 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
                 }}
               />
             ) : (
-              <ActivityIndicator size="small" color="#1F6F54" />
+              <ActivityIndicator size="small" color="#0f4c5c" />
             )}
           </View>
         ) : (

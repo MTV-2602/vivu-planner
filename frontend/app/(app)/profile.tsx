@@ -221,7 +221,7 @@ export default function ProfileScreen() {
 
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 100, maxWidth: 800, alignSelf: 'center', width: '100%' }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#1F6F54']} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0f4c5c']} />}
       >
         {/* Profile Card */}
         <View
@@ -244,7 +244,7 @@ export default function ProfileScreen() {
             {profile?.avatar_url ? (
               <Image
                 source={{ uri: profile.avatar_url }}
-                style={{ width: 88, height: 88, borderRadius: 44, borderWidth: 3, borderColor: '#1F6F54' }}
+                style={{ width: 88, height: 88, borderRadius: 44, borderWidth: 3, borderColor: '#0f4c5c' }}
               />
             ) : (
               <View
@@ -252,14 +252,14 @@ export default function ProfileScreen() {
                   width: 88,
                   height: 88,
                   borderRadius: 44,
-                  backgroundColor: 'rgba(31,111,84,0.1)',
+                  backgroundColor: 'rgba(15, 76, 92,0.1)',
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderWidth: 2,
-                  borderColor: '#1F6F54',
+                  borderColor: '#0f4c5c',
                 }}
               >
-                <User size={40} color="#1F6F54" />
+                <User size={40} color="#0f4c5c" />
               </View>
             )}
 
@@ -273,7 +273,7 @@ export default function ProfileScreen() {
                 width: 28,
                 height: 28,
                 borderRadius: 14,
-                backgroundColor: '#1F6F54',
+                backgroundColor: '#0f4c5c',
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderWidth: 2,
@@ -294,8 +294,8 @@ export default function ProfileScreen() {
           </Text>
 
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
-            <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: 'rgba(31,111,84,0.1)' }}>
-              <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#1F6F54' }}>
+            <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: 'rgba(15, 76, 92,0.1)' }}>
+              <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#0f4c5c' }}>
                 {profile?.is_premium ? '⭐ Thành viên Premium' : '🌱 Thành viên Miễn phí'}
               </Text>
             </View>
@@ -329,7 +329,7 @@ export default function ProfileScreen() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 6,
-                  backgroundColor: '#1F6F54',
+                  backgroundColor: '#0f4c5c',
                   paddingVertical: 10,
                   paddingHorizontal: 14,
                   borderRadius: 12,
@@ -389,7 +389,7 @@ export default function ProfileScreen() {
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Heart size={18} color="#E2703A" />
+              <Heart size={18} color="#0c77b0" />
               <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 16, color: '#1B2420' }}>
                 Sở Thích Du Lịch ({userPrefs.length})
               </Text>
@@ -402,7 +402,7 @@ export default function ProfileScreen() {
                 paddingHorizontal: 14,
                 paddingVertical: 7,
                 borderRadius: 100,
-                backgroundColor: '#1F6F54',
+                backgroundColor: '#0f4c5c',
                 opacity: pressed || savingPrefs ? 0.8 : 1,
               }]}
             >
@@ -436,9 +436,9 @@ export default function ProfileScreen() {
                       paddingHorizontal: 14,
                       paddingVertical: 8,
                       borderRadius: 20,
-                      backgroundColor: isSelected ? '#1F6F54' : '#F1F5F9',
+                      backgroundColor: isSelected ? '#0f4c5c' : '#F1F5F9',
                       borderWidth: 1.5,
-                      borderColor: isSelected ? '#1F6F54' : '#E2E8F0',
+                      borderColor: isSelected ? '#0f4c5c' : '#E2E8F0',
                     }}
                   >
                     <Text
@@ -475,7 +475,7 @@ export default function ProfileScreen() {
                       paddingHorizontal: 14,
                       paddingVertical: 8,
                       borderRadius: 20,
-                      backgroundColor: '#E2703A',
+                      backgroundColor: '#0c77b0',
                       borderWidth: 1.5,
                       borderColor: '#EA580C',
                     }}
@@ -514,7 +514,7 @@ export default function ProfileScreen() {
                 paddingHorizontal: 14,
                 paddingVertical: 7,
                 borderRadius: 10,
-                backgroundColor: '#E2703A',
+                backgroundColor: '#0c77b0',
                 alignItems: 'center',
                 justifyContent: 'center',
                 opacity: pressed || !customPrefInput.trim() ? 0.7 : 1,
@@ -536,9 +536,9 @@ export default function ProfileScreen() {
               flex: 1,
               paddingVertical: 12,
               borderRadius: 14,
-              backgroundColor: activeTab === 'trips' ? '#1F6F54' : '#FFFFFF',
+              backgroundColor: activeTab === 'trips' ? '#0f4c5c' : '#FFFFFF',
               borderWidth: 1,
-              borderColor: activeTab === 'trips' ? '#1F6F54' : 'rgba(27,36,32,0.1)',
+              borderColor: activeTab === 'trips' ? '#0f4c5c' : 'rgba(27,36,32,0.1)',
               alignItems: 'center',
               cursor: 'pointer' as any,
             }}
@@ -561,9 +561,9 @@ export default function ProfileScreen() {
               flex: 1,
               paddingVertical: 12,
               borderRadius: 14,
-              backgroundColor: activeTab === 'posts' ? '#1F6F54' : '#FFFFFF',
+              backgroundColor: activeTab === 'posts' ? '#0f4c5c' : '#FFFFFF',
               borderWidth: 1,
-              borderColor: activeTab === 'posts' ? '#1F6F54' : 'rgba(27,36,32,0.1)',
+              borderColor: activeTab === 'posts' ? '#0f4c5c' : 'rgba(27,36,32,0.1)',
               alignItems: 'center',
               cursor: 'pointer' as any,
             }}
@@ -585,7 +585,7 @@ export default function ProfileScreen() {
           <View style={{ marginBottom: 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <MapPin size={18} color="#1F6F54" />
+                <MapPin size={18} color="#0f4c5c" />
                 <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 16, color: '#1B2420' }}>
                   Danh Sách Chuyến Đi ({trips.length})
                 </Text>
@@ -595,7 +595,7 @@ export default function ProfileScreen() {
                 onPress={() => router.push('/(app)/chuyen-di/moi' as any)}
                 style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: '#1F6F54' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: '#0f4c5c' }}>
                   <Sparkles size={13} color="#FFFFFF" />
                   <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#FFFFFF' }}>Tạo Mới</Text>
                 </View>
@@ -603,7 +603,7 @@ export default function ProfileScreen() {
             </View>
 
             {loadingTrips ? (
-              <ActivityIndicator size="small" color="#1F6F54" style={{ marginVertical: 20 }} />
+              <ActivityIndicator size="small" color="#0f4c5c" style={{ marginVertical: 20 }} />
             ) : trips.length === 0 ? (
               <View
                 style={{
@@ -620,7 +620,7 @@ export default function ProfileScreen() {
                 </Text>
                 <Pressable
                   onPress={() => router.push('/(app)/chuyen-di/moi' as any)}
-                  style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 100, backgroundColor: '#1F6F54' }}
+                  style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 100, backgroundColor: '#0f4c5c' }}
                 >
                   <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>Tạo chuyến đi đầu tiên</Text>
                 </Pressable>
@@ -676,7 +676,7 @@ export default function ProfileScreen() {
           <View style={{ marginBottom: 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Star size={18} color="#E2703A" fill="#E2703A" />
+                <Star size={18} color="#0c77b0" fill="#0c77b0" />
                 <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 16, color: '#1B2420' }}>
                   Bài Đánh Giá Của Bạn ({myPosts.length})
                 </Text>
@@ -687,7 +687,7 @@ export default function ProfileScreen() {
                 onPress={() => setShowCreatePostModal(true)}
                 style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: '#1F6F54' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: '#0f4c5c' }}>
                   <Plus size={13} color="#FFFFFF" />
                   <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 12, color: '#FFFFFF' }}>Đăng Bài Mới</Text>
                 </View>
@@ -695,7 +695,7 @@ export default function ProfileScreen() {
             </View>
 
             {loadingPosts ? (
-              <ActivityIndicator size="small" color="#1F6F54" style={{ marginVertical: 20 }} />
+              <ActivityIndicator size="small" color="#0f4c5c" style={{ marginVertical: 20 }} />
             ) : myPosts.length === 0 ? (
               <View
                 style={{
@@ -717,7 +717,7 @@ export default function ProfileScreen() {
                 </Text>
                 <Pressable
                   onPress={() => setShowCreatePostModal(true)}
-                  style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 100, backgroundColor: '#1F6F54', marginTop: 4 }}
+                  style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 100, backgroundColor: '#0f4c5c', marginTop: 4 }}
                 >
                   <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>Đăng bài đầu tiên ngay</Text>
                 </Pressable>

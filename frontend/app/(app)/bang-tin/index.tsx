@@ -715,7 +715,7 @@ export default function CommunityFeedScreen() {
                     width: 22,
                     height: 22,
                     borderRadius: 11,
-                    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.2)' : 'rgba(31,111,84,0.15)',
+                    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.2)' : 'rgba(15, 76, 92,0.15)',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
@@ -824,7 +824,7 @@ export default function CommunityFeedScreen() {
               borderRadius: 14,
               boxShadow: Platform.OS === 'web'
                 ? ('0 4px 14px rgba(0,0,0,0.12)' as any)
-                : ('0 4px 14px rgba(31,111,84,0.3)' as any),
+                : ('0 4px 14px rgba(15, 76, 92,0.3)' as any),
               opacity: pressed ? 0.9 : 1,
               transform: [{ scale: pressed ? 0.98 : 1 }],
               cursor: 'pointer' as any,
@@ -1174,7 +1174,7 @@ export default function CommunityFeedScreen() {
                             width: 40,
                             height: 40,
                             borderRadius: 20,
-                            backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(31,111,84,0.1)',
+                            backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(15, 76, 92,0.1)',
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}
@@ -1752,7 +1752,7 @@ export default function CommunityFeedScreen() {
                                       width: 34,
                                       height: 34,
                                       borderRadius: 17,
-                                      backgroundColor: 'rgba(31,111,84,0.1)',
+                                      backgroundColor: 'rgba(15, 76, 92,0.1)',
                                       alignItems: 'center',
                                       justifyContent: 'center',
                                       marginTop: 2,
