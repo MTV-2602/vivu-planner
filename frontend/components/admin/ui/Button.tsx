@@ -58,7 +58,7 @@ export default function Button({
     textColor = '#FFFFFF';
     spinnerColor = '#FFFFFF';
   } else if (variant === 'secondary') {
-    containerStyle = { backgroundColor: 'rgba(31, 111, 84, 0.08)' };
+    containerStyle = { backgroundColor: 'rgba(15, 76, 92, 0.08)' };
     textColor = BRAND_COLORS.primary;
     spinnerColor = BRAND_COLORS.primary;
   } else if (variant === 'danger') {

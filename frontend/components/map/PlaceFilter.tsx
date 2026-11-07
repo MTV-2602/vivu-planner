@@ -59,9 +59,9 @@ export default function PlaceFilter({
                 paddingHorizontal: 14,
                 paddingVertical: 7,
                 borderRadius: 100,
-                backgroundColor: isSelected ? '#1F6F54' : '#F3ECDC',
+                backgroundColor: isSelected ? '#0f4c5c' : '#F3ECDC',
                 borderWidth: 1,
-                borderColor: isSelected ? '#1F6F54' : 'rgba(27,36,32,0.08)',
+                borderColor: isSelected ? '#0f4c5c' : 'rgba(27,36,32,0.08)',
                 opacity: pressed ? 0.8 : 1,
               }]}
             >
@@ -94,9 +94,9 @@ export default function PlaceFilter({
                 paddingHorizontal: 10,
                 paddingVertical: 4,
                 borderRadius: 8,
-                backgroundColor: isSelected ? 'rgba(31,111,84,0.12)' : 'transparent',
+                backgroundColor: isSelected ? 'rgba(15,76,92,0.12)' : 'transparent',
                 borderWidth: 1,
-                borderColor: isSelected ? '#1F6F54' : 'rgba(27,36,32,0.12)',
+                borderColor: isSelected ? '#0f4c5c' : 'rgba(27,36,32,0.12)',
                 opacity: pressed ? 0.8 : 1,
               }]}
             >
@@ -104,7 +104,7 @@ export default function PlaceFilter({
                 style={{
                   fontFamily: isSelected ? 'BeVietnamPro_700Bold' : 'BeVietnamPro_400Regular',
                   fontSize: 11,
-                  color: isSelected ? '#1F6F54' : '#6E7B70',
+                  color: isSelected ? '#0f4c5c' : '#6E7B70',
                 }}
               >
                 {step.label}

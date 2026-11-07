@@ -165,12 +165,12 @@ export default function ChangePasswordModal({
                   width: 38,
                   height: 38,
                   borderRadius: 19,
-                  backgroundColor: 'rgba(31,111,84,0.1)',
+                  backgroundColor: 'rgba(15, 76, 92,0.1)',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <KeyRound size={20} color="#1F6F54" />
+                <KeyRound size={20} color="#0f4c5c" />
               </View>
               <View>
                 <Text style={{ fontFamily: 'Lora_700Bold', fontSize: 17, color: '#1B2420' }}>
@@ -234,7 +234,7 @@ export default function ChangePasswordModal({
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Mail size={18} color="#1F6F54" />
+                    <Mail size={18} color="#0f4c5c" />
                     <Text style={{ fontSize: 13, fontWeight: '700', color: '#1B2420' }}>
                       Xác minh danh tính trước khi đổi mật khẩu
                     </Text>
@@ -252,7 +252,7 @@ export default function ChangePasswordModal({
                       borderColor: '#CBD5E1',
                     }}
                   >
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#1F6F54' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#0f4c5c' }}>
                       {email}
                     </Text>
                   </View>
@@ -267,7 +267,7 @@ export default function ChangePasswordModal({
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: 8,
-                    backgroundColor: '#1F6F54',
+                    backgroundColor: '#0c77b0',
                     paddingVertical: 12,
                     borderRadius: 12,
                     opacity: loading ? 0.7 : 1,
@@ -307,7 +307,7 @@ export default function ChangePasswordModal({
                     style={{
                       backgroundColor: '#F8FAFC',
                       borderWidth: 1.5,
-                      borderColor: '#1F6F54',
+                      borderColor: '#0c77b0',
                       borderRadius: 12,
                       paddingVertical: 12,
                       paddingHorizontal: 16,
@@ -330,7 +330,7 @@ export default function ChangePasswordModal({
                       alignItems: 'center',
                       justifyContent: 'center',
                       gap: 8,
-                      backgroundColor: '#1F6F54',
+                      backgroundColor: '#0c77b0',
                       paddingVertical: 12,
                       borderRadius: 12,
                       opacity: loading ? 0.7 : 1,
@@ -353,7 +353,7 @@ export default function ChangePasswordModal({
                       cursor: 'pointer' as any,
                     }}
                   >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#1F6F54' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#0c77b0' }}>
                       Chưa nhận được mã? Gửi lại
                     </Text>
                   </Pressable>
@@ -465,7 +465,7 @@ export default function ChangePasswordModal({
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: 8,
-                    backgroundColor: '#1F6F54',
+                    backgroundColor: '#0c77b0',
                     paddingVertical: 12,
                     borderRadius: 12,
                     marginTop: 6,
@@ -507,7 +507,7 @@ export default function ChangePasswordModal({
                   onPress={onClose}
                   style={{
                     width: '100%',
-                    backgroundColor: '#1F6F54',
+                    backgroundColor: '#0c77b0',
                     paddingVertical: 12,
                     borderRadius: 12,
                     alignItems: 'center',

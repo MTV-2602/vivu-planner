@@ -172,11 +172,11 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
             paddingHorizontal: 12,
             paddingVertical: 6,
             borderRadius: 100,
-            backgroundColor: 'rgba(31,111,84,0.1)',
+            backgroundColor: 'rgba(15, 76, 92,0.1)',
             opacity: pressed ? 0.8 : 1,
           }]}
         >
-          <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#1F6F54' }}>
+          <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#0f4c5c' }}>
             ⚡ Tự động chia
           </Text>
         </Pressable>
@@ -188,7 +188,7 @@ export default function BudgetBreakdown({ totalBudget, breakdown, onChange }: Bu
           className="flex-col sm:flex-row sm:justify-between gap-1"
           style={isMobile ? { flexDirection: 'column', gap: 4 } : { flexDirection: 'row', justifyContent: 'space-between' }}
         >
-          <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: isOverBudget ? '#B23B3B' : '#1F6F54' }}>
+          <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: isOverBudget ? '#B23B3B' : '#0f4c5c' }}>
             Đã phân bổ: {formatCurrency(allocatedTotal)} ({totalPercentAllocated.toFixed(0)}%)
           </Text>
           <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#6E7B70' }}>

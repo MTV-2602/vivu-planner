@@ -129,7 +129,7 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
           onPress={handleGenerate}
           disabled={isLoading}
           style={({ pressed }) => [{
-            backgroundColor: '#0284C7',
+            backgroundColor: '#0c77b0',
             paddingHorizontal: 22,
             paddingVertical: 12,
             borderRadius: 100,
@@ -141,7 +141,7 @@ export default function HeroAISearch({ onGenerate }: HeroAISearchProps) {
             opacity: pressed ? 0.85 : 1,
             transform: [{ scale: pressed ? 0.97 : 1 }],
             ...(isWeb ? {
-              boxShadow: '0 4px 20px rgba(2, 132, 199, 0.45)',
+              boxShadow: '0 4px 20px rgba(12, 119, 176, 0.45)',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
             } as any : {}),

@@ -236,7 +236,7 @@ function LoadingScreen({ stage, onCancel }: { stage: number; onCancel: () => voi
           <Animated.View
             style={{
               position: 'absolute', width: 96, height: 96, borderRadius: 48,
-              borderWidth: 2, borderColor: 'rgba(31,111,84,0.2)',
+              borderWidth: 2, borderColor: 'rgba(15, 76, 92,0.2)',
             }}
           />
           <Animated.View
@@ -1589,7 +1589,7 @@ export default function TripWizard() {
         '<div style="font-size:13px; font-weight:800; color:#202124; margin-bottom:4px;">' + p.name + '</div>' +
         '<div style="font-size:11px; font-weight:800; color:#137333; margin-bottom:4px;">' + costFormatted + '</div>' +
         (p.address ? '<div style="font-size:10px; color:#5F6368; margin-bottom:8px;">📍 ' + p.address + '</div>' : '') +
-        '<button onclick="window.parent.postMessage({ type: \\'MAP_TOGGLE_CART\\', placeId: \\'' + p.id + '\\' }, \\'*\\')" style="width:100%; padding:7px 10px; border-radius:8px; border:none; cursor:pointer; font-weight:800; font-size:11px; background:' + (inCart ? '#E6F4EA' : '#1A73E8') + '; color:' + (inCart ? '#137333' : '#FFFFFF') + ';">' +
+        '<button onclick="window.parent.postMessage({ type: \\'MAP_TOGGLE_CART\\', placeId: \\'' + p.id + '\\' }, \\'*\\')" style="width:100%; padding:7px 10px; border-radius:8px; border:none; cursor:pointer; font-weight:800; font-size:11px; background:' + (inCart ? '#E6F4EA' : '#0c77b0') + '; color:' + (inCart ? '#137333' : '#FFFFFF') + ';">' +
         (inCart ? '✓ Đã trong giỏ (Bấm để bỏ)' : '+ Thêm vào giỏ') +
         '</button>' +
         '</div>';
@@ -2378,7 +2378,8 @@ export default function TripWizard() {
 
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-brand-bg"
+      className="flex-1"
+      style={Platform.OS === 'web' ? { backgroundColor: '#F8F9FA' } : { backgroundColor: BRAND_COLORS.bg }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -2398,24 +2399,49 @@ export default function TripWizard() {
             <Pressable
               onPress={() => router.push(APP_ROUTES.TRIPS as any)}
               className="flex-row items-center gap-1"
+              style={{ cursor: 'pointer' as any }}
             >
-              <ArrowLeft size={14} color={BRAND_COLORS.textSoft} />
-              <Text className="text-xs font-bold text-brand-textSoft">Quay lại</Text>
+              <ArrowLeft size={14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.textSoft} />
+              <Text
+                className="text-xs font-bold"
+                style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.textSoft }}
+              >
+                Quay lại
+              </Text>
             </Pressable>
 
             <View className="flex-row gap-1.5">
               {[1, 2, 3, 4].map(idx => (
                 <View
                   key={idx}
-                  className={`h-1.5 rounded-full ${step >= idx ? 'bg-brand-primary' : 'bg-brand-line'}`}
-                  style={{ width: 32 }}
+                  className="h-1.5 rounded-full"
+                  style={{
+                    width: 32,
+                    backgroundColor: step >= idx
+                      ? (Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary)
+                      : (Platform.OS === 'web' ? '#E5EAE7' : BRAND_COLORS.line),
+                  }}
                 />
               ))}
             </View>
           </View>
 
           {/* Form card */}
-          <View className="bg-white rounded-3xl p-8 shadow-sm border border-brand-line/30 gap-6">
+          <View
+            className="bg-white rounded-3xl p-8 gap-6"
+            style={
+              Platform.OS === 'web'
+                ? {
+                    borderWidth: 1,
+                    borderColor: 'rgba(15, 76, 92, 0.08)',
+                    boxShadow: '0 4px 20px rgba(15, 76, 92, 0.04)' as any,
+                  }
+                : {
+                    borderWidth: 1,
+                    borderColor: 'rgba(27,36,32,0.1)',
+                  }
+            }
+          >
             {/* Error banner */}
             {!!errorMsg && (
               <View className="p-4 rounded-xl bg-brand-danger/10 border border-brand-danger/30 flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
@@ -2450,14 +2476,17 @@ export default function TripWizard() {
             {step === 1 && (
               <Reveal>
                 <View className="gap-6">
-                  <Text className="font-display font-extrabold text-2xl text-brand-text">
+                  <Text
+                    className="font-display font-extrabold text-2xl"
+                    style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
+                  >
                     Bạn muốn đi du lịch ở đâu?
                   </Text>
 
                   {/* City Dropdown picker [Mục 2] */}
                   <View className="gap-2">
                     <View className="flex-row items-center gap-1.5">
-                      <MapPin size={14} color={BRAND_COLORS.primary} />
+                      <MapPin size={14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                       <Text className="text-sm font-bold text-brand-textSoft">Điểm đến (Chọn Thành Phố)</Text>
                     </View>
                     {Platform.OS === 'web' ? (
@@ -2468,11 +2497,11 @@ export default function TripWizard() {
                           width: '100%',
                           padding: '12px 16px',
                           borderRadius: '12px',
-                          border: '1px solid rgba(27,36,32,0.15)',
-                          backgroundColor: '#FBF5EA',
+                          border: '1px solid #E5EAE7',
+                          backgroundColor: '#F8F9FA',
                           fontSize: '14px',
                           fontWeight: 'bold',
-                          color: '#1B2420',
+                          color: '#0f4c5c',
                           outline: 'none',
                           cursor: 'pointer',
                         }}
@@ -2529,7 +2558,10 @@ export default function TripWizard() {
             {step === 2 && (
               <Reveal>
                 <View className="gap-6">
-                  <Text className="font-display font-extrabold text-2xl text-brand-text">
+                  <Text
+                    className="font-display font-extrabold text-2xl"
+                    style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
+                  >
                     Đoàn đi và Ngân sách
                   </Text>
 
@@ -2652,7 +2684,10 @@ export default function TripWizard() {
             {step === 3 && (
               <Reveal>
                 <View className="gap-6">
-                  <Text className="font-display font-extrabold text-2xl text-brand-text">
+                  <Text
+                    className="font-display font-extrabold text-2xl"
+                    style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
+                  >
                     Bạn mong muốn trải nghiệm điều gì?
                   </Text>
 
@@ -2806,9 +2841,18 @@ export default function TripWizard() {
                             testID="btn-open-custom-place-modal"
                             onPress={() => setShowCustomPlaceModal(true)}
                             className="px-3 py-2 rounded-xl bg-brand-bgAlt border border-brand-line/60 flex-row items-center gap-1.5 active:opacity-80"
+                            style={Platform.OS === 'web' ? {
+                              backgroundColor: '#F0F9FF',
+                              borderColor: '#0c77b0',
+                            } : undefined}
                           >
-                            <Plus size={13} color={BRAND_COLORS.primary} />
-                            <Text className="text-xs font-bold text-brand-text">+ Tự thêm điểm</Text>
+                            <Plus size={13} color={Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary} />
+                            <Text
+                              className="text-xs font-bold text-brand-text"
+                              style={Platform.OS === 'web' ? { color: '#0c77b0' } : undefined}
+                            >
+                              + Tự thêm điểm
+                            </Text>
                           </Pressable>
 
                           <Pressable
@@ -2820,6 +2864,9 @@ export default function TripWizard() {
                                 ? 'bg-emerald-600 active:opacity-90'
                                 : 'bg-brand-primary active:opacity-90'
                             }`}
+                            style={Platform.OS === 'web' ? {
+                              backgroundColor: draftTripId ? '#059669' : '#0c77b0',
+                            } : undefined}
                           >
                             {isCreatingDraftGroup ? (
                               <ActivityIndicator size="small" color="#FFFFFF" />
@@ -2853,8 +2900,11 @@ export default function TripWizard() {
                   {useProWorkspace && canAccessWorkspace ? (
                     loadingPregen ? (
                       <View className="py-20 items-center justify-center gap-4 bg-brand-bgAlt/50 rounded-3xl border border-dashed border-brand-line/60">
-                        <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-                        <Text className="text-base font-extrabold text-brand-primary">
+                        <ActivityIndicator size="large" color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                        <Text
+                          className="text-base font-extrabold text-brand-primary"
+                          style={Platform.OS === 'web' ? { color: '#0f4c5c' } : undefined}
+                        >
                           Gemini đang khảo sát & sinh kho địa điểm thực tế...
                         </Text>
                         <Text className="text-xs text-brand-textSoft text-center max-w-md px-4">
@@ -3178,6 +3228,9 @@ export default function TripWizard() {
 
                                             <Pressable
                                               testID={`btn-toggle-cart-${place.id}`}
+                                              style={Platform.OS === 'web' ? {
+                                                backgroundColor: isInCart ? '#059669' : '#0c77b0',
+                                              } : undefined}
                                               onPress={() => handleAddToCart(place)}
                                               className={`w-full py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-1.5 transition-all shadow-sm ${
                                                 isInCart
@@ -3322,7 +3375,9 @@ export default function TripWizard() {
                                                     paddingVertical: 8,
                                                     borderRadius: 8,
                                                     alignItems: 'center',
-                                                    backgroundColor: inCart ? '#10B981' : isPro ? '#D97706' : BRAND_COLORS.primary,
+                                                    backgroundColor: Platform.OS === 'web'
+                                                      ? (inCart ? '#10B981' : '#0c77b0')
+                                                      : (inCart ? '#10B981' : isPro ? '#D97706' : BRAND_COLORS.primary),
                                                   }}
                                                 >
                                                   <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
@@ -3534,6 +3589,7 @@ export default function TripWizard() {
                 <Pressable
                   onPress={handlePrev}
                   className="flex-row items-center gap-1.5 px-4 py-2.5 rounded-lg border border-brand-line"
+                  style={{ cursor: 'pointer' as any }}
                 >
                   <Text className="text-xs font-bold text-brand-textSoft">Quay lại</Text>
                 </Pressable>
@@ -3546,7 +3602,15 @@ export default function TripWizard() {
                   testID="btn-next-step"
                   onPress={handleNext}
                   disabled={!!errorMsg}
-                  className={`flex-row items-center gap-1.5 px-5 py-3 rounded-xl ${!!errorMsg ? 'bg-brand-primary/40 opacity-50' : 'bg-brand-primary'}`}
+                  className="flex-row items-center gap-1.5 px-5 py-3 rounded-xl"
+                  style={{
+                    backgroundColor: !!errorMsg
+                      ? (Platform.OS === 'web' ? 'rgba(12, 119, 176, 0.4)' : 'rgba(15, 76, 92,0.4)')
+                      : (Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary),
+                    opacity: !!errorMsg ? 0.5 : 1,
+                    boxShadow: Platform.OS === 'web' && !errorMsg ? ('0 4px 14px rgba(12, 119, 176, 0.25)' as any) : undefined,
+                    cursor: (!!errorMsg ? 'not-allowed' : 'pointer') as any,
+                  }}
                 >
                   <Text className="text-white text-sm font-bold">Tiếp tục</Text>
                   <ArrowRight size={16} color="white" />
@@ -3563,7 +3627,12 @@ export default function TripWizard() {
                   <Pressable
                     testID="btn-open-create-modal"
                     onPress={() => setShowScheduleOptionModal(true)}
-                    className="flex-row items-center gap-2 px-6 py-3.5 rounded-xl bg-brand-primary active:opacity-90 shadow-sm"
+                    className="flex-row items-center gap-2 px-6 py-3.5 rounded-xl active:opacity-90 shadow-sm"
+                    style={{
+                      backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary,
+                      boxShadow: Platform.OS === 'web' ? ('0 4px 14px rgba(12, 119, 176, 0.25)' as any) : undefined,
+                      cursor: 'pointer' as any,
+                    }}
                   >
                     <Sparkles size={16} color="white" />
                     <Text className="text-white text-sm font-bold">
@@ -4119,21 +4188,21 @@ export default function TripWizard() {
                   borderWidth: 1.5,
                   borderColor: canAccessWorkspace ? BRAND_COLORS.primary : '#F5D599',
                   backgroundColor: canAccessWorkspace
-                    ? (pressed ? 'rgba(31,111,84,0.08)' : 'rgba(31,111,84,0.03)')
+                    ? (pressed ? 'rgba(15, 76, 92,0.08)' : 'rgba(15, 76, 92,0.03)')
                     : '#FFFBF0',
                   gap: 8,
                 }]}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: canAccessWorkspace ? 'rgba(31,111,84,0.12)' : 'rgba(212,160,23,0.15)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: canAccessWorkspace ? 'rgba(15, 76, 92,0.12)' : 'rgba(212,160,23,0.15)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <Crown size={18} color={canAccessWorkspace ? BRAND_COLORS.primary : '#D4A017'} />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 14, color: canAccessWorkspace ? BRAND_COLORS.primary : '#9A5B00', flexShrink: 1 }}>
                         🗺️ Không gian Bản đồ Trực quan & Lập lịch
                       </Text>
-                      <Text style={{ fontSize: 11, color: canAccessWorkspace ? '#1F6F54' : '#7A5210', fontWeight: '500' }}>
+                      <Text style={{ fontSize: 11, color: canAccessWorkspace ? '#0f4c5c' : '#7A5210', fontWeight: '500' }}>
                         Bản đồ Trực quan & Lịch trình ViVu
                       </Text>
                     </View>
@@ -4322,7 +4391,7 @@ export default function TripWizard() {
           >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(31,111,84,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(15, 76, 92,0.12)', alignItems: 'center', justifyContent: 'center' }}>
                   <Crown size={22} color={BRAND_COLORS.primary} />
                 </View>
                 <View style={{ flex: 1, paddingRight: 8 }}>
@@ -4406,7 +4475,7 @@ export default function TripWizard() {
           <View style={{ width: '100%', maxWidth: 500, backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, gap: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 10 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(31,111,84,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(15, 76, 92,0.12)', alignItems: 'center', justifyContent: 'center' }}>
                   <Users size={20} color={BRAND_COLORS.primary} />
                 </View>
                 <View>
@@ -4626,7 +4695,18 @@ export default function TripWizard() {
                 testID="btn-confirm-add-custom-place"
                 onPress={handleAddNewCustomPlace}
                 disabled={!customPlaceTitle.trim()}
-                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: customPlaceTitle.trim() ? BRAND_COLORS.primary : '#D1D5DB', alignItems: 'center', justifyContent: 'center' }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: !customPlaceTitle.trim()
+                    ? '#D1D5DB'
+                    : Platform.OS === 'web'
+                    ? '#0c77b0'
+                    : BRAND_COLORS.primary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
               >
                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>+ Thêm vào giỏ</Text>
               </Pressable>
@@ -4668,7 +4748,7 @@ export default function TripWizard() {
                     paddingVertical: 13,
                     paddingHorizontal: 12,
                     borderRadius: 12,
-                    backgroundColor: destinationCity === city ? 'rgba(31,111,84,0.08)' : (pressed ? '#FBF5EA' : 'transparent'),
+                    backgroundColor: destinationCity === city ? 'rgba(15, 76, 92,0.08)' : (pressed ? '#FBF5EA' : 'transparent'),
                     marginVertical: 2,
                   }]}
                 >

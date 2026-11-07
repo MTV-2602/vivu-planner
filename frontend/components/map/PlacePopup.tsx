@@ -78,7 +78,7 @@ export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupPr
       case 'cafe': return '#F0B255';   // 🟡 Vàng (Cafe)
       case 'hotel': return '#2563EB';  // 🔵 Xanh (Khách sạn)
       case 'attraction': return '#8B5CF6'; // 🟣 Tím (Vui chơi)
-      default: return '#1F6F54';
+      default: return '#0f4c5c';
     }
   };
 
@@ -166,11 +166,11 @@ export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupPr
             opacity: pressed ? 0.8 : 1,
           }]}
         >
-          <Sparkles size={14} color="#E2703A" />
+          <Sparkles size={14} color="#0c77b0" />
           <Text style={{ fontFamily: 'BeVietnamPro_400Regular_Italic', fontSize: 12, color: '#1B2420', flex: 1 }}>
             "{place.social_review_quote}"
           </Text>
-          <ExternalLink size={14} color="#E2703A" />
+          <ExternalLink size={14} color="#0c77b0" />
         </Pressable>
       )}
 
@@ -178,7 +178,7 @@ export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupPr
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(27,36,32,0.08)' }}>
         <View>
           <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 11, color: '#6E7B70' }}>Giá ước tính</Text>
-          <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: '#1F6F54' }}>
+          <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 15, color: '#0f4c5c' }}>
             {costValue.toLocaleString('vi-VN')} đ
           </Text>
         </View>
@@ -192,12 +192,12 @@ export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupPr
             paddingHorizontal: 12,
             paddingVertical: 7,
             borderRadius: 100,
-            backgroundColor: 'rgba(31,111,84,0.1)',
+            backgroundColor: 'rgba(15,76,92,0.1)',
             opacity: pressed ? 0.8 : 1,
           }]}
         >
-          <ExternalLink size={13} color="#1F6F54" />
-          <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#1F6F54' }}>
+          <ExternalLink size={13} color="#0f4c5c" />
+          <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#0f4c5c' }}>
             Xem Google Maps
           </Text>
         </Pressable>
@@ -216,7 +216,7 @@ export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupPr
               paddingVertical: 7,
               borderRadius: 8,
               alignItems: 'center',
-              backgroundColor: pricingOption === 'auto' ? '#1F6F54' : 'rgba(27,36,32,0.06)',
+              backgroundColor: pricingOption === 'auto' ? '#0f4c5c' : 'rgba(27,36,32,0.06)',
             }}
           >
             <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: pricingOption === 'auto' ? '#FFFFFF' : '#1B2420' }}>
@@ -231,7 +231,7 @@ export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupPr
               paddingVertical: 7,
               borderRadius: 8,
               alignItems: 'center',
-              backgroundColor: pricingOption === 'manual' ? '#1F6F54' : 'rgba(27,36,32,0.06)',
+              backgroundColor: pricingOption === 'manual' ? '#0f4c5c' : 'rgba(27,36,32,0.06)',
             }}
           >
             <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: pricingOption === 'manual' ? '#FFFFFF' : '#1B2420' }}>
@@ -275,7 +275,7 @@ export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupPr
           gap: 8,
           paddingVertical: 11,
           borderRadius: 100,
-          backgroundColor: '#E2703A',
+          backgroundColor: Platform.OS === 'web' ? '#0c77b0' : '#0c77b0',
           opacity: pressed ? 0.9 : 1,
         }]}
       >

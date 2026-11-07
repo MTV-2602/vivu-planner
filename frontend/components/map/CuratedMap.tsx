@@ -115,7 +115,7 @@ function buildCuratedLeafletHTML(
         case 'cafe': return '#F0B255';
         case 'hotel': return '#2563EB';
         case 'attraction': return '#8B5CF6';
-        default: return '#1F6F54';
+        default: return '#0f4c5c';
       }
     };
 
@@ -139,7 +139,7 @@ function buildCuratedLeafletHTML(
 
       if (latlngs.length >= 2) {
         L.polyline(latlngs, {
-          color: '#1F6F54',
+          color: '#0f4c5c',
           weight: 4.5,
           opacity: 0.9,
           dashArray: '8, 8',
@@ -171,7 +171,7 @@ function buildCuratedLeafletHTML(
       bounds.extend([Number(p.lat), Number(p.lng)]);
 
       const inRouteOrder = routeMap[p.id];
-      const color = inRouteOrder ? '#1F6F54' : getColor(p.category);
+      const color = inRouteOrder ? '#0f4c5c' : getColor(p.category);
       const content = inRouteOrder ? ('#' + inRouteOrder) : getEmoji(p.category);
       const size = inRouteOrder ? 36 : 30;
 
@@ -189,8 +189,8 @@ function buildCuratedLeafletHTML(
         <div style="font-family: sans-serif; min-width: 180px; padding: 4px;">
           <div style="font-weight: 800; font-size: 14px; color: #1B2420; margin-bottom: 4px;">\${p.name}</div>
           <div style="font-size: 11px; color: #6E7B70; margin-bottom: 6px;">\${p.address || ''}</div>
-          <div style="font-size: 12px; font-weight: 700; color: #E2703A;">\${costStr}</div>
-          \${inRouteOrder ? \`<div style="margin-top: 6px; font-size: 11px; font-weight: bold; color: #1F6F54;">✓ Điểm thứ \${inRouteOrder} trong lộ trình</div>\` : ''}
+          <div style="font-size: 12px; font-weight: 700; color: #0c77b0;">\${costStr}</div>
+          \${inRouteOrder ? \`<div style="margin-top: 6px; font-size: 11px; font-weight: bold; color: #0f4c5c;">✓ Điểm thứ \${inRouteOrder} trong lộ trình</div>\` : ''}
         </div>
       \`);
 
@@ -393,17 +393,17 @@ export default function CuratedMap({
                   borderRadius: 16,
                   padding: 14,
                   borderWidth: isAdded ? 1.5 : 1,
-                  borderColor: isAlreadyInTrip ? '#134A37' : (isAddedInCart ? '#1F6F54' : 'rgba(27,36,32,0.1)'),
+                  borderColor: isAlreadyInTrip ? '#09343f' : (isAddedInCart ? '#0f4c5c' : 'rgba(27,36,32,0.1)'),
                   gap: 8,
                   justifyContent: 'space-between',
                 }}
               >
                 <View style={{ gap: 4 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#1F6F54', backgroundColor: 'rgba(31,111,84,0.1)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#0f4c5c', backgroundColor: 'rgba(15,76,92,0.1)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
                       {place.category === 'dining' ? '🔴 Ăn uống' : place.category === 'cafe' ? '🟡 Cafe' : place.category === 'hotel' ? '🔵 Khách sạn' : '🟣 Vui chơi'}
                     </Text>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#E2703A' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#0c77b0' }}>
                       {costValue.toLocaleString('vi-VN')} đ
                     </Text>
                   </View>
@@ -440,7 +440,7 @@ export default function CuratedMap({
                     gap: 6,
                     paddingVertical: 8,
                     borderRadius: 10,
-                    backgroundColor: isAlreadyInTrip ? '#134A37' : (isAddedInCart ? '#1F6F54' : '#E2703A'),
+                    backgroundColor: isAlreadyInTrip ? '#09343f' : (isAddedInCart ? '#0f4c5c' : (Platform.OS === 'web' ? '#0c77b0' : '#0c77b0')),
                     opacity: (pressed && !isAlreadyInTrip) ? 0.85 : 1,
                     marginTop: 4,
                   }]}

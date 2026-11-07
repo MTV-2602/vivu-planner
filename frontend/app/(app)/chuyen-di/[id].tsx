@@ -1373,7 +1373,10 @@ export default function TripDetail() {
   const ITEM_TYPE_OPTIONS = Object.entries(ITEM_TYPE_LABELS).map(([value, label]) => ({ value, label }));
 
   return (
-    <View className="flex-1 bg-brand-bg">
+    <View
+      className="flex-1"
+      style={Platform.OS === 'web' ? { backgroundColor: '#F8F9FA' } : { backgroundColor: BRAND_COLORS.bg }}
+    >
       <View className="no-print flex-1">
         <ScrollView
           ref={scrollRef}
@@ -1384,17 +1387,31 @@ export default function TripDetail() {
       >
         {/* Navbar */}
         <View
-          className="bg-brand-bg border-b border-brand-line px-4 md:px-6 py-3 md:py-4"
-          style={{ paddingTop: Math.max(insets.top, 14) }}
+          className={Platform.OS === 'web' ? 'px-4 md:px-6 py-3 md:py-4 shadow-sm' : 'bg-brand-bg border-b border-brand-line px-4 md:px-6 py-3 md:py-4'}
+          style={{
+            backgroundColor: Platform.OS === 'web' ? '#0f4c5c' : undefined,
+            borderBottomWidth: 1,
+            borderBottomColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.08)' : undefined,
+            paddingTop: Math.max(insets.top, 14),
+          }}
         >
           <View className="flex-row justify-between items-center">
-            <Pressable onPress={() => router.push(isAdmin ? (APP_ROUTES.ADMIN_TRIPS as any) : (APP_ROUTES.TRIPS as any))} className="flex-row items-center gap-1.5 shrink-0" style={{ cursor: 'pointer' as any }}>
-              <ArrowLeft size={16} color={BRAND_COLORS.textSoft} />
-              <Text className="text-xs font-bold text-brand-textSoft">{isAdmin ? 'Quản lý Chuyến đi' : 'Bảng điều khiển'}</Text>
+            <Pressable
+              onPress={() => router.push(isAdmin ? (APP_ROUTES.ADMIN_TRIPS as any) : (APP_ROUTES.TRIPS as any))}
+              className="flex-row items-center gap-1.5 shrink-0"
+              style={{ cursor: 'pointer' as any }}
+            >
+              <ArrowLeft size={16} color={Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.textSoft} />
+              <Text
+                className="text-xs font-bold"
+                style={{ color: Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.textSoft }}
+              >
+                {isAdmin ? 'Quản lý Chuyến đi' : 'Bảng điều khiển'}
+              </Text>
             </Pressable>
             <View className="flex-row items-center gap-2 md:gap-3">
               <View className="hidden sm:flex">
-                <SystemClock />
+                <SystemClock variant={Platform.OS === 'web' ? 'light' : 'dark'} />
               </View>
               {(() => {
                 const chip = formatHeaderChip(statusData);
@@ -1445,8 +1462,13 @@ export default function TripDetail() {
                 );
               })()}
               <View className="hidden md:flex flex-row items-center gap-2">
-                <Compass size={24} color={BRAND_COLORS.primary} />
-                <Text className="font-display font-extrabold text-lg text-brand-primary">ViVu Planner</Text>
+                <Compass size={24} color={Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary} />
+                <Text
+                  className="font-display font-extrabold text-lg"
+                  style={{ color: Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary }}
+                >
+                  ViVu Planner
+                </Text>
               </View>
             </View>
           </View>
@@ -1478,13 +1500,40 @@ export default function TripDetail() {
           )}
 
           {/* Trip header */}
-          <View className="gap-4 border-b border-brand-line/30 pb-6">
+          <View
+            className="gap-4 pb-6"
+            style={
+              Platform.OS === 'web'
+                ? {
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: 20,
+                    padding: 24,
+                    borderWidth: 1,
+                    borderColor: 'rgba(15, 76, 92, 0.08)',
+                    boxShadow: '0 4px 16px rgba(15, 76, 92, 0.04)' as any,
+                  }
+                : {
+                    borderBottomWidth: 1,
+                    borderBottomColor: 'rgba(27,36,32,0.1)',
+                  }
+            }
+          >
             <View className="flex-col md:flex-row justify-between items-start gap-4">
               <View className="gap-3 w-full md:flex-1 min-w-0">
                 <View className="flex-row items-center gap-2 flex-wrap">
-                  <View className="flex-row items-center gap-1.5 self-start px-3 py-1 rounded-full bg-brand-primary/10">
-                    <MapPin size={14} color={BRAND_COLORS.primary} />
-                    <Text className="text-brand-primary font-bold text-xs">{trip.destination_city}</Text>
+                  <View
+                    className="flex-row items-center gap-1.5 self-start px-3 py-1 rounded-full"
+                    style={{
+                      backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(15, 76, 92,0.1)',
+                    }}
+                  >
+                    <MapPin size={14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                    <Text
+                      className="font-bold text-xs"
+                      style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary }}
+                    >
+                      {trip.destination_city}
+                    </Text>
                   </View>
                   {isTripPro ? (
                     <View style={{
@@ -1536,20 +1585,28 @@ export default function TripDetail() {
                     </View>
                   )}
                 </View>
-                <Text className="font-display font-extrabold text-2xl md:text-3xl text-brand-text break-words">{trip.title}</Text>
+                <Text
+                  className="font-display font-extrabold text-2xl md:text-3xl break-words"
+                  style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
+                >
+                  {trip.title}
+                </Text>
                 <View className="flex-row flex-wrap gap-4">
                   <View className="flex-row items-center gap-1.5">
-                    <Calendar size={16} color={BRAND_COLORS.primary} />
+                    <Calendar size={16} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                     <Text className="text-xs text-brand-textSoft font-semibold">{formatDate(trip.start_date)} — {formatDate(trip.end_date)}</Text>
                   </View>
                   <View className="flex-row items-center gap-1.5">
-                    <Wallet size={16} color={BRAND_COLORS.primary} />
-                    <Text className="text-xs text-brand-textSoft font-semibold">
+                    <Wallet size={16} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                    <Text
+                      className="text-xs font-semibold"
+                      style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.textSoft }}
+                    >
                       {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(trip.budget_total)}
                     </Text>
                   </View>
                   <View className="flex-row items-center gap-1.5">
-                    <Compass size={16} color={BRAND_COLORS.primary} />
+                    <Compass size={16} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                     <Text className="text-xs text-brand-textSoft font-semibold">
                       {trip.traveler_count} khách ({TRAVELER_TYPE_LABELS[String(trip.traveler_type || '').toLowerCase()] || trip.traveler_type})
                     </Text>
@@ -1571,8 +1628,11 @@ export default function TripDetail() {
                 )}
                 <Pressable
                   onPress={handleExportPDF}
-                  className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-brand-primary"
-                  style={{ cursor: 'pointer' as any }}
+                  className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl"
+                  style={{
+                    backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary,
+                    cursor: 'pointer' as any,
+                  }}
                 >
                   <Share2 size={15} color="white" />
                   <Text className="text-xs md:text-sm font-bold text-white">
@@ -1592,13 +1652,28 @@ export default function TripDetail() {
                       setShowPremiumModal(true);
                     }
                   }}
-                  className={`flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl border ${collaborators.length > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-100 border-gray-200'}`}
-                  style={{ cursor: 'pointer' as any }}
+                  className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl border"
+                  style={{
+                    backgroundColor: Platform.OS === 'web'
+                      ? '#FFFFFF'
+                      : (collaborators.length > 0 ? '#ECFDF5' : '#F3F4F6'),
+                    borderColor: Platform.OS === 'web'
+                      ? '#0c77b0'
+                      : (collaborators.length > 0 ? '#A7F3D0' : '#E5E7EB'),
+                    cursor: 'pointer' as any,
+                  }}
                 >
                   {onlineMembers.length > 0 && (
                     <AvatarStack members={onlineMembers} max={3} size={18} />
                   )}
-                  <Text className={`text-xs md:text-sm font-bold ${collaborators.length > 0 ? 'text-emerald-800' : 'text-gray-700'}`}>
+                  <Text
+                    className="text-xs md:text-sm font-bold"
+                    style={{
+                      color: Platform.OS === 'web'
+                        ? '#0c77b0'
+                        : (collaborators.length > 0 ? '#065F46' : '#374151'),
+                    }}
+                  >
                     {collaborators.length > 0 ? `👥 Nhóm (${collaborators.length + 1})` : '👥 Nhóm'}
                   </Text>
                   {!canShare && isOwner && <Text className="text-[10px]">🔒</Text>}
@@ -1617,8 +1692,11 @@ export default function TripDetail() {
                   <>
                     <Pressable
                       onPress={() => setDisruptionOpen(true)}
-                      className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-brand-danger"
-                      style={{ cursor: 'pointer' as any }}
+                      className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl"
+                      style={{
+                        backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.danger,
+                        cursor: 'pointer' as any,
+                      }}
                     >
                       <AlertTriangle size={15} color="white" />
                       <Text className="text-xs md:text-sm font-bold text-white">Báo sự cố</Text>
@@ -1711,8 +1789,11 @@ export default function TripDetail() {
           <View className="gap-6">
             <View className="flex-row items-center justify-between flex-wrap gap-3">
               <View className="flex-row items-center gap-2">
-                <Calendar size={20} color={BRAND_COLORS.primary} />
-                <Text className="text-xl font-extrabold text-brand-text">
+                <Calendar size={20} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                <Text
+                  className="text-xl font-extrabold"
+                  style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
+                >
                   Lịch trình & Lộ trình di chuyển
                 </Text>
               </View>
@@ -2624,6 +2705,7 @@ export default function TripDetail() {
                         ) : (
                           <Pressable
                             testID={`btn-pick-live-place-${idx}`}
+                            style={Platform.OS === 'web' ? { backgroundColor: isSelected ? '#059669' : '#0c77b0' } : undefined}
                             onPress={() => {
                               if (isSelected) {
                                 setTempSelectedPlaces(prev => prev.filter(tp => tp.name !== placeName));

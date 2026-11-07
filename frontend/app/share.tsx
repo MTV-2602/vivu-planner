@@ -147,7 +147,7 @@ export default function PublicShareTripPage() {
                   paddingHorizontal: 12,
                   paddingVertical: 6,
                   borderRadius: 8,
-                  backgroundColor: shareMapMode === 'overview' ? '#134A37' : '#F1F3F4',
+                  backgroundColor: shareMapMode === 'overview' ? '#09343f' : '#F1F3F4',
                 }}
               >
                 <Text style={{ fontSize: 12, fontWeight: '700', color: shareMapMode === 'overview' ? '#FFF' : '#3C4043' }}>
@@ -265,7 +265,7 @@ export default function PublicShareTripPage() {
                   <Text style={{ fontWeight: '700', color: '#1B3A2D', fontSize: 14, marginBottom: 2 }}>{item.title}</Text>
                   {item.description && <Text style={{ color: '#888', fontSize: 12 }}>{item.description}</Text>}
                   {item.estimated_cost != null && (
-                    <Text style={{ color: '#1F6F54', fontSize: 12, fontWeight: '600', marginTop: 4 }}>
+                    <Text style={{ color: '#0f4c5c', fontSize: 12, fontWeight: '600', marginTop: 4 }}>
                       💰 {formatCost(item.estimated_cost)}
                     </Text>
                   )}

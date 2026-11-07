@@ -50,8 +50,8 @@ export default function AffiliateBanner({
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100, backgroundColor: 'rgba(226,112,58,0.12)', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Tag size={12} color="#E2703A" />
-            <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 10, color: '#E2703A' }}>
+            <Tag size={12} color="#0c77b0" />
+            <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 10, color: '#0c77b0' }}>
               ƯU ĐÃI ĐỐI TÁC
             </Text>
           </View>
@@ -67,7 +67,7 @@ export default function AffiliateBanner({
       </Text>
 
       <Text style={{ fontFamily: 'BeVietnamPro_400Regular', fontSize: 12, color: '#6E7B70' }}>
-        Nhập mã <Text style={{ fontFamily: 'BeVietnamPro_700Bold', color: '#E2703A' }}>{discountCode}</Text> để được giảm ngay {discountPercent} khi thanh toán.
+        Nhập mã <Text style={{ fontFamily: 'BeVietnamPro_700Bold', color: '#0c77b0' }}>{discountCode}</Text> để được giảm ngay {discountPercent} khi thanh toán.
       </Text>
 
       <Pressable
@@ -79,7 +79,7 @@ export default function AffiliateBanner({
           gap: 6,
           paddingVertical: 8,
           borderRadius: 100,
-          backgroundColor: '#E2703A',
+          backgroundColor: '#0c77b0',
           opacity: pressed ? 0.85 : 1,
           marginTop: 2,
         }]}

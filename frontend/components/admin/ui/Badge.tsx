@@ -43,10 +43,10 @@ const TONE_STYLES: Record<BadgeTone, { bg: string; text: string; border: string;
     dot: '#3B82F6',
   },
   brand: {
-    bg: 'rgba(31, 111, 84, 0.1)',
-    text: '#1F6F54',
-    border: 'rgba(31, 111, 84, 0.25)',
-    dot: '#1F6F54',
+    bg: 'rgba(15, 76, 92, 0.1)',
+    text: '#0f4c5c',
+    border: 'rgba(15, 76, 92, 0.25)',
+    dot: '#0f4c5c',
   },
 };
 

@@ -67,7 +67,10 @@ function getTripStatusInfo(startDateStr: string, endDateStr: string, dbStatus: s
     return {
       label: 'Hoàn thành',
       bgClass: 'bg-brand-bgAlt border border-brand-line/40',
-      textClass: 'text-brand-textSoft'
+      textClass: 'text-brand-textSoft',
+      webBg: '#F1F5F9',
+      webBorder: '#E2E8F0',
+      webColor: '#64748B',
     };
   }
   
@@ -75,14 +78,20 @@ function getTripStatusInfo(startDateStr: string, endDateStr: string, dbStatus: s
     return {
       label: 'Đang diễn ra',
       bgClass: 'bg-emerald-100 border border-emerald-300/40',
-      textClass: 'text-emerald-700'
+      textClass: 'text-emerald-700',
+      webBg: '#E1F5FE',
+      webBorder: '#B3E5FC',
+      webColor: '#0c77b0',
     };
   }
 
   return {
     label: 'Đang lập kế hoạch',
     bgClass: 'bg-brand-gold/25 border border-brand-gold/45',
-    textClass: 'text-brand-primaryStrong'
+    textClass: 'text-brand-primaryStrong',
+    webBg: '#FFF3E0',
+    webBorder: '#FFE0B2',
+    webColor: '#D97706',
   };
 }
 
@@ -236,11 +245,18 @@ export default function Dashboard() {
           </Pressable>
         </View>
       )}
-      <ScrollView className="flex-1 bg-brand-bg" contentContainerStyle={{ flexGrow: 1 }}>
+      <ScrollView
+        className="flex-1"
+        style={Platform.OS === 'web' ? { backgroundColor: '#F8F9FA' } : { backgroundColor: BRAND_COLORS.bg }}
+        contentContainerStyle={{ flexGrow: 1 }}
+      >
       {/* Navbar */}
       <View
-        className="bg-brand-bg border-b border-brand-line px-3 py-2.5 sm:px-6 sm:py-4"
+        className={Platform.OS === 'web' ? 'px-3 py-2.5 sm:px-6 sm:py-4 shadow-sm' : 'bg-brand-bg border-b border-brand-line px-3 py-2.5 sm:px-6 sm:py-4'}
         style={{
+          backgroundColor: Platform.OS === 'web' ? '#0f4c5c' : undefined,
+          borderBottomWidth: 1,
+          borderBottomColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.08)' : undefined,
           paddingTop: isMobile ? Math.max(insets.top, 12) : undefined,
         }}
       >
@@ -252,13 +268,13 @@ export default function Dashboard() {
               onPress={() => router.push(APP_ROUTES.LANDING as any)}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0 }}
             >
-              <Compass size={20} color={BRAND_COLORS.primary} />
+              <Compass size={20} color={Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary} />
               <Text
                 style={{
                   fontFamily: 'Lora_700Bold',
                   fontWeight: 'bold',
                   fontSize: 15,
-                  color: BRAND_COLORS.primary,
+                  color: Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary,
                 }}
               >
                 ViVu Planner
@@ -278,14 +294,14 @@ export default function Dashboard() {
                   paddingHorizontal: 6,
                   paddingVertical: 4,
                   borderRadius: 10,
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.12)' : '#FFFFFF',
                   borderWidth: 1,
-                  borderColor: '#E8DECC',
+                  borderColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.2)' : '#E8DECC',
                   cursor: 'pointer' as any,
                 }}
               >
                 <Text style={{ fontSize: 10.5 }}>🌟</Text>
-                <Text style={{ color: BRAND_COLORS.primary, fontSize: 10.5, fontWeight: '700' }}>
+                <Text style={{ color: Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary, fontSize: 10.5, fontWeight: '700' }}>
                   Bảng tin
                 </Text>
               </Pressable>
@@ -358,7 +374,7 @@ export default function Dashboard() {
                 {profile?.avatar_url ? (
                   <Image
                     source={{ uri: profile.avatar_url }}
-                    style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: BRAND_COLORS.primary }}
+                    style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary }}
                   />
                 ) : (
                   <View
@@ -366,14 +382,14 @@ export default function Dashboard() {
                       width: 24,
                       height: 24,
                       borderRadius: 12,
-                      backgroundColor: 'rgba(31,111,84,0.15)',
+                      backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.2)' : 'rgba(15, 76, 92,0.15)',
                       alignItems: 'center',
                       justifyContent: 'center',
                       borderWidth: 1,
-                      borderColor: 'rgba(31,111,84,0.3)',
+                      borderColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.4)' : 'rgba(15, 76, 92,0.3)',
                     }}
                   >
-                    <User size={12} color={BRAND_COLORS.primary} />
+                    <User size={12} color={Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary} />
                   </View>
                 )}
               </Pressable>
@@ -385,13 +401,13 @@ export default function Dashboard() {
                   width: 24,
                   height: 24,
                   borderRadius: 7,
-                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  backgroundColor: Platform.OS === 'web' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.1)',
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: 'pointer' as any,
                 }}
               >
-                <LogOut size={12} color={BRAND_COLORS.danger} />
+                <LogOut size={12} color={Platform.OS === 'web' ? '#FCA5A5' : BRAND_COLORS.danger} />
               </Pressable>
             </View>
           </View>
@@ -399,8 +415,13 @@ export default function Dashboard() {
           <View className="flex-row justify-between items-center">
             <View className="flex-row items-center gap-4">
               <Pressable onPress={() => router.push(APP_ROUTES.LANDING as any)} className="flex-row items-center gap-2">
-                <Compass size={28} color={BRAND_COLORS.primary} />
-                <Text className="font-display font-bold text-xl text-brand-primary">ViVu Planner</Text>
+                <Compass size={28} color={Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary} />
+                <Text
+                  className="font-display font-bold text-xl"
+                  style={{ color: Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary }}
+                >
+                  ViVu Planner
+                </Text>
               </Pressable>
 
               <Pressable
@@ -413,21 +434,21 @@ export default function Dashboard() {
                   paddingHorizontal: 12,
                   paddingVertical: 6,
                   borderRadius: 10,
-                  backgroundColor: '#FAF5EA',
+                  backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.12)' : '#FAF5EA',
                   borderWidth: 1,
-                  borderColor: '#E8DECC',
+                  borderColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.2)' : '#E8DECC',
                   cursor: 'pointer' as any,
                 }}
               >
                 <Text style={{ fontSize: 13 }}>🌟</Text>
-                <Text style={{ color: BRAND_COLORS.primary, fontSize: 12, fontWeight: '800' }}>
+                <Text style={{ color: Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary, fontSize: 12, fontWeight: '800' }}>
                   Bảng Tin Cộng Đồng
                 </Text>
               </Pressable>
             </View>
 
             <View className="flex-row items-center gap-2">
-              <SystemClock />
+              <SystemClock variant={Platform.OS === 'web' ? 'light' : 'dark'} />
               {(() => {
                 const chip = formatHeaderChip(paymentStatus);
                 const isProUser = !!paymentStatus?.isPremium || (paymentStatus?.pro_credits || 0) > 0 || (paymentStatus?.monthly_credits || 0) > 0;
@@ -468,29 +489,29 @@ export default function Dashboard() {
               )}
               <Pressable
                 onPress={() => router.push('/(app)/profile' as any)}
-                className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-brand-line bg-brand-bgAlt/50 hover:border-brand-primary"
+                className={`flex-row items-center gap-2 px-3 py-1.5 rounded-full border ${Platform.OS === 'web' ? 'border-white/20 bg-white/10 hover:border-white/40' : 'border-brand-line bg-brand-bgAlt/50 hover:border-brand-primary'}`}
                 style={{ cursor: 'pointer' as any }}
               >
                 {profile?.avatar_url ? (
                   <Image
                     source={{ uri: profile.avatar_url }}
-                    style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1, borderColor: BRAND_COLORS.primary }}
+                    style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1, borderColor: Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary }}
                   />
                 ) : (
-                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(31,111,84,0.15)', alignItems: 'center', justifyContent: 'center' }}>
-                    <User size={12} color={BRAND_COLORS.primary} />
+                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.2)' : 'rgba(15, 76, 92,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                    <User size={12} color={Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary} />
                   </View>
                 )}
-                <Text className="text-brand-textSoft text-xs font-semibold" numberOfLines={1}>
+                <Text className={`${Platform.OS === 'web' ? 'text-white' : 'text-brand-textSoft'} text-xs font-semibold`} numberOfLines={1}>
                   {profile?.full_name || userEmail}
                 </Text>
               </Pressable>
               <Pressable
                 onPress={handleLogout}
-                className="flex-row items-center gap-1 px-3 py-2 rounded-lg bg-brand-danger/10"
+                className={`flex-row items-center gap-1 px-3 py-2 rounded-lg ${Platform.OS === 'web' ? 'bg-red-500/20 border border-red-500/30' : 'bg-brand-danger/10'}`}
               >
-                <LogOut size={14} color={BRAND_COLORS.danger} />
-                <Text className="text-brand-danger text-xs font-bold">Đăng xuất</Text>
+                <LogOut size={14} color={Platform.OS === 'web' ? '#FCA5A5' : BRAND_COLORS.danger} />
+                <Text className={`${Platform.OS === 'web' ? 'text-red-200' : 'text-brand-danger'} text-xs font-bold`}>Đăng xuất</Text>
               </Pressable>
             </View>
           </View>
@@ -514,10 +535,16 @@ export default function Dashboard() {
         {/* Page header */}
         <View className="flex-row justify-between items-start flex-wrap gap-4">
           <View className="gap-1">
-            <Text className="font-display font-extrabold text-2xl sm:text-3xl text-brand-text">
+            <Text
+              className="font-display font-extrabold text-2xl sm:text-3xl"
+              style={{ color: Platform.OS === 'web' ? '#0f4c5c' : '#1E293B' }}
+            >
               Hành Trình Của Bạn
             </Text>
-            <Text className="text-xs sm:text-sm text-brand-textSoft">
+            <Text
+              className="text-xs sm:text-sm"
+              style={{ color: Platform.OS === 'web' ? '#5A6E65' : '#64748B' }}
+            >
               Quản lý và tạo lịch trình du lịch cá nhân hóa bằng AI
             </Text>
           </View>
@@ -525,7 +552,12 @@ export default function Dashboard() {
           <View className="flex-row gap-3 flex-wrap">
             <Pressable
               onPress={() => router.push(APP_ROUTES.NEW_TRIP as any)}
-              className="flex-row items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl bg-brand-accent"
+              className="flex-row items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl"
+              style={{
+                backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.accent,
+                boxShadow: Platform.OS === 'web' ? ('0 4px 14px rgba(12, 119, 176, 0.25)' as any) : undefined,
+                cursor: 'pointer' as any,
+              }}
             >
               <Plus size={16} color="white" />
               <Text className="text-white font-bold text-xs sm:text-sm">Tạo chuyến đi mới</Text>
@@ -549,8 +581,13 @@ export default function Dashboard() {
             {[1, 2, 3, 4].map(i => (
               <View
                 key={i}
-                className="bg-brand-bgAlt border border-brand-line rounded-2xl h-48"
-                style={{ width: isMobile ? '48.5%' : 320 }}
+                className="rounded-2xl h-48"
+                style={{
+                  width: isMobile ? '48.5%' : 320,
+                  backgroundColor: Platform.OS === 'web' ? '#FFFFFF' : undefined,
+                  borderWidth: 1,
+                  borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : undefined,
+                }}
               />
             ))}
           </View>
@@ -567,25 +604,57 @@ export default function Dashboard() {
           </View>
         ) : !trips || trips.length === 0 ? (
           <Reveal>
-            <View className="bg-brand-bgAlt border border-brand-line/60 rounded-3xl p-8 md:p-12 shadow-sm items-center text-center gap-6">
+            <View
+              className={`rounded-3xl p-8 md:p-12 items-center text-center gap-6 ${
+                Platform.OS === 'web'
+                  ? 'bg-white border border-[#E5EAE7] shadow-sm'
+                  : 'bg-brand-bgAlt border border-brand-line/60 shadow-sm'
+              }`}
+              style={
+                Platform.OS === 'web'
+                  ? ({ boxShadow: '0 4px 20px rgba(15, 76, 92, 0.05)' } as any)
+                  : undefined
+              }
+            >
               {/* Compass AI Icon */}
-              <View className="w-16 h-16 rounded-3xl bg-brand-primary/10 items-center justify-center border border-brand-primary/20 shadow-sm">
-                <Compass size={32} color={BRAND_COLORS.primary} />
+              <View
+                className="w-16 h-16 rounded-3xl items-center justify-center border shadow-sm"
+                style={{
+                  backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(15, 76, 92,0.1)',
+                  borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.2)' : 'rgba(15, 76, 92,0.2)',
+                }}
+              >
+                <Compass size={32} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
               </View>
 
               <View className="items-center gap-2 max-w-xl">
-                <View className="flex-row items-center gap-1.5 px-3 py-1 rounded-full bg-brand-primary/10 border border-brand-primary/20">
-                  <Sparkles size={12} color={BRAND_COLORS.primary} />
-                  <Text className="text-brand-primary font-bold text-[11px] uppercase tracking-wider">
+                <View
+                  className="flex-row items-center gap-1.5 px-3 py-1 rounded-full border"
+                  style={{
+                    backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(15, 76, 92,0.1)',
+                    borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.2)' : 'rgba(15, 76, 92,0.2)',
+                  }}
+                >
+                  <Sparkles size={12} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                  <Text
+                    className="font-bold text-[11px] uppercase tracking-wider"
+                    style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary }}
+                  >
                     Trợ Lý Du Lịch AI Thông Minh
                   </Text>
                 </View>
 
-                <Text className="font-display font-black text-2xl md:text-3xl text-brand-text text-center">
+                <Text
+                  className="font-display font-black text-2xl md:text-3xl text-center"
+                  style={{ color: Platform.OS === 'web' ? '#0f4c5c' : '#1E293B' }}
+                >
                   Bắt Đầu Hành Trình Của Bạn
                 </Text>
 
-                <Text className="text-xs md:text-sm text-brand-textSoft text-center leading-relaxed">
+                <Text
+                  className="text-xs md:text-sm text-center leading-relaxed"
+                  style={{ color: Platform.OS === 'web' ? '#5A6E65' : '#64748B' }}
+                >
                   Bạn chưa có chuyến đi nào được lưu. Hãy lên kế hoạch chuyến đi mới theo sở thích cá nhân, hoặc trò chuyện trực tiếp với trợ lý ViVu AI để được tư vấn lộ trình và tạo lịch trình tự động!
                 </Text>
               </View>
@@ -596,8 +665,12 @@ export default function Dashboard() {
                 <Pressable
                   testID="create-new-trip-btn"
                   onPress={() => router.push(APP_ROUTES.NEW_TRIP as any)}
-                  className="flex-1 flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-brand-primary shadow-md hover:bg-brand-primaryStrong"
-                  style={{ minWidth: 200, cursor: 'pointer' as any }}
+                  className="flex-1 flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-2xl shadow-md"
+                  style={{
+                    minWidth: 200,
+                    cursor: 'pointer' as any,
+                    backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary,
+                  }}
                 >
                   <Plus size={18} color="white" />
                   <Text className="text-white font-bold text-sm">Lên Kế Hoạch Ngay</Text>
@@ -607,11 +680,21 @@ export default function Dashboard() {
                 <Pressable
                   testID="open-ai-chat-btn"
                   onPress={openChatbot}
-                  className="flex-1 flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-white border border-brand-primary/30 shadow-sm hover:bg-brand-primary/5"
-                  style={{ minWidth: 200, cursor: 'pointer' as any }}
+                  className="flex-1 flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-white shadow-sm"
+                  style={{
+                    minWidth: 200,
+                    cursor: 'pointer' as any,
+                    borderWidth: 1,
+                    borderColor: Platform.OS === 'web' ? '#0c77b0' : 'rgba(15, 76, 92,0.3)',
+                  }}
                 >
-                  <MessageSquare size={17} color={BRAND_COLORS.primary} />
-                  <Text className="text-brand-primary font-extrabold text-sm">Chat Với ViVu AI</Text>
+                  <MessageSquare size={17} color={Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary} />
+                  <Text
+                    className="font-extrabold text-sm"
+                    style={{ color: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary }}
+                  >
+                    Chat Với ViVu AI
+                  </Text>
                 </Pressable>
               </View>
 
@@ -657,14 +740,23 @@ export default function Dashboard() {
               <Reveal key={trip.id} delay={idx * 60} style={{ width: isMobile ? '48.5%' : undefined, flex: isMobile ? undefined : 1, minWidth: isMobile ? undefined : 280, maxWidth: isMobile ? undefined : 380 }}>
                 <Pressable
                   onPress={() => router.push(APP_ROUTES.TRIP_DETAIL(trip.id) as any)}
-                  className={`rounded-2xl shadow-sm ${isAiPro ? 'bg-gradient-to-br from-amber-50/40 via-white to-brand-bgAlt border-2 border-amber-400' : 'bg-brand-bgAlt border border-brand-line/50'}`}
+                  className={Platform.OS === 'web' ? 'rounded-2xl' : `rounded-2xl shadow-sm ${isAiPro ? 'bg-gradient-to-br from-amber-50/40 via-white to-brand-bgAlt border-2 border-amber-400' : 'bg-brand-bgAlt border border-brand-line/50'}`}
                   style={{
                     padding: isMobile ? 12 : 20,
                     width: '100%',
                     minHeight: isMobile ? 180 : undefined,
-                    borderRadius: 16,
+                    borderRadius: 18,
                     cursor: 'pointer' as any,
-                    ...(isAiPro ? { borderColor: '#F59E0B', shadowColor: '#F59E0B', shadowOpacity: 0.15, shadowRadius: 10 } : {})
+                    ...(Platform.OS === 'web'
+                      ? {
+                          backgroundColor: '#FFFFFF',
+                          borderWidth: 1,
+                          borderColor: isAiPro ? '#F59E0B' : 'rgba(15, 76, 92, 0.08)',
+                          boxShadow: isAiPro ? ('0 4px 20px rgba(245, 158, 11, 0.15)' as any) : ('0 4px 16px rgba(15, 76, 92, 0.05)' as any),
+                        }
+                      : isAiPro
+                      ? { borderColor: '#F59E0B', shadowColor: '#F59E0B', shadowOpacity: 0.15, shadowRadius: 10 }
+                      : {}),
                   }}
                 >
                   <View style={{ gap: isMobile ? 10 : 16 }}>
@@ -674,9 +766,16 @@ export default function Dashboard() {
                           {/* Hàng 1 trên Mobile: Badge địa điểm + AI PRO + Nút xóa */}
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap', flex: 1, marginRight: 4 }}>
-                              <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-brand-primary/10">
-                                <MapPin size={10} color={BRAND_COLORS.primary} />
-                                <Text className="text-brand-primary font-bold text-[9px] uppercase tracking-wider" numberOfLines={1}>
+                              <View
+                                className="flex-row items-center gap-1 px-2 py-0.5 rounded-full"
+                                style={Platform.OS === 'web' ? { backgroundColor: 'rgba(15, 76, 92, 0.08)' } : { backgroundColor: 'rgba(15, 76, 92,0.1)' }}
+                              >
+                                <MapPin size={10} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                                <Text
+                                  className="font-bold text-[9px] uppercase tracking-wider"
+                                  style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary }}
+                                  numberOfLines={1}
+                                >
                                   {trip.destination_city}
                                 </Text>
                               </View>
@@ -705,8 +804,14 @@ export default function Dashboard() {
                               const statusInfo = getTripStatusInfo(trip.start_date, trip.end_date, trip.status);
                               const shortLabel = statusInfo.label === 'Đang lập kế hoạch' ? 'Kế hoạch' : statusInfo.label;
                               return (
-                                <View className={`px-1.5 py-0.5 rounded ${statusInfo.bgClass}`}>
-                                  <Text className={`text-[8.5px] font-bold uppercase tracking-wider ${statusInfo.textClass}`}>
+                                <View
+                                  className={`px-1.5 py-0.5 rounded ${statusInfo.bgClass}`}
+                                  style={Platform.OS === 'web' ? { backgroundColor: statusInfo.webBg, borderColor: statusInfo.webBorder, borderWidth: 1 } : undefined}
+                                >
+                                  <Text
+                                    className={`text-[8.5px] font-bold uppercase tracking-wider ${statusInfo.textClass}`}
+                                    style={Platform.OS === 'web' ? { color: statusInfo.webColor } : undefined}
+                                  >
                                     {shortLabel}
                                   </Text>
                                 </View>
@@ -714,7 +819,7 @@ export default function Dashboard() {
                             })()}
                             {trip.is_shared && (
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 999, backgroundColor: '#E8F5E9', borderWidth: 1, borderColor: '#A7F3D0' }}>
-                                <Text style={{ fontSize: 8.5, fontWeight: '700', color: '#1F6F54' }}>👥 {trip.member_count ? `${trip.member_count}` : 'Nhóm'}</Text>
+                                <Text style={{ fontSize: 8.5, fontWeight: '700', color: '#0f4c5c' }}>👥 {trip.member_count ? `${trip.member_count}` : 'Nhóm'}</Text>
                               </View>
                             )}
                           </View>
@@ -722,9 +827,16 @@ export default function Dashboard() {
                       ) : (
                         <View className="flex-row justify-between items-start">
                           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginRight: 4 }}>
-                            <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-brand-primary/10">
-                              <MapPin size={12} color={BRAND_COLORS.primary} />
-                              <Text className="text-brand-primary font-bold text-[10px] uppercase tracking-wider" numberOfLines={1}>
+                            <View
+                              className="flex-row items-center gap-1 px-2.5 py-1 rounded-full"
+                              style={Platform.OS === 'web' ? { backgroundColor: 'rgba(15, 76, 92, 0.08)' } : { backgroundColor: 'rgba(15, 76, 92,0.1)' }}
+                            >
+                              <MapPin size={12} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                              <Text
+                                className="font-bold text-[10px] uppercase tracking-wider"
+                                style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary }}
+                                numberOfLines={1}
+                              >
                                 {trip.destination_city}
                               </Text>
                             </View>
@@ -736,7 +848,7 @@ export default function Dashboard() {
                             )}
                             {trip.is_shared && (
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, backgroundColor: '#E8F5E9', borderWidth: 1, borderColor: '#A7F3D0' }}>
-                                <Text style={{ fontSize: 9, fontWeight: '700', color: '#1F6F54' }}>👥 {trip.member_count ? `${trip.member_count}` : 'Nhóm'}</Text>
+                                <Text style={{ fontSize: 9, fontWeight: '700', color: '#0f4c5c' }}>👥 {trip.member_count ? `${trip.member_count}` : 'Nhóm'}</Text>
                               </View>
                             )}
                           </View>
@@ -744,8 +856,14 @@ export default function Dashboard() {
                             {(() => {
                               const statusInfo = getTripStatusInfo(trip.start_date, trip.end_date, trip.status);
                               return (
-                                <View className={`px-1.5 py-0.5 rounded ${statusInfo.bgClass}`}>
-                                  <Text className={`text-[9px] font-bold uppercase tracking-wider ${statusInfo.textClass}`}>
+                                <View
+                                  className={`px-2 py-0.5 rounded-md ${statusInfo.bgClass}`}
+                                  style={Platform.OS === 'web' ? { backgroundColor: statusInfo.webBg, borderColor: statusInfo.webBorder, borderWidth: 1 } : undefined}
+                                >
+                                  <Text
+                                    className={`text-[9px] font-bold uppercase tracking-wider ${statusInfo.textClass}`}
+                                    style={Platform.OS === 'web' ? { color: statusInfo.webColor } : undefined}
+                                  >
                                     {statusInfo.label}
                                   </Text>
                                 </View>
@@ -770,7 +888,7 @@ export default function Dashboard() {
                             fontSize: isMobile ? 14 : 18,
                             fontWeight: '700',
                             fontFamily: 'Lora_700Bold',
-                            color: '#1E293B',
+                            color: Platform.OS === 'web' ? '#0f4c5c' : '#1E293B',
                             lineHeight: isMobile ? 19 : 24
                           }}
                           numberOfLines={2}
@@ -786,25 +904,25 @@ export default function Dashboard() {
                       </View>
                     </View>
 
-                    <View style={{ gap: isMobile ? 5 : 8, paddingTop: isMobile ? 8 : 12, borderTopWidth: 1, borderTopColor: 'rgba(226, 232, 240, 0.6)' }}>
+                    <View style={{ gap: isMobile ? 5 : 8, paddingTop: isMobile ? 8 : 12, borderTopWidth: 1, borderTopColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(226, 232, 240, 0.6)' }}>
                       <View className="flex-row items-center gap-1.5">
-                        <Calendar size={isMobile ? 12 : 14} color={BRAND_COLORS.primary} />
+                        <Calendar size={isMobile ? 12 : 14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                         <Text style={{ fontSize: isMobile ? 10.5 : 12, color: '#64748B' }} numberOfLines={1}>
                           {formatDate(trip.start_date)} - {formatDate(trip.end_date)}
                         </Text>
                       </View>
                       <View className="flex-row items-center gap-1.5">
-                        <Wallet size={isMobile ? 12 : 14} color={BRAND_COLORS.primary} />
+                        <Wallet size={isMobile ? 12 : 14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                         <Text style={{ fontSize: isMobile ? 10.5 : 12, color: '#64748B' }} numberOfLines={1}>
-                          <Text style={{ fontWeight: '700', color: '#1E293B' }}>
+                          <Text style={{ fontWeight: '700', color: Platform.OS === 'web' ? '#0f4c5c' : '#1E293B' }}>
                             {formatCurrency(trip.budget_total)}
                           </Text>
                         </Text>
                       </View>
                       <View className="flex-row items-center gap-1.5">
-                        <DollarSign size={isMobile ? 12 : 14} color={BRAND_COLORS.primary} />
+                        <DollarSign size={isMobile ? 12 : 14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                         <Text style={{ fontSize: isMobile ? 10.5 : 12, color: '#64748B' }} numberOfLines={1}>
-                          <Text style={{ fontWeight: '700', color: '#1E293B' }}>
+                          <Text style={{ fontWeight: '700', color: Platform.OS === 'web' ? '#0f4c5c' : '#1E293B' }}>
                             {trip.traveler_count} khách
                           </Text>{' '}
                           ({trip.traveler_type})

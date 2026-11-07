@@ -69,7 +69,7 @@ export default function JoinTripPage() {
     <View style={styles.container}>
       {status === 'loading' && (
         <>
-          <ActivityIndicator size="large" color="#1F6F54" />
+          <ActivityIndicator size="large" color="#0c77b0" />
           <Text style={styles.loadingText}>Đang xử lý lời mời...</Text>
         </>
       )}
@@ -78,7 +78,7 @@ export default function JoinTripPage() {
           <Text style={styles.emoji}>🎉</Text>
           <Text style={styles.title}>Tham gia thành công!</Text>
           <Text style={styles.subtitle}>Đang chuyển đến lịch trình...</Text>
-          <ActivityIndicator size="small" color="#1F6F54" style={{ marginTop: 16 }} />
+          <ActivityIndicator size="small" color="#0c77b0" style={{ marginTop: 16 }} />
         </>
       )}
       {status === 'already_member' && (
@@ -121,8 +121,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '700', color: '#111827', textAlign: 'center' },
   subtitle: { fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
   loadingText: { marginTop: 16, fontSize: 14, color: '#6B7280' },
-  btn: { marginTop: 16, backgroundColor: '#1F6F54', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 32 },
+  btn: { marginTop: 16, backgroundColor: '#0c77b0', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 32 },
   btnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  btnOutline: { marginTop: 16, borderWidth: 1.5, borderColor: '#1F6F54', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 32 },
-  btnOutlineText: { color: '#1F6F54', fontSize: 14, fontWeight: '700' },
+  btnOutline: { marginTop: 16, borderWidth: 1.5, borderColor: '#0c77b0', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 32 },
+  btnOutlineText: { color: '#0c77b0', fontSize: 14, fontWeight: '700' },
 });

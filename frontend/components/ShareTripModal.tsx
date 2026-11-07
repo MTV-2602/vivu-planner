@@ -159,7 +159,7 @@ export default function ShareTripModal({
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <Users size={20} color="#1F6F54" />
+              <Users size={20} color="#0f4c5c" />
               <Text style={styles.headerTitle}>Chia sẻ lịch trình</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -170,14 +170,14 @@ export default function ShareTripModal({
           <Text style={styles.tripTitle} numberOfLines={1}>{tripTitle}</Text>
 
           {loading ? (
-            <ActivityIndicator size="large" color="#1F6F54" style={{ marginVertical: 40 }} />
+            <ActivityIndicator size="large" color="#0c77b0" style={{ marginVertical: 40 }} />
           ) : (
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
               {/* Invite Link Section — chỉ owner */}
               {isOwner && (
                 <View style={styles.section}>
                   <View style={styles.sectionHeader}>
-                    <Link size={14} color="#1F6F54" />
+                    <Link size={14} color="#0f4c5c" />
                     <Text style={styles.sectionTitle}>Link mời nhóm</Text>
                     <Text style={styles.expireNote}>(hết hạn sau 7 ngày)</Text>
                   </View>
@@ -369,16 +369,16 @@ const styles = StyleSheet.create({
   expireNote: { fontSize: 11, color: '#9CA3AF' },
   linkBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8F9FA', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, padding: 10, marginBottom: 8, gap: 8 },
   linkText: { flex: 1, fontSize: 12, color: '#374151' },
-  copyBtn: { backgroundColor: '#1F6F54', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
+  copyBtn: { backgroundColor: '#0c77b0', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
   copyBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-  createBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#1F6F54', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16 },
-  createBtnDisabled: { backgroundColor: '#A7F3D0' },
+  createBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#0c77b0', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16 },
+  createBtnDisabled: { backgroundColor: '#BAE6FD' },
   createBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   maxNote: { marginTop: 6, fontSize: 12, color: '#EF4444', textAlign: 'center' },
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   pendingRow: { opacity: 0.6 },
-  avatarCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E6F4EA', alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { color: '#137333', fontSize: 14, fontWeight: '700' },
+  avatarCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(15,76,92,0.12)', alignItems: 'center', justifyContent: 'center' },
+  avatarInitial: { color: '#0f4c5c', fontSize: 14, fontWeight: '700' },
   memberInfo: { flex: 1 },
   memberName: { fontSize: 13, fontWeight: '600', color: '#111827' },
   memberRole: { fontSize: 11, color: '#9CA3AF' },

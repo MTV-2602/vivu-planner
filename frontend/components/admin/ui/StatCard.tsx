@@ -51,7 +51,7 @@ export default function StatCard({
         {icon && (
           <View
             className="w-9 h-9 rounded-xl items-center justify-center shrink-0"
-            style={{ backgroundColor: iconBg || 'rgba(31, 111, 84, 0.08)' }}
+            style={{ backgroundColor: iconBg || 'rgba(15, 76, 92, 0.08)' }}
           >
             {icon}
           </View>

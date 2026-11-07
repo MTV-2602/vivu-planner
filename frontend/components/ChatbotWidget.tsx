@@ -270,7 +270,7 @@ export function ChatbotWidget() {
       <Pressable
         testID="chatbot-floating-btn"
         onPress={() => setIsOpen(true)}
-        className="bg-brand-primary items-center justify-center shadow-lg"
+        className="bg-brand-accent items-center justify-center shadow-lg"
         style={{
           width: 56,
           height: 56,
@@ -308,13 +308,13 @@ export function ChatbotWidget() {
         shadowRadius: 12,
         elevation: 10,
         overflow: 'hidden',
-        backgroundColor: '#14201B' // brand-bgDark
+        backgroundColor: '#0f4c5c' // brand-bgDark
       }}
     >
       {/* Header */}
       <View
         className="flex-row justify-between items-center px-4 py-3.5"
-        style={{ backgroundColor: '#134A37', borderBottomWidth: 1, borderBottomColor: 'rgba(27,36,32,0.2)' }}
+        style={{ backgroundColor: '#09343f', borderBottomWidth: 1, borderBottomColor: 'rgba(27,36,32,0.2)' }}
       >
         <View className="flex-row items-center gap-2.5">
           <View className="bg-brand-primary p-1.5 rounded-full">
@@ -339,7 +339,7 @@ export function ChatbotWidget() {
       {/* Sub-header: Bộ chọn AI Model linh động */}
       <View
         className="flex-row justify-between items-center px-3.5 py-1.5"
-        style={{ backgroundColor: '#0D1713', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' }}
+        style={{ backgroundColor: '#062027', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' }}
       >
         <View className="flex-row items-center gap-1.5">
           <Text className="text-white/60 text-[10px] font-semibold">Mô hình AI:</Text>
@@ -396,9 +396,9 @@ export function ChatbotWidget() {
       </View>
 
       {isCreatingTrip ? (
-        <View className="flex-1 items-center justify-center p-6 bg-brand-bgDark" style={{ backgroundColor: '#14201B' }}>
+        <View className="flex-1 items-center justify-center p-6 bg-brand-bgDark" style={{ backgroundColor: '#0f4c5c' }}>
           <View className="w-16 h-16 bg-brand-primary/10 rounded-full items-center justify-center mb-5">
-            <ActivityIndicator size="large" color="#1F6F54" />
+            <ActivityIndicator size="large" color="#0c77b0" />
           </View>
           
           <Text className="text-white text-base font-display font-bold text-center mb-1">
@@ -412,7 +412,7 @@ export function ChatbotWidget() {
           <View className="w-full bg-[#1b2d26] h-2.5 rounded-full overflow-hidden mb-3 border border-brand-line/20">
             <View 
               className="bg-brand-primary h-full rounded-full" 
-              style={{ width: `${creationProgress}%`, backgroundColor: '#1F6F54' }}
+              style={{ width: `${creationProgress}%`, backgroundColor: '#0c77b0' }}
             />
           </View>
           
@@ -421,7 +421,7 @@ export function ChatbotWidget() {
             <Text className="text-white/60 text-[11px] font-semibold flex-1 pr-2" numberOfLines={1}>
               {creationStage}
             </Text>
-            <Text className="text-brand-primary text-xs font-extrabold" style={{ color: '#1F6F54' }}>
+            <Text className="text-brand-primary text-xs font-extrabold" style={{ color: '#0c77b0' }}>
               {creationProgress}%
             </Text>
           </View>
@@ -436,7 +436,7 @@ export function ChatbotWidget() {
           {tripId && (
             <View 
               className="flex-row items-center justify-center py-2 px-3 gap-1.5"
-              style={{ backgroundColor: isAiProActive ? '#1F6F54' : '#1E2D27' }}
+              style={{ backgroundColor: isAiProActive ? '#0f4c5c' : '#09343f' }}
             >
               <Sparkles size={11} color="#FFF2E0" />
               <Text className="text-[10px] text-white font-bold" style={{ color: '#FFF2E0' }}>
@@ -471,7 +471,7 @@ export function ChatbotWidget() {
                         ? 'bg-brand-bgAlt rounded-bl-none'
                         : 'bg-brand-primary rounded-br-none'
                     }`}
-                    style={isModel ? { backgroundColor: '#F3ECDC', flexShrink: 1 } : { backgroundColor: '#1F6F54', flexShrink: 1 }}
+                    style={isModel ? { backgroundColor: '#F3ECDC', flexShrink: 1 } : { backgroundColor: '#0f4c5c', flexShrink: 1 }}
                   >
                     <Text
                       className="font-sans"
@@ -486,7 +486,7 @@ export function ChatbotWidget() {
                         testID="chatbot-apply-diff-btn"
                         onPress={() => triggerPreview(msg.adaptedItinerary, msg.diff!, msg.previousSnapshot)}
                         className="mt-3.5 bg-brand-accent px-3 py-2 rounded-xl flex-row items-center gap-1.5 align-middle self-start"
-                        style={{ backgroundColor: '#E2703A' }}
+                        style={{ backgroundColor: '#0c77b0' }}
                       >
                         <Sparkles size={12} color="white" />
                         <Text className="text-white text-[10px] font-bold">Xem thay đổi & Áp dụng</Text>
@@ -500,7 +500,7 @@ export function ChatbotWidget() {
                         onPress={() => handleCreateTripFromChat(msg.createTripParams)}
                         disabled={isCreatingTrip}
                         className="mt-3.5 bg-brand-primary px-3 py-2 rounded-xl flex-row items-center gap-1.5 align-middle self-start"
-                        style={{ backgroundColor: '#1F6F54', opacity: isCreatingTrip ? 0.6 : 1 }}
+                        style={{ backgroundColor: '#0c77b0', opacity: isCreatingTrip ? 0.6 : 1 }}
                       >
                         {isCreatingTrip ? (
                           <ActivityIndicator size="small" color="white" style={{ marginRight: 2 }} />
@@ -538,7 +538,7 @@ export function ChatbotWidget() {
           {/* Input area */}
           <View
             className="flex-row items-center p-3 gap-2"
-            style={{ borderTopWidth: 1, borderTopColor: 'rgba(27,36,32,0.12)', backgroundColor: '#14201B' }}
+            style={{ borderTopWidth: 1, borderTopColor: 'rgba(27,36,32,0.12)', backgroundColor: '#09343f' }}
           >
             <TextInput
               testID="chatbot-input"
@@ -549,7 +549,7 @@ export function ChatbotWidget() {
               placeholderTextColor="#6E7B70"
               className="flex-1 px-4 py-2.5 rounded-full border border-brand-line/30 text-white text-sm"
               style={{
-                backgroundColor: '#1b2d26',
+                backgroundColor: '#062027',
                 borderColor: 'rgba(27,36,32,0.3)',
                 height: 38,
                 paddingVertical: 0,
@@ -560,7 +560,7 @@ export function ChatbotWidget() {
               testID="chatbot-send-btn"
               onPress={handleSend}
               disabled={!inputText.trim() || isLoading}
-              className="w-9 h-9 bg-brand-primary rounded-full items-center justify-center"
+              className="w-9 h-9 bg-brand-accent rounded-full items-center justify-center"
               style={(!inputText.trim() || isLoading) ? { opacity: 0.5 } : undefined}
             >
               <Send size={16} color="white" />

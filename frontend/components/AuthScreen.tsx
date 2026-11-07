@@ -621,11 +621,11 @@ export default function AuthScreen({ mode }: Props) {
   const isSubmitDisabled = !submissionCheck.allowed;
 
   return (
-    <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column', backgroundColor: BRAND_COLORS.bgDark }}>
+    <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column', backgroundColor: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.bgDark }}>
 
       {/* ── LEFT PANEL ─────────────────────────────────────────────────── */}
       {isDesktop && (
-        <View style={{ flex: 1, backgroundColor: BRAND_COLORS.bgDark, padding: 52, justifyContent: 'flex-start', gap: 48 }}>
+        <View style={{ flex: 1, backgroundColor: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.bgDark, padding: 52, justifyContent: 'flex-start', gap: 48 }}>
 
           {/* Logo */}
           <Pressable
@@ -648,7 +648,7 @@ export default function AuthScreen({ mode }: Props) {
               </View>
               <Text style={{ fontFamily: F.loraBold, fontSize: 36, lineHeight: 48, color: '#F3ECDC' }}>
                 Lên kế hoạch{'\n'}
-                <Text style={{ color: BRAND_COLORS.accent }}>trọn vẹn</Text>{'\n'}
+                <Text style={{ color: Platform.OS === 'web' ? '#38BDF8' : BRAND_COLORS.accent }}>trọn vẹn</Text>{'\n'}
                 không lo nghĩ
               </Text>
               <Text style={{ fontFamily: F.regular, fontSize: 15, lineHeight: 26, color: 'rgba(243,236,220,0.55)', maxWidth: 380 }}>
@@ -665,7 +665,7 @@ export default function AuthScreen({ mode }: Props) {
                 'Hỗ trợ 11 thành phố du lịch Việt Nam',
               ].map((item, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: BRAND_COLORS.accent, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.accent, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Check size={11} color="#fff" strokeWidth={3} />
                   </View>
                   <Text style={{ fontFamily: F.regular, fontSize: 13, color: 'rgba(243,236,220,0.75)' }}>{item}</Text>
@@ -692,7 +692,7 @@ export default function AuthScreen({ mode }: Props) {
 
       {/* ── FORM PANEL ─────────────────────────────────────────────────── */}
       <KeyboardAvoidingView
-        style={{ width: isDesktop ? 480 : undefined, flex: isDesktop ? undefined : 1, backgroundColor: '#FBF5EA' }}
+        style={{ width: isDesktop ? 480 : undefined, flex: isDesktop ? undefined : 1, backgroundColor: Platform.OS === 'web' ? '#F8FAFC' : '#FBF5EA' }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
@@ -791,7 +791,7 @@ export default function AuthScreen({ mode }: Props) {
                     }}
                     style={{ paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#E8F5E9', borderRadius: 6 }}
                   >
-                    <Text style={{ fontSize: 11, color: '#1F6F54', fontWeight: 'bold' }}>⚡ Test PRO</Text>
+                    <Text style={{ fontSize: 11, color: '#0f4c5c', fontWeight: 'bold' }}>⚡ Test PRO</Text>
                   </Pressable>
                 )}
               </View>
@@ -905,7 +905,7 @@ export default function AuthScreen({ mode }: Props) {
               ...(Platform.OS === 'web' ? { cursor: isSubmitDisabled ? 'not-allowed' : 'pointer' } as any : {}),
             })}
           >
-            <View style={styles.submitBtn}>
+            <View style={[styles.submitBtn, Platform.OS === 'web' && { backgroundColor: '#0c77b0', shadowColor: '#0c77b0' }]}>
               {loading
                 ? <ActivityIndicator color="#fff" size="small" />
                 : <>
@@ -1072,7 +1072,7 @@ export default function AuthScreen({ mode }: Props) {
                       onPress={handleSendOtp}
                       disabled={forgotLoading}
                       style={{
-                        backgroundColor: BRAND_COLORS.primary, paddingVertical: 12, borderRadius: 12,
+                        backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary, paddingVertical: 12, borderRadius: 12,
                         alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, marginTop: 6,
                       }}
                     >
@@ -1113,7 +1113,7 @@ export default function AuthScreen({ mode }: Props) {
                       onPress={handleVerifyOtp}
                       disabled={forgotLoading}
                       style={{
-                        backgroundColor: BRAND_COLORS.primary, paddingVertical: 12, borderRadius: 12,
+                        backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary, paddingVertical: 12, borderRadius: 12,
                         alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, marginTop: 6,
                       }}
                     >
@@ -1167,7 +1167,7 @@ export default function AuthScreen({ mode }: Props) {
                       onPress={handleResetPassword}
                       disabled={forgotLoading}
                       style={{
-                        backgroundColor: BRAND_COLORS.primary, paddingVertical: 12, borderRadius: 12,
+                        backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary, paddingVertical: 12, borderRadius: 12,
                         alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, marginTop: 6,
                       }}
                     >

@@ -236,7 +236,7 @@ export default function AdminUsersPage() {
             <View
               className="w-9 h-9 rounded-full items-center justify-center border"
               style={{
-                backgroundColor: isAdmin ? 'rgba(31, 111, 84, 0.15)' : '#F3F4F6',
+                backgroundColor: isAdmin ? 'rgba(15, 76, 92, 0.15)' : '#F3F4F6',
                 borderColor: isAdmin ? BRAND_COLORS.primary : BRAND_COLORS.line,
               }}
             >
@@ -425,8 +425,8 @@ export default function AdminUsersPage() {
           <StatCard
             label="Tổng người dùng"
             value={summary?.total ?? 0}
-            icon={<Users size={18} color="#1F6F54" />}
-            iconBg="rgba(31, 111, 84, 0.1)"
+            icon={<Users size={18} color="#0f4c5c" />}
+            iconBg="rgba(15, 76, 92, 0.1)"
             loading={isLoading}
           />
         </View>

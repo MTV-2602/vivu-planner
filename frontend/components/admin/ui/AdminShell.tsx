@@ -137,7 +137,7 @@ export default function AdminShell({ children }: AdminShellProps) {
                 >
                   <View
                     className="w-9 h-9 rounded-xl items-center justify-center shrink-0"
-                    style={{ backgroundColor: 'rgba(31, 111, 84, 0.1)' }}
+                    style={{ backgroundColor: 'rgba(15, 76, 92, 0.1)' }}
                   >
                     <Compass size={22} color={BRAND_COLORS.primary} />
                   </View>
@@ -172,7 +172,7 @@ export default function AdminShell({ children }: AdminShellProps) {
                 <View className="flex-row items-center gap-2.5 px-3 py-2 rounded-xl bg-white border border-brand-line/20 shadow-xs">
                   <View
                     className="w-8 h-8 rounded-full items-center justify-center shrink-0"
-                    style={{ backgroundColor: 'rgba(31, 111, 84, 0.12)' }}
+                    style={{ backgroundColor: 'rgba(15, 76, 92, 0.12)' }}
                   >
                     <Text className="text-xs font-bold text-brand-primary">
                       {adminName.charAt(0).toUpperCase()}
@@ -336,7 +336,7 @@ export default function AdminShell({ children }: AdminShellProps) {
                   <View className="flex-row items-center gap-2.5 px-3 py-2 rounded-xl bg-white border border-brand-line/20">
                     <View
                       className="w-8 h-8 rounded-full items-center justify-center shrink-0"
-                      style={{ backgroundColor: 'rgba(31, 111, 84, 0.12)' }}
+                      style={{ backgroundColor: 'rgba(15, 76, 92, 0.12)' }}
                     >
                       <Text className="text-xs font-bold text-brand-primary">
                         {adminName.charAt(0).toUpperCase()}

@@ -114,7 +114,7 @@ export default function TravelCartDrawer({
       {/* Header */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <ShoppingBag size={20} color="#1F6F54" />
+          <ShoppingBag size={20} color="#0f4c5c" />
           <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 17, color: '#1B2420' }}>
             Giỏ Chuyến Đi ({cartItems.length})
           </Text>
@@ -186,7 +186,7 @@ export default function TravelCartDrawer({
             paddingVertical: 14,
             paddingHorizontal: 16,
             borderRadius: 100,
-            backgroundColor: cartItems.length > 0 ? '#1F6F54' : '#CCCCCC',
+            backgroundColor: cartItems.length > 0 ? '#0c77b0' : '#CCCCCC',
             opacity: pressed || submitting || cartItems.length === 0 ? 0.85 : 1,
           }]}
         >
