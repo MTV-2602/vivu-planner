@@ -632,11 +632,11 @@ export default function CommunityFeedScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: Platform.OS === 'web' ? '#F8F9F8' : BRAND_COLORS.bg }}>
+    <View style={{ flex: 1, backgroundColor: Platform.OS === 'web' ? '#F8F9FA' : BRAND_COLORS.bg }}>
       {/* ── Navbar ──────────────────────────────────────────────────────── */}
       <View
         style={{
-          backgroundColor: Platform.OS === 'web' ? '#0E3B32' : '#FFFFFF',
+          backgroundColor: Platform.OS === 'web' ? '#0f4c5c' : '#FFFFFF',
           borderBottomWidth: 1,
           borderBottomColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.08)' : 'rgba(27,36,32,0.08)',
           paddingHorizontal: isMobile ? 12 : 24,
@@ -755,13 +755,13 @@ export default function CommunityFeedScreen() {
         {/* ── Hero Banner & Nút Đăng Bài ────────────────────────────────────── */}
         <View
           style={{
-            backgroundColor: Platform.OS === 'web' ? '#0E3B32' : '#FFFFFF',
+            backgroundColor: Platform.OS === 'web' ? '#0f4c5c' : '#FFFFFF',
             borderRadius: 20,
             padding: 24,
             borderWidth: 1,
             borderColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.1)' : 'rgba(27,36,32,0.08)',
             boxShadow: Platform.OS === 'web'
-              ? ('0 8px 24px rgba(14, 59, 50, 0.2)' as any)
+              ? ('0 8px 24px rgba(15, 76, 92, 0.2)' as any)
               : ('0 4px 16px rgba(0,0,0,0.03)' as any),
             flexDirection: 'row',
             alignItems: 'center',
@@ -784,7 +784,7 @@ export default function CommunityFeedScreen() {
                   style={{
                     fontSize: 11,
                     fontWeight: '800',
-                    color: Platform.OS === 'web' ? '#A3C2BB' : '#1B5E20',
+                    color: Platform.OS === 'web' ? '#BAE6FD' : '#1B5E20',
                   }}
                 >
                   ✨ KHÁM PHÁ & CẢM HỨNG DU LỊCH 🌏
@@ -803,7 +803,7 @@ export default function CommunityFeedScreen() {
             <Text
               style={{
                 fontSize: 13,
-                color: Platform.OS === 'web' ? '#A3C2BB' : BRAND_COLORS.textMuted,
+                color: Platform.OS === 'web' ? '#E0F2FE' : BRAND_COLORS.textMuted,
                 lineHeight: 20,
               }}
             >
@@ -830,12 +830,12 @@ export default function CommunityFeedScreen() {
               cursor: 'pointer' as any,
             }]}
           >
-            <Plus size={18} color={Platform.OS === 'web' ? '#0E3B32' : '#FFFFFF'} />
+            <Plus size={18} color={Platform.OS === 'web' ? '#0f4c5c' : '#FFFFFF'} />
             <Text
               style={{
                 fontSize: 14,
                 fontWeight: '800',
-                color: Platform.OS === 'web' ? '#0E3B32' : '#FFFFFF',
+                color: Platform.OS === 'web' ? '#0f4c5c' : '#FFFFFF',
               }}
             >
               + Đăng Bài / Đăng Lịch Trình
@@ -850,8 +850,8 @@ export default function CommunityFeedScreen() {
             borderRadius: 20,
             padding: 20,
             borderWidth: 1,
-            borderColor: Platform.OS === 'web' ? 'rgba(14,59,50,0.08)' : 'rgba(27,36,32,0.08)',
-            boxShadow: Platform.OS === 'web' ? ('0 4px 16px rgba(14,59,50,0.04)' as any) : undefined,
+            borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(27,36,32,0.08)',
+            boxShadow: Platform.OS === 'web' ? ('0 4px 16px rgba(15, 76, 92, 0.04)' as any) : undefined,
             gap: 16,
           }}
         >
@@ -866,12 +866,12 @@ export default function CommunityFeedScreen() {
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Filter size={18} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+              <Filter size={18} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
               <Text
                 style={{
                   fontSize: 15,
                   fontWeight: '800',
-                  color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.text,
+                  color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text,
                 }}
               >
                 Bộ Lọc Tìm Kiếm Đa Tiêu Chí
@@ -940,7 +940,7 @@ export default function CommunityFeedScreen() {
                   paddingVertical: 7,
                   borderRadius: 10,
                   backgroundColor: selectedCategory === 'all'
-                    ? (Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary)
+                    ? (Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary)
                     : (Platform.OS === 'web' ? '#F4F6F5' : '#F1F5F9'),
                   cursor: 'pointer' as any,
                 }}
@@ -1009,7 +1009,7 @@ export default function CommunityFeedScreen() {
                     padding: '4px 10px',
                     fontSize: 12,
                     fontWeight: '600',
-                    color: '#0E3B32',
+                    color: '#0f4c5c',
                     cursor: 'pointer',
                     outline: 'none',
                   }}
@@ -1033,11 +1033,11 @@ export default function CommunityFeedScreen() {
                   paddingVertical: 6,
                   borderRadius: 8,
                   backgroundColor: selectedProvince === 'all'
-                    ? (Platform.OS === 'web' ? '#0E3B32' : '#1E293B')
+                    ? (Platform.OS === 'web' ? '#0f4c5c' : '#1E293B')
                     : (Platform.OS === 'web' ? '#F4F6F5' : '#F8FAFC'),
                   borderWidth: 1,
                   borderColor: selectedProvince === 'all'
-                    ? (Platform.OS === 'web' ? '#0E3B32' : '#1E293B')
+                    ? (Platform.OS === 'web' ? '#0f4c5c' : '#1E293B')
                     : (Platform.OS === 'web' ? '#E5EAE7' : '#CBD5E1'),
                   cursor: 'pointer' as any,
                 }}
@@ -1064,11 +1064,11 @@ export default function CommunityFeedScreen() {
                       paddingVertical: 6,
                       borderRadius: 8,
                       backgroundColor: active
-                        ? (Platform.OS === 'web' ? '#0E3B32' : '#059669')
+                        ? (Platform.OS === 'web' ? '#0c77b0' : '#059669')
                         : '#FFFFFF',
                       borderWidth: 1,
                       borderColor: active
-                        ? (Platform.OS === 'web' ? '#0E3B32' : '#059669')
+                        ? (Platform.OS === 'web' ? '#0c77b0' : '#059669')
                         : '#E2E8F0',
                       cursor: 'pointer' as any,
                     }}
@@ -1153,9 +1153,9 @@ export default function CommunityFeedScreen() {
                     borderRadius: 20,
                     padding: 22,
                     borderWidth: 1,
-                    borderColor: Platform.OS === 'web' ? 'rgba(14,59,50,0.08)' : 'rgba(27,36,32,0.08)',
+                    borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(27,36,32,0.08)',
                     boxShadow: Platform.OS === 'web'
-                      ? ('0 4px 16px rgba(14, 59, 50, 0.04)' as any)
+                      ? ('0 4px 16px rgba(15, 76, 92, 0.04)' as any)
                       : ('0 4px 16px rgba(0,0,0,0.02)' as any),
                     gap: 14,
                   }}
@@ -1174,12 +1174,12 @@ export default function CommunityFeedScreen() {
                             width: 40,
                             height: 40,
                             borderRadius: 20,
-                            backgroundColor: Platform.OS === 'web' ? 'rgba(14,59,50,0.08)' : 'rgba(31,111,84,0.1)',
+                            backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(31,111,84,0.1)',
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}
                         >
-                          <User size={20} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                          <User size={20} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                         </View>
                       )}
                       <View>
@@ -1239,7 +1239,7 @@ export default function CommunityFeedScreen() {
                       style={{
                         fontFamily: 'Lora_700Bold',
                         fontSize: 18,
-                        color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.text,
+                        color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text,
                       }}
                     >
                       {post.place_name}
@@ -1253,20 +1253,20 @@ export default function CommunityFeedScreen() {
                           flexDirection: 'row',
                           alignItems: 'center',
                           gap: 4,
-                          backgroundColor: Platform.OS === 'web' ? 'rgba(14,59,50,0.08)' : '#E8F5E9',
+                          backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : '#E8F5E9',
                           paddingHorizontal: 10,
                           paddingVertical: 4,
                           borderRadius: 8,
                           borderWidth: 1,
-                          borderColor: Platform.OS === 'web' ? 'rgba(14,59,50,0.15)' : '#C8E6C9',
+                          borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.15)' : '#C8E6C9',
                         }}
                       >
-                        <MapPin size={13} color={Platform.OS === 'web' ? '#0E3B32' : '#2E7D32'} />
+                        <MapPin size={13} color={Platform.OS === 'web' ? '#0f4c5c' : '#2E7D32'} />
                         <Text
                           style={{
                             fontSize: 12,
                             fontWeight: '800',
-                            color: Platform.OS === 'web' ? '#0E3B32' : '#1B5E20',
+                            color: Platform.OS === 'web' ? '#0f4c5c' : '#1B5E20',
                           }}
                         >
                           {post.province}

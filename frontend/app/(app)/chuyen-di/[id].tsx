@@ -1375,7 +1375,7 @@ export default function TripDetail() {
   return (
     <View
       className="flex-1"
-      style={Platform.OS === 'web' ? { backgroundColor: '#F8F9F8' } : { backgroundColor: BRAND_COLORS.bg }}
+      style={Platform.OS === 'web' ? { backgroundColor: '#F8F9FA' } : { backgroundColor: BRAND_COLORS.bg }}
     >
       <View className="no-print flex-1">
         <ScrollView
@@ -1389,7 +1389,7 @@ export default function TripDetail() {
         <View
           className={Platform.OS === 'web' ? 'px-4 md:px-6 py-3 md:py-4 shadow-sm' : 'bg-brand-bg border-b border-brand-line px-4 md:px-6 py-3 md:py-4'}
           style={{
-            backgroundColor: Platform.OS === 'web' ? '#0E3B32' : undefined,
+            backgroundColor: Platform.OS === 'web' ? '#0f4c5c' : undefined,
             borderBottomWidth: 1,
             borderBottomColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.08)' : undefined,
             paddingTop: Math.max(insets.top, 14),
@@ -1509,8 +1509,8 @@ export default function TripDetail() {
                     borderRadius: 20,
                     padding: 24,
                     borderWidth: 1,
-                    borderColor: 'rgba(14, 59, 50, 0.08)',
-                    boxShadow: '0 4px 16px rgba(14, 59, 50, 0.04)' as any,
+                    borderColor: 'rgba(15, 76, 92, 0.08)',
+                    boxShadow: '0 4px 16px rgba(15, 76, 92, 0.04)' as any,
                   }
                 : {
                     borderBottomWidth: 1,
@@ -1524,13 +1524,13 @@ export default function TripDetail() {
                   <View
                     className="flex-row items-center gap-1.5 self-start px-3 py-1 rounded-full"
                     style={{
-                      backgroundColor: Platform.OS === 'web' ? 'rgba(14, 59, 50, 0.08)' : 'rgba(31,111,84,0.1)',
+                      backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(31,111,84,0.1)',
                     }}
                   >
-                    <MapPin size={14} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                    <MapPin size={14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                     <Text
                       className="font-bold text-xs"
-                      style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary }}
+                      style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary }}
                     >
                       {trip.destination_city}
                     </Text>
@@ -1587,26 +1587,26 @@ export default function TripDetail() {
                 </View>
                 <Text
                   className="font-display font-extrabold text-2xl md:text-3xl break-words"
-                  style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.text }}
+                  style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
                 >
                   {trip.title}
                 </Text>
                 <View className="flex-row flex-wrap gap-4">
                   <View className="flex-row items-center gap-1.5">
-                    <Calendar size={16} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                    <Calendar size={16} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                     <Text className="text-xs text-brand-textSoft font-semibold">{formatDate(trip.start_date)} — {formatDate(trip.end_date)}</Text>
                   </View>
                   <View className="flex-row items-center gap-1.5">
-                    <Wallet size={16} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                    <Wallet size={16} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                     <Text
                       className="text-xs font-semibold"
-                      style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.textSoft }}
+                      style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.textSoft }}
                     >
                       {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(trip.budget_total)}
                     </Text>
                   </View>
                   <View className="flex-row items-center gap-1.5">
-                    <Compass size={16} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                    <Compass size={16} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                     <Text className="text-xs text-brand-textSoft font-semibold">
                       {trip.traveler_count} khách ({TRAVELER_TYPE_LABELS[String(trip.traveler_type || '').toLowerCase()] || trip.traveler_type})
                     </Text>
@@ -1630,7 +1630,7 @@ export default function TripDetail() {
                   onPress={handleExportPDF}
                   className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl"
                   style={{
-                    backgroundColor: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary,
+                    backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary,
                     cursor: 'pointer' as any,
                   }}
                 >
@@ -1658,7 +1658,7 @@ export default function TripDetail() {
                       ? '#FFFFFF'
                       : (collaborators.length > 0 ? '#ECFDF5' : '#F3F4F6'),
                     borderColor: Platform.OS === 'web'
-                      ? '#0E3B32'
+                      ? '#0c77b0'
                       : (collaborators.length > 0 ? '#A7F3D0' : '#E5E7EB'),
                     cursor: 'pointer' as any,
                   }}
@@ -1670,7 +1670,7 @@ export default function TripDetail() {
                     className="text-xs md:text-sm font-bold"
                     style={{
                       color: Platform.OS === 'web'
-                        ? '#0E3B32'
+                        ? '#0c77b0'
                         : (collaborators.length > 0 ? '#065F46' : '#374151'),
                     }}
                   >
@@ -1789,10 +1789,10 @@ export default function TripDetail() {
           <View className="gap-6">
             <View className="flex-row items-center justify-between flex-wrap gap-3">
               <View className="flex-row items-center gap-2">
-                <Calendar size={20} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                <Calendar size={20} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                 <Text
                   className="text-xl font-extrabold"
-                  style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.text }}
+                  style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
                 >
                   Lịch trình & Lộ trình di chuyển
                 </Text>

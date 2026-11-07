@@ -2721,7 +2721,7 @@ export default function GoogleCalendarWorkspace({
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 6,
-                  backgroundColor: '#134A37',
+                  backgroundColor: Platform.OS === 'web' ? '#0c77b0' : '#134A37',
                   paddingHorizontal: 16,
                   paddingVertical: 9,
                   borderRadius: 10,

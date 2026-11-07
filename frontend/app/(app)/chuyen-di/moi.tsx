@@ -2379,7 +2379,7 @@ export default function TripWizard() {
   return (
     <KeyboardAvoidingView
       className="flex-1"
-      style={Platform.OS === 'web' ? { backgroundColor: '#F8F9F8' } : { backgroundColor: BRAND_COLORS.bg }}
+      style={Platform.OS === 'web' ? { backgroundColor: '#F8F9FA' } : { backgroundColor: BRAND_COLORS.bg }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -2401,10 +2401,10 @@ export default function TripWizard() {
               className="flex-row items-center gap-1"
               style={{ cursor: 'pointer' as any }}
             >
-              <ArrowLeft size={14} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.textSoft} />
+              <ArrowLeft size={14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.textSoft} />
               <Text
                 className="text-xs font-bold"
-                style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.textSoft }}
+                style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.textSoft }}
               >
                 Quay lại
               </Text>
@@ -2418,7 +2418,7 @@ export default function TripWizard() {
                   style={{
                     width: 32,
                     backgroundColor: step >= idx
-                      ? (Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary)
+                      ? (Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary)
                       : (Platform.OS === 'web' ? '#E5EAE7' : BRAND_COLORS.line),
                   }}
                 />
@@ -2433,8 +2433,8 @@ export default function TripWizard() {
               Platform.OS === 'web'
                 ? {
                     borderWidth: 1,
-                    borderColor: 'rgba(14, 59, 50, 0.08)',
-                    boxShadow: '0 4px 20px rgba(14, 59, 50, 0.04)' as any,
+                    borderColor: 'rgba(15, 76, 92, 0.08)',
+                    boxShadow: '0 4px 20px rgba(15, 76, 92, 0.04)' as any,
                   }
                 : {
                     borderWidth: 1,
@@ -2478,7 +2478,7 @@ export default function TripWizard() {
                 <View className="gap-6">
                   <Text
                     className="font-display font-extrabold text-2xl"
-                    style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.text }}
+                    style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
                   >
                     Bạn muốn đi du lịch ở đâu?
                   </Text>
@@ -2486,7 +2486,7 @@ export default function TripWizard() {
                   {/* City Dropdown picker [Mục 2] */}
                   <View className="gap-2">
                     <View className="flex-row items-center gap-1.5">
-                      <MapPin size={14} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                      <MapPin size={14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                       <Text className="text-sm font-bold text-brand-textSoft">Điểm đến (Chọn Thành Phố)</Text>
                     </View>
                     {Platform.OS === 'web' ? (
@@ -2498,10 +2498,10 @@ export default function TripWizard() {
                           padding: '12px 16px',
                           borderRadius: '12px',
                           border: '1px solid #E5EAE7',
-                          backgroundColor: '#F8F9F8',
+                          backgroundColor: '#F8F9FA',
                           fontSize: '14px',
                           fontWeight: 'bold',
-                          color: '#0E3B32',
+                          color: '#0f4c5c',
                           outline: 'none',
                           cursor: 'pointer',
                         }}
@@ -2560,7 +2560,7 @@ export default function TripWizard() {
                 <View className="gap-6">
                   <Text
                     className="font-display font-extrabold text-2xl"
-                    style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.text }}
+                    style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
                   >
                     Đoàn đi và Ngân sách
                   </Text>
@@ -2686,7 +2686,7 @@ export default function TripWizard() {
                 <View className="gap-6">
                   <Text
                     className="font-display font-extrabold text-2xl"
-                    style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.text }}
+                    style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
                   >
                     Bạn mong muốn trải nghiệm điều gì?
                   </Text>
@@ -3585,10 +3585,10 @@ export default function TripWizard() {
                   className="flex-row items-center gap-1.5 px-5 py-3 rounded-xl"
                   style={{
                     backgroundColor: !!errorMsg
-                      ? (Platform.OS === 'web' ? 'rgba(14, 59, 50, 0.4)' : 'rgba(31,111,84,0.4)')
-                      : (Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary),
+                      ? (Platform.OS === 'web' ? 'rgba(12, 119, 176, 0.4)' : 'rgba(31,111,84,0.4)')
+                      : (Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary),
                     opacity: !!errorMsg ? 0.5 : 1,
-                    boxShadow: Platform.OS === 'web' && !errorMsg ? ('0 4px 14px rgba(14, 59, 50, 0.25)' as any) : undefined,
+                    boxShadow: Platform.OS === 'web' && !errorMsg ? ('0 4px 14px rgba(12, 119, 176, 0.25)' as any) : undefined,
                     cursor: (!!errorMsg ? 'not-allowed' : 'pointer') as any,
                   }}
                 >
@@ -3609,8 +3609,8 @@ export default function TripWizard() {
                     onPress={() => setShowScheduleOptionModal(true)}
                     className="flex-row items-center gap-2 px-6 py-3.5 rounded-xl active:opacity-90 shadow-sm"
                     style={{
-                      backgroundColor: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary,
-                      boxShadow: Platform.OS === 'web' ? ('0 4px 14px rgba(14, 59, 50, 0.25)' as any) : undefined,
+                      backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary,
+                      boxShadow: Platform.OS === 'web' ? ('0 4px 14px rgba(12, 119, 176, 0.25)' as any) : undefined,
                       cursor: 'pointer' as any,
                     }}
                   >

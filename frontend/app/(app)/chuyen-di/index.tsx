@@ -79,9 +79,9 @@ function getTripStatusInfo(startDateStr: string, endDateStr: string, dbStatus: s
       label: 'Đang diễn ra',
       bgClass: 'bg-emerald-100 border border-emerald-300/40',
       textClass: 'text-emerald-700',
-      webBg: '#E6F4EA',
-      webBorder: '#CEEAD6',
-      webColor: '#137333',
+      webBg: '#E1F5FE',
+      webBorder: '#B3E5FC',
+      webColor: '#0c77b0',
     };
   }
 
@@ -247,14 +247,14 @@ export default function Dashboard() {
       )}
       <ScrollView
         className="flex-1"
-        style={Platform.OS === 'web' ? { backgroundColor: '#F8F9F8' } : { backgroundColor: BRAND_COLORS.bg }}
+        style={Platform.OS === 'web' ? { backgroundColor: '#F8F9FA' } : { backgroundColor: BRAND_COLORS.bg }}
         contentContainerStyle={{ flexGrow: 1 }}
       >
       {/* Navbar */}
       <View
         className={Platform.OS === 'web' ? 'px-3 py-2.5 sm:px-6 sm:py-4 shadow-sm' : 'bg-brand-bg border-b border-brand-line px-3 py-2.5 sm:px-6 sm:py-4'}
         style={{
-          backgroundColor: Platform.OS === 'web' ? '#0E3B32' : undefined,
+          backgroundColor: Platform.OS === 'web' ? '#0f4c5c' : undefined,
           borderBottomWidth: 1,
           borderBottomColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.08)' : undefined,
           paddingTop: isMobile ? Math.max(insets.top, 12) : undefined,
@@ -537,7 +537,7 @@ export default function Dashboard() {
           <View className="gap-1">
             <Text
               className="font-display font-extrabold text-2xl sm:text-3xl"
-              style={{ color: Platform.OS === 'web' ? '#0E3B32' : '#1E293B' }}
+              style={{ color: Platform.OS === 'web' ? '#0f4c5c' : '#1E293B' }}
             >
               Hành Trình Của Bạn
             </Text>
@@ -554,8 +554,8 @@ export default function Dashboard() {
               onPress={() => router.push(APP_ROUTES.NEW_TRIP as any)}
               className="flex-row items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl"
               style={{
-                backgroundColor: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.accent,
-                boxShadow: Platform.OS === 'web' ? ('0 4px 14px rgba(14,59,50,0.25)' as any) : undefined,
+                backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.accent,
+                boxShadow: Platform.OS === 'web' ? ('0 4px 14px rgba(12, 119, 176, 0.25)' as any) : undefined,
                 cursor: 'pointer' as any,
               }}
             >
@@ -586,7 +586,7 @@ export default function Dashboard() {
                   width: isMobile ? '48.5%' : 320,
                   backgroundColor: Platform.OS === 'web' ? '#FFFFFF' : undefined,
                   borderWidth: 1,
-                  borderColor: Platform.OS === 'web' ? 'rgba(14,59,50,0.08)' : undefined,
+                  borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : undefined,
                 }}
               />
             ))}
@@ -612,7 +612,7 @@ export default function Dashboard() {
               }`}
               style={
                 Platform.OS === 'web'
-                  ? ({ boxShadow: '0 4px 20px rgba(14, 59, 50, 0.05)' } as any)
+                  ? ({ boxShadow: '0 4px 20px rgba(15, 76, 92, 0.05)' } as any)
                   : undefined
               }
             >
@@ -620,25 +620,25 @@ export default function Dashboard() {
               <View
                 className="w-16 h-16 rounded-3xl items-center justify-center border shadow-sm"
                 style={{
-                  backgroundColor: Platform.OS === 'web' ? 'rgba(14, 59, 50, 0.08)' : 'rgba(31,111,84,0.1)',
-                  borderColor: Platform.OS === 'web' ? 'rgba(14, 59, 50, 0.2)' : 'rgba(31,111,84,0.2)',
+                  backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(31,111,84,0.1)',
+                  borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.2)' : 'rgba(31,111,84,0.2)',
                 }}
               >
-                <Compass size={32} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                <Compass size={32} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
               </View>
 
               <View className="items-center gap-2 max-w-xl">
                 <View
                   className="flex-row items-center gap-1.5 px-3 py-1 rounded-full border"
                   style={{
-                    backgroundColor: Platform.OS === 'web' ? 'rgba(14, 59, 50, 0.08)' : 'rgba(31,111,84,0.1)',
-                    borderColor: Platform.OS === 'web' ? 'rgba(14, 59, 50, 0.2)' : 'rgba(31,111,84,0.2)',
+                    backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(31,111,84,0.1)',
+                    borderColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.2)' : 'rgba(31,111,84,0.2)',
                   }}
                 >
-                  <Sparkles size={12} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                  <Sparkles size={12} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                   <Text
                     className="font-bold text-[11px] uppercase tracking-wider"
-                    style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary }}
+                    style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary }}
                   >
                     Trợ Lý Du Lịch AI Thông Minh
                   </Text>
@@ -646,7 +646,7 @@ export default function Dashboard() {
 
                 <Text
                   className="font-display font-black text-2xl md:text-3xl text-center"
-                  style={{ color: Platform.OS === 'web' ? '#0E3B32' : '#1E293B' }}
+                  style={{ color: Platform.OS === 'web' ? '#0f4c5c' : '#1E293B' }}
                 >
                   Bắt Đầu Hành Trình Của Bạn
                 </Text>
@@ -669,7 +669,7 @@ export default function Dashboard() {
                   style={{
                     minWidth: 200,
                     cursor: 'pointer' as any,
-                    backgroundColor: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary,
+                    backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary,
                   }}
                 >
                   <Plus size={18} color="white" />
@@ -685,13 +685,13 @@ export default function Dashboard() {
                     minWidth: 200,
                     cursor: 'pointer' as any,
                     borderWidth: 1,
-                    borderColor: Platform.OS === 'web' ? '#0E3B32' : 'rgba(31,111,84,0.3)',
+                    borderColor: Platform.OS === 'web' ? '#0c77b0' : 'rgba(31,111,84,0.3)',
                   }}
                 >
-                  <MessageSquare size={17} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                  <MessageSquare size={17} color={Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary} />
                   <Text
                     className="font-extrabold text-sm"
-                    style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary }}
+                    style={{ color: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary }}
                   >
                     Chat Với ViVu AI
                   </Text>
@@ -751,8 +751,8 @@ export default function Dashboard() {
                       ? {
                           backgroundColor: '#FFFFFF',
                           borderWidth: 1,
-                          borderColor: isAiPro ? '#F59E0B' : 'rgba(14, 59, 50, 0.08)',
-                          boxShadow: isAiPro ? ('0 4px 20px rgba(245, 158, 11, 0.15)' as any) : ('0 4px 16px rgba(14, 59, 50, 0.05)' as any),
+                          borderColor: isAiPro ? '#F59E0B' : 'rgba(15, 76, 92, 0.08)',
+                          boxShadow: isAiPro ? ('0 4px 20px rgba(245, 158, 11, 0.15)' as any) : ('0 4px 16px rgba(15, 76, 92, 0.05)' as any),
                         }
                       : isAiPro
                       ? { borderColor: '#F59E0B', shadowColor: '#F59E0B', shadowOpacity: 0.15, shadowRadius: 10 }
@@ -768,12 +768,12 @@ export default function Dashboard() {
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap', flex: 1, marginRight: 4 }}>
                               <View
                                 className="flex-row items-center gap-1 px-2 py-0.5 rounded-full"
-                                style={Platform.OS === 'web' ? { backgroundColor: 'rgba(14, 59, 50, 0.08)' } : { backgroundColor: 'rgba(31,111,84,0.1)' }}
+                                style={Platform.OS === 'web' ? { backgroundColor: 'rgba(15, 76, 92, 0.08)' } : { backgroundColor: 'rgba(31,111,84,0.1)' }}
                               >
-                                <MapPin size={10} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                                <MapPin size={10} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                                 <Text
                                   className="font-bold text-[9px] uppercase tracking-wider"
-                                  style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary }}
+                                  style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary }}
                                   numberOfLines={1}
                                 >
                                   {trip.destination_city}
@@ -829,12 +829,12 @@ export default function Dashboard() {
                           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginRight: 4 }}>
                             <View
                               className="flex-row items-center gap-1 px-2.5 py-1 rounded-full"
-                              style={Platform.OS === 'web' ? { backgroundColor: 'rgba(14, 59, 50, 0.08)' } : { backgroundColor: 'rgba(31,111,84,0.1)' }}
+                              style={Platform.OS === 'web' ? { backgroundColor: 'rgba(15, 76, 92, 0.08)' } : { backgroundColor: 'rgba(31,111,84,0.1)' }}
                             >
-                              <MapPin size={12} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                              <MapPin size={12} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                               <Text
                                 className="font-bold text-[10px] uppercase tracking-wider"
-                                style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary }}
+                                style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary }}
                                 numberOfLines={1}
                               >
                                 {trip.destination_city}
@@ -888,7 +888,7 @@ export default function Dashboard() {
                             fontSize: isMobile ? 14 : 18,
                             fontWeight: '700',
                             fontFamily: 'Lora_700Bold',
-                            color: Platform.OS === 'web' ? '#0E3B32' : '#1E293B',
+                            color: Platform.OS === 'web' ? '#0f4c5c' : '#1E293B',
                             lineHeight: isMobile ? 19 : 24
                           }}
                           numberOfLines={2}
@@ -904,25 +904,25 @@ export default function Dashboard() {
                       </View>
                     </View>
 
-                    <View style={{ gap: isMobile ? 5 : 8, paddingTop: isMobile ? 8 : 12, borderTopWidth: 1, borderTopColor: Platform.OS === 'web' ? 'rgba(14, 59, 50, 0.08)' : 'rgba(226, 232, 240, 0.6)' }}>
+                    <View style={{ gap: isMobile ? 5 : 8, paddingTop: isMobile ? 8 : 12, borderTopWidth: 1, borderTopColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(226, 232, 240, 0.6)' }}>
                       <View className="flex-row items-center gap-1.5">
-                        <Calendar size={isMobile ? 12 : 14} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                        <Calendar size={isMobile ? 12 : 14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                         <Text style={{ fontSize: isMobile ? 10.5 : 12, color: '#64748B' }} numberOfLines={1}>
                           {formatDate(trip.start_date)} - {formatDate(trip.end_date)}
                         </Text>
                       </View>
                       <View className="flex-row items-center gap-1.5">
-                        <Wallet size={isMobile ? 12 : 14} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                        <Wallet size={isMobile ? 12 : 14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                         <Text style={{ fontSize: isMobile ? 10.5 : 12, color: '#64748B' }} numberOfLines={1}>
-                          <Text style={{ fontWeight: '700', color: Platform.OS === 'web' ? '#0E3B32' : '#1E293B' }}>
+                          <Text style={{ fontWeight: '700', color: Platform.OS === 'web' ? '#0f4c5c' : '#1E293B' }}>
                             {formatCurrency(trip.budget_total)}
                           </Text>
                         </Text>
                       </View>
                       <View className="flex-row items-center gap-1.5">
-                        <DollarSign size={isMobile ? 12 : 14} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
+                        <DollarSign size={isMobile ? 12 : 14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
                         <Text style={{ fontSize: isMobile ? 10.5 : 12, color: '#64748B' }} numberOfLines={1}>
-                          <Text style={{ fontWeight: '700', color: Platform.OS === 'web' ? '#0E3B32' : '#1E293B' }}>
+                          <Text style={{ fontWeight: '700', color: Platform.OS === 'web' ? '#0f4c5c' : '#1E293B' }}>
                             {trip.traveler_count} khách
                           </Text>{' '}
                           ({trip.traveler_type})
