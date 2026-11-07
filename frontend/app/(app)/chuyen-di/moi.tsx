@@ -2378,7 +2378,8 @@ export default function TripWizard() {
 
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-brand-bg"
+      className="flex-1"
+      style={Platform.OS === 'web' ? { backgroundColor: '#F8F9F8' } : { backgroundColor: BRAND_COLORS.bg }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -2398,24 +2399,49 @@ export default function TripWizard() {
             <Pressable
               onPress={() => router.push(APP_ROUTES.TRIPS as any)}
               className="flex-row items-center gap-1"
+              style={{ cursor: 'pointer' as any }}
             >
-              <ArrowLeft size={14} color={BRAND_COLORS.textSoft} />
-              <Text className="text-xs font-bold text-brand-textSoft">Quay lại</Text>
+              <ArrowLeft size={14} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.textSoft} />
+              <Text
+                className="text-xs font-bold"
+                style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.textSoft }}
+              >
+                Quay lại
+              </Text>
             </Pressable>
 
             <View className="flex-row gap-1.5">
               {[1, 2, 3, 4].map(idx => (
                 <View
                   key={idx}
-                  className={`h-1.5 rounded-full ${step >= idx ? 'bg-brand-primary' : 'bg-brand-line'}`}
-                  style={{ width: 32 }}
+                  className="h-1.5 rounded-full"
+                  style={{
+                    width: 32,
+                    backgroundColor: step >= idx
+                      ? (Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary)
+                      : (Platform.OS === 'web' ? '#E5EAE7' : BRAND_COLORS.line),
+                  }}
                 />
               ))}
             </View>
           </View>
 
           {/* Form card */}
-          <View className="bg-white rounded-3xl p-8 shadow-sm border border-brand-line/30 gap-6">
+          <View
+            className="bg-white rounded-3xl p-8 gap-6"
+            style={
+              Platform.OS === 'web'
+                ? {
+                    borderWidth: 1,
+                    borderColor: 'rgba(14, 59, 50, 0.08)',
+                    boxShadow: '0 4px 20px rgba(14, 59, 50, 0.04)' as any,
+                  }
+                : {
+                    borderWidth: 1,
+                    borderColor: 'rgba(27,36,32,0.1)',
+                  }
+            }
+          >
             {/* Error banner */}
             {!!errorMsg && (
               <View className="p-4 rounded-xl bg-brand-danger/10 border border-brand-danger/30 flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
@@ -2450,14 +2476,17 @@ export default function TripWizard() {
             {step === 1 && (
               <Reveal>
                 <View className="gap-6">
-                  <Text className="font-display font-extrabold text-2xl text-brand-text">
+                  <Text
+                    className="font-display font-extrabold text-2xl"
+                    style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.text }}
+                  >
                     Bạn muốn đi du lịch ở đâu?
                   </Text>
 
                   {/* City Dropdown picker [Mục 2] */}
                   <View className="gap-2">
                     <View className="flex-row items-center gap-1.5">
-                      <MapPin size={14} color={BRAND_COLORS.primary} />
+                      <MapPin size={14} color={Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary} />
                       <Text className="text-sm font-bold text-brand-textSoft">Điểm đến (Chọn Thành Phố)</Text>
                     </View>
                     {Platform.OS === 'web' ? (
@@ -2468,11 +2497,11 @@ export default function TripWizard() {
                           width: '100%',
                           padding: '12px 16px',
                           borderRadius: '12px',
-                          border: '1px solid rgba(27,36,32,0.15)',
-                          backgroundColor: '#FBF5EA',
+                          border: '1px solid #E5EAE7',
+                          backgroundColor: '#F8F9F8',
                           fontSize: '14px',
                           fontWeight: 'bold',
-                          color: '#1B2420',
+                          color: '#0E3B32',
                           outline: 'none',
                           cursor: 'pointer',
                         }}
@@ -2529,7 +2558,10 @@ export default function TripWizard() {
             {step === 2 && (
               <Reveal>
                 <View className="gap-6">
-                  <Text className="font-display font-extrabold text-2xl text-brand-text">
+                  <Text
+                    className="font-display font-extrabold text-2xl"
+                    style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.text }}
+                  >
                     Đoàn đi và Ngân sách
                   </Text>
 
@@ -2652,7 +2684,10 @@ export default function TripWizard() {
             {step === 3 && (
               <Reveal>
                 <View className="gap-6">
-                  <Text className="font-display font-extrabold text-2xl text-brand-text">
+                  <Text
+                    className="font-display font-extrabold text-2xl"
+                    style={{ color: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.text }}
+                  >
                     Bạn mong muốn trải nghiệm điều gì?
                   </Text>
 
@@ -3534,6 +3569,7 @@ export default function TripWizard() {
                 <Pressable
                   onPress={handlePrev}
                   className="flex-row items-center gap-1.5 px-4 py-2.5 rounded-lg border border-brand-line"
+                  style={{ cursor: 'pointer' as any }}
                 >
                   <Text className="text-xs font-bold text-brand-textSoft">Quay lại</Text>
                 </Pressable>
@@ -3546,7 +3582,15 @@ export default function TripWizard() {
                   testID="btn-next-step"
                   onPress={handleNext}
                   disabled={!!errorMsg}
-                  className={`flex-row items-center gap-1.5 px-5 py-3 rounded-xl ${!!errorMsg ? 'bg-brand-primary/40 opacity-50' : 'bg-brand-primary'}`}
+                  className="flex-row items-center gap-1.5 px-5 py-3 rounded-xl"
+                  style={{
+                    backgroundColor: !!errorMsg
+                      ? (Platform.OS === 'web' ? 'rgba(14, 59, 50, 0.4)' : 'rgba(31,111,84,0.4)')
+                      : (Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary),
+                    opacity: !!errorMsg ? 0.5 : 1,
+                    boxShadow: Platform.OS === 'web' && !errorMsg ? ('0 4px 14px rgba(14, 59, 50, 0.25)' as any) : undefined,
+                    cursor: (!!errorMsg ? 'not-allowed' : 'pointer') as any,
+                  }}
                 >
                   <Text className="text-white text-sm font-bold">Tiếp tục</Text>
                   <ArrowRight size={16} color="white" />
@@ -3563,7 +3607,12 @@ export default function TripWizard() {
                   <Pressable
                     testID="btn-open-create-modal"
                     onPress={() => setShowScheduleOptionModal(true)}
-                    className="flex-row items-center gap-2 px-6 py-3.5 rounded-xl bg-brand-primary active:opacity-90 shadow-sm"
+                    className="flex-row items-center gap-2 px-6 py-3.5 rounded-xl active:opacity-90 shadow-sm"
+                    style={{
+                      backgroundColor: Platform.OS === 'web' ? '#0E3B32' : BRAND_COLORS.primary,
+                      boxShadow: Platform.OS === 'web' ? ('0 4px 14px rgba(14, 59, 50, 0.25)' as any) : undefined,
+                      cursor: 'pointer' as any,
+                    }}
                   >
                     <Sparkles size={16} color="white" />
                     <Text className="text-white text-sm font-bold">

@@ -3,7 +3,7 @@ import { View, Text } from 'react-native';
 import { Clock } from 'lucide-react-native';
 import { BRAND_COLORS } from '../constants';
 
-export default function SystemClock() {
+export default function SystemClock({ variant = 'dark' }: { variant?: 'light' | 'dark' }) {
   const [time, setTime] = useState('');
 
   useEffect(() => {
@@ -24,10 +24,24 @@ export default function SystemClock() {
     return () => clearInterval(interval);
   }, []);
 
+  const isLight = variant === 'light';
+
   return (
-    <View className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-primary/10 border border-brand-primary/25">
-      <Clock size={14} color={BRAND_COLORS.primary} />
-      <Text className="text-brand-primary text-xs font-bold">{time} (VN)</Text>
+    <View
+      className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full ${
+        isLight
+          ? 'bg-white/10 border border-white/20'
+          : 'bg-brand-primary/10 border border-brand-primary/25'
+      }`}
+    >
+      <Clock size={14} color={isLight ? '#A3C2BB' : BRAND_COLORS.primary} />
+      <Text
+        className={`text-xs font-bold ${
+          isLight ? 'text-[#E0EFEA]' : 'text-brand-primary'
+        }`}
+      >
+        {time} (VN)
+      </Text>
     </View>
   );
 }
