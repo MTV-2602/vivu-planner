@@ -2926,7 +2926,7 @@ export default function TripWizard() {
                                 <Pressable
                                   testID="tab-collecting-list"
                                   onPress={() => setCollectingViewMode('list')}
-                                  className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 transition-all ${
+                                  className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 ${
                                     effectiveMode === 'list'
                                       ? 'bg-white shadow-sm border border-brand-line/40'
                                       : 'bg-transparent'
@@ -2945,7 +2945,7 @@ export default function TripWizard() {
                                 <Pressable
                                   testID="tab-collecting-map"
                                   onPress={() => setCollectingViewMode('map')}
-                                  className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 transition-all ${
+                                  className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 ${
                                     effectiveMode === 'map'
                                       ? 'bg-white shadow-sm border border-brand-line/40'
                                       : 'bg-transparent'
@@ -2965,7 +2965,7 @@ export default function TripWizard() {
                                   <Pressable
                                     testID="tab-collecting-both"
                                     onPress={() => setCollectingViewMode('both')}
-                                    className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 transition-all ${
+                                    className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 ${
                                       effectiveMode === 'both'
                                         ? 'bg-white shadow-sm border border-brand-line/40'
                                         : 'bg-transparent'
@@ -3162,7 +3162,7 @@ export default function TripWizard() {
                                                 }, '*');
                                               }
                                             }}
-                                            className={`p-3.5 rounded-2xl border bg-white flex-1 min-w-[240px] max-w-[360px] gap-2.5 shadow-sm transition-all ${
+                                            className={`p-3.5 rounded-2xl border bg-white flex-1 min-w-[240px] max-w-[360px] gap-2.5 shadow-sm ${
                                               isInCart
                                                 ? 'border-2 border-emerald-600 bg-emerald-50/40'
                                                 : isPro
@@ -3221,7 +3221,7 @@ export default function TripWizard() {
                                                 backgroundColor: isInCart ? '#059669' : '#0c77b0',
                                               } : undefined}
                                               onPress={() => handleAddToCart(place)}
-                                              className={`w-full py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-1.5 transition-all shadow-sm ${
+                                              className={`w-full py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-1.5 shadow-sm ${
                                                 isInCart
                                                   ? 'bg-emerald-600 active:opacity-90'
                                                   : isPro

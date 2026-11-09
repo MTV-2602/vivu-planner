@@ -183,7 +183,7 @@ export default function ProfileScreen() {
             if (router.canGoBack()) {
               router.back();
             } else {
-              router.replace((APP_ROUTES.TRIPS || '/(app)/chuyen-di') as any);
+              router.replace((APP_ROUTES.TRIPS || '/chuyen-di') as any);
             }
           }}
           style={({ pressed }) => [{
@@ -592,7 +592,7 @@ export default function ProfileScreen() {
               </View>
 
               <Pressable
-                onPress={() => router.push('/(app)/chuyen-di/moi' as any)}
+                onPress={() => router.push('/chuyen-di/moi' as any)}
                 style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: '#0f4c5c' }}>
@@ -619,7 +619,7 @@ export default function ProfileScreen() {
                   Bạn chưa khởi tạo chuyến đi nào. Hãy bắt đầu lên kế hoạch ngay!
                 </Text>
                 <Pressable
-                  onPress={() => router.push('/(app)/chuyen-di/moi' as any)}
+                  onPress={() => router.push('/chuyen-di/moi' as any)}
                   style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 100, backgroundColor: '#0f4c5c' }}
                 >
                   <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>Tạo chuyến đi đầu tiên</Text>
@@ -630,7 +630,7 @@ export default function ProfileScreen() {
                 {trips.map((trip) => (
                   <Pressable
                     key={trip.id}
-                    onPress={() => router.push(`/(app)/chuyen-di/${trip.id}` as any)}
+                    onPress={() => router.push(`/chuyen-di/${trip.id}` as any)}
                     style={({ pressed }) => [{
                       backgroundColor: '#FFFFFF',
                       borderRadius: 16,

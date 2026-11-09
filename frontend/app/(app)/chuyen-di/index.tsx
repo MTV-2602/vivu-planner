@@ -286,7 +286,7 @@ export default function Dashboard() {
               {/* Nút 🌟 Bảng Tin */}
               <Pressable
                 testID="nav-link-feed"
-                onPress={() => router.push((APP_ROUTES.FEED || '/(app)/bang-tin') as any)}
+                onPress={() => router.push((APP_ROUTES.FEED || '/bang-tin') as any)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -364,7 +364,7 @@ export default function Dashboard() {
 
               {/* Nút Profile / Avatar */}
               <Pressable
-                onPress={() => router.push('/(app)/profile' as any)}
+                onPress={() => router.push('/profile' as any)}
                 style={{
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -426,7 +426,7 @@ export default function Dashboard() {
 
               <Pressable
                 testID="nav-link-feed"
-                onPress={() => router.push((APP_ROUTES.FEED || '/(app)/bang-tin') as any)}
+                onPress={() => router.push((APP_ROUTES.FEED || '/bang-tin') as any)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -488,7 +488,7 @@ export default function Dashboard() {
                 </Pressable>
               )}
               <Pressable
-                onPress={() => router.push('/(app)/profile' as any)}
+                onPress={() => router.push('/profile' as any)}
                 className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-white/20 bg-white/10 hover:border-white/40"
                 style={{ cursor: 'pointer' as any }}
               >

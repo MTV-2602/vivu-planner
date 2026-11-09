@@ -14,7 +14,7 @@ export default function AuthLayout() {
   }
 
   if (session) {
-    return <Redirect href={isAdmin ? '/admin' : '/(app)/chuyen-di'} />;
+    return <Redirect href={isAdmin ? '/admin' : '/chuyen-di'} />;
   }
 
   return <Stack screenOptions={{ headerShown: false }} />;

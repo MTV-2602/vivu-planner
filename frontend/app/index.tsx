@@ -15,5 +15,5 @@ export default function Index() {
 
   if (!session) return <Redirect href="/landing" />;
   if (isAdmin)  return <Redirect href="/admin" />;
-  return <Redirect href="/(app)/chuyen-di" />;
+  return <Redirect href="/chuyen-di" />;
 }

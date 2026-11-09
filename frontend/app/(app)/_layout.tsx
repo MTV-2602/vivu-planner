@@ -20,7 +20,7 @@ export default function AppLayout() {
   // Cho phép route join tự xử lý auth để lưu redirect_after_login
   const isJoinRoute = (segments as string[]).some(s => s === 'join');
 
-  if (!session && !isJoinRoute) return <Redirect href="/(auth)/dang-nhap" />;
+  if (!session && !isJoinRoute) return <Redirect href="/dang-nhap" />;
   if (isAdmin) return <Redirect href="/admin" />;
 
   return (

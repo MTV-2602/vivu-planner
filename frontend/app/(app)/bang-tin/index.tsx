@@ -688,7 +688,7 @@ export default function CommunityFeedScreen() {
 
             {/* Profile Button */}
             <Pressable
-              onPress={() => router.push('/(app)/profile' as any)}
+              onPress={() => router.push('/profile' as any)}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
