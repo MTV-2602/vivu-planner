@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   View, Text, ScrollView, Pressable, TextInput, Image,
   Animated, Platform, KeyboardAvoidingView, ActivityIndicator, Modal, useWindowDimensions, Linking,
+  StatusBar,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
@@ -431,6 +432,10 @@ export default function TripWizard() {
   const { width: windowWidth } = useWindowDimensions();
   const isLargeScreen = windowWidth >= 900;
   const isMobile = windowWidth < 768;
+  const safeTop = isMobile
+    ? Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 16) + 12
+    : 48;
+  const safeBottom = isMobile ? Math.max(insets.bottom, 32) + 32 : 48;
   const [showCityPickerModal, setShowCityPickerModal] = useState(false);
   const [collectingViewMode, setCollectingViewMode] = useState<'list' | 'map' | 'both'>('list');
 
@@ -2248,6 +2253,15 @@ export default function TripWizard() {
         return;
       }
     }
+    if (step === 3) {
+      if (customPrefInput.trim()) {
+        const trimmedPref = customPrefInput.trim();
+        if (!selectedPrefs.includes(trimmedPref)) {
+          setSelectedPrefs(prev => [...prev, trimmedPref]);
+        }
+        setCustomPrefInput('');
+      }
+    }
     setErrorMsg('');
     setStep(prev => prev + 1);
   };
@@ -2388,8 +2402,8 @@ export default function TripWizard() {
         contentContainerStyle={{
           flexGrow: 1,
           padding: isMobile ? 16 : 24,
-          paddingTop: isMobile ? Math.max(insets.top, 16) : 48,
-          paddingBottom: isMobile ? Math.max(insets.bottom, 24) : 48,
+          paddingTop: safeTop,
+          paddingBottom: safeBottom,
         }}
         keyboardShouldPersistTaps="handled"
       >
