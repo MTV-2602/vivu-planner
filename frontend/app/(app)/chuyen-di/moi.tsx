@@ -304,6 +304,7 @@ export default function TripWizard() {
   const [loadingStage, setLoadingStage] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
+  const mainScrollViewRef = useRef<ScrollView | null>(null);
 
   const handleCancelLoading = () => {
     abortControllerRef.current?.abort();
@@ -2264,12 +2265,14 @@ export default function TripWizard() {
     }
     setErrorMsg('');
     setStep(prev => prev + 1);
+    mainScrollViewRef.current?.scrollTo({ y: 0, animated: false });
   };
 
   const handlePrev = () => {
     setErrorMsg('');
     // Nếu đang ở Pro Workspace tại step 2, bấm quay lại hoặc chuyển mode
     setStep(prev => prev - 1);
+    mainScrollViewRef.current?.scrollTo({ y: 0, animated: false });
   };
 
   const handleSubmit = async () => {
@@ -2392,11 +2395,11 @@ export default function TripWizard() {
 
   return (
     <KeyboardAvoidingView
-      className="flex-1"
-      style={{ backgroundColor: '#F8F9FA' }}
+      style={{ flex: 1, backgroundColor: '#F8F9FA' }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
+        ref={mainScrollViewRef}
         className="flex-1"
         nestedScrollEnabled={true}
         contentContainerStyle={{
@@ -2405,7 +2408,7 @@ export default function TripWizard() {
           paddingTop: safeTop,
           paddingBottom: safeBottom,
         }}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
       >
         <View className={`w-full self-center gap-8 ${useProWorkspace && step === 4 ? 'max-w-[1360px]' : 'max-w-xl'}`}>
           {/* Top bar: back + step dots */}
@@ -3586,8 +3589,14 @@ export default function TripWizard() {
               </Reveal>
             )}
 
-            {/* Nav buttons */}
-            <View className="flex-row justify-between items-center pt-5 border-t border-brand-line/35 mt-2">
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Navigation stays outside the scroll area so native taps remain reachable. */}
+      {(step < 4 || !useProWorkspace) && (
+        <View style={{ backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: BRAND_COLORS.line, paddingHorizontal: isMobile ? 16 : 24, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 14) }}>
+          <View style={{ width: '100%', maxWidth: 576, alignSelf: 'center', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               {step > 1 ? (
                 <Pressable
                   onPress={handlePrev}
@@ -3602,17 +3611,13 @@ export default function TripWizard() {
 
               {step < 4 ? (
                 <Pressable
+                  key="wizard-next"
                   testID="btn-next-step"
                   onPress={handleNext}
-                  disabled={!!errorMsg}
                   className="flex-row items-center gap-1.5 px-5 py-3 rounded-xl"
                   style={{
-                    backgroundColor: !!errorMsg
-                      ? 'rgba(12, 119, 176, 0.4)'
-                      : '#0c77b0',
-                    opacity: !!errorMsg ? 0.5 : 1,
-                    boxShadow: !errorMsg ? ('0 4px 14px rgba(12, 119, 176, 0.25)' as any) : undefined,
-                    cursor: (!!errorMsg ? 'not-allowed' : 'pointer') as any,
+                    backgroundColor: '#0c77b0',
+                    cursor: 'pointer' as any,
                   }}
                 >
                   <Text className="text-white text-sm font-bold">Tiếp tục</Text>
@@ -3628,6 +3633,7 @@ export default function TripWizard() {
                   </View>
                 ) : (
                   <Pressable
+                    key="wizard-create"
                     testID="btn-open-create-modal"
                     onPress={() => setShowScheduleOptionModal(true)}
                     className="flex-row items-center gap-2 px-6 py-3.5 rounded-xl active:opacity-90 shadow-sm"
@@ -3646,18 +3652,13 @@ export default function TripWizard() {
                 )
               ) : null}
             </View>
-          </View>
         </View>
-      </ScrollView>
+      )}
 
       {/* Sticky Bottom Cart Bar (Thanh cố định ghim ở đáy màn hình, ngoài Reveal để không bị trôi) */}
       {step === 4 && useProWorkspace && workspaceStage === 'collecting' && cartItems.length > 0 && (
         <View
-          onStartShouldSetResponder={() => true}
-          onMoveShouldSetResponder={() => true}
-          onResponderGrant={(e) => {
-            cartTouchStartY.current = e.nativeEvent.pageY;
-          }}
+          onMoveShouldSetResponder={(e) => cartTouchStartY.current - e.nativeEvent.pageY > 20}
           onResponderRelease={(e) => {
             const deltaY = cartTouchStartY.current - e.nativeEvent.pageY;
             if (deltaY > 20) {

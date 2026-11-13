@@ -661,9 +661,8 @@ const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(
                 androidLayerType="hardware"
                 androidHardwareAccelerationDisabled={false}
                 source={{
-                  uri: `http://localhost:8081/turnstile.html?sitekey=${encodeURIComponent(siteKey)}&action=${encodeURIComponent(action || 'login')}&v=${retryCount}`,
+                  uri: `https://vivuai.vercel.app/api/turnstile-widget?sitekey=${encodeURIComponent(siteKey)}&action=${encodeURIComponent(action || 'login')}&theme=${encodeURIComponent(theme)}&v=${retryCount}`,
                 }}
-                userAgent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
                 containerStyle={{ width: '100%', height: 80 }}
                 style={{ width: '100%', height: 80, backgroundColor: '#FFFFFF' }}
                 javaScriptEnabled={true}

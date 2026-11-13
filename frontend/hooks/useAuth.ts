@@ -95,14 +95,17 @@ export function useAuth(): AuthState {
 
     // Lang nghe thay doi auth state
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      (_event, session) => {
         setSession(session);
         if (session?.user) {
-          await fetchProfile(session.user.id);
+          // Auth initialization waits for this callback; profile requests must run after it returns.
+          setTimeout(() => {
+            fetchProfile(session.user.id).finally(() => setLoading(false));
+          }, 0);
         } else {
           setProfile(null);
+          setLoading(false);
         }
-        setLoading(false);
       }
     );
 
