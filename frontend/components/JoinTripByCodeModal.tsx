@@ -19,11 +19,34 @@ interface JoinTripByCodeModalProps {
 }
 
 export const extractToken = (raw: string): string => {
+  if (!raw) return '';
   const trimmed = raw.trim();
-  const match = trimmed.match(/\/join\/([a-zA-Z0-9_-]+)/);
-  if (match && match[1]) return match[1];
-  const queryMatch = trimmed.match(/[?&]token=([a-zA-Z0-9_-]+)/);
-  if (queryMatch && queryMatch[1]) return queryMatch[1];
+
+  // 1. Tự động nhận diện chuỗi VIVU-[0-9A-Z]+ (bất kể hoa hay thường, e.g. vivu-789 -> VIVU-789)
+  const vivuMatch = trimmed.match(/\b(VIVU-[0-9A-Za-z]+)\b/i);
+  if (vivuMatch && vivuMatch[1]) {
+    return vivuMatch[1].toUpperCase();
+  }
+
+  // 2. Nhận diện URL https://.../join/(VIVU-[0-9A-Z]+|[a-zA-Z0-9_-]+)
+  const urlMatch = trimmed.match(/\/join\/([a-zA-Z0-9_-]+)/i);
+  if (urlMatch && urlMatch[1]) {
+    const code = urlMatch[1];
+    return code.toUpperCase().startsWith('VIVU-') ? code.toUpperCase() : code;
+  }
+
+  // 3. Nhận diện query param ?token= hoặc ?code=
+  const queryMatch = trimmed.match(/[?&](?:token|code)=([a-zA-Z0-9_-]+)/i);
+  if (queryMatch && queryMatch[1]) {
+    const code = queryMatch[1];
+    return code.toUpperCase().startsWith('VIVU-') ? code.toUpperCase() : code;
+  }
+
+  // 4. Nếu người dùng nhập trực tiếp có tiền tố vivu- thì uppercase
+  if (trimmed.toUpperCase().startsWith('VIVU-')) {
+    return trimmed.toUpperCase();
+  }
+
   return trimmed;
 };
 
@@ -48,7 +71,7 @@ export default function JoinTripByCodeModal({
   const handleJoin = async () => {
     const cleanedToken = extractToken(rawInput);
     if (!cleanedToken) {
-      setError('Vui lòng nhập mã tham gia hoặc dán link mời.');
+      setError('Vui lòng nhập Mã tham gia hoặc dán link mời.');
       return;
     }
 
@@ -57,7 +80,11 @@ export default function JoinTripByCodeModal({
     setSuccessMsg('');
 
     try {
-      const res = await api.put(`/trips/join/${cleanedToken}`);
+      const tokenToSend = cleanedToken.toUpperCase().startsWith('VIVU-')
+        ? cleanedToken.toUpperCase()
+        : cleanedToken;
+
+      const res = await api.put(`/trips/join/${tokenToSend}`);
       const tripId = res.data?.trip_id;
 
       if (res.data?.already_member) {
@@ -76,10 +103,17 @@ export default function JoinTripByCodeModal({
         setError('Không tìm thấy thông tin chuyến đi hợp lệ.');
       }
     } catch (err: any) {
-      const msg =
-        err?.response?.data?.error ||
-        err?.message ||
-        'Không thể tham gia chuyến đi. Vui lòng kiểm tra lại mã hoặc đường link.';
+      const serverMsg = err?.response?.data?.error;
+      let msg = 'Mã tham gia hoặc link mời không hợp lệ hoặc đã hết hạn.';
+      if (serverMsg) {
+        if (serverMsg.includes('đủ 5') || serverMsg.includes('tối đa') || serverMsg.includes('đầy')) {
+          msg = 'Chuyến đi này đã đủ số lượng 5 thành viên tối đa.';
+        } else if (serverMsg.includes('hết hạn') || serverMsg.includes('không hợp lệ') || serverMsg.includes('not found') || serverMsg.includes('Invalid')) {
+          msg = 'Mã tham gia hoặc link mời không hợp lệ hoặc đã hết hạn.';
+        } else {
+          msg = serverMsg;
+        }
+      }
       setError(msg);
     } finally {
       setLoading(false);
@@ -102,8 +136,8 @@ export default function JoinTripByCodeModal({
                 <Users size={20} color="#0f4c5c" />
               </View>
               <View>
-                <Text style={styles.headerTitle}>Tham gia chuyến đi</Text>
-                <Text style={styles.headerSubtitle}>Nhập mã hoặc link để cùng đồng hành</Text>
+                <Text style={styles.headerTitle}>Tham gia chuyến đi nhóm</Text>
+                <Text style={styles.headerSubtitle}>Nhập Mã tham gia hoặc link để cùng đồng hành</Text>
               </View>
             </View>
             <TouchableOpacity
@@ -118,7 +152,7 @@ export default function JoinTripByCodeModal({
           {/* Body */}
           <View style={styles.body}>
             <Text style={styles.description}>
-              Dán toàn bộ đường link mời (ví dụ: <Text style={styles.highlightText}>https://vivuai.vercel.app/join/abc...</Text> hoặc <Text style={styles.highlightText}>vivuplanner://join/abc...</Text>) hoặc nhập trực tiếp mã token vào ô bên dưới.
+              Nhập Mã tham gia (ví dụ: <Text style={styles.highlightText}>VIVU-789</Text>) hoặc dán toàn bộ đường link do bạn bè chia sẻ để cùng lên lịch trình.
             </Text>
 
             {/* Error & Success Messages */}
@@ -138,11 +172,11 @@ export default function JoinTripByCodeModal({
 
             {/* Input */}
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Mã hoặc link tham gia:</Text>
+              <Text style={styles.inputLabel}>Mã tham gia hoặc link mời:</Text>
               <TextInput
                 testID="input-join-trip-code"
                 style={styles.input}
-                placeholder="Dán link mời hoặc nhập mã tham gia..."
+                placeholder="VD: VIVU-789 hoặc dán link mời..."
                 placeholderTextColor="#9CA3AF"
                 value={rawInput}
                 onChangeText={(text) => {

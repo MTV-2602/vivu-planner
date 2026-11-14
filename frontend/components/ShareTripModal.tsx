@@ -15,6 +15,7 @@ interface Collaborator {
   accepted_at: string | null;
   is_pending: boolean;
   invite_token?: string;
+  invite_code?: string;
 }
 
 interface Owner {
@@ -58,6 +59,14 @@ export default function ShareTripModal({
       setOwner(data.owner || null);
       setMembers(data.members || []);
       setTotalCount(data.total_count || 1);
+
+      // Tự động nhận diện invite_code hoặc invite_token nếu chuyến đi đã có mã
+      const activeCode = data.invite_code || data.invite_token || (data.members?.find((m: any) => m.is_pending && (m.invite_code || m.invite_token))?.invite_code || data.members?.find((m: any) => m.is_pending && m.invite_token)?.invite_token);
+      if (activeCode) {
+        setInviteToken(activeCode);
+        const webUrl = `${getOrigin()}/join/${activeCode}`;
+        setInviteUrl(Platform.OS === 'web' ? webUrl : (data.invite_url || `vivuplanner://join/${activeCode}`));
+      }
     } catch (e) {
       console.error('fetchCollaborators error:', e);
     } finally {
@@ -67,9 +76,9 @@ export default function ShareTripModal({
 
   useEffect(() => {
     if (visible && tripId) {
-      fetchCollaborators();
       setInviteUrl(null);
       setInviteToken(null);
+      fetchCollaborators();
     }
   }, [visible, tripId, fetchCollaborators]);
 
@@ -77,7 +86,7 @@ export default function ShareTripModal({
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
       return window.location.origin;
     }
-    return 'https://vivu-planner.vercel.app';
+    return 'https://vivuai.vercel.app';
   };
 
   const handleCreateInvite = async () => {
@@ -85,12 +94,12 @@ export default function ShareTripModal({
     try {
       const res = await api.post(`/trips/${tripId}/collaborators`);
       const data = res.data;
-      const token = data.invite_token;
-      setInviteToken(token || null);
-      const webUrl = token ? `${getOrigin()}/join/${token}` : '';
-      setInviteUrl(Platform.OS === 'web' ? webUrl : (data.invite_url || (token ? `vivuplanner://join/${token}` : '')));
+      const code = data.invite_code || data.invite_token;
+      setInviteToken(code || null);
+      const webUrl = code ? `${getOrigin()}/join/${code}` : '';
+      setInviteUrl(Platform.OS === 'web' ? webUrl : (data.invite_url || (code ? `vivuplanner://join/${code}` : '')));
     } catch (e: any) {
-      const msg = e?.response?.data?.error || 'Không thể tạo link mời';
+      const msg = e?.response?.data?.error || 'Không thể tạo mã mời';
       Alert.alert('Lỗi', msg);
     } finally {
       setCreating(false);
@@ -124,8 +133,10 @@ export default function ShareTripModal({
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(inviteToken);
       } else {
+        const webUrl = inviteToken ? `${getOrigin()}/join/${inviteToken}` : (inviteUrl || '');
+        const shareMessage = `Mời bạn cùng tham gia chuyến đi "${tripTitle}" trên ViVu Planner!\n\nMã tham gia: ${inviteToken}\nHoặc mở link: ${webUrl}`;
         await Share.share({
-          message: inviteToken,
+          message: shareMessage,
           title: `Mã tham gia chuyến đi - ${tripTitle}`,
         });
       }
@@ -198,39 +209,59 @@ export default function ShareTripModal({
             <ActivityIndicator size="large" color="#0c77b0" style={{ marginVertical: 40 }} />
           ) : (
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
-              {/* Invite Link Section — chỉ owner */}
+              {/* Invite Link & Code Section — chỉ owner */}
               {isOwner && (
                 <View style={styles.section}>
                   <View style={styles.sectionHeader}>
                     <Link size={14} color="#0f4c5c" />
-                    <Text style={styles.sectionTitle}>Link mời nhóm</Text>
+                    <Text style={styles.sectionTitle}>Mã và Link tham gia</Text>
                     <Text style={styles.expireNote}>(hết hạn sau 7 ngày)</Text>
                   </View>
+
+                  {/* Khung Mã tham gia */}
+                  {inviteToken ? (
+                    <View style={styles.codeBox}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.codeLabel}>MÃ THAM GIA</Text>
+                        <Text style={styles.codeText} selectable numberOfLines={1}>
+                          {inviteToken}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        testID="btn-copy-invite-code"
+                        onPress={handleCopyCode}
+                        style={styles.copyCodeBtn}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.copyCodeBtnText}>
+                          {codeCopied ? '✓ Đã chép' : '📋 Copy mã'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+
+                  {/* Khung Link mời */}
                   {inviteUrl ? (
                     <View style={styles.linkBox}>
-                      <Text style={styles.linkText} numberOfLines={1} ellipsizeMode="middle">
-                        {inviteUrl}
-                      </Text>
-                      <TouchableOpacity onPress={handleCopy} style={styles.copyBtn}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.linkLabel}>Link mời:</Text>
+                        <Text style={styles.linkText} numberOfLines={1} ellipsizeMode="middle">
+                          {inviteUrl}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        testID="btn-copy-invite-link"
+                        onPress={handleCopy}
+                        style={styles.copyBtn}
+                        activeOpacity={0.8}
+                      >
                         <Text style={styles.copyBtnText}>{copied ? '✓ Đã chép' : '📋 Copy link'}</Text>
                       </TouchableOpacity>
                     </View>
                   ) : null}
 
-                  {inviteToken ? (
-                    <View style={styles.codeBox}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.codeLabel}>Mã tham gia:</Text>
-                        <Text style={styles.codeText} selectable numberOfLines={1} ellipsizeMode="middle">
-                          {inviteToken}
-                        </Text>
-                      </View>
-                      <TouchableOpacity onPress={handleCopyCode} style={styles.copyCodeBtn}>
-                        <Text style={styles.copyCodeBtnText}>{codeCopied ? '✓ Đã chép' : '📋 Copy mã'}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : null}
                   <TouchableOpacity
+                    testID="btn-create-new-code"
                     onPress={handleCreateInvite}
                     disabled={creating || totalCount >= 5}
                     style={[styles.createBtn, (creating || totalCount >= 5) && styles.createBtnDisabled]}
@@ -241,7 +272,7 @@ export default function ShareTripModal({
                       <>
                         <RefreshCw size={14} color="#fff" />
                         <Text style={styles.createBtnText}>
-                          {inviteUrl ? '🔄 Tạo link mới' : '✨ Tạo link mời'}
+                          {inviteToken || inviteUrl ? '🔄 Tạo mã mới' : '✨ Tạo mã tham gia'}
                         </Text>
                       </>
                     )}
@@ -406,15 +437,16 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
   sectionTitle: { fontSize: 14, fontWeight: '700', color: '#374151' },
   expireNote: { fontSize: 11, color: '#9CA3AF' },
-  linkBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8F9FA', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, padding: 10, marginBottom: 8, gap: 8 },
-  linkText: { flex: 1, fontSize: 12, color: '#374151' },
-  copyBtn: { backgroundColor: '#0c77b0', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
+  linkBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8F9FA', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12, gap: 8 },
+  linkLabel: { fontSize: 11, fontWeight: '600', color: '#6B7280', marginBottom: 2 },
+  linkText: { fontSize: 12, color: '#374151' },
+  copyBtn: { backgroundColor: '#0f4c5c', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 },
   copyBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-  codeBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F9FF', borderWidth: 1, borderColor: '#BAE6FD', borderRadius: 10, padding: 10, marginBottom: 8, gap: 8 },
-  codeLabel: { fontSize: 11, fontWeight: '700', color: '#0369A1', marginBottom: 2 },
-  codeText: { fontSize: 13, fontWeight: '800', color: '#0c77b0' },
-  copyCodeBtn: { backgroundColor: '#0284C7', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
-  copyCodeBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  codeBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F9FF', borderWidth: 1.5, borderColor: '#0284C7', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 12, gap: 10 },
+  codeLabel: { fontSize: 11, fontWeight: '800', color: '#0369A1', marginBottom: 2, letterSpacing: 0.5 },
+  codeText: { fontSize: 22, fontWeight: '800', color: '#0f4c5c', letterSpacing: 1.5 },
+  copyCodeBtn: { backgroundColor: '#0c77b0', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10 },
+  copyCodeBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   createBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#0c77b0', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16 },
   createBtnDisabled: { backgroundColor: '#BAE6FD' },
   createBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },

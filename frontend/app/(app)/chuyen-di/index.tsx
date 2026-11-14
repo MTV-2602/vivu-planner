@@ -285,7 +285,7 @@ export default function Dashboard() {
 
             {/* CỤM BÊN PHẢI: Bảng tin + Pro + Profile + Đăng xuất */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-              {/* Nút 🔗 Tham gia */}
+              {/* Nút 🔗 Nhập mã */}
               <Pressable
                 testID="btn-open-join-trip-modal"
                 onPress={() => setShowJoinModal(true)}
@@ -304,7 +304,7 @@ export default function Dashboard() {
               >
                 <Text style={{ fontSize: 10.5 }}>🔗</Text>
                 <Text style={{ color: '#FFFFFF', fontSize: 10.5, fontWeight: '700' }}>
-                  Tham gia
+                  Nhập mã
                 </Text>
               </Pressable>
 
@@ -587,7 +587,7 @@ export default function Dashboard() {
                 cursor: 'pointer' as any,
               }}
             >
-              <Text style={{ color: '#0f4c5c', fontWeight: '700', fontSize: 13 }}>🔗 Tham gia chuyến đi</Text>
+              <Text style={{ color: '#0f4c5c', fontWeight: '700', fontSize: 13 }}>🔗 Nhập mã tham gia</Text>
             </Pressable>
 
             <Pressable
