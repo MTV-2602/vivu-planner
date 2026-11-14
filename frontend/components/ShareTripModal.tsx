@@ -41,9 +41,11 @@ export default function ShareTripModal({
   const [members, setMembers] = useState<Collaborator[]>([]);
   const [totalCount, setTotalCount] = useState(1);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [kicking, setKicking] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{type: 'kick'|'leave', targetId?: string, targetName?: string} | null>(null);
 
@@ -67,8 +69,16 @@ export default function ShareTripModal({
     if (visible && tripId) {
       fetchCollaborators();
       setInviteUrl(null);
+      setInviteToken(null);
     }
   }, [visible, tripId, fetchCollaborators]);
+
+  const getOrigin = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+      return window.location.origin;
+    }
+    return 'https://vivu-planner.vercel.app';
+  };
 
   const handleCreateInvite = async () => {
     setCreating(true);
@@ -76,14 +86,9 @@ export default function ShareTripModal({
       const res = await api.post(`/trips/${tripId}/collaborators`);
       const data = res.data;
       const token = data.invite_token;
-      const getOrigin = () => {
-        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-          return window.location.origin;
-        }
-        return 'https://vivu-planner.vercel.app';
-      };
+      setInviteToken(token || null);
       const webUrl = token ? `${getOrigin()}/join/${token}` : '';
-      setInviteUrl(Platform.OS === 'web' ? webUrl : (data.invite_url || (token ? `vivu://join/${token}` : '')));
+      setInviteUrl(Platform.OS === 'web' ? webUrl : (data.invite_url || (token ? `vivuplanner://join/${token}` : '')));
     } catch (e: any) {
       const msg = e?.response?.data?.error || 'Không thể tạo link mời';
       Alert.alert('Lỗi', msg);
@@ -98,16 +103,36 @@ export default function ShareTripModal({
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(inviteUrl);
       } else {
+        const webUrl = inviteToken ? `${getOrigin()}/join/${inviteToken}` : inviteUrl;
+        const shareMessage = `Mời bạn cùng tham gia chuyến đi "${tripTitle}" trên ViVu Planner!\n\nMã tham gia: ${inviteToken || ''}\nHoặc mở link: ${webUrl}`;
         await Share.share({
-          message: inviteUrl,
+          message: shareMessage,
           title: `Mời tham gia chuyến đi - ${tripTitle}`,
-          url: inviteUrl,
+          url: webUrl,
         });
       }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (e) {
       console.error('handleCopy error:', e);
+    }
+  };
+
+  const handleCopyCode = async () => {
+    if (!inviteToken) return;
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(inviteToken);
+      } else {
+        await Share.share({
+          message: inviteToken,
+          title: `Mã tham gia chuyến đi - ${tripTitle}`,
+        });
+      }
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    } catch (e) {
+      console.error('handleCopyCode error:', e);
     }
   };
 
@@ -187,7 +212,21 @@ export default function ShareTripModal({
                         {inviteUrl}
                       </Text>
                       <TouchableOpacity onPress={handleCopy} style={styles.copyBtn}>
-                        <Text style={styles.copyBtnText}>{copied ? '✓ Đã chép' : '📋 Copy'}</Text>
+                        <Text style={styles.copyBtnText}>{copied ? '✓ Đã chép' : '📋 Copy link'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+
+                  {inviteToken ? (
+                    <View style={styles.codeBox}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.codeLabel}>Mã tham gia:</Text>
+                        <Text style={styles.codeText} selectable numberOfLines={1} ellipsizeMode="middle">
+                          {inviteToken}
+                        </Text>
+                      </View>
+                      <TouchableOpacity onPress={handleCopyCode} style={styles.copyCodeBtn}>
+                        <Text style={styles.copyCodeBtnText}>{codeCopied ? '✓ Đã chép' : '📋 Copy mã'}</Text>
                       </TouchableOpacity>
                     </View>
                   ) : null}
@@ -371,6 +410,11 @@ const styles = StyleSheet.create({
   linkText: { flex: 1, fontSize: 12, color: '#374151' },
   copyBtn: { backgroundColor: '#0c77b0', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
   copyBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  codeBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F9FF', borderWidth: 1, borderColor: '#BAE6FD', borderRadius: 10, padding: 10, marginBottom: 8, gap: 8 },
+  codeLabel: { fontSize: 11, fontWeight: '700', color: '#0369A1', marginBottom: 2 },
+  codeText: { fontSize: 13, fontWeight: '800', color: '#0c77b0' },
+  copyCodeBtn: { backgroundColor: '#0284C7', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
+  copyCodeBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   createBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#0c77b0', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16 },
   createBtnDisabled: { backgroundColor: '#BAE6FD' },
   createBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },

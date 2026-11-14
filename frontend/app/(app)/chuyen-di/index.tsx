@@ -21,6 +21,7 @@ import { BRAND_COLORS, APP_ROUTES } from '../../../constants';
 import PremiumModal from '../../../components/PremiumModal';
 import ConfirmModal from '../../../components/ConfirmModal';
 import ProfileModal from '../../../components/ProfileModal';
+import JoinTripByCodeModal from '../../../components/JoinTripByCodeModal';
 import { usePaymentStatus } from '../../../hooks/usePaymentStatus';
 import { formatHeaderChip } from '../../../lib/plans';
 
@@ -108,6 +109,7 @@ export default function Dashboard() {
   const [fromCache, setFromCache] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
     visible: boolean;
     title: string;
@@ -283,6 +285,29 @@ export default function Dashboard() {
 
             {/* CỤM BÊN PHẢI: Bảng tin + Pro + Profile + Đăng xuất */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              {/* Nút 🔗 Tham gia */}
+              <Pressable
+                testID="btn-open-join-trip-modal"
+                onPress={() => setShowJoinModal(true)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 3,
+                  paddingHorizontal: 6,
+                  paddingVertical: 4,
+                  borderRadius: 10,
+                  backgroundColor: 'rgba(255,255,255,0.12)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.2)',
+                  cursor: 'pointer' as any,
+                }}
+              >
+                <Text style={{ fontSize: 10.5 }}>🔗</Text>
+                <Text style={{ color: '#FFFFFF', fontSize: 10.5, fontWeight: '700' }}>
+                  Tham gia
+                </Text>
+              </Pressable>
+
               {/* Nút 🌟 Bảng Tin */}
               <Pressable
                 testID="nav-link-feed"
@@ -550,6 +575,21 @@ export default function Dashboard() {
           </View>
 
           <View className="flex-row gap-3 flex-wrap">
+            <Pressable
+              testID="btn-open-join-trip-modal"
+              onPress={() => setShowJoinModal(true)}
+              className="flex-row items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl border"
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderColor: '#0f4c5c',
+                borderWidth: 1.5,
+                boxShadow: '0 2px 8px rgba(15, 76, 92, 0.08)' as any,
+                cursor: 'pointer' as any,
+              }}
+            >
+              <Text style={{ color: '#0f4c5c', fontWeight: '700', fontSize: 13 }}>🔗 Tham gia chuyến đi</Text>
+            </Pressable>
+
             <Pressable
               onPress={() => router.push(APP_ROUTES.NEW_TRIP as any)}
               className="flex-row items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl"
@@ -942,6 +982,15 @@ export default function Dashboard() {
     <ProfileModal
       visible={showProfileModal}
       onClose={() => setShowProfileModal(false)}
+    />
+    <JoinTripByCodeModal
+      visible={showJoinModal}
+      onClose={() => setShowJoinModal(false)}
+      onJoined={(tripId) => {
+        setShowJoinModal(false);
+        refetch();
+        router.push(`/chuyen-di/${tripId}` as any);
+      }}
     />
     <ConfirmModal
       visible={!!confirmModal?.visible}

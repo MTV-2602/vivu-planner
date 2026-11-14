@@ -127,6 +127,107 @@ export default function AuthScreen({ mode }: Props) {
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
+  // Xác thực OTP Đăng ký state
+  const [showSignupOtpModal, setShowSignupOtpModal] = useState(false);
+  const [signupOtpCode, setSignupOtpCode] = useState('');
+  const [signupOtpLoading, setSignupOtpLoading] = useState(false);
+  const [signupOtpError, setSignupOtpError] = useState('');
+  const [signupOtpSuccess, setSignupOtpSuccess] = useState('');
+  const [resendCountdown, setResendCountdown] = useState(60);
+  const [canResend, setCanResend] = useState(false);
+
+  useEffect(() => {
+    let timer: any;
+    if (showSignupOtpModal && resendCountdown > 0) {
+      timer = setInterval(() => {
+        setResendCountdown((prev) => {
+          if (prev <= 1) {
+            setCanResend(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [showSignupOtpModal, resendCountdown]);
+
+  const handleConfirmSignupOtp = async () => {
+    const trimmedOtp = signupOtpCode.trim();
+    if (!trimmedOtp || trimmedOtp.length < 6) {
+      setSignupOtpError('Vui lòng nhập đủ 6 chữ số mã xác thực OTP.');
+      return;
+    }
+    setSignupOtpLoading(true);
+    setSignupOtpError('');
+    setSignupOtpSuccess('');
+    try {
+      let { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token: trimmedOtp,
+        type: 'signup',
+      });
+      if (error) {
+        const fallback = await supabase.auth.verifyOtp({
+          email,
+          token: trimmedOtp,
+          type: 'email',
+        });
+        if (fallback.error) {
+          throw error;
+        }
+        data = fallback.data;
+      }
+      if (data.session) {
+        setShowSignupOtpModal(false);
+        let isAdmin = decodeJwtRole(data.session.access_token) === UserRole.ADMIN;
+        if (!isAdmin && data.user?.id) {
+          const { data: p } = await supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
+          if (p?.role === UserRole.ADMIN) isAdmin = true;
+        }
+        await handleNavigateAfterAuth(isAdmin);
+      } else {
+        setShowSignupOtpModal(false);
+        setInfoMsg('Xác thực tài khoản thành công! Vui lòng đăng nhập.');
+        setIsSignUp(false);
+      }
+    } catch (err: any) {
+      setSignupOtpError(parseErrorMessage(err, 'Mã xác thực không hợp lệ hoặc đã hết hạn.'));
+    } finally {
+      setSignupOtpLoading(false);
+    }
+  };
+
+  const handleResendSignupOtp = async () => {
+    if (!canResend || signupOtpLoading) return;
+    setSignupOtpLoading(true);
+    setSignupOtpError('');
+    setSignupOtpSuccess('');
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+      });
+      if (error) throw error;
+      setSignupOtpSuccess('Mã OTP mới đã được gửi đến email của bạn.');
+      setResendCountdown(60);
+      setCanResend(false);
+    } catch (err: any) {
+      setSignupOtpError(parseErrorMessage(err, 'Không thể gửi lại mã OTP. Vui lòng thử lại sau.'));
+    } finally {
+      setSignupOtpLoading(false);
+    }
+  };
+
+  const handleChangeEmailInSignupModal = () => {
+    setShowSignupOtpModal(false);
+    setSignupOtpCode('');
+    setSignupOtpError('');
+    setSignupOtpSuccess('');
+  };
+
   const handleSendOtp = async () => {
     if (!forgotEmail || !forgotEmail.includes('@')) {
       setForgotError('Vui lòng nhập địa chỉ email hợp lệ.');
@@ -471,7 +572,12 @@ export default function AuthScreen({ mode }: Props) {
           return;
         }
 
-        setInfoMsg('Đăng ký thành công! Vui lòng kiểm tra email để xác nhận.');
+        setShowSignupOtpModal(true);
+        setSignupOtpCode('');
+        setSignupOtpError('');
+        setSignupOtpSuccess('');
+        setResendCountdown(60);
+        setCanResend(false);
       } else {
         const signInOptions = buildSupabaseSignInOptions({ captchaToken });
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -980,6 +1086,145 @@ export default function AuthScreen({ mode }: Props) {
 
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ── MODAL XÁC THỰC OTP ĐĂNG KÝ ─────────────────────────────────── */}
+      {showSignupOtpModal && (
+        <Modal visible={showSignupOtpModal} transparent animationType="fade" onRequestClose={handleChangeEmailInSignupModal}>
+          <View
+            style={(Platform.OS === 'web' ? {
+              position: 'fixed' as any,
+              top: 0, left: 0, right: 0, bottom: 0,
+              width: '100vw' as any, height: '100vh' as any,
+              zIndex: 9999, justifyContent: 'center', alignItems: 'center',
+              backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+              padding: 16,
+            } : {
+              flex: 1, justifyContent: 'center', alignItems: 'center',
+              backgroundColor: 'rgba(0,0,0,0.65)', padding: 16,
+            }) as any}
+          >
+            <View
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: 24,
+                width: '100%',
+                maxWidth: 480,
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 12 },
+                shadowOpacity: 0.15,
+                shadowRadius: 24,
+                elevation: 12,
+              }}
+            >
+              {/* Modal Header */}
+              <View style={{ backgroundColor: '#0f4c5c', paddingHorizontal: 24, paddingVertical: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}>
+                    <Mail size={20} color="#FFFFFF" />
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 17, fontWeight: '800', color: '#ffffff' }}>Xác thực tài khoản</Text>
+                    <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)' }}>Kích hoạt tài khoản ViVu Planner</Text>
+                  </View>
+                </View>
+                <Pressable
+                  onPress={handleChangeEmailInSignupModal}
+                  style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <X size={18} color="#ffffff" />
+                </Pressable>
+              </View>
+
+              <View style={{ padding: 24, gap: 16 }}>
+                {/* Thông báo lỗi / thành công */}
+                {signupOtpError ? (
+                  <View style={{ backgroundColor: '#FEF2F2', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#FECACA', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <AlertCircle size={16} color="#DC2626" />
+                    <Text style={{ fontSize: 12, color: '#991B1B', fontWeight: '600', flex: 1 }}>{signupOtpError}</Text>
+                  </View>
+                ) : null}
+
+                {signupOtpSuccess ? (
+                  <View style={{ backgroundColor: '#ECFDF5', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#A7F3D0', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <CheckCircle2 size={16} color="#059669" />
+                    <Text style={{ fontSize: 12, color: '#065F46', fontWeight: '600', flex: 1 }}>{signupOtpSuccess}</Text>
+                  </View>
+                ) : null}
+
+                <Text style={{ fontSize: 13, color: '#475569', lineHeight: 20 }}>
+                  Mã xác thực 6 số đã được gửi đến email <Text style={{ fontWeight: '700', color: '#0F172A' }}>{email}</Text>. Vui lòng nhập mã để kích hoạt tài khoản.
+                </Text>
+
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>Mã OTP (6 chữ số)</Text>
+                  <TextInput
+                    testID="input-signup-otp"
+                    style={{
+                      backgroundColor: '#ffffff', borderWidth: 1.5, borderColor: '#CBD5E1',
+                      borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 22,
+                      fontWeight: '800', textAlign: 'center', letterSpacing: 6, color: '#0f4c5c',
+                    }}
+                    placeholder="123456"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    value={signupOtpCode}
+                    onChangeText={(val) => {
+                      setSignupOtpCode(val);
+                      if (signupOtpError) setSignupOtpError('');
+                    }}
+                    onSubmitEditing={handleConfirmSignupOtp}
+                  />
+                </View>
+
+                <Pressable
+                  testID="btn-confirm-signup-otp"
+                  onPress={handleConfirmSignupOtp}
+                  disabled={signupOtpLoading}
+                  style={{
+                    backgroundColor: '#0c77b0', paddingVertical: 13, borderRadius: 14,
+                    alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, marginTop: 4,
+                    opacity: signupOtpLoading ? 0.7 : 1,
+                  }}
+                >
+                  {signupOtpLoading ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <>
+                      <CheckCircle2 size={18} color="#ffffff" />
+                      <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 14 }}>Xác thực & Đăng nhập</Text>
+                    </>
+                  )}
+                </Pressable>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                  <Pressable
+                    onPress={handleResendSignupOtp}
+                    disabled={!canResend || signupOtpLoading}
+                    style={{ paddingVertical: 4 }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: canResend ? '#0c77b0' : '#94A3B8' }}>
+                      {canResend ? '🔄 Gửi lại mã OTP' : `⏳ Gửi lại sau ${resendCountdown}s`}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={handleChangeEmailInSignupModal}
+                    style={{ paddingVertical: 4 }}
+                  >
+                    <Text style={{ fontSize: 13, color: '#64748B', textDecorationLine: 'underline' }}>
+                      Đổi email
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* ── MODAL QUÊN MẬT KHẨU ────────────────────────────────────────── */}
       {showForgotModal && (
