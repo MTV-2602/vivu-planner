@@ -40,6 +40,11 @@ const generateInviteCode = (): string => {
   return `VIVU-${num}`;
 };
 
+// Helper: Kiểm tra định dạng mã mời chuẩn ViVu (dạng VIVU-XXX, không phân biệt hoa thường)
+const isValidVivuCode = (code: any): boolean => {
+  return typeof code === 'string' && /^VIVU-[0-9]{3,}$/i.test(code.trim());
+};
+
 // Rate limiter for AI trip generation (10 requests per minute per user/IP)
 const aiGenerationLimiter = createRateLimiter({
   windowMs: 60 * 1000,
@@ -306,22 +311,24 @@ router.put('/join/:token', requireAuth, async (req: any, res: Response) => {
     for (const t of trips) {
       const pending = Array.isArray(t.preferences?.pending_invites) ? t.preferences.pending_invites : [];
       const tripPrefCode = String(t.preferences?.invite_code || '').trim().toUpperCase();
+      const tripPrefToken = String(t.preferences?.invite_token || '').trim().toUpperCase();
 
       const inv = pending.find((p: any) => {
         const pToken = String(p.invite_token || '').trim().toUpperCase();
         const pCode = String(p.invite_code || '').trim().toUpperCase();
-        return pToken === upperInput || pCode === upperInput || (tripPrefCode && tripPrefCode === upperInput);
+        return pToken === upperInput || pCode === upperInput || (tripPrefCode && tripPrefCode === upperInput) || (tripPrefToken && tripPrefToken === upperInput);
       });
 
       if (inv) {
         foundTrip = t;
         foundInvite = inv;
         break;
-      } else if (tripPrefCode && tripPrefCode === upperInput) {
+      } else if ((tripPrefCode && tripPrefCode === upperInput) || (tripPrefToken && tripPrefToken === upperInput)) {
+        const matchedCode = tripPrefCode === upperInput ? tripPrefCode : tripPrefToken;
         foundTrip = t;
         foundInvite = {
-          invite_token: tripPrefCode,
-          invite_code: tripPrefCode,
+          invite_token: matchedCode,
+          invite_code: matchedCode,
           invited_by: t.user_id,
           role: 'editor',
           created_at: new Date().toISOString(),
@@ -474,8 +481,8 @@ router.post('/:id/collaborators', requireAuth, requirePremium, async (req: any, 
       return res.status(400).json({ error: 'Chuyến đi đã đạt số lượng thành viên tối đa (5 người bao gồm chủ chuyến đi)' });
     }
 
-    // 4. Sử dụng hoặc sinh mã dạng VIVU-XXX
-    const invite_code = trip.preferences?.invite_code || generateInviteCode();
+    // 4. Luôn sinh mã mới dạng VIVU-XXX khi người dùng bấm tạo mã mới
+    const invite_code = generateInviteCode();
     const invite_token = invite_code;
     const expires_at = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -492,14 +499,14 @@ router.post('/:id/collaborators', requireAuth, requirePremium, async (req: any, 
       (inv: any) => inv.invite_token !== invite_token && inv.invite_code !== invite_code
     );
 
-    // 5. Cập nhật vào trip.preferences.pending_invites
+    // 5. Cập nhật vào trip.preferences.pending_invites (đưa mã mới lên đầu)
     const { error: updateError } = await supabaseAdmin
       .from('trips')
       .update({
         preferences: {
           ...(trip.preferences || {}),
           invite_code,
-          pending_invites: [...filteredActiveInvites, newInvite]
+          pending_invites: [newInvite, ...filteredActiveInvites]
         }
       })
       .eq('id', tripId);
@@ -604,13 +611,24 @@ router.get('/:id/collaborators', requireAuth, async (req: any, res: Response) =>
 
     // 4. Lấy pending invites từ preferences
     const now = new Date();
-    const currentInvites = Array.isArray(trip.preferences?.pending_invites) ? trip.preferences.pending_invites : [];
+    const currentInvites = Array.isArray(trip.preferences?.pending_invites) ? [...trip.preferences.pending_invites] : [];
 
-    let activeInviteCode = trip.preferences?.invite_code || currentInvites[0]?.invite_code || currentInvites[0]?.invite_token;
+    let activeInviteCode = isValidVivuCode(trip.preferences?.invite_code)
+      ? trip.preferences.invite_code
+      : null;
 
     if (!activeInviteCode) {
+      const foundValidInvite = currentInvites.find((inv: any) => isValidVivuCode(inv.invite_code) || isValidVivuCode(inv.invite_token));
+      if (foundValidInvite) {
+        activeInviteCode = foundValidInvite.invite_code || foundValidInvite.invite_token;
+      }
+    }
+
+    // Nếu vẫn chưa có mã hợp lệ dạng VIVU- (ví dụ các chuyến đi cũ chỉ có chuỗi hex 32 ký tự):
+    // TỰ ĐỘNG NÂNG CẤP VÀ SINH MÃ MỚI DẠNG VIVU-XXX NGAY LẬP TỨC!
+    if (!activeInviteCode) {
       activeInviteCode = generateInviteCode();
-      const initialInvite = {
+      const newInvite = {
         invite_token: activeInviteCode,
         invite_code: activeInviteCode,
         invited_by: trip.user_id,
@@ -618,7 +636,7 @@ router.get('/:id/collaborators', requireAuth, async (req: any, res: Response) =>
         created_at: new Date().toISOString(),
         expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
       };
-      currentInvites.push(initialInvite);
+      currentInvites.unshift(newInvite);
 
       await supabaseAdmin
         .from('trips')
@@ -630,7 +648,7 @@ router.get('/:id/collaborators', requireAuth, async (req: any, res: Response) =>
           }
         })
         .eq('id', tripId);
-    } else if (!trip.preferences?.invite_code) {
+    } else if (trip.preferences?.invite_code !== activeInviteCode) {
       await supabaseAdmin
         .from('trips')
         .update({
@@ -1450,7 +1468,13 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       const existingPending = Array.isArray(existingDraftTrip?.preferences?.pending_invites) && existingDraftTrip.preferences.pending_invites.length > 0
         ? existingDraftTrip.preferences.pending_invites
         : null;
-      const initialInviteCode = existingDraftTrip?.preferences?.invite_code || existingPending?.[0]?.invite_code || existingPending?.[0]?.invite_token || generateInviteCode();
+      const initialInviteCode = isValidVivuCode(existingDraftTrip?.preferences?.invite_code)
+        ? existingDraftTrip.preferences.invite_code
+        : (isValidVivuCode(existingPending?.[0]?.invite_code)
+            ? existingPending[0].invite_code
+            : (isValidVivuCode(existingPending?.[0]?.invite_token)
+                ? existingPending[0].invite_token
+                : generateInviteCode()));
       const initialInvite = existingPending
         ? existingPending.map((inv: any) => ({
             ...inv,
@@ -2001,7 +2025,13 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
     const aiExistingPending = Array.isArray(existingDraftTrip?.preferences?.pending_invites) && existingDraftTrip.preferences.pending_invites.length > 0
       ? existingDraftTrip.preferences.pending_invites
       : null;
-    const aiInviteCode = existingDraftTrip?.preferences?.invite_code || aiExistingPending?.[0]?.invite_code || aiExistingPending?.[0]?.invite_token || generateInviteCode();
+    const aiInviteCode = isValidVivuCode(existingDraftTrip?.preferences?.invite_code)
+      ? existingDraftTrip.preferences.invite_code
+      : (isValidVivuCode(aiExistingPending?.[0]?.invite_code)
+          ? aiExistingPending[0].invite_code
+          : (isValidVivuCode(aiExistingPending?.[0]?.invite_token)
+              ? aiExistingPending[0].invite_token
+              : generateInviteCode()));
     const aiInitialInvite = aiExistingPending
       ? aiExistingPending.map((inv: any) => ({
           ...inv,

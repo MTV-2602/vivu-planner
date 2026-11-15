@@ -25,6 +25,8 @@ interface Owner {
   is_premium: boolean;
 }
 
+const isValidVivuCode = (code: any): boolean => typeof code === 'string' && /^VIVU-[0-9]{3,}$/i.test(code.trim());
+
 interface ShareTripModalProps {
   visible: boolean;
   onClose: () => void;
@@ -50,6 +52,37 @@ export default function ShareTripModal({
   const [kicking, setKicking] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{type: 'kick'|'leave', targetId?: string, targetName?: string} | null>(null);
 
+  const getOrigin = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+      return window.location.origin;
+    }
+    return 'https://vivuai.vercel.app';
+  };
+
+  const handleCreateInvite = useCallback(async (isSilent?: any) => {
+    const silent = isSilent === true;
+    if (!silent) setCreating(true);
+    try {
+      const res = await api.post(`/trips/${tripId}/collaborators`);
+      const data = res.data;
+      const rawCode = data.invite_code || data.invite_token;
+      const code = typeof rawCode === 'string' ? rawCode.trim().toUpperCase() : null;
+      setInviteToken(code || null);
+      const webUrl = code ? `${getOrigin()}/join/${code}` : '';
+      setInviteUrl(Platform.OS === 'web' ? webUrl : (data.invite_url || (code ? `vivuplanner://join/${code}` : '')));
+      return code;
+    } catch (e: any) {
+      console.error('handleCreateInvite error:', e);
+      if (!silent) {
+        const msg = e?.response?.data?.error || 'Không thể tạo mã mời';
+        Alert.alert('Lỗi', msg);
+      }
+      return null;
+    } finally {
+      if (!silent) setCreating(false);
+    }
+  }, [tripId]);
+
   const fetchCollaborators = useCallback(async () => {
     if (!tripId) return;
     setLoading(true);
@@ -60,19 +93,25 @@ export default function ShareTripModal({
       setMembers(data.members || []);
       setTotalCount(data.total_count || 1);
 
-      // Tự động nhận diện invite_code hoặc invite_token nếu chuyến đi đã có mã
+      // Ưu tiên lấy data.invite_code
       const activeCode = data.invite_code || data.invite_token || (data.members?.find((m: any) => m.is_pending && (m.invite_code || m.invite_token))?.invite_code || data.members?.find((m: any) => m.is_pending && m.invite_token)?.invite_token);
-      if (activeCode) {
-        setInviteToken(activeCode);
-        const webUrl = `${getOrigin()}/join/${activeCode}`;
-        setInviteUrl(Platform.OS === 'web' ? webUrl : (data.invite_url || `vivuplanner://join/${activeCode}`));
+
+      if (isValidVivuCode(activeCode)) {
+        const formattedCode = activeCode.trim().toUpperCase();
+        setInviteToken(formattedCode);
+        const webUrl = `${getOrigin()}/join/${formattedCode}`;
+        setInviteUrl(Platform.OS === 'web' ? webUrl : (data.invite_url || `vivuplanner://join/${formattedCode}`));
+      } else if (isOwner) {
+        // Nếu activeCode nhận về từ API cũ không phải dạng VIVU- (ví dụ vẫn dính chuỗi hex 32 ký tự cũ):
+        // Tự động gọi handleCreateInvite() ngầm để lấy ngay mã VIVU-XXX mới từ backend
+        await handleCreateInvite(true);
       }
     } catch (e) {
       console.error('fetchCollaborators error:', e);
     } finally {
       setLoading(false);
     }
-  }, [tripId]);
+  }, [tripId, isOwner, handleCreateInvite]);
 
   useEffect(() => {
     if (visible && tripId) {
@@ -82,38 +121,15 @@ export default function ShareTripModal({
     }
   }, [visible, tripId, fetchCollaborators]);
 
-  const getOrigin = () => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-      return window.location.origin;
-    }
-    return 'https://vivuai.vercel.app';
-  };
-
-  const handleCreateInvite = async () => {
-    setCreating(true);
-    try {
-      const res = await api.post(`/trips/${tripId}/collaborators`);
-      const data = res.data;
-      const code = data.invite_code || data.invite_token;
-      setInviteToken(code || null);
-      const webUrl = code ? `${getOrigin()}/join/${code}` : '';
-      setInviteUrl(Platform.OS === 'web' ? webUrl : (data.invite_url || (code ? `vivuplanner://join/${code}` : '')));
-    } catch (e: any) {
-      const msg = e?.response?.data?.error || 'Không thể tạo mã mời';
-      Alert.alert('Lỗi', msg);
-    } finally {
-      setCreating(false);
-    }
-  };
-
   const handleCopy = async () => {
     if (!inviteUrl) return;
+    const cleanCode = inviteToken ? inviteToken.trim().toUpperCase() : '';
     try {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(inviteUrl);
       } else {
-        const webUrl = inviteToken ? `${getOrigin()}/join/${inviteToken}` : inviteUrl;
-        const shareMessage = `Mời bạn cùng tham gia chuyến đi "${tripTitle}" trên ViVu Planner!\n\nMã tham gia: ${inviteToken || ''}\nHoặc mở link: ${webUrl}`;
+        const webUrl = cleanCode ? `${getOrigin()}/join/${cleanCode}` : inviteUrl;
+        const shareMessage = `Mời bạn cùng tham gia chuyến đi "${tripTitle}" trên ViVu Planner!\n\nMã tham gia: ${cleanCode}\nHoặc mở link: ${webUrl}`;
         await Share.share({
           message: shareMessage,
           title: `Mời tham gia chuyến đi - ${tripTitle}`,
@@ -129,12 +145,13 @@ export default function ShareTripModal({
 
   const handleCopyCode = async () => {
     if (!inviteToken) return;
+    const cleanCode = inviteToken.trim().toUpperCase();
     try {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
-        await navigator.clipboard.writeText(inviteToken);
+        await navigator.clipboard.writeText(cleanCode);
       } else {
-        const webUrl = inviteToken ? `${getOrigin()}/join/${inviteToken}` : (inviteUrl || '');
-        const shareMessage = `Mời bạn cùng tham gia chuyến đi "${tripTitle}" trên ViVu Planner!\n\nMã tham gia: ${inviteToken}\nHoặc mở link: ${webUrl}`;
+        const webUrl = cleanCode ? `${getOrigin()}/join/${cleanCode}` : (inviteUrl || '');
+        const shareMessage = `Mời bạn cùng tham gia chuyến đi "${tripTitle}" trên ViVu Planner!\n\nMã tham gia: ${cleanCode}\nHoặc mở link: ${webUrl}`;
         await Share.share({
           message: shareMessage,
           title: `Mã tham gia chuyến đi - ${tripTitle}`,
@@ -224,7 +241,7 @@ export default function ShareTripModal({
                       <View style={{ flex: 1 }}>
                         <Text style={styles.codeLabel}>MÃ THAM GIA</Text>
                         <Text style={styles.codeText} selectable numberOfLines={1}>
-                          {inviteToken}
+                          {inviteToken.toUpperCase()}
                         </Text>
                       </View>
                       <TouchableOpacity
@@ -262,7 +279,7 @@ export default function ShareTripModal({
 
                   <TouchableOpacity
                     testID="btn-create-new-code"
-                    onPress={handleCreateInvite}
+                    onPress={() => handleCreateInvite(false)}
                     disabled={creating || totalCount >= 5}
                     style={[styles.createBtn, (creating || totalCount >= 5) && styles.createBtnDisabled]}
                   >
