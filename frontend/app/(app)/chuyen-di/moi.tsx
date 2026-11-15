@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   View, Text, ScrollView, Pressable, TextInput, Image,
   Animated, Platform, KeyboardAvoidingView, ActivityIndicator, Modal, useWindowDimensions, Linking,
+  StatusBar,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
@@ -303,6 +304,7 @@ export default function TripWizard() {
   const [loadingStage, setLoadingStage] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
+  const mainScrollViewRef = useRef<ScrollView | null>(null);
 
   const handleCancelLoading = () => {
     abortControllerRef.current?.abort();
@@ -431,6 +433,10 @@ export default function TripWizard() {
   const { width: windowWidth } = useWindowDimensions();
   const isLargeScreen = windowWidth >= 900;
   const isMobile = windowWidth < 768;
+  const safeTop = isMobile
+    ? Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 16) + 12
+    : 48;
+  const safeBottom = isMobile ? Math.max(insets.bottom, 32) + 32 : 48;
   const [showCityPickerModal, setShowCityPickerModal] = useState(false);
   const [collectingViewMode, setCollectingViewMode] = useState<'list' | 'map' | 'both'>('list');
 
@@ -2248,14 +2254,25 @@ export default function TripWizard() {
         return;
       }
     }
+    if (step === 3) {
+      if (customPrefInput.trim()) {
+        const trimmedPref = customPrefInput.trim();
+        if (!selectedPrefs.includes(trimmedPref)) {
+          setSelectedPrefs(prev => [...prev, trimmedPref]);
+        }
+        setCustomPrefInput('');
+      }
+    }
     setErrorMsg('');
     setStep(prev => prev + 1);
+    mainScrollViewRef.current?.scrollTo({ y: 0, animated: false });
   };
 
   const handlePrev = () => {
     setErrorMsg('');
     // Nếu đang ở Pro Workspace tại step 2, bấm quay lại hoặc chuyển mode
     setStep(prev => prev - 1);
+    mainScrollViewRef.current?.scrollTo({ y: 0, animated: false });
   };
 
   const handleSubmit = async () => {
@@ -2378,20 +2395,20 @@ export default function TripWizard() {
 
   return (
     <KeyboardAvoidingView
-      className="flex-1"
-      style={Platform.OS === 'web' ? { backgroundColor: '#F8F9FA' } : { backgroundColor: BRAND_COLORS.bg }}
+      style={{ flex: 1, backgroundColor: '#F8F9FA' }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
+        ref={mainScrollViewRef}
         className="flex-1"
         nestedScrollEnabled={true}
         contentContainerStyle={{
           flexGrow: 1,
           padding: isMobile ? 16 : 24,
-          paddingTop: isMobile ? Math.max(insets.top, 16) : 48,
-          paddingBottom: isMobile ? Math.max(insets.bottom, 24) : 48,
+          paddingTop: safeTop,
+          paddingBottom: safeBottom,
         }}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
       >
         <View className={`w-full self-center gap-8 ${useProWorkspace && step === 4 ? 'max-w-[1360px]' : 'max-w-xl'}`}>
           {/* Top bar: back + step dots */}
@@ -2401,10 +2418,10 @@ export default function TripWizard() {
               className="flex-row items-center gap-1"
               style={{ cursor: 'pointer' as any }}
             >
-              <ArrowLeft size={14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.textSoft} />
+              <ArrowLeft size={14} color="#0f4c5c" />
               <Text
                 className="text-xs font-bold"
-                style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.textSoft }}
+                style={{ color: '#0f4c5c' }}
               >
                 Quay lại
               </Text>
@@ -2418,8 +2435,8 @@ export default function TripWizard() {
                   style={{
                     width: 32,
                     backgroundColor: step >= idx
-                      ? (Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary)
-                      : (Platform.OS === 'web' ? '#E5EAE7' : BRAND_COLORS.line),
+                      ? '#0f4c5c'
+                      : '#E5EAE7',
                   }}
                 />
               ))}
@@ -2429,18 +2446,11 @@ export default function TripWizard() {
           {/* Form card */}
           <View
             className="bg-white rounded-3xl p-8 gap-6"
-            style={
-              Platform.OS === 'web'
-                ? {
-                    borderWidth: 1,
-                    borderColor: 'rgba(15, 76, 92, 0.08)',
-                    boxShadow: '0 4px 20px rgba(15, 76, 92, 0.04)' as any,
-                  }
-                : {
-                    borderWidth: 1,
-                    borderColor: 'rgba(27,36,32,0.1)',
-                  }
-            }
+            style={{
+              borderWidth: 1,
+              borderColor: 'rgba(15, 76, 92, 0.08)',
+              boxShadow: '0 4px 20px rgba(15, 76, 92, 0.04)' as any,
+            }}
           >
             {/* Error banner */}
             {!!errorMsg && (
@@ -2478,7 +2488,7 @@ export default function TripWizard() {
                 <View className="gap-6">
                   <Text
                     className="font-display font-extrabold text-2xl"
-                    style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
+                    style={{ color: '#0f4c5c' }}
                   >
                     Bạn muốn đi du lịch ở đâu?
                   </Text>
@@ -2486,7 +2496,7 @@ export default function TripWizard() {
                   {/* City Dropdown picker [Mục 2] */}
                   <View className="gap-2">
                     <View className="flex-row items-center gap-1.5">
-                      <MapPin size={14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                      <MapPin size={14} color="#0f4c5c" />
                       <Text className="text-sm font-bold text-brand-textSoft">Điểm đến (Chọn Thành Phố)</Text>
                     </View>
                     {Platform.OS === 'web' ? (
@@ -2560,7 +2570,7 @@ export default function TripWizard() {
                 <View className="gap-6">
                   <Text
                     className="font-display font-extrabold text-2xl"
-                    style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
+                    style={{ color: '#0f4c5c' }}
                   >
                     Đoàn đi và Ngân sách
                   </Text>
@@ -2686,7 +2696,7 @@ export default function TripWizard() {
                 <View className="gap-6">
                   <Text
                     className="font-display font-extrabold text-2xl"
-                    style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
+                    style={{ color: '#0f4c5c' }}
                   >
                     Bạn mong muốn trải nghiệm điều gì?
                   </Text>
@@ -2840,16 +2850,16 @@ export default function TripWizard() {
                           <Pressable
                             testID="btn-open-custom-place-modal"
                             onPress={() => setShowCustomPlaceModal(true)}
-                            className="px-3 py-2 rounded-xl bg-brand-bgAlt border border-brand-line/60 flex-row items-center gap-1.5 active:opacity-80"
-                            style={Platform.OS === 'web' ? {
+                            className="px-3 py-2 rounded-xl border flex-row items-center gap-1.5 active:opacity-80"
+                            style={{
                               backgroundColor: '#F0F9FF',
                               borderColor: '#0c77b0',
-                            } : undefined}
+                            }}
                           >
-                            <Plus size={13} color={Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary} />
+                            <Plus size={13} color="#0c77b0" />
                             <Text
-                              className="text-xs font-bold text-brand-text"
-                              style={Platform.OS === 'web' ? { color: '#0c77b0' } : undefined}
+                              className="text-xs font-bold"
+                              style={{ color: '#0c77b0' }}
                             >
                               + Tự thêm điểm
                             </Text>
@@ -2859,14 +2869,10 @@ export default function TripWizard() {
                             testID="btn-draft-group-collab"
                             onPress={handleOpenDraftGroupModal}
                             disabled={isCreatingDraftGroup}
-                            className={`px-3.5 py-2 rounded-xl flex-row items-center gap-1.5 shadow-xs ${
-                              draftTripId
-                                ? 'bg-emerald-600 active:opacity-90'
-                                : 'bg-brand-primary active:opacity-90'
-                            }`}
-                            style={Platform.OS === 'web' ? {
+                            className="px-3.5 py-2 rounded-xl flex-row items-center gap-1.5 shadow-xs active:opacity-90"
+                            style={{
                               backgroundColor: draftTripId ? '#059669' : '#0c77b0',
-                            } : undefined}
+                            }}
                           >
                             {isCreatingDraftGroup ? (
                               <ActivityIndicator size="small" color="#FFFFFF" />
@@ -2900,10 +2906,10 @@ export default function TripWizard() {
                   {useProWorkspace && canAccessWorkspace ? (
                     loadingPregen ? (
                       <View className="py-20 items-center justify-center gap-4 bg-brand-bgAlt/50 rounded-3xl border border-dashed border-brand-line/60">
-                        <ActivityIndicator size="large" color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                        <ActivityIndicator size="large" color="#0f4c5c" />
                         <Text
-                          className="text-base font-extrabold text-brand-primary"
-                          style={Platform.OS === 'web' ? { color: '#0f4c5c' } : undefined}
+                          className="text-base font-extrabold"
+                          style={{ color: '#0f4c5c' }}
                         >
                           Gemini đang khảo sát & sinh kho địa điểm thực tế...
                         </Text>
@@ -2937,7 +2943,7 @@ export default function TripWizard() {
                                 <Pressable
                                   testID="tab-collecting-list"
                                   onPress={() => setCollectingViewMode('list')}
-                                  className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 transition-all ${
+                                  className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 ${
                                     effectiveMode === 'list'
                                       ? 'bg-white shadow-sm border border-brand-line/40'
                                       : 'bg-transparent'
@@ -2956,7 +2962,7 @@ export default function TripWizard() {
                                 <Pressable
                                   testID="tab-collecting-map"
                                   onPress={() => setCollectingViewMode('map')}
-                                  className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 transition-all ${
+                                  className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 ${
                                     effectiveMode === 'map'
                                       ? 'bg-white shadow-sm border border-brand-line/40'
                                       : 'bg-transparent'
@@ -2976,7 +2982,7 @@ export default function TripWizard() {
                                   <Pressable
                                     testID="tab-collecting-both"
                                     onPress={() => setCollectingViewMode('both')}
-                                    className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 transition-all ${
+                                    className={`px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 ${
                                       effectiveMode === 'both'
                                         ? 'bg-white shadow-sm border border-brand-line/40'
                                         : 'bg-transparent'
@@ -3173,7 +3179,7 @@ export default function TripWizard() {
                                                 }, '*');
                                               }
                                             }}
-                                            className={`p-3.5 rounded-2xl border bg-white flex-1 min-w-[240px] max-w-[360px] gap-2.5 shadow-sm transition-all ${
+                                            className={`p-3.5 rounded-2xl border bg-white flex-1 min-w-[240px] max-w-[360px] gap-2.5 shadow-sm ${
                                               isInCart
                                                 ? 'border-2 border-emerald-600 bg-emerald-50/40'
                                                 : isPro
@@ -3232,7 +3238,7 @@ export default function TripWizard() {
                                                 backgroundColor: isInCart ? '#059669' : '#0c77b0',
                                               } : undefined}
                                               onPress={() => handleAddToCart(place)}
-                                              className={`w-full py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-1.5 transition-all shadow-sm ${
+                                              className={`w-full py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-1.5 shadow-sm ${
                                                 isInCart
                                                   ? 'bg-emerald-600 active:opacity-90'
                                                   : isPro
@@ -3583,8 +3589,14 @@ export default function TripWizard() {
               </Reveal>
             )}
 
-            {/* Nav buttons */}
-            <View className="flex-row justify-between items-center pt-5 border-t border-brand-line/35 mt-2">
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Navigation stays outside the scroll area so native taps remain reachable. */}
+      {(step < 4 || !useProWorkspace) && (
+        <View style={{ backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: BRAND_COLORS.line, paddingHorizontal: isMobile ? 16 : 24, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 14) }}>
+          <View style={{ width: '100%', maxWidth: 576, alignSelf: 'center', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               {step > 1 ? (
                 <Pressable
                   onPress={handlePrev}
@@ -3599,17 +3611,13 @@ export default function TripWizard() {
 
               {step < 4 ? (
                 <Pressable
+                  key="wizard-next"
                   testID="btn-next-step"
                   onPress={handleNext}
-                  disabled={!!errorMsg}
                   className="flex-row items-center gap-1.5 px-5 py-3 rounded-xl"
                   style={{
-                    backgroundColor: !!errorMsg
-                      ? (Platform.OS === 'web' ? 'rgba(12, 119, 176, 0.4)' : 'rgba(15, 76, 92,0.4)')
-                      : (Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary),
-                    opacity: !!errorMsg ? 0.5 : 1,
-                    boxShadow: Platform.OS === 'web' && !errorMsg ? ('0 4px 14px rgba(12, 119, 176, 0.25)' as any) : undefined,
-                    cursor: (!!errorMsg ? 'not-allowed' : 'pointer') as any,
+                    backgroundColor: '#0c77b0',
+                    cursor: 'pointer' as any,
                   }}
                 >
                   <Text className="text-white text-sm font-bold">Tiếp tục</Text>
@@ -3625,12 +3633,13 @@ export default function TripWizard() {
                   </View>
                 ) : (
                   <Pressable
+                    key="wizard-create"
                     testID="btn-open-create-modal"
                     onPress={() => setShowScheduleOptionModal(true)}
                     className="flex-row items-center gap-2 px-6 py-3.5 rounded-xl active:opacity-90 shadow-sm"
                     style={{
-                      backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary,
-                      boxShadow: Platform.OS === 'web' ? ('0 4px 14px rgba(12, 119, 176, 0.25)' as any) : undefined,
+                      backgroundColor: '#0c77b0',
+                      boxShadow: '0 4px 14px rgba(12, 119, 176, 0.25)' as any,
                       cursor: 'pointer' as any,
                     }}
                   >
@@ -3643,18 +3652,13 @@ export default function TripWizard() {
                 )
               ) : null}
             </View>
-          </View>
         </View>
-      </ScrollView>
+      )}
 
       {/* Sticky Bottom Cart Bar (Thanh cố định ghim ở đáy màn hình, ngoài Reveal để không bị trôi) */}
       {step === 4 && useProWorkspace && workspaceStage === 'collecting' && cartItems.length > 0 && (
         <View
-          onStartShouldSetResponder={() => true}
-          onMoveShouldSetResponder={() => true}
-          onResponderGrant={(e) => {
-            cartTouchStartY.current = e.nativeEvent.pageY;
-          }}
+          onMoveShouldSetResponder={(e) => cartTouchStartY.current - e.nativeEvent.pageY > 20}
           onResponderRelease={(e) => {
             const deltaY = cartTouchStartY.current - e.nativeEvent.pageY;
             if (deltaY > 20) {
@@ -4701,9 +4705,7 @@ export default function TripWizard() {
                   borderRadius: 12,
                   backgroundColor: !customPlaceTitle.trim()
                     ? '#D1D5DB'
-                    : Platform.OS === 'web'
-                    ? '#0c77b0'
-                    : BRAND_COLORS.primary,
+                    : '#0c77b0',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}

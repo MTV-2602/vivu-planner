@@ -3,7 +3,11 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
-    "build": "node scripts/prebuild.js && cd frontend && npm install && npx expo export --platform web"
+    "build": "node scripts/prebuild.js && cd frontend && npm install && npx expo export --platform web",
+    "android": "npm run android --prefix frontend",
+    "web": "npm run web --prefix frontend",
+    "start": "npm run start --prefix frontend",
+    "backend": "npm run dev --prefix backend"
   },
   "dependencies": {
     "@google/genai": "^2.0.0",

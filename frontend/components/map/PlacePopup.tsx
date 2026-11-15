@@ -275,7 +275,7 @@ export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupPr
           gap: 8,
           paddingVertical: 11,
           borderRadius: 100,
-          backgroundColor: Platform.OS === 'web' ? '#0c77b0' : '#0c77b0',
+          backgroundColor: '#0c77b0',
           opacity: pressed ? 0.9 : 1,
         }]}
       >

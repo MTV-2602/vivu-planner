@@ -21,7 +21,7 @@ export default function ShareModal({ visible, onClose, tripId, tripTitle }: Shar
   };
   const shareUrl = `${getOrigin()}/share?id=${tripId}`;
 
-  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareUrl)}&color=1F6F54&bgcolor=FFFFFF&qzone=2&format=png`;
+  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareUrl)}&color=0f4c5c&bgcolor=FFFFFF&qzone=2&format=png`;
 
   const handleCopy = async () => {
     try {
@@ -97,12 +97,12 @@ export default function ShareModal({ visible, onClose, tripId, tripTitle }: Shar
               onPress={handleCopy}
               style={{
                 width: '100%', borderRadius: 14, padding: 16, alignItems: 'center',
-                backgroundColor: copied ? '#e8f5f0' : BRAND_COLORS.primary,
+                backgroundColor: copied ? '#E0F2FE' : '#0c77b0',
                 flexDirection: 'row', justifyContent: 'center', gap: 8,
               }}
             >
-              {copied ? <Check size={18} color={BRAND_COLORS.primary} /> : <Copy size={18} color="#fff" />}
-              <Text style={{ fontWeight: '800', fontSize: 15, color: copied ? BRAND_COLORS.primary : '#fff' }}>
+              {copied ? <Check size={18} color="#0c77b0" /> : <Copy size={18} color="#fff" />}
+              <Text style={{ fontWeight: '800', fontSize: 15, color: copied ? '#0c77b0' : '#fff' }}>
                 {copied ? 'Đã sao chép!' : 'Sao chép liên kết chia sẻ'}
               </Text>
             </Pressable>

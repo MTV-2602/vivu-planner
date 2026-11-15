@@ -366,8 +366,7 @@ export default function TripDetail() {
   // Authoritative Trip Entitlement: Chỉ dựa trên cờ của chuyến đi từ backend, không kế thừa từ pro_credits ví của user
   const isTripPro = Boolean((tripData as any)?.is_ai_pro || tripData?.preferences?.is_ai_pro === true || (tripData as any)?.preferences?.ai_tier === 'pro' || (tripData as any)?.is_pro);
   const isOwner = Boolean(tripData?.user_id && user?.id && tripData.user_id === user.id) || (!tripData?.user_id && !collaborators.length);
-  const isUserHasProWallet = Boolean(statusData?.isPremium || (statusData?.pro_credits || 0) > 0 || (statusData?.monthly_credits || 0) > 0);
-  const canUseProFeatures = Boolean(isTripPro || isAdmin || (isOwner && isUserHasProWallet));
+  const canUseProFeatures = Boolean(isTripPro || isAdmin);
   const myCollab = collaborators.find((c: any) => c.user_id === user?.id) || (tripData?.collaborators || []).find((c: any) => c.user_id === user?.id);
   const isCollaborator = Boolean(myCollab);
   const isViewer = myCollab?.role === 'viewer';
@@ -1242,12 +1241,12 @@ export default function TripDetail() {
                 ? `<div style="font-size: 12px; color: #777777; font-style: italic; padding: 10px 0;">Chưa có hoạt động nào được lên lịch.</div>`
                 : items.map(item => {
                     const timeStr = item.start_time ? `<span style="font-size: 11px; font-weight: bold; color: #666666; margin-left: 8px;">⏱️ ${item.start_time.substring(0, 5)}${item.end_time ? ` - ${item.end_time.substring(0, 5)}` : ''}</span>` : '';
-                    const costStr = hasOfficialCost(item.estimated_cost) ? `<span style="font-size: 12px; font-weight: bold; color: #14201B;">${formatCost(item.estimated_cost, item.item_type)}</span>` : '';
+                    const costStr = hasOfficialCost(item.estimated_cost) ? `<span style="font-size: 12px; font-weight: bold; color: #0f4c5c;">${formatCost(item.estimated_cost, item.item_type)}</span>` : '';
                     return `
                       <div style="border: 1px solid #eeeeee; border-radius: 8px; padding: 12px; margin-bottom: 12px; background-color: #ffffff;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                           <div style="display: flex; align-items: center;">
-                            <span style="font-size: 9px; font-weight: bold; color: #14201B; background-color: #e2f0ea; padding: 2px 6px; border-radius: 4px; text-transform: uppercase;">
+                            <span style="font-size: 9px; font-weight: bold; color: #0f4c5c; background-color: #E0F2FE; padding: 2px 6px; border-radius: 4px; text-transform: uppercase;">
                               ${ITEM_TYPE_LABELS[item.item_type] || 'Khác'}
                             </span>
                             ${timeStr}
@@ -1261,13 +1260,13 @@ export default function TripDetail() {
                   }).join('');
 
               const weatherHtml = day.weather_summary?.note
-                ? `<div style="background-color: #f9f9f9; padding: 10px; border-radius: 6px; margin-bottom: 12px; border-left: 3px solid #14201B; font-size: 11px; font-style: italic; color: #555555;">☀️ Thời tiết: ${day.weather_summary.note}</div>`
+                ? `<div style="background-color: #f9f9f9; padding: 10px; border-radius: 6px; margin-bottom: 12px; border-left: 3px solid #0f4c5c; font-size: 11px; font-style: italic; color: #555555;">☀️ Thời tiết: ${day.weather_summary.note}</div>`
                 : '';
 
               return `
                 <div style="margin-bottom: 30px; page-break-inside: avoid;">
                   <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #dddddd; padding-bottom: 6px; margin-bottom: 12px;">
-                    <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #14201B;">Ngày 0${day.day_number}: ${formatDate(day.date)}</h3>
+                    <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #0f4c5c;">Ngày 0${day.day_number}: ${formatDate(day.date)}</h3>
                     <div style="font-size: 11px; color: #555555;">
                       <span>Dự kiến: <strong>${formatVND(spentVal)}</strong></span>
                       <span style="margin: 0 6px;">|</span>
@@ -1375,7 +1374,7 @@ export default function TripDetail() {
   return (
     <View
       className="flex-1"
-      style={Platform.OS === 'web' ? { backgroundColor: '#F8F9FA' } : { backgroundColor: BRAND_COLORS.bg }}
+      style={{ backgroundColor: '#F8F9FA' }}
     >
       <View className="no-print flex-1">
         <ScrollView
@@ -1387,11 +1386,11 @@ export default function TripDetail() {
       >
         {/* Navbar */}
         <View
-          className={Platform.OS === 'web' ? 'px-4 md:px-6 py-3 md:py-4 shadow-sm' : 'bg-brand-bg border-b border-brand-line px-4 md:px-6 py-3 md:py-4'}
+          className="px-4 md:px-6 py-3 md:py-4 shadow-sm"
           style={{
-            backgroundColor: Platform.OS === 'web' ? '#0f4c5c' : undefined,
+            backgroundColor: '#0f4c5c',
             borderBottomWidth: 1,
-            borderBottomColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.08)' : undefined,
+            borderBottomColor: 'rgba(255,255,255,0.08)',
             paddingTop: Math.max(insets.top, 14),
           }}
         >
@@ -1401,17 +1400,17 @@ export default function TripDetail() {
               className="flex-row items-center gap-1.5 shrink-0"
               style={{ cursor: 'pointer' as any }}
             >
-              <ArrowLeft size={16} color={Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.textSoft} />
+              <ArrowLeft size={16} color="#FFFFFF" />
               <Text
                 className="text-xs font-bold"
-                style={{ color: Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.textSoft }}
+                style={{ color: '#FFFFFF' }}
               >
                 {isAdmin ? 'Quản lý Chuyến đi' : 'Bảng điều khiển'}
               </Text>
             </Pressable>
             <View className="flex-row items-center gap-2 md:gap-3">
               <View className="hidden sm:flex">
-                <SystemClock variant={Platform.OS === 'web' ? 'light' : 'dark'} />
+                <SystemClock variant="light" />
               </View>
               {(() => {
                 const chip = formatHeaderChip(statusData);
@@ -1462,10 +1461,10 @@ export default function TripDetail() {
                 );
               })()}
               <View className="hidden md:flex flex-row items-center gap-2">
-                <Compass size={24} color={Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary} />
+                <Compass size={24} color="#FFFFFF" />
                 <Text
                   className="font-display font-extrabold text-lg"
-                  style={{ color: Platform.OS === 'web' ? '#FFFFFF' : BRAND_COLORS.primary }}
+                  style={{ color: '#FFFFFF' }}
                 >
                   ViVu Planner
                 </Text>
@@ -1524,13 +1523,13 @@ export default function TripDetail() {
                   <View
                     className="flex-row items-center gap-1.5 self-start px-3 py-1 rounded-full"
                     style={{
-                      backgroundColor: Platform.OS === 'web' ? 'rgba(15, 76, 92, 0.08)' : 'rgba(15, 76, 92,0.1)',
+                      backgroundColor: 'rgba(15, 76, 92, 0.08)',
                     }}
                   >
-                    <MapPin size={14} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                    <MapPin size={14} color="#0f4c5c" />
                     <Text
                       className="font-bold text-xs"
-                      style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary }}
+                      style={{ color: '#0f4c5c' }}
                     >
                       {trip.destination_city}
                     </Text>
@@ -1587,26 +1586,26 @@ export default function TripDetail() {
                 </View>
                 <Text
                   className="font-display font-extrabold text-2xl md:text-3xl break-words"
-                  style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
+                  style={{ color: '#0f4c5c' }}
                 >
                   {trip.title}
                 </Text>
                 <View className="flex-row flex-wrap gap-4">
                   <View className="flex-row items-center gap-1.5">
-                    <Calendar size={16} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                    <Calendar size={16} color="#0f4c5c" />
                     <Text className="text-xs text-brand-textSoft font-semibold">{formatDate(trip.start_date)} — {formatDate(trip.end_date)}</Text>
                   </View>
                   <View className="flex-row items-center gap-1.5">
-                    <Wallet size={16} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                    <Wallet size={16} color="#0f4c5c" />
                     <Text
                       className="text-xs font-semibold"
-                      style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.textSoft }}
+                      style={{ color: '#0f4c5c' }}
                     >
                       {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(trip.budget_total)}
                     </Text>
                   </View>
                   <View className="flex-row items-center gap-1.5">
-                    <Compass size={16} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                    <Compass size={16} color="#0f4c5c" />
                     <Text className="text-xs text-brand-textSoft font-semibold">
                       {trip.traveler_count} khách ({TRAVELER_TYPE_LABELS[String(trip.traveler_type || '').toLowerCase()] || trip.traveler_type})
                     </Text>
@@ -1630,7 +1629,7 @@ export default function TripDetail() {
                   onPress={handleExportPDF}
                   className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl"
                   style={{
-                    backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.primary,
+                    backgroundColor: '#0c77b0',
                     cursor: 'pointer' as any,
                   }}
                 >
@@ -1654,12 +1653,8 @@ export default function TripDetail() {
                   }}
                   className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl border"
                   style={{
-                    backgroundColor: Platform.OS === 'web'
-                      ? '#FFFFFF'
-                      : (collaborators.length > 0 ? '#ECFDF5' : '#F3F4F6'),
-                    borderColor: Platform.OS === 'web'
-                      ? '#0c77b0'
-                      : (collaborators.length > 0 ? '#A7F3D0' : '#E5E7EB'),
+                    backgroundColor: collaborators.length > 0 ? '#F0F9FF' : '#FFFFFF',
+                    borderColor: '#0c77b0',
                     cursor: 'pointer' as any,
                   }}
                 >
@@ -1669,9 +1664,7 @@ export default function TripDetail() {
                   <Text
                     className="text-xs md:text-sm font-bold"
                     style={{
-                      color: Platform.OS === 'web'
-                        ? '#0c77b0'
-                        : (collaborators.length > 0 ? '#065F46' : '#374151'),
+                      color: '#0c77b0',
                     }}
                   >
                     {collaborators.length > 0 ? `👥 Nhóm (${collaborators.length + 1})` : '👥 Nhóm'}
@@ -1694,7 +1687,7 @@ export default function TripDetail() {
                       onPress={() => setDisruptionOpen(true)}
                       className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl"
                       style={{
-                        backgroundColor: Platform.OS === 'web' ? '#0c77b0' : BRAND_COLORS.danger,
+                        backgroundColor: '#0c77b0',
                         cursor: 'pointer' as any,
                       }}
                     >
@@ -1789,10 +1782,10 @@ export default function TripDetail() {
           <View className="gap-6">
             <View className="flex-row items-center justify-between flex-wrap gap-3">
               <View className="flex-row items-center gap-2">
-                <Calendar size={20} color={Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.primary} />
+                <Calendar size={20} color="#0f4c5c" />
                 <Text
                   className="text-xl font-extrabold"
-                  style={{ color: Platform.OS === 'web' ? '#0f4c5c' : BRAND_COLORS.text }}
+                  style={{ color: '#0f4c5c' }}
                 >
                   Lịch trình & Lộ trình di chuyển
                 </Text>
@@ -2705,7 +2698,7 @@ export default function TripDetail() {
                         ) : (
                           <Pressable
                             testID={`btn-pick-live-place-${idx}`}
-                            style={Platform.OS === 'web' ? { backgroundColor: isSelected ? '#059669' : '#0c77b0' } : undefined}
+                            style={{ backgroundColor: isSelected ? '#059669' : '#0c77b0' }}
                             onPress={() => {
                               if (isSelected) {
                                 setTempSelectedPlaces(prev => prev.filter(tp => tp.name !== placeName));
@@ -2840,14 +2833,14 @@ export default function TripDetail() {
       {Platform.OS === 'web' && (
         <View className="print-only-container" style={{ display: 'none' } as any}>
           {/* Header info */}
-          <View style={{ borderBottomWidth: 2, borderBottomColor: '#14201B', paddingBottom: 15, marginBottom: 25 }}>
+          <View style={{ borderBottomWidth: 2, borderBottomColor: '#0f4c5c', paddingBottom: 15, marginBottom: 25 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#14201B', marginBottom: 8 }}>{trip.title}</Text>
+                <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#0f4c5c', marginBottom: 8 }}>{trip.title}</Text>
                 <Text style={{ fontSize: 13, color: '#555555' }}>📍 Điểm đến: <Text style={{ fontWeight: 'bold' }}>{trip.destination_city}</Text></Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#14201B', marginBottom: 4 }}>ViVu Planner</Text>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0f4c5c', marginBottom: 4 }}>ViVu Planner</Text>
                 <Text style={{ fontSize: 11, color: '#777777' }}>Lịch trình du lịch cá nhân hóa</Text>
               </View>
             </View>
@@ -2870,7 +2863,7 @@ export default function TripDetail() {
             return (
               <View key={day.id} className="print-day-block" style={{ marginBottom: 25 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#dddddd', paddingBottom: 6, marginBottom: 12 }}>
-                  <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#14201B' }}>
+                  <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#0f4c5c' }}>
                     Ngày 0{day.day_number}: {formatDate(day.date)}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -2880,7 +2873,7 @@ export default function TripDetail() {
                 </View>
 
                 {Boolean(day.weather_summary?.note) ? (
-                  <View style={{ backgroundColor: '#f9f9f9', padding: 8, borderRadius: 6, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#14201B' }}>
+                  <View style={{ backgroundColor: '#f9f9f9', padding: 8, borderRadius: 6, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#0f4c5c' }}>
                     <Text style={{ fontSize: 11, fontStyle: 'italic', color: '#555555' }}>☀️ Thời tiết: {day.weather_summary?.note}</Text>
                   </View>
                 ) : null}
@@ -2893,7 +2886,7 @@ export default function TripDetail() {
                       <View key={item.id} style={{ borderWidth: 1, borderColor: '#eeeeee', borderRadius: 8, padding: 10, backgroundColor: '#ffffff' }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#14201B', backgroundColor: '#e2f0ea', paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4 }}>
+                            <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#0f4c5c', backgroundColor: '#E0F2FE', paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4 }}>
                               {ITEM_TYPE_LABELS[item.item_type] || 'Khác'}
                             </Text>
                             {Boolean((item as any).partner_id || (item as any).is_pro_partner || (item as any).is_partner || ((item as any).i18n as any)?.is_pro_partner || ((item as any).i18n as any)?.partner_id) && (
@@ -2908,7 +2901,7 @@ export default function TripDetail() {
                             ) : null}
                           </View>
                           {Boolean(hasOfficialCost(item.estimated_cost)) ? (
-                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#14201B' }}>
+                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#0f4c5c' }}>
                               {formatCost(item.estimated_cost, item.item_type)}
                             </Text>
                           ) : null}

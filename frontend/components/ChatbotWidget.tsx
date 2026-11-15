@@ -4,7 +4,7 @@ import {
   ActivityIndicator, Platform, Dimensions
 } from 'react-native';
 import { MessageSquare, Send, Sparkles, X, Bot, User, Crown, Zap, Lock } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname } from 'expo-router';
 import { useChatbot } from '../context/ChatbotContext';
 import { useAuth } from '../hooks/useAuth';
 import PremiumModal from './PremiumModal';
@@ -22,6 +22,7 @@ interface ChatMessage {
 }
 
 export function ChatbotWidget() {
+  const pathname = usePathname();
   const { tripId, triggerPreview, isOpen, setIsOpen } = useChatbot();
   const { isPremium, isAdmin } = useAuth();
   const router = useRouter();
@@ -264,6 +265,10 @@ export function ChatbotWidget() {
       alert(`Lỗi tạo chuyến đi: ${errMsg}`);
     }
   };
+
+  if (pathname?.includes('/chuyen-di/moi')) {
+    return null;
+  }
 
   if (!isOpen) {
     return (

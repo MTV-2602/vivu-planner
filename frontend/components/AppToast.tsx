@@ -29,7 +29,7 @@ export default function AppToast({ toast, onClose }: AppToastProps) {
       case 'cart': return '#0f4c5c'; // Brand green for cart action
       case 'success': return '#0f4c5c';
       case 'error': return '#B23B3B';
-      default: return '#14201B';
+      default: return '#0f4c5c';
     }
   };
 

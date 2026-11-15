@@ -1278,16 +1278,16 @@ export default function PhotoTheaterModal({
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 4,
-                  backgroundColor: '#E8F5E9',
+                  backgroundColor: '#E0F2FE',
                   paddingHorizontal: 9,
                   paddingVertical: 4,
                   borderRadius: 8,
                   borderWidth: 1,
-                  borderColor: '#C8E6C9',
+                  borderColor: '#BAE6FD',
                 }}
               >
-                <MapPin size={13} color="#2E7D32" />
-                <Text style={{ fontSize: 12, fontWeight: '800', color: '#1B5E20' }}>
+                <MapPin size={13} color="#0f4c5c" />
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#0f4c5c' }}>
                   {post.province}
                 </Text>
               </View>

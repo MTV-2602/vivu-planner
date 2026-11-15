@@ -183,7 +183,7 @@ export default function ProfileScreen() {
             if (router.canGoBack()) {
               router.back();
             } else {
-              router.replace((APP_ROUTES.TRIPS || '/(app)/chuyen-di') as any);
+              router.replace((APP_ROUTES.TRIPS || '/chuyen-di') as any);
             }
           }}
           style={({ pressed }) => [{
@@ -592,7 +592,7 @@ export default function ProfileScreen() {
               </View>
 
               <Pressable
-                onPress={() => router.push('/(app)/chuyen-di/moi' as any)}
+                onPress={() => router.push('/chuyen-di/moi' as any)}
                 style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, backgroundColor: '#0f4c5c' }}>
@@ -619,7 +619,7 @@ export default function ProfileScreen() {
                   Bạn chưa khởi tạo chuyến đi nào. Hãy bắt đầu lên kế hoạch ngay!
                 </Text>
                 <Pressable
-                  onPress={() => router.push('/(app)/chuyen-di/moi' as any)}
+                  onPress={() => router.push('/chuyen-di/moi' as any)}
                   style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 100, backgroundColor: '#0f4c5c' }}
                 >
                   <Text style={{ fontFamily: 'BeVietnamPro_700Bold', fontSize: 13, color: '#FFFFFF' }}>Tạo chuyến đi đầu tiên</Text>
@@ -630,7 +630,7 @@ export default function ProfileScreen() {
                 {trips.map((trip) => (
                   <Pressable
                     key={trip.id}
-                    onPress={() => router.push(`/(app)/chuyen-di/${trip.id}` as any)}
+                    onPress={() => router.push(`/chuyen-di/${trip.id}` as any)}
                     style={({ pressed }) => [{
                       backgroundColor: '#FFFFFF',
                       borderRadius: 16,
@@ -759,9 +759,9 @@ export default function ProfileScreen() {
 
                           {/* 2 Tags Bắt Buộc */}
                           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                              <MapPin size={11} color="#2E7D32" />
-                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#1B5E20' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#E0F2FE', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                              <MapPin size={11} color="#0f4c5c" />
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#0f4c5c' }}>
                                 {post.province}
                               </Text>
                             </View>

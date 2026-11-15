@@ -15,8 +15,8 @@ export default function AdminLayout() {
     );
   }
 
-  if (!session) return <Redirect href="/(auth)/dang-nhap" />;
-  if (!isAdmin) return <Redirect href="/(app)/chuyen-di" />;
+  if (!session) return <Redirect href="/dang-nhap" />;
+  if (!isAdmin) return <Redirect href="/chuyen-di" />;
 
   return (
     <AdminShell>

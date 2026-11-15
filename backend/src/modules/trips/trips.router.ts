@@ -34,6 +34,17 @@ export const VALID_TRIP_TRANSITIONS: Record<string, string[]> = {
   [TripStatus.ARCHIVED]: [TripStatus.ACTIVE]
 };
 
+// Hàm sinh "Mã tham gia" ngắn gọn, dễ nhớ (VIVU-XXX)
+const generateInviteCode = (): string => {
+  const num = Math.floor(100 + Math.random() * 900); // 3 số ngẫu nhiên: 100 - 999
+  return `VIVU-${num}`;
+};
+
+// Helper: Kiểm tra định dạng mã mời chuẩn ViVu (dạng VIVU-XXX, không phân biệt hoa thường)
+const isValidVivuCode = (code: any): boolean => {
+  return typeof code === 'string' && /^VIVU-[0-9]{3,}$/i.test(code.trim());
+};
+
 // Rate limiter for AI trip generation (10 requests per minute per user/IP)
 const aiGenerationLimiter = createRateLimiter({
   windowMs: 60 * 1000,
@@ -70,7 +81,15 @@ export function buildCreatedTripResponse(savedTrip: any, refreshedTrip: any, pre
     pro_credit_consumed: isAiPro && Boolean(quotaDeducted || preferences?.pro_credit_consumed || trip.preferences?.pro_credit_consumed),
     quota_consumed: !isAiPro && Boolean(quotaDeducted || preferences?.quota_consumed || trip.preferences?.quota_consumed)
   };
-  return { ...savedTrip, ...trip, preferences: finalPreferences, is_ai_pro: isAiPro, days };
+  return {
+    ...savedTrip,
+    ...trip,
+    preferences: finalPreferences,
+    invite_code: finalPreferences.invite_code,
+    invite_token: finalPreferences.invite_code,
+    is_ai_pro: isAiPro,
+    days
+  };
 }
 
 // Middleware requirePremium: kiểm tra quyền Pro của chuyến đi Pro (bắt buộc trip Pro)
@@ -264,13 +283,20 @@ router.get('/chat', requireAuth, async (req: any, res: Response) => {
   }
 });
 
-// PUT /api/trips/join/:token — Gia nhập qua link mời
+// PUT /api/trips/join/:token — Gia nhập qua link mời / mã tham gia
 router.put('/join/:token', requireAuth, async (req: any, res: Response) => {
   try {
     const token = req.params.token;
     const userId = req.user!.id;
+    const rawInput = String(token || '').trim();
+    const normalizedInput = rawInput.includes('/') ? rawInput.split('/').pop()!.trim() : rawInput;
+    const upperInput = normalizedInput.toUpperCase();
 
-    // 1. Tìm trip có pending_invites chứa :token
+    if (!normalizedInput) {
+      return res.status(400).json({ error: 'Mã tham gia không được để trống' });
+    }
+
+    // 1. Tìm trip có pending_invites chứa :token hoặc preferences.invite_code khớp
     const { data: trips, error: tripsError } = await supabaseAdmin
       .from('trips')
       .select('id, user_id, preferences');
@@ -284,22 +310,42 @@ router.put('/join/:token', requireAuth, async (req: any, res: Response) => {
 
     for (const t of trips) {
       const pending = Array.isArray(t.preferences?.pending_invites) ? t.preferences.pending_invites : [];
-      const inv = pending.find((p: any) => p.invite_token === token);
+      const tripPrefCode = String(t.preferences?.invite_code || '').trim().toUpperCase();
+      const tripPrefToken = String(t.preferences?.invite_token || '').trim().toUpperCase();
+
+      const inv = pending.find((p: any) => {
+        const pToken = String(p.invite_token || '').trim().toUpperCase();
+        const pCode = String(p.invite_code || '').trim().toUpperCase();
+        return pToken === upperInput || pCode === upperInput || (tripPrefCode && tripPrefCode === upperInput) || (tripPrefToken && tripPrefToken === upperInput);
+      });
+
       if (inv) {
         foundTrip = t;
         foundInvite = inv;
+        break;
+      } else if ((tripPrefCode && tripPrefCode === upperInput) || (tripPrefToken && tripPrefToken === upperInput)) {
+        const matchedCode = tripPrefCode === upperInput ? tripPrefCode : tripPrefToken;
+        foundTrip = t;
+        foundInvite = {
+          invite_token: matchedCode,
+          invite_code: matchedCode,
+          invited_by: t.user_id,
+          role: 'editor',
+          created_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        };
         break;
       }
     }
 
     // 2. Nếu không tìm thấy -> 404
     if (!foundTrip || !foundInvite) {
-      return res.status(404).json({ error: 'Link mời không hợp lệ hoặc đã hết hạn' });
+      return res.status(404).json({ error: 'Mã hoặc link mời không hợp lệ hoặc đã hết hạn' });
     }
 
-    // Kiểm tra hết hạn 7 ngày
-    if (new Date(foundInvite.expires_at) < new Date()) {
-      return res.status(410).json({ error: 'Link mời đã hết hạn' });
+    // Kiểm tra hết hạn nếu có
+    if (foundInvite.expires_at && new Date(foundInvite.expires_at) < new Date()) {
+      return res.status(410).json({ error: 'Mã hoặc link mời đã hết hạn' });
     }
 
     // Kiểm tra chuyến đi có phải là chuyến Pro không trước khi cho phép gia nhập
@@ -357,7 +403,11 @@ router.put('/join/:token', requireAuth, async (req: any, res: Response) => {
     // 7. Xóa invite_token đã dùng khỏi pending_invites nếu chuyến đi đã đủ 5 người (4 collaborators)
     if ((acceptedCount ?? 0) + 1 >= 4) {
       const updatedInvites = (foundTrip.preferences?.pending_invites || []).filter(
-        (inv: any) => inv.invite_token !== token
+        (inv: any) => {
+          const invToken = String(inv.invite_token || '').trim().toUpperCase();
+          const invCode = String(inv.invite_code || '').trim().toUpperCase();
+          return invToken !== upperInput && invCode !== upperInput;
+        }
       );
       await supabaseAdmin
         .from('trips')
@@ -431,25 +481,32 @@ router.post('/:id/collaborators', requireAuth, requirePremium, async (req: any, 
       return res.status(400).json({ error: 'Chuyến đi đã đạt số lượng thành viên tối đa (5 người bao gồm chủ chuyến đi)' });
     }
 
-    // 4. Sinh invite_token = random hex 16 bytes: crypto.randomBytes(16).toString('hex')
-    const invite_token = crypto.randomBytes(16).toString('hex');
-    const expires_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    // 4. Luôn sinh mã mới dạng VIVU-XXX khi người dùng bấm tạo mã mới
+    const invite_code = generateInviteCode();
+    const invite_token = invite_code;
+    const expires_at = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const newInvite = {
       invite_token,
+      invite_code,
       invited_by: userId,
       role: 'editor',
       created_at: now.toISOString(),
       expires_at
     };
 
-    // 5. Cập nhật vào trip.preferences.pending_invites
+    const filteredActiveInvites = activeInvites.filter(
+      (inv: any) => inv.invite_token !== invite_token && inv.invite_code !== invite_code
+    );
+
+    // 5. Cập nhật vào trip.preferences.pending_invites (đưa mã mới lên đầu)
     const { error: updateError } = await supabaseAdmin
       .from('trips')
       .update({
         preferences: {
           ...(trip.preferences || {}),
-          pending_invites: [...activeInvites, newInvite]
+          invite_code,
+          pending_invites: [newInvite, ...filteredActiveInvites]
         }
       })
       .eq('id', tripId);
@@ -460,9 +517,10 @@ router.post('/:id/collaborators', requireAuth, requirePremium, async (req: any, 
     const frontendBaseUrl = (process.env.FRONTEND_URL || 'https://vivu-planner.vercel.app').replace(/\/+$/, '');
     return res.json({
       invite_token,
+      invite_code,
       invite_url: `vivu://join/${invite_token}`,
       invite_web_url: `${frontendBaseUrl}/join/${invite_token}`,
-      expires_in_days: 7
+      expires_in_days: 30
     });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to create collaborator invite', details: error.message });
@@ -553,18 +611,67 @@ router.get('/:id/collaborators', requireAuth, async (req: any, res: Response) =>
 
     // 4. Lấy pending invites từ preferences
     const now = new Date();
-    const currentInvites = Array.isArray(trip.preferences?.pending_invites) ? trip.preferences.pending_invites : [];
+    const currentInvites = Array.isArray(trip.preferences?.pending_invites) ? [...trip.preferences.pending_invites] : [];
+
+    let activeInviteCode = isValidVivuCode(trip.preferences?.invite_code)
+      ? trip.preferences.invite_code
+      : null;
+
+    if (!activeInviteCode) {
+      const foundValidInvite = currentInvites.find((inv: any) => isValidVivuCode(inv.invite_code) || isValidVivuCode(inv.invite_token));
+      if (foundValidInvite) {
+        activeInviteCode = foundValidInvite.invite_code || foundValidInvite.invite_token;
+      }
+    }
+
+    // Nếu vẫn chưa có mã hợp lệ dạng VIVU- (ví dụ các chuyến đi cũ chỉ có chuỗi hex 32 ký tự):
+    // TỰ ĐỘNG NÂNG CẤP VÀ SINH MÃ MỚI DẠNG VIVU-XXX NGAY LẬP TỨC!
+    if (!activeInviteCode) {
+      activeInviteCode = generateInviteCode();
+      const newInvite = {
+        invite_token: activeInviteCode,
+        invite_code: activeInviteCode,
+        invited_by: trip.user_id,
+        role: 'editor',
+        created_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      };
+      currentInvites.unshift(newInvite);
+
+      await supabaseAdmin
+        .from('trips')
+        .update({
+          preferences: {
+            ...(trip.preferences || {}),
+            invite_code: activeInviteCode,
+            pending_invites: currentInvites
+          }
+        })
+        .eq('id', tripId);
+    } else if (trip.preferences?.invite_code !== activeInviteCode) {
+      await supabaseAdmin
+        .from('trips')
+        .update({
+          preferences: {
+            ...(trip.preferences || {}),
+            invite_code: activeInviteCode
+          }
+        })
+        .eq('id', tripId);
+    }
+
     const pendingMembers = currentInvites
       .filter((inv: any) => new Date(inv.expires_at) > now)
       .map((inv: any) => ({
-        id: inv.invite_token,
+        id: inv.invite_token || inv.invite_code,
         user_id: null,
         display_name: null,
         avatar_url: null,
         role: inv.role || 'editor',
         accepted_at: null,
         is_pending: true,
-        invite_token: inv.invite_token
+        invite_token: inv.invite_token || inv.invite_code,
+        invite_code: inv.invite_code || inv.invite_token
       }));
 
     const allMembers = [...acceptedMembers, ...pendingMembers];
@@ -573,6 +680,8 @@ router.get('/:id/collaborators', requireAuth, async (req: any, res: Response) =>
     return res.json({
       owner,
       members: allMembers,
+      invite_code: activeInviteCode,
+      invite_token: activeInviteCode,
       total_count: 1 + acceptedMembers.length,
       max_members: 5
     });
@@ -603,15 +712,22 @@ router.delete('/:id/collaborators/:uid', requireAuth, async (req: any, res: Resp
     const isOwner = trip.user_id === currentUserId;
     const isSelf = targetUid === currentUserId;
 
-    // Check nếu targetUid là invite_token trong pending_invites
+    // Check nếu targetUid là invite_token hoặc invite_code trong pending_invites
     const currentInvites = Array.isArray(trip.preferences?.pending_invites) ? trip.preferences.pending_invites : [];
-    const matchInvite = currentInvites.find((inv: any) => inv.invite_token === targetUid);
+    const targetUidUpper = String(targetUid || '').trim().toUpperCase();
+    const matchInvite = currentInvites.find((inv: any) =>
+      String(inv.invite_token || '').trim().toUpperCase() === targetUidUpper ||
+      String(inv.invite_code || '').trim().toUpperCase() === targetUidUpper
+    );
 
     if (matchInvite) {
       if (!isOwner && !isAdmin) {
         return res.status(403).json({ error: 'Chỉ chủ chuyến đi mới có quyền hủy link mời' });
       }
-      const updatedInvites = currentInvites.filter((inv: any) => inv.invite_token !== targetUid);
+      const updatedInvites = currentInvites.filter((inv: any) =>
+        String(inv.invite_token || '').trim().toUpperCase() !== targetUidUpper &&
+        String(inv.invite_code || '').trim().toUpperCase() !== targetUidUpper
+      );
       await supabaseAdmin
         .from('trips')
         .update({
@@ -1349,9 +1465,35 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       const validPartnerIds = new Set(manualPartners.map(p => p.id));
       const pregenPlaces = req.body.pregen_places || preferences?.pregen_places || existingDraftTrip?.preferences?.pregen_places || [];
       const workspaceStage = req.body.workspace_stage || preferences?.workspace_stage || existingDraftTrip?.preferences?.workspace_stage || 'draft_pool';
+      const existingPending = Array.isArray(existingDraftTrip?.preferences?.pending_invites) && existingDraftTrip.preferences.pending_invites.length > 0
+        ? existingDraftTrip.preferences.pending_invites
+        : null;
+      const initialInviteCode = isValidVivuCode(existingDraftTrip?.preferences?.invite_code)
+        ? existingDraftTrip.preferences.invite_code
+        : (isValidVivuCode(existingPending?.[0]?.invite_code)
+            ? existingPending[0].invite_code
+            : (isValidVivuCode(existingPending?.[0]?.invite_token)
+                ? existingPending[0].invite_token
+                : generateInviteCode()));
+      const initialInvite = existingPending
+        ? existingPending.map((inv: any) => ({
+            ...inv,
+            invite_code: inv.invite_code || inv.invite_token || initialInviteCode
+          }))
+        : [{
+            invite_token: initialInviteCode,
+            invite_code: initialInviteCode,
+            invited_by: req.user!.id,
+            role: 'editor',
+            created_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+          }];
+
       const enrichedPreferences = {
         ...(existingDraftTrip?.preferences || {}),
         ...(preferences || {}),
+        invite_code: initialInviteCode,
+        pending_invites: initialInvite,
         pregen_places: pregenPlaces,
         workspace_stage: workspaceStage,
         is_ai_pro: isAiPro,
@@ -1880,9 +2022,35 @@ router.post('/', requireAuth, aiGenerationLimiter, async (req: any, res: Respons
       if (timeoutId) clearTimeout(timeoutId);
     }
 
+    const aiExistingPending = Array.isArray(existingDraftTrip?.preferences?.pending_invites) && existingDraftTrip.preferences.pending_invites.length > 0
+      ? existingDraftTrip.preferences.pending_invites
+      : null;
+    const aiInviteCode = isValidVivuCode(existingDraftTrip?.preferences?.invite_code)
+      ? existingDraftTrip.preferences.invite_code
+      : (isValidVivuCode(aiExistingPending?.[0]?.invite_code)
+          ? aiExistingPending[0].invite_code
+          : (isValidVivuCode(aiExistingPending?.[0]?.invite_token)
+              ? aiExistingPending[0].invite_token
+              : generateInviteCode()));
+    const aiInitialInvite = aiExistingPending
+      ? aiExistingPending.map((inv: any) => ({
+          ...inv,
+          invite_code: inv.invite_code || inv.invite_token || aiInviteCode
+        }))
+      : [{
+          invite_token: aiInviteCode,
+          invite_code: aiInviteCode,
+          invited_by: req.user!.id,
+          role: 'editor',
+          created_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        }];
+
     const enrichedPreferences = {
       ...(existingDraftTrip?.preferences || {}),
       ...(preferences || {}),
+      invite_code: aiInviteCode,
+      pending_invites: aiInitialInvite,
       is_ai_pro: isAiPro,
       use_local_data: isAiPro,
       ai_tier: isAiPro ? 'pro' : 'standard',
@@ -4158,8 +4326,14 @@ router.get('/:id/shared-cart', requireAuth, async (req: any, res: Response) => {
 
       if (tripData) {
         const pending = Array.isArray(tripData.preferences?.pending_invites) ? tripData.preferences.pending_invites : [];
-        const matchedInvite = pending.find((p: any) => p.invite_token === inviteToken);
-        const isSharedToken = tripData.preferences?.invite_token === inviteToken;
+        const normalizedInviteToken = String(inviteToken).trim().toUpperCase();
+        const matchedInvite = pending.find((p: any) =>
+          String(p.invite_token || '').trim().toUpperCase() === normalizedInviteToken ||
+          String(p.invite_code || '').trim().toUpperCase() === normalizedInviteToken
+        );
+        const isSharedToken =
+          String(tripData.preferences?.invite_token || '').trim().toUpperCase() === normalizedInviteToken ||
+          String(tripData.preferences?.invite_code || '').trim().toUpperCase() === normalizedInviteToken;
         if (matchedInvite || isSharedToken) {
           access.trip = tripData;
           access.hasAccess = true;
