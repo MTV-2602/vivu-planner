@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../hooks/useAuth';
 import { parseErrorMessage } from '../../../lib/error';
+import BrandSplash from '../../../components/loading/BrandSplash';
 
 export default function JoinTripPage() {
   const { token } = useLocalSearchParams<{ token: string }>();
@@ -13,6 +14,15 @@ export default function JoinTripPage() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'full' | 'already_member'>('loading');
   const [errorMsg, setErrorMsg] = useState('');
   const [tripId, setTripId] = useState('');
+  // Ref để clear timeout chuyển hướng khi component bị unmount
+  const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Dọn timer chuyển hướng khi component bị unmount (tránh setState sau unmount)
+  useEffect(() => {
+    return () => {
+      if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (authLoading) return;
@@ -22,7 +32,7 @@ export default function JoinTripPage() {
       if (token) {
         AsyncStorage.setItem('redirect_after_login', `/join/${token}`).catch(() => {});
       }
-      router.replace(`/dang-nhap?redirect=/join/${token}`);
+      router.replace(`/dang-nhap?redirect=${encodeURIComponent(`/join/${token}`)}`);
       return;
     }
     if (!token) {
@@ -44,8 +54,8 @@ export default function JoinTripPage() {
       }
       setTripId(data.trip_id);
       setStatus('success');
-      // Auto navigate sau 1.5s
-      setTimeout(() => {
+      // Auto navigate sau 1.5s — dùng ref để có thể cancel khi unmount
+      navTimerRef.current = setTimeout(() => {
         router.replace(`/chuyen-di/${data.trip_id}`);
       }, 1500);
     } catch (e: any) {
@@ -65,14 +75,12 @@ export default function JoinTripPage() {
     if (tripId) router.replace(`/chuyen-di/${tripId}`);
   };
 
+  if (status === 'loading') {
+    return <BrandSplash message="Đang xử lý lời mời tham gia chuyến đi" />;
+  }
+
   return (
     <View style={styles.container}>
-      {status === 'loading' && (
-        <>
-          <ActivityIndicator size="large" color="#0c77b0" />
-          <Text style={styles.loadingText}>Đang xử lý lời mời...</Text>
-        </>
-      )}
       {status === 'success' && (
         <>
           <Text style={styles.emoji}>🎉</Text>
@@ -120,7 +128,6 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 64 },
   title: { fontSize: 22, fontWeight: '700', color: '#111827', textAlign: 'center' },
   subtitle: { fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
-  loadingText: { marginTop: 16, fontSize: 14, color: '#6B7280' },
   btn: { marginTop: 16, backgroundColor: '#0c77b0', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 32 },
   btnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   btnOutline: { marginTop: 16, borderWidth: 1.5, borderColor: '#0c77b0', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 32 },

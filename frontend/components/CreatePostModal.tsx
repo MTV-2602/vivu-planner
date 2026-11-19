@@ -10,7 +10,9 @@ import {
   Platform,
   Image,
   useWindowDimensions,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { pickImageNative } from '../lib/pickImage';
 import {
   X,
   Star,
@@ -301,6 +303,8 @@ export default function CreatePostModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {/* Edge-to-edge (SDK 56): cửa sổ không tự co khi bàn phím mở → KeyboardAvoidingView tự né */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View
         style={{
           flex: 1,
@@ -372,7 +376,7 @@ export default function CreatePostModal({
           </View>
 
           {/* Body Form */}
-          <ScrollView
+          <ScrollView keyboardShouldPersistTaps="handled"
             style={{ width: '100%' }}
             contentContainerStyle={{ padding: 16, gap: 16 }}
           >
@@ -979,8 +983,8 @@ export default function CreatePostModal({
                 )}
               </View>
 
-              {/* File upload button for Web */}
-              {Platform.OS === 'web' && (
+              {/* Nút tải ảnh — Web: file input ẩn; Native: expo-image-picker */}
+              {Platform.OS === 'web' ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <input
                     type="file"
@@ -1016,6 +1020,54 @@ export default function CreatePostModal({
                     </Text>
                   </Pressable>
                 </View>
+              ) : (
+                /* Native: chọn ảnh từ thư viện bằng expo-image-picker */
+                <Pressable
+                  onPress={async () => {
+                    if (uploadingMedia) return;
+                    try {
+                      setUploadingMedia(true);
+                      setErrorMsg('');
+                      const picked = await pickImageNative();
+                      if (!picked) return;
+                      setUploadProgressText('Đang tải ảnh lên...');
+                      const res = await api.post('/posts/upload-media', {
+                        fileName: picked.fileName,
+                        fileType: picked.fileType,
+                        base64: picked.base64,
+                      });
+                      if (res.data?.url) {
+                        setMediaUrls((prev) => [...prev, res.data.url]);
+                      }
+                    } catch (err: any) {
+                      setErrorMsg(err.message || err.response?.data?.error || 'Lỗi khi tải ảnh lên');
+                    } finally {
+                      setUploadingMedia(false);
+                      setUploadProgressText('');
+                    }
+                  }}
+                  disabled={uploadingMedia}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: uploadingMedia ? '#E2E8F0' : '#F3F4F6',
+                    borderWidth: 1,
+                    borderColor: '#CBD5E1',
+                    paddingHorizontal: 14,
+                    paddingVertical: 9,
+                    borderRadius: 10,
+                  }}
+                >
+                  {uploadingMedia ? (
+                    <ActivityIndicator size="small" color="#1E293B" />
+                  ) : (
+                    <ImageIcon size={16} color="#1E293B" />
+                  )}
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B' }}>
+                    {uploadingMedia ? (uploadProgressText || 'Đang tải lên...') : 'Chọn ảnh từ thư viện'}
+                  </Text>
+                </Pressable>
               )}
 
               {/* Google Maps Link Input */}
@@ -1156,6 +1208,7 @@ export default function CreatePostModal({
           </View>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

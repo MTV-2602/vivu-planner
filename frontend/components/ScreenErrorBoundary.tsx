@@ -1,6 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
-import { AlertTriangle, RotateCcw, Copy } from 'lucide-react-native';
+import { AlertTriangle, RotateCcw } from 'lucide-react-native';
 
 interface Props {
   children: ReactNode;
@@ -49,6 +49,8 @@ export default class ScreenErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      // Chỉ hiện chi tiết lỗi kỹ thuật trong môi trường phát triển
+      const showDetails = __DEV__;
       const errorMsg = this.state.error?.message || 'Không xác định được nguyên nhân lỗi';
       const stackTrace = this.state.error?.stack || this.state.errorInfo?.componentStack || '';
 
@@ -96,46 +98,51 @@ export default class ScreenErrorBoundary extends Component<Props, State> {
                   {this.props.fallbackTitle || 'Đã phát hiện lỗi giao diện'}
                 </Text>
                 <Text style={{ fontSize: 11, color: '#6B7280' }}>
-                  Hệ thống đã bẫy lỗi và ngăn màn hình bị đen
+                  {showDetails
+                    ? 'Hệ thống đã bẫy lỗi và ngăn màn hình bị đen'
+                    : 'Màn hình gặp sự cố không mong muốn. Thử tải lại để tiếp tục.'}
                 </Text>
               </View>
             </View>
 
-            {/* Error Message Box */}
-            <View
-              style={{
-                backgroundColor: '#FFF1F2',
-                borderRadius: 12,
-                padding: 12,
-                borderWidth: 1,
-                borderColor: '#FECDD3',
-                marginBottom: 12,
-              }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#BE123C', marginBottom: 4 }}>
-                Chi tiết thông báo lỗi:
-              </Text>
-              <Text style={{ fontSize: 12, color: '#881337', fontFamily: 'monospace' }}>
-                {errorMsg}
-              </Text>
-            </View>
+            {/* Chi tiết lỗi — chỉ hiện trong DEV */}
+            {showDetails && (
+              <>
+                <View
+                  style={{
+                    backgroundColor: '#FFF1F2',
+                    borderRadius: 12,
+                    padding: 12,
+                    borderWidth: 1,
+                    borderColor: '#FECDD3',
+                    marginBottom: 12,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#BE123C', marginBottom: 4 }}>
+                    Chi tiết thông báo lỗi:
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#881337', fontFamily: 'monospace' }}>
+                    {errorMsg}
+                  </Text>
+                </View>
 
-            {/* Stack trace */}
-            {stackTrace ? (
-              <ScrollView
-                style={{
-                  backgroundColor: '#1E293B',
-                  borderRadius: 12,
-                  padding: 10,
-                  maxHeight: 180,
-                  marginBottom: 14,
-                }}
-              >
-                <Text style={{ fontSize: 10, color: '#94A3B8', fontFamily: 'monospace' }}>
-                  {stackTrace}
-                </Text>
-              </ScrollView>
-            ) : null}
+                {stackTrace ? (
+                  <ScrollView
+                    style={{
+                      backgroundColor: '#1E293B',
+                      borderRadius: 12,
+                      padding: 10,
+                      maxHeight: 180,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <Text style={{ fontSize: 10, color: '#94A3B8', fontFamily: 'monospace' }}>
+                      {stackTrace}
+                    </Text>
+                  </ScrollView>
+                ) : null}
+              </>
+            )}
 
             {/* Action button */}
             <Pressable

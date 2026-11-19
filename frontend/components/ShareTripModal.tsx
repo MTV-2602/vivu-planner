@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Modal, View, Text, TouchableOpacity, FlatList,
-  ActivityIndicator, StyleSheet, Alert, Platform, ScrollView, Share,
+  ActivityIndicator, StyleSheet, Platform, ScrollView, Share,
 } from 'react-native';
+import notify from '../lib/notify';
 import { X, Users, Crown, Clock, Trash2, Link, RefreshCw } from 'lucide-react-native';
 import { api } from '../lib/api';
+import { getSiteOrigin } from '../constants';
 
 interface Collaborator {
   id: string;
@@ -25,7 +27,7 @@ interface Owner {
   is_premium: boolean;
 }
 
-const isValidVivuCode = (code: any): boolean => typeof code === 'string' && /^VIVU-[0-9]{3,}$/i.test(code.trim());
+const isValidVivuCode = (code: any): boolean => typeof code === 'string' && /^VIVU-[0-9A-Z]{3,}$/i.test(code.trim());
 
 interface ShareTripModalProps {
   visible: boolean;
@@ -52,12 +54,7 @@ export default function ShareTripModal({
   const [kicking, setKicking] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{type: 'kick'|'leave', targetId?: string, targetName?: string} | null>(null);
 
-  const getOrigin = () => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-      return window.location.origin;
-    }
-    return 'https://vivuai.vercel.app';
-  };
+  const getOrigin = () => getSiteOrigin();
 
   const handleCreateInvite = useCallback(async (isSilent?: any) => {
     const silent = isSilent === true;
@@ -75,13 +72,16 @@ export default function ShareTripModal({
       console.error('handleCreateInvite error:', e);
       if (!silent) {
         const msg = e?.response?.data?.error || 'Không thể tạo mã mời';
-        Alert.alert('Lỗi', msg);
+        notify.error(msg);
       }
       return null;
     } finally {
       if (!silent) setCreating(false);
     }
   }, [tripId]);
+
+  // Chỉ tự tạo mã ngầm tối đa 1 lần cho mỗi lần mở modal (mỗi POST sinh một mã mới → tránh spam mã)
+  const autoCreateAttemptedRef = useRef(false);
 
   const fetchCollaborators = useCallback(async () => {
     if (!tripId) return;
@@ -101,9 +101,9 @@ export default function ShareTripModal({
         setInviteToken(formattedCode);
         const webUrl = `${getOrigin()}/join/${formattedCode}`;
         setInviteUrl(Platform.OS === 'web' ? webUrl : (data.invite_url || `vivuplanner://join/${formattedCode}`));
-      } else if (isOwner) {
-        // Nếu activeCode nhận về từ API cũ không phải dạng VIVU- (ví dụ vẫn dính chuỗi hex 32 ký tự cũ):
-        // Tự động gọi handleCreateInvite() ngầm để lấy ngay mã VIVU-XXX mới từ backend
+      } else if (isOwner && !autoCreateAttemptedRef.current) {
+        // Chưa có mã VIVU hợp lệ (ví dụ chuyến cũ chỉ có token hex): tạo ngầm 1 mã mới, chỉ 1 lần mỗi lần mở modal
+        autoCreateAttemptedRef.current = true;
         await handleCreateInvite(true);
       }
     } catch (e) {
@@ -117,6 +117,7 @@ export default function ShareTripModal({
     if (visible && tripId) {
       setInviteUrl(null);
       setInviteToken(null);
+      autoCreateAttemptedRef.current = false;
       fetchCollaborators();
     }
   }, [visible, tripId, fetchCollaborators]);
@@ -176,11 +177,7 @@ export default function ShareTripModal({
         onMemberKicked?.();
       } catch (e: any) {
         const msg = e?.response?.data?.error || 'Không thể xóa thành viên';
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.alert(msg);
-        } else {
-          Alert.alert('Lỗi', msg);
-        }
+        notify.error(msg);
       } finally {
         setKicking(null);
       }
@@ -191,11 +188,7 @@ export default function ShareTripModal({
         onClose();
       } catch (e: any) {
         const msg = e?.response?.data?.error || 'Không thể rời nhóm';
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.alert(msg);
-        } else {
-          Alert.alert('Lỗi', msg);
-        }
+        notify.error(msg);
       }
     }
   };
@@ -232,7 +225,7 @@ export default function ShareTripModal({
                   <View style={styles.sectionHeader}>
                     <Link size={14} color="#0f4c5c" />
                     <Text style={styles.sectionTitle}>Mã và Link tham gia</Text>
-                    <Text style={styles.expireNote}>(hết hạn sau 7 ngày)</Text>
+                    <Text style={styles.expireNote}>(hết hạn sau 30 ngày)</Text>
                   </View>
 
                   {/* Khung Mã tham gia */}

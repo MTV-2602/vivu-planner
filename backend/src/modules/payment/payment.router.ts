@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { requireAuth } from '../../middleware/requireAuth';
 import { requireAdmin } from '../../middleware/requireAdmin';
 import { supabaseAdmin } from '../../config/supabase';
+import { broadcastRealtime } from '../../utils/realtime';
 import {
   createPayOSOrder,
   verifyPayOSWebhook,
@@ -13,6 +14,7 @@ import {
   queryMoMoOrderInfo,
   activateOrderById,
   grantCreditsToUser,
+  broadcastOrderActivated,
   ORDER_EXPIRATION_MS,
 } from './payment.service';
 import { generateBookingConfirmationHTML } from '../email/email.service';
@@ -888,7 +890,7 @@ router.get('/bookings/confirm/:token', async (req: Request, res: Response) => {
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-export async function activatePremiumForUser(userId: string, planKey: string = 'monthly') {
+export async function activatePremiumForUser(userId: string, planKey: string = 'monthly', order?: { id?: string | null; order_code?: string | number | null }) {
   // Đọc cấu hình gói cước từ Database (KHÔNG lọc is_active để gói bị ẩn vẫn kích hoạt được)
   const { data: dbPlan, error: planErr } = await supabaseAdmin
     .from('pricing_plans')
@@ -905,18 +907,11 @@ export async function activatePremiumForUser(userId: string, planKey: string = '
 
   await grantCreditsToUser(userId, grantCredits, durationDays);
 
-  try {
-    const channel = supabaseAdmin.channel(`user_channel_${userId}`);
-    await channel.send({
-      type: 'broadcast',
-      event: 'user_updated',
-      payload: {
-        userId,
-        timestamp: Date.now(),
-      },
-    });
-  } catch (e: any) {
-    console.warn('[Payment] Realtime broadcast error:', e.message);
+  // Phát user_updated cho kênh người dùng (và kênh đơn hàng nếu biết đơn kích hoạt)
+  if (order) {
+    await broadcastOrderActivated({ ...order, user_id: userId });
+  } else {
+    await broadcastRealtime(`user_channel_${userId}`, 'user_updated', { userId, timestamp: Date.now() });
   }
 
   return { success: true };

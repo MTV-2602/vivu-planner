@@ -381,6 +381,16 @@ export default function GoogleMapsRoutePlanner({
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const justSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copiedLinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Dọn timer khi unmount
+  useEffect(() => {
+    return () => {
+      if (justSavedTimerRef.current) clearTimeout(justSavedTimerRef.current);
+      if (copiedLinkTimerRef.current) clearTimeout(copiedLinkTimerRef.current);
+    };
+  }, []);
   const [showDetails, setShowDetails] = useState(false);
 
   // Đồng bộ khi prop waypoints thay đổi từ ngoài
@@ -490,8 +500,12 @@ export default function GoogleMapsRoutePlanner({
     setIsSaving(true);
     try {
       await onSaveOrder(waypoints);
+      if (justSavedTimerRef.current) clearTimeout(justSavedTimerRef.current);
       setJustSaved(true);
-      setTimeout(() => setJustSaved(false), 3000);
+      justSavedTimerRef.current = setTimeout(() => {
+        setJustSaved(false);
+        justSavedTimerRef.current = null;
+      }, 3000);
     } catch (err) {
       console.error('Save order failed:', err);
     } finally {
@@ -519,8 +533,12 @@ export default function GoogleMapsRoutePlanner({
   const handleCopyLink = () => {
     if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(googleMapsDirectionsUrl).then(() => {
+        if (copiedLinkTimerRef.current) clearTimeout(copiedLinkTimerRef.current);
         setCopiedLink(true);
-        setTimeout(() => setCopiedLink(false), 2500);
+        copiedLinkTimerRef.current = setTimeout(() => {
+          setCopiedLink(false);
+          copiedLinkTimerRef.current = null;
+        }, 2500);
       });
     } else {
       Linking.openURL(googleMapsDirectionsUrl);

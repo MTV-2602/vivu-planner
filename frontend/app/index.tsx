@@ -1,16 +1,12 @@
 import { Redirect } from 'expo-router';
-import { ActivityIndicator, View } from 'react-native';
 import { useAuth } from '../hooks/useAuth';
+import BrandSplash from '../components/loading/BrandSplash';
 
 export default function Index() {
   const { session, isAdmin, loading } = useAuth();
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <BrandSplash />;
   }
 
   if (!session) return <Redirect href="/landing" />;

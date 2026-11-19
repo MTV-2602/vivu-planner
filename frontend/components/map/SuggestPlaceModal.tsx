@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, Modal, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, Pressable, Modal, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { X, MapPin, Sparkles, Send } from 'lucide-react-native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
@@ -60,6 +60,8 @@ export default function SuggestPlaceModal({ visible, onClose, cityName = 'Đà L
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      {/* Edge-to-edge (SDK 56): cửa sổ không tự co khi bàn phím mở → KeyboardAvoidingView tự né */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
         <View
           style={{
@@ -92,7 +94,7 @@ export default function SuggestPlaceModal({ visible, onClose, cityName = 'Đà L
             Chia sẻ quán ăn, quán cafe hoặc địa điểm ngách chuẩn bản địa tại <Text style={{ fontFamily: 'BeVietnamPro_700Bold', color: '#1B2420' }}>{cityName}</Text> để Admin duyệt lên bản đồ!
           </Text>
 
-          <ScrollView contentContainerStyle={{ gap: 12 }} style={{ maxHeight: 400 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }} style={{ maxHeight: 400 }}>
             {/* Tên địa điểm */}
             <View style={{ gap: 4 }}>
               <Text style={{ fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 12, color: '#1B2420' }}>Tên địa điểm *</Text>
@@ -217,6 +219,7 @@ export default function SuggestPlaceModal({ visible, onClose, cityName = 'Đà L
           </Pressable>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

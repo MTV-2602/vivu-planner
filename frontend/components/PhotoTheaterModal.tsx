@@ -9,7 +9,7 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
-  Alert,
+  Share,
   useWindowDimensions,
   Linking,
 } from 'react-native';
@@ -37,7 +37,10 @@ import {
 } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { BRAND_COLORS, POST_CATEGORIES } from '../constants';
+import { BRAND_COLORS, POST_CATEGORIES, APP_ROUTES, getSiteOrigin } from '../constants';
+import { notify } from '../lib/notify';
+import { parseErrorMessage } from '../lib/error';
+import { pickImageNative } from '../lib/pickImage';
 import ReactionsListModal from './ReactionsListModal';
 import ReportModal from './ReportModal';
 
@@ -259,15 +262,28 @@ export default function PhotoTheaterModal({
     if (onShare) {
       onShare(post);
     } else {
-      if (Platform.OS === 'web') {
-        const shareHref = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.href)
-          ? window.location.href
-          : 'https://vivu-planner.vercel.app/bang-tin';
-        if (typeof navigator !== 'undefined' && navigator.clipboard) {
-          navigator.clipboard.writeText(shareHref);
-        }
+      sharePostFallback();
+    }
+  };
+
+  // Chia sẻ khi không có onShare: native dùng Share sheet, web sao chép liên kết bài viết
+  const sharePostFallback = async () => {
+    const shareUrl = `${getSiteOrigin()}${APP_ROUTES.FEED}?post=${encodeURIComponent(post?.id || '')}`;
+    try {
+      if (Platform.OS !== 'web') {
+        await Share.share({ message: `Bài viết "${post?.place_name || 'ViVu'}" trên ViVu Planner
+${shareUrl}` });
+        return;
       }
-      Alert.alert('Chia sẻ thành công', `Đã sao chép liên kết bài viết "${post?.place_name}"!`);
+      const nav: any = typeof navigator !== 'undefined' ? navigator : null;
+      if (nav?.clipboard?.writeText) {
+        await nav.clipboard.writeText(shareUrl);
+        notify.success('Đã sao chép liên kết bài viết');
+      } else {
+        notify.info(`Liên kết bài viết: ${shareUrl}`);
+      }
+    } catch (err: any) {
+      notify.error(parseErrorMessage(err, 'Không thể chia sẻ bài viết.'));
     }
   };
 
@@ -359,7 +375,7 @@ export default function PhotoTheaterModal({
   // Reactions interaction
   const handleSelectReaction = async (reactionId: string) => {
     if (!currentUser) {
-      Alert.alert('Thông báo', 'Vui lòng đăng nhập để thả cảm xúc.');
+      notify.info('Vui lòng đăng nhập để thả cảm xúc.');
       return;
     }
 
@@ -391,7 +407,7 @@ export default function PhotoTheaterModal({
         await api.post(`/posts/${post.id}/react`, { type: reactionId, reaction: reactionId });
         queryClient.invalidateQueries({ queryKey: ['community-posts'] });
       } catch (err: any) {
-        Alert.alert('Lỗi', err.response?.data?.error || 'Không thể thả cảm xúc');
+        notify.error(parseErrorMessage(err, 'Không thể thả cảm xúc, vui lòng thử lại.'));
       }
     }
   };
@@ -413,7 +429,7 @@ export default function PhotoTheaterModal({
             setCommentMediaAttachment({ type: 'image', url: res.data.url });
           }
         } catch (err: any) {
-          Alert.alert('Lỗi', err.response?.data?.error || 'Không thể tải ảnh đính kèm');
+          notify.error(parseErrorMessage(err, 'Không thể tải ảnh đính kèm lên.'));
         } finally {
           setIsUploadingMedia(false);
         }
@@ -435,7 +451,26 @@ export default function PhotoTheaterModal({
       };
       input.click();
     } else {
-      Alert.alert('Thông báo', 'Tính năng tải ảnh hỗ trợ trên trình duyệt web');
+      // Native: chọn ảnh bằng expo-image-picker, gửi cùng endpoint base64 như web
+      (async () => {
+        try {
+          const picked = await pickImageNative();
+          if (!picked) return;
+          setIsUploadingMedia(true);
+          const res = await api.post('/posts/upload-media', {
+            fileName: picked.fileName,
+            fileType: picked.fileType,
+            base64: picked.base64,
+          });
+          if (res.data?.url) {
+            setCommentMediaAttachment({ type: 'image', url: res.data.url });
+          }
+        } catch (err: any) {
+          notify.error(parseErrorMessage(err, 'Không thể tải ảnh đính kèm lên.'));
+        } finally {
+          setIsUploadingMedia(false);
+        }
+      })();
     }
   };
 
@@ -446,7 +481,7 @@ export default function PhotoTheaterModal({
     if (!text && !media) return;
 
     if (!currentUser) {
-      Alert.alert('Thông báo', 'Vui lòng đăng nhập để bình luận.');
+      notify.info('Vui lòng đăng nhập để bình luận.');
       return;
     }
 
@@ -479,7 +514,7 @@ export default function PhotoTheaterModal({
       setCommentMediaAttachment(null);
       setActiveCommentToolbar(null);
     } catch (err: any) {
-      Alert.alert('Lỗi', err.response?.data?.error || 'Không thể đăng bình luận');
+      notify.error(parseErrorMessage(err, 'Không thể đăng bình luận, vui lòng thử lại.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -497,7 +532,7 @@ export default function PhotoTheaterModal({
       setLocalComments((prev) => prev.filter((c) => c.id !== commentId));
       setCommentsCount((prev) => Math.max(0, prev - 1));
     } catch (err: any) {
-      Alert.alert('Lỗi', err.response?.data?.error || 'Không thể xóa bình luận');
+      notify.error(parseErrorMessage(err, 'Không thể xóa bình luận, vui lòng thử lại.'));
     }
   };
 
@@ -1656,15 +1691,7 @@ export default function PhotoTheaterModal({
                   if (onShare) {
                     onShare(post);
                   } else {
-                    if (Platform.OS === 'web') {
-                      const shareHref = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.href)
-                        ? window.location.href
-                        : 'https://vivu-planner.vercel.app/bang-tin';
-                      if (typeof navigator !== 'undefined' && navigator.clipboard) {
-                        navigator.clipboard.writeText(shareHref);
-                      }
-                    }
-                    Alert.alert('Chia sẻ thành công', `Đã sao chép liên kết bài viết "${post.place_name}"!`);
+                    sharePostFallback();
                   }
                 }}
                 style={({ pressed }) => [{
@@ -2381,7 +2408,7 @@ export default function PhotoTheaterModal({
     onClose={() => setShowReportModal(false)}
     onSuccess={() => {
       setShowReportModal(false);
-      Alert.alert('Thành công', 'Báo cáo của bạn đã được gửi tới Ban quản trị ViVu.');
+      notify.success('Đã gửi báo cáo tới Ban quản trị ViVu.');
     }}
   />
 

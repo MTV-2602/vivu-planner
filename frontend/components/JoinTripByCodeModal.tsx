@@ -152,7 +152,7 @@ export default function JoinTripByCodeModal({
           {/* Body */}
           <View style={styles.body}>
             <Text style={styles.description}>
-              Nhập Mã tham gia (ví dụ: <Text style={styles.highlightText}>VIVU-789</Text>) hoặc dán toàn bộ đường link do bạn bè chia sẻ để cùng lên lịch trình.
+              Nhập Mã tham gia (ví dụ: <Text style={styles.highlightText}>VIVU-AB3K9M</Text>) hoặc dán toàn bộ đường link do bạn bè chia sẻ để cùng lên lịch trình.
             </Text>
 
             {/* Error & Success Messages */}
@@ -174,9 +174,9 @@ export default function JoinTripByCodeModal({
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Mã tham gia hoặc link mời:</Text>
               <TextInput
-                testID="input-join-trip-code"
+                testID="input-join-code"
                 style={styles.input}
-                placeholder="VD: VIVU-789 hoặc dán link mời..."
+                placeholder="VD: VIVU-AB3K9M hoặc dán link mời..."
                 placeholderTextColor="#9CA3AF"
                 value={rawInput}
                 onChangeText={(text) => {
@@ -193,7 +193,7 @@ export default function JoinTripByCodeModal({
 
             {/* Action Buttons */}
             <TouchableOpacity
-              testID="btn-submit-join-trip"
+              testID="btn-submit-join-code"
               onPress={handleJoin}
               disabled={loading}
               style={[styles.submitBtn, loading && styles.submitBtnDisabled]}

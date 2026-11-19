@@ -11,7 +11,7 @@ import {
   ShieldCheck, CreditCard, Gift, Calendar,
 } from 'lucide-react-native';
 import { api } from '../lib/api';
-import { supabase } from '../lib/supabase';
+import { useRealtimeChannel } from '../lib/realtime';
 import { BRAND_COLORS } from '../constants';
 import {
   normalizePlans,
@@ -53,6 +53,7 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
   const [errorMessage, setErrorMessage] = useState('');
   const [timeLeft, setTimeLeft] = useState(900); // 15 phút đếm ngược (khớp PayOS & MoMo)
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleCopy = async (text: string, field: string) => {
     try {
@@ -64,8 +65,12 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
           title: 'Sao chép thông tin thanh toán',
         });
       }
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
       setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 2000);
+      copiedTimerRef.current = setTimeout(() => {
+        setCopiedField(null);
+        copiedTimerRef.current = null;
+      }, 2000);
     } catch {}
   };
 
@@ -98,6 +103,13 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
     return normalizePlans(rawPlansData).filter((p) => p.is_active !== false);
   }, [rawPlansData]);
 
+  // Dọn timer copy khi unmount
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
+
   // Tự động chọn plan đầu tiên nếu chưa chọn hoặc plan đang chọn không tồn tại trong danh sách
   useEffect(() => {
     if (plans.length > 0) {
@@ -112,33 +124,10 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
     return plans.find((p) => p.id === selectedPlan) || plans[0] || null;
   }, [plans, selectedPlan]);
 
-  // Lắng nghe thay đổi giá từ Supabase Realtime qua broadcast channel pricing_realtime
-  useEffect(() => {
-    let channel: any = null;
-    try {
-      channel = supabase
-        .channel('pricing_realtime')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'pricing_plans' },
-          () => {
-            refetchPlans();
-          }
-        )
-        .on('broadcast', { event: 'plans_updated' }, () => {
-          refetchPlans();
-        })
-        .subscribe();
-    } catch (err) {
-      console.warn('[Realtime] PremiumModal subscribe failed:', err);
-    }
-
-    return () => {
-      try {
-        if (channel) supabase.removeChannel(channel);
-      } catch (err) {}
-    };
-  }, [refetchPlans]);
+  // Lắng nghe server broadcast plans_updated trên topic pricing_realtime (qua realtime hub dùng chung)
+  useRealtimeChannel(visible ? 'pricing_realtime' : null, {
+    onBroadcast: { plans_updated: () => { refetchPlans(); } },
+  });
 
   // Lấy lịch sử giao dịch
   const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery<{ success: boolean; orders: OrderHistoryItem[] }>({
@@ -234,30 +223,30 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
     };
   }, [visible, orderData?.orderId, orderData?.orderCode, activated]);
 
-  // Lắng nghe Realtime Broadcast sự kiện cập nhật tài khoản
-  useEffect(() => {
-    if (!visible || !orderData || activated) return;
-
-    let channel: any = null;
-    try {
-      const targetCode = orderData.orderId || orderData.orderCode;
-      channel = supabase
-        .channel(`payment_order_${targetCode}`)
-        .on('broadcast', { event: 'user_updated' }, async () => {
-          setActivated(true);
-          await invalidateStatusRef.current?.();
-          onActivatedRef.current?.();
-          onSuccessRef.current?.();
-        })
-        .subscribe();
-    } catch {}
-
-    return () => {
-      if (channel) {
-        try { supabase.removeChannel(channel); } catch {}
-      }
-    };
-  }, [visible, orderData?.orderId, orderData?.orderCode, activated]);
+  // Lắng nghe Realtime Broadcast sự kiện cập nhật tài khoản (server phát trên cả orderId và orderCode)
+  const paymentHandledRef = useRef(false);
+  paymentHandledRef.current = activated;
+  const listenPayment = Boolean(visible && orderData && !activated);
+  const paymentHandlers = {
+    onBroadcast: {
+      user_updated: async () => {
+        // Server phát trên 2 topic → chỉ xử lý lần đầu
+        if (paymentHandledRef.current) return;
+        paymentHandledRef.current = true;
+        setActivated(true);
+        await invalidateStatusRef.current?.();
+        onActivatedRef.current?.();
+        onSuccessRef.current?.();
+      },
+    },
+  };
+  useRealtimeChannel(listenPayment && orderData?.orderId ? `payment_order_${orderData.orderId}` : null, paymentHandlers);
+  useRealtimeChannel(
+    listenPayment && orderData?.orderCode && String(orderData.orderCode) !== String(orderData.orderId)
+      ? `payment_order_${orderData.orderCode}`
+      : null,
+    paymentHandlers
+  );
 
   const handleCreateOrder = async () => {
     if (!selectedPlanObj) return;

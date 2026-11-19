@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, Image, RefreshControl, Platform, TextInput, Alert, Modal, Linking } from 'react-native';
+import { View, Text, ScrollView, Pressable, Image, RefreshControl, Platform, TextInput, Modal, Linking } from 'react-native';
+import notify from '../../lib/notify';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../hooks/useAuth';
-import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
 import { User, MapPin, Calendar, Heart, ArrowLeft, LogOut, Sparkles, ChevronRight, ChevronLeft, Star, Trash2, Plus, Tag, X, ExternalLink, ThumbsUp, MessageSquare, Camera, Edit3, KeyRound, Lock } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import PageSkeleton from '../../components/loading/PageSkeleton';
 import { PREFERENCE_OPTIONS, APP_ROUTES, POST_CATEGORIES } from '../../constants';
 import CreatePostModal from '../../components/CreatePostModal';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -111,14 +112,10 @@ export default function ProfileScreen() {
     if (!user?.id) return;
     try {
       setLoadingTrips(true);
-      const { data, error } = await supabase
-        .from('trips')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        setTrips(data);
+      // Dùng API thay vì truy vấn Supabase trực tiếp để lấy cả chuyến đi cộng tác
+      const res = await api.get('/trips');
+      if (res.data) {
+        setTrips(res.data);
       }
     } catch (err) {
       console.error('Lỗi lấy danh sách chuyến đi:', err);
@@ -603,7 +600,7 @@ export default function ProfileScreen() {
             </View>
 
             {loadingTrips ? (
-              <ActivityIndicator size="small" color="#0f4c5c" style={{ marginVertical: 20 }} />
+              <PageSkeleton rows={2} showHeader={false} label="Đang tải chuyến đi của bạn" testID="skeleton-profile-trips" />
             ) : trips.length === 0 ? (
               <View
                 style={{
@@ -695,7 +692,7 @@ export default function ProfileScreen() {
             </View>
 
             {loadingPosts ? (
-              <ActivityIndicator size="small" color="#0f4c5c" style={{ marginVertical: 20 }} />
+              <PageSkeleton rows={2} showHeader={false} label="Đang tải bài đăng của bạn" testID="skeleton-profile-posts" />
             ) : myPosts.length === 0 ? (
               <View
                 style={{
@@ -1130,7 +1127,7 @@ export default function ProfileScreen() {
                 setMyPosts((prev) => prev.filter((p) => p.id !== postToDelete.id));
                 setPostToDelete(null);
               } catch (err: any) {
-                Alert.alert('Lỗi', err.response?.data?.error || 'Không thể xóa');
+                notify.error(err.response?.data?.error || 'Không thể xóa bài đánh giá');
                 setPostToDelete(null);
               }
             }

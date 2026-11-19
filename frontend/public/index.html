@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>%WEB_TITLE%</title>
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+    <!-- Boot splash: hiển thị ngay trước khi bundle JS tải xong, xóa bởi app/_layout.tsx -->
+    <style id="vivu-boot-style">
+      #vivu-boot {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #FBF5EA;
+      }
+      .vivu-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+      }
+      .vivu-logo {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: #0f4c5c;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .vivu-name {
+        font-size: 24px;
+        font-weight: 700;
+        color: #0f4c5c;
+        letter-spacing: -0.3px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      .vivu-track {
+        width: 160px;
+        height: 4px;
+        border-radius: 2px;
+        background: rgba(15, 76, 92, 0.12);
+        overflow: hidden;
+      }
+      .vivu-bar {
+        width: 56px;
+        height: 4px;
+        border-radius: 2px;
+        background: #0f4c5c;
+        animation: vivu-slide 1.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+      }
+      .vivu-msg {
+        font-size: 14px;
+        color: #3F4F45;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      @keyframes vivu-slide {
+        0%   { transform: translateX(-56px); }
+        100% { transform: translateX(160px); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .vivu-bar {
+          animation: none;
+          transform: translateX(52px);
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Boot splash: hiển thị ngay trên đầu, bị xóa khi React mount -->
+    <div id="vivu-boot" aria-hidden="true">
+      <div class="vivu-card">
+        <div class="vivu-logo">
+          <!-- Biểu tượng la bàn SVG nội tuyến, nhất quán với BrandSplash.tsx -->
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle cx="16" cy="16" r="11" stroke="white" stroke-width="2"/>
+            <circle cx="16" cy="16" r="2.5" fill="white"/>
+            <polygon points="16,6 18,15 16,13.5 14,15" fill="white"/>
+            <polygon points="16,26 14,17 16,18.5 18,17" fill="rgba(255,255,255,0.5)"/>
+            <polygon points="6,16 15,14 13.5,16 15,18" fill="rgba(255,255,255,0.5)"/>
+            <polygon points="26,16 17,18 18.5,16 17,14" fill="white"/>
+          </svg>
+        </div>
+        <span class="vivu-name">ViVu Planner</span>
+        <div class="vivu-track" role="progressbar" aria-label="Đang tải">
+          <div class="vivu-bar"></div>
+        </div>
+        <span class="vivu-msg">Đang chuẩn bị chuyến đi của bạn</span>
+      </div>
+    </div>
+    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <!-- The root element for your Expo app. -->
+    <div id="root"></div>
+  </body>
+</html>

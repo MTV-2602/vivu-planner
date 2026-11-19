@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext, createElement, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, getRoleFromToken } from '../lib/supabase';
-import { UserRole, isUserPremium } from '../constants';
+import { useQueryClient } from '@tanstack/react-query';
+import { UserRole, isUserPremium, getSiteOrigin } from '../constants';
+import { clearCache } from '../lib/cache';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -36,7 +38,30 @@ export interface AuthState {
   unlinkGoogleAccount: () => Promise<void>;
 }
 
+const AuthContext = createContext<AuthState | null>(null);
+
+/**
+ * Đọc trạng thái xác thực dùng chung từ AuthProvider (chỉ 1 phiên lắng nghe auth cho toàn app).
+ */
 export function useAuth(): AuthState {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error('useAuth phải được dùng bên trong <AuthProvider>');
+  }
+  return ctx;
+}
+
+/**
+ * Provider quản lý session/profile tập trung — mount một lần ở app/_layout.tsx
+ * (bên trong QueryClientProvider để có thể xóa cache truy vấn khi đăng xuất).
+ */
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const value = useAuthState();
+  return createElement(AuthContext.Provider, { value }, children);
+}
+
+function useAuthState(): AuthState {
+  const queryClient = useQueryClient();
   const [session, setSession]   = useState<Session | null>(null);
   const [profile, setProfile]   = useState<UserProfile | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -62,7 +87,7 @@ export function useAuth(): AuthState {
         if (user) {
           const newProfile: UserProfile = {
             id: user.id,
-            full_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Nguời dùng ViVu',
+            full_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Người dùng ViVu',
             avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
             phone: null,
             role: UserRole.USER,
@@ -163,6 +188,9 @@ export function useAuth(): AuthState {
     await supabase.auth.signOut();
     setSession(null);
     setProfile(null);
+    // Xóa dữ liệu của người dùng trước để tránh lộ sang tài khoản kế tiếp
+    await clearCache();
+    queryClient.clear();
   };
 
   const refreshProfile = async () => {
@@ -181,9 +209,7 @@ export function useAuth(): AuthState {
   };
 
   const linkGoogleAccount = async () => {
-    const origin = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) 
-      ? window.location.origin 
-      : 'https://vivu-planner.vercel.app';
+    const origin = getSiteOrigin();
     const redirectTo = Platform.OS === 'web'
       ? `${origin}/dang-nhap`
       : Linking.createURL('dang-nhap');

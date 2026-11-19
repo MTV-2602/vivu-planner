@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, createContext, useContext } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react-native';
 import { BRAND_COLORS } from '../../../constants';
 
@@ -78,6 +79,7 @@ export function ToastBanner({
   toast: ToastMessage;
   onClose: () => void;
 }) {
+  const insets = useContext(SafeAreaInsetsContext) ?? { top: 0, bottom: 0, left: 0, right: 0 };
   const tone = toast.tone || 'info';
 
   const getStyle = () => {
@@ -119,7 +121,7 @@ export function ToastBanner({
     <View
       style={{
         position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
-        top: 24,
+        top: insets.top + 12,
         right: 24,
         zIndex: 999999,
         maxWidth: 420,

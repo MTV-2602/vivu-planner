@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, Pressable, Modal,
   ActivityIndicator, Platform, ScrollView, Alert,
@@ -42,6 +42,7 @@ export default function ProfileModal({ visible, onClose }: ProfileModalProps) {
   const [linkingGoogle, setLinkingGoogle] = useState(false);
 
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -63,9 +64,20 @@ export default function ProfileModal({ visible, onClose }: ProfileModalProps) {
     }
   }, [visible, profile]);
 
+  // Dọn timer khi unmount
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
   const showToast = (text: string, type: 'success' | 'error') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToastMsg({ text, type });
-    setTimeout(() => setToastMsg(null), 4000);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMsg(null);
+      toastTimerRef.current = null;
+    }, 4000);
   };
 
   const handleUpdateProfile = async () => {

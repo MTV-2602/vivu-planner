@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable, Modal, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, Modal, ScrollView, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
 import { X, User, Mail, Phone, Users, Check, ShoppingBag } from 'lucide-react-native';
 import { api } from '../lib/api';
-import { BRAND_COLORS } from '../constants';
+import { BRAND_COLORS, SITE_URL } from '../constants';
 
 export interface BookableItem {
   id: string;
@@ -95,6 +95,8 @@ export default function BookingModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
+      {/* Edge-to-edge (SDK 56): cửa sổ không tự co khi bàn phím mở → KeyboardAvoidingView tự né */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
         <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '95%' }}>
           {/* Header */}
@@ -108,7 +110,7 @@ export default function BookingModal({
             <Pressable onPress={handleClose}><X size={22} color="#888" /></Pressable>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24, paddingBottom: 40 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24, paddingBottom: 40 }}>
             {step === 'form' && (
               <>
                 {/* Selected Items Summary */}
@@ -208,7 +210,7 @@ export default function BookingModal({
                   ) : (
                     <View style={{ padding: 20, alignItems: 'center' }}>
                       <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>
-                        Mở vivu-planner.vercel.app để xem email preview đầy đủ
+                        Mở {SITE_URL.replace(/^https?:\/\//, '')} để xem email preview đầy đủ
                       </Text>
                     </View>
                   )}
@@ -230,6 +232,7 @@ export default function BookingModal({
           </ScrollView>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

@@ -8,13 +8,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import Svg, { Path } from 'react-native-svg';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Compass, Sparkles, AlertCircle, ArrowRight, Check, KeyRound, Mail, X, CheckCircle2, Lock } from 'lucide-react-native';
 import { supabase, decodeJwtRole } from '../lib/supabase';
 import { api } from '../lib/api';
 import { parseErrorMessage } from '../lib/error';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BRAND_COLORS, APP_ROUTES, UI_BREAKPOINTS, UserRole } from '../constants';
+import { BRAND_COLORS, APP_ROUTES, UI_BREAKPOINTS, UserRole, getSiteOrigin } from '../constants';
+import { consumePendingRedirect } from '../lib/redirect';
 import Turnstile, {
   TurnstileRef,
   getTurnstileSiteKey,
@@ -112,6 +113,8 @@ export default function AuthScreen({ mode }: Props) {
   const turnstileRef = useRef<TurnstileRef>(null);
   const turnstileSiteKey = getTurnstileSiteKey();
   const isMountedRef = useRef(true);
+  const hasNavigatedRef = useRef(false);
+  const { redirect: redirectParam } = useLocalSearchParams<{ redirect?: string }>();
   const exchangedCodesRef = useRef<Set<string>>(new Set());
   const isExchangingCodeRef = useRef<boolean>(false);
   const authHandledRef = useRef<boolean>(false);
@@ -138,7 +141,8 @@ export default function AuthScreen({ mode }: Props) {
 
   useEffect(() => {
     let timer: any;
-    if (showSignupOtpModal && resendCountdown > 0) {
+    // Chỉ tạo 1 interval khi modal mở và đang đếm ngược (không phụ thuộc giá trị đếm từng giây)
+    if (showSignupOtpModal && !canResend) {
       timer = setInterval(() => {
         setResendCountdown((prev) => {
           if (prev <= 1) {
@@ -152,7 +156,7 @@ export default function AuthScreen({ mode }: Props) {
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [showSignupOtpModal, resendCountdown]);
+  }, [showSignupOtpModal, canResend]);
 
   const handleConfirmSignupOtp = async () => {
     const trimmedOtp = signupOtpCode.trim();
@@ -298,24 +302,21 @@ export default function AuthScreen({ mode }: Props) {
   };
 
   const handleNavigateAfterAuth = async (isAdminUser: boolean) => {
+    // Chỉ điều hướng 1 lần dù nhiều listener (onAuthStateChange/getSession/submit) cùng gọi
+    if (hasNavigatedRef.current || !isMountedRef.current) return;
+    hasNavigatedRef.current = true;
     if (isAdminUser) {
       router.replace(APP_ROUTES.ADMIN as any);
       return;
     }
-    try {
-      const redirectUrl = await AsyncStorage.getItem('redirect_after_login');
-      if (redirectUrl) {
-        await AsyncStorage.removeItem('redirect_after_login');
-        router.replace(redirectUrl as any);
-        return;
-      }
-    } catch {}
-    router.replace(APP_ROUTES.TRIPS as any);
+    // Với người dùng thông thường: (auth)/_layout.tsx sẽ tự detect session mới và
+    // gọi consumePendingRedirect → redirect đúng đích. AuthScreen không cần làm gì thêm.
+    // Điều này tránh race condition: hai nơi cùng consume AsyncStorage key một lúc.
   };
 
   const processOAuthUrl = async (url: string): Promise<boolean> => {
     if (!isMountedRef.current || !url) return false;
-    console.log('[Google Auth] Processing OAuth callback URL:', url);
+    if (__DEV__) console.log('[Google Auth] Processing OAuth callback URL:', url);
 
     let code: string | null = null;
     let accessToken: string | null = null;
@@ -401,11 +402,11 @@ export default function AuthScreen({ mode }: Props) {
     // 3. Process PKCE authorization code with single-use guard
     if (code) {
       if (exchangedCodesRef.current.has(code)) {
-        console.log('[Google Auth] Code already exchanged, skipping duplicate:', code);
+        if (__DEV__) console.log('[Google Auth] Code already exchanged, skipping duplicate:', code);
         return false;
       }
       if (isExchangingCodeRef.current) {
-        console.log('[Google Auth] Exchange already in progress, skipping concurrent call');
+        if (__DEV__) console.log('[Google Auth] Exchange already in progress, skipping concurrent call');
         return false;
       }
 
@@ -413,7 +414,7 @@ export default function AuthScreen({ mode }: Props) {
       isExchangingCodeRef.current = true;
 
       try {
-        console.log('[Google Auth] Exchanging authorization code for session...');
+        if (__DEV__) console.log('[Google Auth] Exchanging authorization code for session...');
         const { data: sData, error: sErr } = await supabase.auth.exchangeCodeForSession(code);
         if (sErr) throw sErr;
         if (isMountedRef.current && sData.session) {
@@ -628,9 +629,7 @@ export default function AuthScreen({ mode }: Props) {
       // Supabase signInWithOAuth chuyển hướng trực tiếp sang Google IdP và không hỗ trợ captchaToken client-side.
       // Cơ chế phòng chống bot cho Google OAuth do hạ tầng bảo mật của Google và Supabase OAuth đảm nhiệm.
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        const origin = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin)
-          ? window.location.origin
-          : 'https://vivu-planner.vercel.app';
+        const origin = getSiteOrigin();
         const redirectTo = `${origin}/dang-nhap`;
         const { error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
@@ -646,7 +645,7 @@ export default function AuthScreen({ mode }: Props) {
       } else {
         // Mobile (Android / iOS / Expo Go)
         const redirectUrl = Linking.createURL('dang-nhap');
-        console.log('[Google Auth] Mobile redirectUrl:', redirectUrl);
+        if (__DEV__) console.log('[Google Auth] Mobile redirectUrl:', redirectUrl);
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
@@ -662,9 +661,9 @@ export default function AuthScreen({ mode }: Props) {
         if (error) throw error;
 
         if (data?.url) {
-          console.log('[Google Auth] Opening auth session with url:', data.url);
+          if (__DEV__) console.log('[Google Auth] Opening auth session with url:', data.url);
           const res = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-          console.log('[Google Auth] WebBrowser result:', res.type, res);
+          if (__DEV__) console.log('[Google Auth] WebBrowser result:', res.type, res);
 
           if (res.type === 'success' && res.url) {
             await processOAuthUrl(res.url);
@@ -674,11 +673,11 @@ export default function AuthScreen({ mode }: Props) {
           if (res.type === 'cancel' || res.type === 'dismiss') {
             // Android OS dismisses Chrome Custom Tab when intercepting the deep link intent.
             // Allow a grace period for Linking.addEventListener('url') to deliver the callback.
-            console.log(`[Google Auth] Browser ${res.type}ed. Waiting grace period for deep link...`);
+            if (__DEV__) console.log(`[Google Auth] Browser ${res.type}ed. Waiting grace period for deep link...`);
             await new Promise((resolve) => setTimeout(resolve, 1500));
 
             if (isMountedRef.current && !authHandledRef.current && !isExchangingCodeRef.current) {
-              console.log('[Google Auth] Sign-in cancelled or dismissed by user');
+              if (__DEV__) console.log('[Google Auth] Sign-in cancelled or dismissed by user');
               setGoogleLoading(false);
             }
             return;
@@ -888,18 +887,6 @@ export default function AuthScreen({ mode }: Props) {
             <View style={{ gap: 7 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: '#1B2420' }}>Email</Text>
-                {Boolean(__DEV__) && (
-                  <Pressable
-                    testID="btn-fill-test-pro"
-                    onPress={() => {
-                      setEmail('test_pro@vivuplanner.com');
-                      setPassword('Password123@');
-                    }}
-                    style={{ paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#E8F5E9', borderRadius: 6 }}
-                  >
-                    <Text style={{ fontSize: 11, color: '#0f4c5c', fontWeight: 'bold' }}>⚡ Test PRO</Text>
-                  </Pressable>
-                )}
               </View>
               <TextInput
                 style={fieldStyle('email')}

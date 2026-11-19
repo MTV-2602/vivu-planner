@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import axios from 'axios';
 import { supabaseAdmin } from '../../config/supabase';
+import { broadcastRealtime } from '../../utils/realtime';
 import { PaymentStatus, PaymentMethod, computeGrant } from '../../constants';
 
 // Shared expiration constants
@@ -436,6 +437,19 @@ export interface ActivateOrderOptions {
   gatewayPaid?: boolean;
 }
 
+/**
+ * Phát user_updated tới kênh người dùng và kênh theo dõi đơn hàng (PremiumModal lắng nghe
+ * `payment_order_${orderId || orderCode}`) — phát cho cả order.id (VIVU...) lẫn order_code số.
+ */
+export async function broadcastOrderActivated(order: { id?: string | null; order_code?: string | number | null; user_id: string }) {
+  const payload = { userId: order.user_id, timestamp: Date.now() };
+  const orderKeys = Array.from(new Set([order.id, order.order_code].filter((v) => v !== null && v !== undefined && v !== '').map(String)));
+  await Promise.all([
+    broadcastRealtime(`user_channel_${order.user_id}`, 'user_updated', payload),
+    ...orderKeys.map((k) => broadcastRealtime(`payment_order_${k}`, 'user_updated', payload)),
+  ]);
+}
+
 export async function activateOrderById(
   orderId: string,
   opts?: ActivateOrderOptions
@@ -611,19 +625,7 @@ export async function activateOrderById(
     }
 
     // 7. Phát broadcast Realtime để client cập nhật tức thì
-    try {
-      const channel = supabaseAdmin.channel(`user_channel_${order.user_id}`);
-      await channel.send({
-        type: 'broadcast',
-        event: 'user_updated',
-        payload: {
-          userId: order.user_id,
-          timestamp: Date.now(),
-        },
-      });
-    } catch (e: any) {
-      console.warn('[Payment] Realtime broadcast error:', e.message);
-    }
+    await broadcastOrderActivated(order);
 
     console.log(
       `[Payment] ✅ Successfully activated order ${order.id} for user ${order.user_id} (plan: ${order.plan}, credits: ${quotaGranted}, duration: ${durationDays}d)`

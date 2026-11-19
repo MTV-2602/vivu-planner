@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
-import { View, Text, ActivityIndicator, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { api } from '../../lib/api';
+import BrandSplash from '../../components/loading/BrandSplash';
 
 export default function PremiumSuccessRedirect() {
   const router = useRouter();
@@ -16,19 +17,13 @@ export default function PremiumSuccessRedirect() {
       } catch (e) {
         console.error('Redirect verify error:', e);
       } finally {
-        const search = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.search) ? window.location.search : '';
-        router.replace((`/chuyen-di${search || '?payment=success'}`) as any);
+        // Luôn chuyển về /chuyen-di?paid=1 để trang chủ hiển thị banner thành công
+        // mà không cần gọi verify-return lại (đã xử lý ở trên)
+        router.replace('/chuyen-di?paid=1' as any);
       }
     }
     processRedirect();
   }, []);
 
-  return (
-    <View style={{ flex: 1, backgroundColor: '#f8fafc', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-      <ActivityIndicator size="large" color="#059669" />
-      <Text style={{ marginTop: 16, fontSize: 16, fontWeight: '700', color: '#064E3B' }}>
-        Đang xác thực thanh toán và kích hoạt lượt AI...
-      </Text>
-    </View>
-  );
+  return <BrandSplash message="Đang xác thực thanh toán và kích hoạt lượt AI" />;
 }

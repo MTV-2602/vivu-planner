@@ -150,6 +150,20 @@ export const APP_ROUTES = {
   ADMIN_POSTS: '/admin/posts',
 };
 
+// ─── TÊN MIỀN PRODUCTION (SITE URL) ──────────────────────────────────────────
+// Domain chính thức của ứng dụng, có thể ghi đè qua biến môi trường EXPO_PUBLIC_SITE_URL
+export const SITE_URL: string = (process.env.EXPO_PUBLIC_SITE_URL || 'https://vivuai.vercel.app').replace(/\/+$/, '');
+
+/**
+ * Lấy origin hiện tại: Web dùng window.location.origin, Native dùng SITE_URL.
+ */
+export function getSiteOrigin(): string {
+  if (typeof window !== 'undefined' && typeof document !== 'undefined' && window.location?.origin && /^https?:/.test(window.location.origin)) {
+    return window.location.origin;
+  }
+  return SITE_URL;
+}
+
 // ─── 63 TỈNH THÀNH VIỆT NAM (TAG BẮT BUỘC BÀI ĐĂNG) ─────────────────────────
 export const VIETNAM_PROVINCES = [
   'Hà Nội', 'TP. Hồ Chí Minh', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ',

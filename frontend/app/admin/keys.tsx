@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Pressable, Platform } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import {
   Key,
   Cpu,
@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react-native';
 import { BRAND_COLORS } from '../../constants';
+import PageSkeleton from '../../components/loading/PageSkeleton';
 import { useAuth } from '../../hooks/useAuth';
 import {
   PageHeader,
@@ -85,6 +86,14 @@ export default function AdminKeysPage() {
   const [bulkKeys, setBulkKeys] = useState('');
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+  const copiedKeyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Dọn timer copy key khi unmount
+  useEffect(() => {
+    return () => {
+      if (copiedKeyTimerRef.current) clearTimeout(copiedKeyTimerRef.current);
+    };
+  }, []);
 
   // Confirm delete dialog state
   const [deleteConfirmKey, setDeleteConfirmKey] = useState<{ id: string; masked: string } | null>(null);
@@ -263,9 +272,13 @@ export default function AdminKeysPage() {
   const handleCopyKey = (id: string, text: string) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(text);
+      if (copiedKeyTimerRef.current) clearTimeout(copiedKeyTimerRef.current);
       setCopiedKeyId(id);
       showToast('Đã sao chép API Key vào bộ nhớ tạm!', 'success');
-      setTimeout(() => setCopiedKeyId(null), 2000);
+      copiedKeyTimerRef.current = setTimeout(() => {
+        setCopiedKeyId(null);
+        copiedKeyTimerRef.current = null;
+      }, 2000);
     } else {
       showToast('Trình duyệt không hỗ trợ tự động sao chép', 'info');
     }
@@ -470,10 +483,7 @@ export default function AdminKeysPage() {
             icon={<Cpu size={20} color={BRAND_COLORS.primary} />}
           >
             {aiConfigLoading ? (
-              <View className="py-12 items-center justify-center gap-3">
-                <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-                <Text className="text-xs text-brand-textSoft">Đang tải cấu hình AI Gateway...</Text>
-              </View>
+              <PageSkeleton rows={3} showHeader={false} label="Đang tải cấu hình AI Gateway" testID="skeleton-admin-gateway" />
             ) : (
               <View className="gap-5 mt-2">
                 {/* Switch Active */}

@@ -7,6 +7,7 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { X, Mail, KeyRound, Lock, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react-native';
 import { api } from '../lib/api';
@@ -118,6 +119,8 @@ export default function ChangePasswordModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {/* Edge-to-edge (SDK 56): cửa sổ không tự co khi bàn phím mở → KeyboardAvoidingView tự né */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View
         style={{
           flex: 1,
@@ -524,6 +527,7 @@ export default function ChangePasswordModal({
           </View>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

@@ -46,7 +46,7 @@ import {
 } from 'lucide-react-native';
 import { BRAND_COLORS } from '../../constants';
 import { api } from '../../lib/api';
-import { supabase } from '../../lib/supabase';
+import { useRealtimeChannel, tripTopic } from '../../lib/realtime';
 import { getCityCenterCoords } from '../map/CuratedMap';
 import { getCuratedPlacesForCity } from '../../constants/curatedPlaces';
 
@@ -496,6 +496,24 @@ export default function GoogleCalendarWorkspace({
 
   // State toast thông báo kết quả tối ưu
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Helper hiển thị toast: hủy timer cũ trước khi tạo mới, dọn khi unmount
+  const showToast = React.useCallback((msg: string, ms = 3000) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastMsg(msg);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMsg(null);
+      toastTimerRef.current = null;
+    }, ms);
+  }, []);
+
+  // Dọn timer toast khi component unmount
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   // State cho tính năng Khám phá thêm địa điểm (Pro)
   const [isExploringMore, setIsExploringMore] = useState(false);
@@ -535,30 +553,10 @@ export default function GoogleCalendarWorkspace({
     }
   }, [budgetBreakdown?.expense_logs]);
 
-  // Broadcast thay đổi chi tiêu tới các thành viên khác trong chuyến đi qua Supabase Realtime
-  const broadcastExpenseChange = (
-    action: 'add' | 'edit' | 'delete' | 'clear',
-    log?: ExpenseLogItem,
-    logId?: string
-  ) => {
-    if (!tripId) return;
-    try {
-      const channel = supabase.channel(`trip-expenses:${tripId}`);
-      channel.send({
-        type: 'broadcast',
-        event: 'expenses_updated',
-        payload: { action, log, logId },
-      }).catch(() => {});
-    } catch (e) {}
-  };
-
-  // Lắng nghe broadcast chi tiêu thời gian thực từ các thành viên khác
-  useEffect(() => {
-    if (!tripId) return;
-    const channel = supabase.channel(`trip-expenses:${tripId}`);
-    channel
-      .on('broadcast', { event: 'expenses_updated' }, (msg: any) => {
-        const payload = msg?.payload;
+  // Lắng nghe broadcast chi tiêu thời gian thực trên topic trip:${tripId} (server cũng phát sau mỗi lần ghi DB)
+  const { send: tripSend } = useRealtimeChannel(tripId ? tripTopic(tripId) : null, {
+    onBroadcast: {
+      expenses_updated: (payload: any) => {
         if (!payload) return;
         if (payload.action === 'add' && payload.log) {
           const mapped = normalizeExpenseLogItem(payload.log);
@@ -574,13 +572,19 @@ export default function GoogleCalendarWorkspace({
         } else if (payload.action === 'clear') {
           setExpenseLogs([]);
         }
-      })
-      .subscribe();
+      },
+    },
+  });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [tripId]);
+  // Broadcast thay đổi chi tiêu tới các thành viên khác trong chuyến đi qua Supabase Realtime
+  const broadcastExpenseChange = (
+    action: 'add' | 'edit' | 'delete' | 'clear',
+    log?: ExpenseLogItem,
+    logId?: string
+  ) => {
+    if (!tripId) return;
+    tripSend('expenses_updated', { action, log, logId });
+  };
 
   // Load chi tiêu từ DB API khi tripId có (đồng bộ đa người dùng trong chuyến đi)
   useEffect(() => {
@@ -1063,8 +1067,7 @@ export default function GoogleCalendarWorkspace({
     if (canEditBudget === false) return;
     const num = parseCurrencyInput(expenseAmountInput);
     if (num <= 0) {
-      setToastMsg('Vui lòng nhập số tiền chi tiêu hợp lệ (> 0đ)');
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast('Vui lòng nhập số tiền chi tiêu hợp lệ (> 0đ)', 3000);
       return;
     }
 
@@ -1121,7 +1124,7 @@ export default function GoogleCalendarWorkspace({
 
       // 1. CẬP NHẬT OPTIMISTIC STATE NGAY LẬP TỨC
       setExpenseLogs((prev) => prev.map((l) => (l.id === editingLogId ? updatedLog : l)));
-      setToastMsg(`✓ Đã cập nhật chi tiêu "${placeTitle}" thành ${(num / 1000).toLocaleString('vi-VN')}k!`);
+      showToast(`✓ Đã cập nhật chi tiêu "${placeTitle}" thành ${(num / 1000).toLocaleString('vi-VN')}k!`, 3500);
 
       // 2. Broadcast realtime tới các thành viên khác trong chuyến đi
       broadcastExpenseChange('edit', updatedLog);
@@ -1157,7 +1160,7 @@ export default function GoogleCalendarWorkspace({
 
       // 1. CẬP NHẬT OPTIMISTIC STATE NGAY LẬP TỨC — BẢNG & MODAL CẬP NHẬT TỨC THÌ!
       setExpenseLogs((prev) => [newLog, ...prev]);
-      setToastMsg(`✓ Đã ghi Ngày ${selectedExpenseDay}: "${placeTitle}" +${(num / 1000).toLocaleString('vi-VN')}k [${catLabels[categoryKey]}]!`);
+      showToast(`✓ Đã ghi Ngày ${selectedExpenseDay}: "${placeTitle}" +${(num / 1000).toLocaleString('vi-VN')}k [${catLabels[categoryKey]}]!`, 3500);
 
       // 2. Bắn realtime broadcast qua Supabase channel
       broadcastExpenseChange('add', newLog);
@@ -1195,7 +1198,6 @@ export default function GoogleCalendarWorkspace({
       }
     }
 
-    setTimeout(() => setToastMsg(null), 3500);
     setExpenseModalOpen(false);
     setEditingLogId(null);
   };
@@ -1208,8 +1210,7 @@ export default function GoogleCalendarWorkspace({
 
     // 1. CẬP NHẬT OPTIMISTIC STATE XÓA NGAY LẬP TỨC
     setExpenseLogs((prev) => prev.filter((l) => l.id !== logId));
-    setToastMsg(`✓ Đã xóa ghi chép "${target.placeName}" và hoàn lại ${(target.amount / 1000).toLocaleString('vi-VN')}k!`);
-    setTimeout(() => setToastMsg(null), 3500);
+    showToast(`✓ Đã xóa ghi chép "${target.placeName}" và hoàn lại ${(target.amount / 1000).toLocaleString('vi-VN')}k!`, 3500);
 
     // 2. Broadcast realtime
     broadcastExpenseChange('delete', undefined, logId);
@@ -1224,8 +1225,7 @@ export default function GoogleCalendarWorkspace({
   const handleClearAllLogs = () => {
     if (canEditBudget === false) return;
     setExpenseLogs([]);
-    setToastMsg('✓ Đã xóa sạch toàn bộ lịch sử chi tiêu đã dùng!');
-    setTimeout(() => setToastMsg(null), 3000);
+    showToast('✓ Đã xóa sạch toàn bộ lịch sử chi tiêu đã dùng!', 3000);
     broadcastExpenseChange('clear');
     if (tripId && isDetailPage) {
       api.delete(`/trips/${tripId}/expenses`).catch(() => {});
@@ -1397,8 +1397,7 @@ export default function GoogleCalendarWorkspace({
     setEvents(newEvents);
     setStandbyList([]);
     notifyChanges(newEvents, []);
-    setToastMsg('✓ AI đã tối ưu hóa lộ trình và phân bổ lịch trình thông minh!');
-    setTimeout(() => setToastMsg(null), 3500);
+    showToast('✓ AI đã tối ưu hóa lộ trình và phân bổ lịch trình thông minh!', 3500);
   };
 
   // Tọa độ trung tâm thành phố
@@ -1421,8 +1420,7 @@ export default function GoogleCalendarWorkspace({
     if (readOnly) return;
     if (!isUserPro) {
       if (onUpgradePro) onUpgradePro();
-      setToastMsg('🔒 Tính năng Khay Giỏ Hàng và Xếp lịch dành riêng cho thành viên Gói PRO!');
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast('🔒 Tính năng Khay Giỏ Hàng và Xếp lịch dành riêng cho thành viên Gói PRO!', 3000);
       return;
     }
     // Cảnh báo nếu thêm accommodation khi đã có chỗ ở trong lịch
@@ -1433,8 +1431,7 @@ export default function GoogleCalendarWorkspace({
     if (isAccommodation(place.category)) {
       const existingAccommodation = eventsRef.current.some((ev) => isAccommodation(ev.category));
       if (existingAccommodation) {
-        setToastMsg('⚠️ Lịch đã có chỗ ở rồi! Bạn có chắc muốn thêm nơi ở thứ 2?');
-        setTimeout(() => setToastMsg(null), 4000);
+        showToast('⚠️ Lịch đã có chỗ ở rồi! Bạn có chắc muốn thêm nơi ở thứ 2?', 4000);
         // Vẫn tiếp tục thêm nhưng đã cảnh báo user
       }
     }
@@ -1510,8 +1507,7 @@ export default function GoogleCalendarWorkspace({
     if (readOnly) return;
     if (!isUserPro) {
       if (onUpgradePro) onUpgradePro();
-      setToastMsg('🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!');
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast('🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!', 3000);
       return;
     }
     const ev = eventsRef.current.find((e) => e.id === eventId);
@@ -1567,8 +1563,7 @@ export default function GoogleCalendarWorkspace({
     if (readOnly) return;
     if (!isUserPro) {
       if (onUpgradePro) onUpgradePro();
-      setToastMsg('🔒 Tính năng Khay Giỏ Hàng và Xếp lịch dành riêng cho thành viên Gói PRO!');
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast('🔒 Tính năng Khay Giỏ Hàng và Xếp lịch dành riêng cho thành viên Gói PRO!', 3000);
       return;
     }
     const dayEvents = eventsRef.current.filter((e) => e.dayNumber === targetDay);
@@ -1585,8 +1580,7 @@ export default function GoogleCalendarWorkspace({
     }
     if (!targetHour) targetHour = 8;
     addPlaceToCalendar(item, targetHour, true);
-    setToastMsg(`✓ Đã xếp "${item.name}" vào Ngày ${targetDay} lúc ${targetHour < 10 ? '0' + targetHour : targetHour}:00!`);
-    setTimeout(() => setToastMsg(null), 3000);
+    showToast(`✓ Đã xếp "${item.name}" vào Ngày ${targetDay} lúc ${targetHour < 10 ? '0' + targetHour : targetHour}:00!`, 3000);
   };
 
   // Xử lý nút bấm gán nhanh từ khay giỏ chờ (R3): ưu tiên mốc giờ đã chọn hoặc tự tìm slot trống đầu tiên
@@ -1594,14 +1588,12 @@ export default function GoogleCalendarWorkspace({
     if (readOnly) return;
     if (!isUserPro) {
       if (onUpgradePro) onUpgradePro();
-      setToastMsg('🔒 Tính năng Khay Giỏ Hàng và Xếp lịch dành riêng cho thành viên Gói PRO!');
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast('🔒 Tính năng Khay Giỏ Hàng và Xếp lịch dành riêng cho thành viên Gói PRO!', 3000);
       return;
     }
     if (selectedTargetHour !== null) {
       addPlaceToCalendar(item, selectedTargetHour, true);
-      setToastMsg(`✓ Đã xếp "${item.name}" vào Ngày ${activeDay} lúc ${selectedTargetHour < 10 ? '0' + selectedTargetHour : selectedTargetHour}:00!`);
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast(`✓ Đã xếp "${item.name}" vào Ngày ${activeDay} lúc ${selectedTargetHour < 10 ? '0' + selectedTargetHour : selectedTargetHour}:00!`, 3000);
       setSelectedTargetHour(null);
     } else {
       handleQuickAddStandbyToDay(item, activeDay);
@@ -1613,8 +1605,7 @@ export default function GoogleCalendarWorkspace({
     if (readOnly) return;
     if (!isUserPro) {
       if (onUpgradePro) onUpgradePro();
-      setToastMsg('🔒 Tính năng Thay đổi giờ Lịch trình dành riêng cho thành viên Gói PRO!');
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast('🔒 Tính năng Thay đổi giờ Lịch trình dành riêng cho thành viên Gói PRO!', 3000);
       return;
     }
     let movedTitle = 'Hoạt động';
@@ -1652,8 +1643,7 @@ export default function GoogleCalendarWorkspace({
     if (readOnly) return;
     if (!isUserPro) {
       if (onUpgradePro) onUpgradePro();
-      setToastMsg('🔒 Tính năng Thay đổi giờ Lịch trình dành riêng cho thành viên Gói PRO!');
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast('🔒 Tính năng Thay đổi giờ Lịch trình dành riêng cho thành viên Gói PRO!', 3000);
       return;
     }
     let movedTitle = 'Hoạt động';
@@ -1685,8 +1675,7 @@ export default function GoogleCalendarWorkspace({
         timestamp: Date.now(),
       });
     }
-    setToastMsg(`✓ Đã chuyển "${movedTitle}" sang lúc ${targetHour < 10 ? '0' + targetHour : targetHour}:00!`);
-    setTimeout(() => setToastMsg(null), 3000);
+    showToast(`✓ Đã chuyển "${movedTitle}" sang lúc ${targetHour < 10 ? '0' + targetHour : targetHour}:00!`, 3000);
     onUserAction?.(`đang di chuyển "${movedTitle}"`, 'drag_item', movedTitle, eventId);
   };
 
@@ -1695,8 +1684,7 @@ export default function GoogleCalendarWorkspace({
     if (onBackToCollecting) {
       onBackToCollecting();
     } else {
-      setToastMsg(`💡 Bạn có thể xem và chọn thêm các địa điểm trên bản đồ của ${cityName}!`);
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast(`💡 Bạn có thể xem và chọn thêm các địa điểm trên bản đồ của ${cityName}!`, 3000);
     }
   };
 
@@ -1749,8 +1737,7 @@ export default function GoogleCalendarWorkspace({
             const nextStandby = [...standbyList, ...newPlaces];
             setStandbyList(nextStandby);
             notifyChanges(events, nextStandby);
-            setToastMsg(`✓ AI gợi ý thêm ${newPlaces.length} địa điểm vào Giỏ chờ!`);
-            setTimeout(() => setToastMsg(null), 3500);
+            showToast(`✓ AI gợi ý thêm ${newPlaces.length} địa điểm vào Giỏ chờ!`, 3500);
             setIsExploringMore(false);
             return;
           }
@@ -1777,11 +1764,9 @@ export default function GoogleCalendarWorkspace({
         const nextStandby = [...standbyList, ...more];
         setStandbyList(nextStandby);
         notifyChanges(events, nextStandby);
-        setToastMsg(`✓ Đã nạp thêm ${more.length} địa điểm gợi ý vào Giỏ chờ!`);
-        setTimeout(() => setToastMsg(null), 3000);
+        showToast(`✓ Đã nạp thêm ${more.length} địa điểm gợi ý vào Giỏ chờ!`, 3000);
       } else {
-        setToastMsg('ℹ️ Tất cả các địa điểm gợi ý đã có trong lịch hoặc giỏ!');
-        setTimeout(() => setToastMsg(null), 3000);
+        showToast('ℹ️ Tất cả các địa điểm gợi ý đã có trong lịch hoặc giỏ!', 3000);
       }
     } finally {
       setIsExploringMore(false);
@@ -1811,14 +1796,12 @@ export default function GoogleCalendarWorkspace({
     if (lockUserId) {
       const members = onlineMembersRef.current || onlineMembers;
       const lockUserName = members?.find((m: any) => m.user_id === lockUserId)?.display_name || 'Thành viên khác';
-      setToastMsg(`🔒 "${itemTitle}" đang được ${lockUserName} giữ!`);
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast(`🔒 "${itemTitle}" đang được ${lockUserName} giữ!`, 3000);
       return;
     }
     if (!isUserPro) {
       if (onUpgradePro) onUpgradePro();
-      setToastMsg(type === 'standby' ? '🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!' : '🔒 Tính năng Kéo thả Lịch trình dành riêng cho thành viên Gói PRO!');
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast(type === 'standby' ? '🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!' : '🔒 Tính năng Kéo thả Lịch trình dành riêng cho thành viên Gói PRO!', 3000);
       return;
     }
     if (e?.button !== undefined && e.button !== 0) return; // Chỉ chuột trái
@@ -1937,8 +1920,7 @@ export default function GoogleCalendarWorkspace({
 
       if (!isUserPro) {
         if (onUpgradePro) onUpgradePro();
-        setToastMsg('🔒 Tính năng Kéo thả Lịch trình dành riêng cho thành viên Gói PRO!');
-        setTimeout(() => setToastMsg(null), 3000);
+        showToast('🔒 Tính năng Kéo thả Lịch trình dành riêng cho thành viên Gói PRO!', 3000);
         setPointerDrag(null);
         pointerDragRef.current = null;
         setHoveredHourSlot(null);
@@ -1950,13 +1932,11 @@ export default function GoogleCalendarWorkspace({
       if (cartEl) {
         if (!isUserPro) {
           if (onUpgradePro) onUpgradePro();
-          setToastMsg('🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!');
-          setTimeout(() => setToastMsg(null), 3000);
+          showToast('🔒 Tính năng Khay Giỏ Hàng dành riêng cho thành viên Gói PRO!', 3000);
         } else if (cur.type === 'event') {
           removeEventToStandby(cur.id, true);
           const evTitle = (cur.item as CalendarEventItem).title || (cur.item as any).name || 'Hoạt động';
-          setToastMsg(`✓ Đã đưa "${evTitle}" về Giỏ chờ! Bạn có thể chọn ngày khác để kéo thả lại.`);
-          setTimeout(() => setToastMsg(null), 3000);
+          showToast(`✓ Đã đưa "${evTitle}" về Giỏ chờ! Bạn có thể chọn ngày khác để kéo thả lại.`, 3000);
         }
       } else if (targetHour !== null && !isNaN(targetHour)) {
         if (cur.type === 'standby') {
@@ -1964,8 +1944,7 @@ export default function GoogleCalendarWorkspace({
             standbyListRef.current.find((s) => s.id === cur.id) || (cur.item as StandbyPlaceItem);
           if (standbyItem) {
             addPlaceToCalendar(standbyItem, targetHour, true);
-            setToastMsg(`✓ Đã đặt "${standbyItem.name}" vào ${targetHour < 10 ? '0' + targetHour : targetHour}:00!`);
-            setTimeout(() => setToastMsg(null), 3000);
+            showToast(`✓ Đã đặt "${standbyItem.name}" vào ${targetHour < 10 ? '0' + targetHour : targetHour}:00!`, 3000);
           }
         } else if (cur.type === 'event') {
           const nextEvents = eventsRef.current.map((ev) =>
@@ -1991,8 +1970,7 @@ export default function GoogleCalendarWorkspace({
           });
           notifyChanges(nextEvents, standbyListRef.current);
           const evTitle = (cur.item as CalendarEventItem).title || (cur.item as any).name || 'Hoạt động';
-          setToastMsg(`✓ Đã chuyển "${evTitle}" sang ${targetHour < 10 ? '0' + targetHour : targetHour}:00!`);
-          setTimeout(() => setToastMsg(null), 3000);
+          showToast(`✓ Đã chuyển "${evTitle}" sang ${targetHour < 10 ? '0' + targetHour : targetHour}:00!`, 3000);
         }
       } else if (dayEl) {
         let targetDay: number | null = null;
@@ -2029,8 +2007,7 @@ export default function GoogleCalendarWorkspace({
             });
             notifyChanges(nextEvents, standbyListRef.current);
             const evTitle = (cur.item as CalendarEventItem).title || (cur.item as any).name || 'Hoạt động';
-            setToastMsg(`✓ Đã chuyển "${evTitle}" sang Ngày ${targetDay}!`);
-            setTimeout(() => setToastMsg(null), 3000);
+            showToast(`✓ Đã chuyển "${evTitle}" sang Ngày ${targetDay}!`, 3000);
           } else if (cur.type === 'standby') {
             const standbyItem =
               standbyListRef.current.find((s) => s.id === cur.id) || (cur.item as StandbyPlaceItem);
@@ -2092,8 +2069,7 @@ export default function GoogleCalendarWorkspace({
                 placeId: standbyItem.id,
                 timestamp: Date.now(),
               });
-              setToastMsg(`✓ Đã chuyển "${standbyItem.name}" vào Ngày ${targetDay}!`);
-              setTimeout(() => setToastMsg(null), 3000);
+              showToast(`✓ Đã chuyển "${standbyItem.name}" vào Ngày ${targetDay}!`, 3000);
             }
           }
         }
@@ -3555,8 +3531,7 @@ export default function GoogleCalendarWorkspace({
                     if (readOnly) return;
                     if (selectedPlaceToPlace) {
                       addPlaceToCalendar(selectedPlaceToPlace, hour, true);
-                      setToastMsg(`✓ Đã xếp "${selectedPlaceToPlace.name}" vào Ngày ${activeDay} lúc ${hour < 10 ? '0' + hour : hour}:00!`);
-                      setTimeout(() => setToastMsg(null), 3000);
+                      showToast(`✓ Đã xếp "${selectedPlaceToPlace.name}" vào Ngày ${activeDay} lúc ${hour < 10 ? '0' + hour : hour}:00!`, 3000);
                       setSelectedPlaceToPlace(null);
                       setSelectedTargetHour(null);
                     } else {
@@ -3609,8 +3584,7 @@ export default function GoogleCalendarWorkspace({
                             testID={`btn-place-to-hour-${hour}`}
                             onPress={() => {
                               addPlaceToCalendar(selectedPlaceToPlace, hour, true);
-                              setToastMsg(`✓ Đã xếp "${selectedPlaceToPlace.name}" vào Ngày ${activeDay} lúc ${hour < 10 ? '0' + hour : hour}:00!`);
-                              setTimeout(() => setToastMsg(null), 3000);
+                              showToast(`✓ Đã xếp "${selectedPlaceToPlace.name}" vào Ngày ${activeDay} lúc ${hour < 10 ? '0' + hour : hour}:00!`, 3000);
                               setSelectedPlaceToPlace(null);
                               setSelectedTargetHour(null);
                             }}
@@ -3864,8 +3838,7 @@ export default function GoogleCalendarWorkspace({
                                             testID={`btn-return-to-cart-${ev.id}`}
                                             onPress={() => {
                                               removeEventToStandby(ev.id, true);
-                                              setToastMsg(`✓ Đã đưa "${ev.title}" về Giỏ chờ!`);
-                                              setTimeout(() => setToastMsg(null), 3000);
+                                              showToast(`✓ Đã đưa "${ev.title}" về Giỏ chờ!`, 3000);
                                             }}
                                             style={{
                                               flexDirection: 'row',

@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
-import { View, ActivityIndicator, Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
+import { useEffect } from 'react';
 import {
   useFonts,
   BeVietnamPro_400Regular,
@@ -15,6 +16,9 @@ import {
   Roboto_700Bold,
 } from '@expo-google-fonts/roboto';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import BrandSplash from '../components/loading/BrandSplash';
+import { AuthProvider } from '../hooks/useAuth';
+import ToastHost from '../components/ToastHost';
 import '../global.css';
 
 if (typeof (StyleSheet as any).setFlag === 'function') {
@@ -37,17 +41,21 @@ export default function RootLayout() {
     Roboto_700Bold,
   });
 
-  if (!fontsLoaded) {
-    return (
-      <View className="flex-1 bg-brand-bg items-center justify-center">
-        <ActivityIndicator color="#0c77b0" />
-      </View>
-    );
-  }
+  // Xóa boot splash CSS (#vivu-boot) khỏi DOM sau khi React tree mount lần đầu trên web
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const el = typeof document !== 'undefined' ? document.getElementById('vivu-boot') : null;
+    if (el) el.remove();
+  }, []);
 
+  // AuthProvider bọc cả splash và Stack để khởi tạo session song song khi tải font
+  // ToastHost render một lần duy nhất bên ngoài Stack để hiển thị toast toàn cục
   return (
     <QueryClientProvider client={queryClient}>
-      <Stack screenOptions={{ headerShown: false }} />
+      <AuthProvider>
+        {fontsLoaded ? <Stack screenOptions={{ headerShown: false }} /> : <BrandSplash />}
+        <ToastHost />
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

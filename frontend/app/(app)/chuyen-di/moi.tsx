@@ -13,7 +13,7 @@ import {
   Users, Share2, Copy, Link as LinkIcon,
 } from 'lucide-react-native';
 import { api } from '../../../lib/api';
-import { supabase } from '../../../lib/supabase';
+import { useRealtimeChannel, draftCartTopic, tripTopic } from '../../../lib/realtime';
 import { clearCache } from '../../../lib/cache';
 import { requestNotificationPermission, scheduleTripReminder } from '../../../lib/notifications';
 import { useAuth } from '../../../hooks/useAuth';
@@ -31,7 +31,7 @@ import { PlaceItem, isProLocalPlace } from '../../../components/map/PlacePopup';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
 import {
   VIETNAMESE_CITIES, TRAVELER_TYPES, PREFERENCE_OPTIONS, BRAND_COLORS,
-  BUDGET_ESTIMATION_CONFIG, APP_ROUTES, TravelerType,
+  BUDGET_ESTIMATION_CONFIG, APP_ROUTES, TravelerType, getSiteOrigin,
 } from '../../../constants';
 
 const LOADING_STAGES = [
@@ -85,12 +85,7 @@ const parseErrorMessage = (error: any, fallback = 'Có lỗi xảy ra khi tạo 
   }
 };
 
-const getBaseUrl = () => {
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-    return window.location.origin;
-  }
-  return 'https://vivu-planner.vercel.app';
-};
+const getBaseUrl = () => getSiteOrigin();
 
 function getTodayString() {
   const today = new Date();
@@ -305,6 +300,8 @@ export default function TripWizard() {
   const [errorMsg, setErrorMsg] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
   const mainScrollViewRef = useRef<ScrollView | null>(null);
+  // Ref cho timer chuyển hướng trip_finalized để có thể cancel khi unmount
+  const finalizeNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleCancelLoading = () => {
     abortControllerRef.current?.abort();
@@ -324,6 +321,13 @@ export default function TripWizard() {
       router.replace(APP_ROUTES.ADMIN as any);
     }
   }, [isAdmin]);
+
+  // Dọn timer finalize khi component bị unmount
+  useEffect(() => {
+    return () => {
+      if (finalizeNavTimerRef.current) clearTimeout(finalizeNavTimerRef.current);
+    };
+  }, []);
 
   const [selectedAiProvider, setSelectedAiProvider] = useState<'gemini' | 'custom_openai'>('gemini');
   const [showPremiumModal, setShowPremiumModal] = useState(false);
@@ -356,7 +360,15 @@ export default function TripWizard() {
   const [draftTripId, setDraftTripId] = useState<string | null>(params.draft_id || null);
   const [draftShareToken, setDraftShareToken] = useState<string | null>(params.token || null);
   const [draftOwnerId, setDraftOwnerId] = useState<string | null>(null);
-  const draftChannelRef = useRef<any>(null);
+  // Hàm gửi broadcast lên draft-cart:${draftTripId} (gán sau khi khởi tạo useRealtimeChannel bên dưới)
+  const draftSendRef = useRef<(event: string, payload: any) => Promise<void>>(async () => {});
+  const draftTripIdRef = useRef<string | null>(draftTripId);
+  draftTripIdRef.current = draftTripId;
+  // Theo dõi thao tác ghi giỏ hàng của chính mình đang chờ server + snapshot server mới nhất đã nhận
+  const pendingWritesRef = useRef(0);
+  const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const lastAppliedVersionRef = useRef(0);
+  const latestServerSnapshotRef = useRef<any>(null);
   const cartTombstonesRef = useRef<Map<string, number>>(new Map());
 
   const getPlaceKeys = useCallback((placeOrItem: any): string[] => {
@@ -373,9 +385,25 @@ export default function TripWizard() {
   }, []);
   const [showGroupModal, setShowGroupModal] = useState<boolean>(false);
   const [isCreatingDraftGroup, setIsCreatingDraftGroup] = useState<boolean>(false);
-  const [collaboratorCount, setCollaboratorCount] = useState<number>(1);
+  const [onlineMembers, setOnlineMembers] = useState<any[]>([]);
+  const collaboratorCount = Math.max(1, onlineMembers.length);
+  const onlineMemberNames = onlineMembers
+    .map((m: any) => (m.user_id === user?.id ? 'Bạn' : (m.display_name || 'Thành viên')))
+    .join(', ');
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [isCreatingInvite, setIsCreatingInvite] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [groupToastMsg, setGroupToastMsg] = useState<string | null>(null);
+  // 1 timer duy nhất cho toast nhóm — toast mới không bị timer của toast cũ tắt sớm
+  const groupToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showGroupToast = (msg: string, ms = 3000) => {
+    setGroupToastMsg(msg);
+    if (groupToastTimerRef.current) clearTimeout(groupToastTimerRef.current);
+    groupToastTimerRef.current = setTimeout(() => setGroupToastMsg(null), ms);
+  };
+  useEffect(() => () => {
+    if (groupToastTimerRef.current) clearTimeout(groupToastTimerRef.current);
+  }, []);
 
   // Phân quyền trưởng nhóm vs thành viên: Chỉ trưởng nhóm mới có quyền chốt danh sách & xếp lịch
   const isGroupDraftOwner = !draftTripId || !params.draft_id || draftOwnerId === user?.id;
@@ -420,6 +448,10 @@ export default function TripWizard() {
     updated_at?: number;
   }[]>([]);
   const [externalDelta, setExternalDelta] = useState<CalendarDeltaAction | null>(null);
+  const cartItemsRef = useRef(cartItems);
+  cartItemsRef.current = cartItems;
+  const workspaceStageRef = useRef(workspaceStage);
+  workspaceStageRef.current = workspaceStage;
   const [showScheduleOptionModal, setShowScheduleOptionModal] = useState(false);
   const [showConfirmAiProModal, setShowConfirmAiProModal] = useState<boolean>(false);
   const [showConfirmLiveMapModal, setShowConfirmLiveMapModal] = useState<boolean>(false);
@@ -566,175 +598,182 @@ export default function TripWizard() {
     return items.sort((a, b) => a.order_index - b.order_index).map(it => it.place);
   }, [cartItems, activeScheduleDay]);
 
-  // Đồng bộ chi tiết hành động thêm/bớt địa điểm lên Realtime Channel để tránh xung đột lịch sử
-  const broadcastCartAction = useCallback((action: {
+  // Đồng bộ chi tiết hành động thêm/bớt địa điểm: broadcast tức thì cho nhóm + ghi op lên server (nguồn chuẩn)
+  const broadcastCartAction = (action: {
     type: 'cart_item_added' | 'cart_item_removed' | 'cart_cleared';
     item?: any;
     placeId?: string;
     placeName?: string;
     deletedKeys?: string[];
     deleted_at?: number;
-    updatedCart?: typeof cartItems;
   }) => {
-    if (!draftTripId) return;
-    try {
-      const senderName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Thành viên';
-      const senderId = user?.id;
-      const timestamp = Date.now();
+    if (!draftTripIdRef.current) return;
+    const senderName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Thành viên';
+    const senderId = user?.id;
+    const timestamp = Date.now();
+    const send = draftSendRef.current;
 
-      const ch = draftChannelRef.current || supabase.channel(`draft-cart:${draftTripId}`);
-      if (action.type === 'cart_item_added') {
-        ch.send({
-          type: 'broadcast',
-          event: 'cart_item_added',
-          payload: { item: action.item, senderId, senderName, timestamp },
-        }).catch(() => {});
-      } else if (action.type === 'cart_item_removed') {
-        ch.send({
-          type: 'broadcast',
-          event: 'cart_item_removed',
-          payload: {
-            placeId: action.placeId,
-            placeName: action.placeName,
-            deletedKeys: action.deletedKeys || (action.placeId ? [action.placeId] : []),
-            deleted_at: action.deleted_at || timestamp,
-            senderId,
-            senderName,
-            timestamp,
-          },
-        }).catch(() => {});
-      } else if (action.type === 'cart_cleared') {
-        ch.send({
-          type: 'broadcast',
-          event: 'cart_cleared',
-          payload: { senderId, senderName, timestamp },
-        }).catch(() => {});
-      }
-
-      if (action.updatedCart !== undefined) {
-        const tombstonesObj: Record<string, number> = {};
-        cartTombstonesRef.current.forEach((val, key) => {
-          tombstonesObj[key] = val;
-        });
-
-        let deletedPlaceIds: string[] = [];
-        let actionName: string | undefined = undefined;
-        if (action.type === 'cart_item_removed') {
-          deletedPlaceIds = action.deletedKeys && action.deletedKeys.length > 0
-            ? action.deletedKeys
-            : (action.placeId ? [action.placeId] : []);
-          actionName = 'remove';
-        } else if (action.type === 'cart_cleared') {
-          deletedPlaceIds = action.deletedKeys && action.deletedKeys.length > 0
-            ? action.deletedKeys
-            : Array.from(cartTombstonesRef.current.keys());
-          actionName = 'clear';
-        } else if (action.type === 'cart_item_added') {
-          deletedPlaceIds = [];
-          actionName = 'add';
-        }
-
-        api.put(`/trips/${draftTripId}/shared-cart`, {
-          draft_cart: action.updatedCart,
-          deleted_place_ids: deletedPlaceIds,
-          tombstones: tombstonesObj,
-          action: actionName,
-          workspace_stage: workspaceStage,
-        }).catch((err) => {
-          console.warn('Failed to update shared-cart:', err?.message);
-        });
-      }
-    } catch (e) {
-      console.warn('broadcastCartAction error:', e);
+    if (action.type === 'cart_item_added' && action.item) {
+      send('cart_item_added', { item: action.item, senderId, senderName, timestamp });
+      persistSharedCart({ op: { type: 'add', item: action.item } });
+    } else if (action.type === 'cart_item_removed') {
+      const keys = action.deletedKeys && action.deletedKeys.length > 0
+        ? action.deletedKeys
+        : (action.placeId ? [action.placeId] : []);
+      send('cart_item_removed', {
+        placeId: action.placeId,
+        placeName: action.placeName,
+        deletedKeys: keys,
+        deleted_at: action.deleted_at || timestamp,
+        senderId,
+        senderName,
+        timestamp,
+      });
+      if (keys.length > 0) persistSharedCart({ op: { type: 'remove', keys } });
+    } else if (action.type === 'cart_cleared') {
+      send('cart_cleared', { senderId, senderName, timestamp });
+      persistSharedCart({ op: { type: 'clear' } });
     }
-  }, [draftTripId, user?.id, user?.user_metadata, user?.email, workspaceStage]);
+  };
 
   const handleEventDelta = useCallback((delta: CalendarDeltaAction) => {
-    if (!draftTripId) return;
-    const ch = draftChannelRef.current || supabase.channel(`draft-cart:${draftTripId}`);
     const currentUserId = user?.id;
-    if (ch && currentUserId) {
-      ch.send({
-        type: 'broadcast',
-        event: 'calendar_delta',
-        payload: {
-          delta,
-          updated_by: currentUserId,
-          timestamp: Date.now(),
-        }
-      }).catch((err: any) => {
-        console.warn('calendar_delta broadcast error in moi.tsx:', err);
+    if (draftTripIdRef.current && currentUserId) {
+      draftSendRef.current('calendar_delta', {
+        delta,
+        updated_by: currentUserId,
+        timestamp: Date.now(),
       });
     }
-  }, [draftTripId, user?.id]);
-
-  // Đồng bộ giỏ hàng lên Realtime Channel và cập nhật ngầm vào trip draft
-  const syncCartToDraft = (updatedCart: typeof cartItems) => {
-    if (!draftTripId) return;
-    try {
-      const senderName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Thành viên';
-      const sendPayload = {
-        cartItems: updatedCart,
-        senderId: user?.id,
-        senderName,
-        timestamp: Date.now(),
-      };
-      if (draftChannelRef.current) {
-        draftChannelRef.current.send({
-          type: 'broadcast',
-          event: 'cart_updated',
-          payload: sendPayload,
-        }).catch(() => {});
-      } else {
-        const channel = supabase.channel(`draft-cart:${draftTripId}`);
-        channel.send({
-          type: 'broadcast',
-          event: 'cart_updated',
-          payload: sendPayload,
-        }).catch(() => {});
-      }
-    } catch (e) {}
-
-    const tombstonesObj: Record<string, number> = {};
-    cartTombstonesRef.current.forEach((val, key) => {
-      tombstonesObj[key] = val;
-    });
-
-    api.put(`/trips/${draftTripId}/shared-cart`, {
-      draft_cart: updatedCart,
-      deleted_place_ids: [],
-      tombstones: tombstonesObj,
-      workspace_stage: workspaceStage,
-    }).catch((err) => {
-      console.warn('Failed to update shared-cart:', err?.message);
-    });
-  };
+  }, [user?.id]);
 
   // Phát thông báo broadcast chuyển trang đồng bộ cho tất cả thành viên trong nhóm đang cùng chọn giỏ hàng
   const broadcastTripFinalized = async (targetTripId: string) => {
-    if (!draftTripId) return;
-    try {
-      const payload = {
-        tripId: targetTripId,
-        redirectUrl: APP_ROUTES.TRIP_DETAIL(targetTripId),
-      };
-      if (draftChannelRef.current) {
-        await draftChannelRef.current.send({
-          type: 'broadcast',
-          event: 'trip_finalized',
-          payload,
-        });
-      } else {
-        const channel = supabase.channel(`draft-cart:${draftTripId}`);
-        await channel.send({
-          type: 'broadcast',
-          event: 'trip_finalized',
-          payload,
-        });
-      }
-    } catch (e) {
-      console.warn('Failed to broadcast trip_finalized:', e);
+    if (!draftTripIdRef.current) return;
+    await draftSendRef.current('trip_finalized', {
+      tripId: targetTripId,
+      redirectUrl: APP_ROUTES.TRIP_DETAIL(targetTripId),
+    });
+  };
+
+  // ── ĐỒNG BỘ GIỎ HÀNG NHÓM: SERVER LÀ NGUỒN CHUẨN ──
+  // Áp snapshot server (PUT response / GET / shared_cart_synced) khi version mới hơn và không còn thao tác ghi của mình đang chờ
+  // opts.force: cho phép áp lại snapshot cùng version (GET chủ động) để gỡ thay đổi optimistic không được server ghi nhận
+  const applyServerSnapshot = (data: any, opts?: { silent?: boolean; force?: boolean }) => {
+    if (!data || typeof data !== 'object') return;
+    const version = Number(data.version) || 0;
+    const latest = latestServerSnapshotRef.current;
+    if (!latest || version >= (Number(latest.version) || 0)) {
+      latestServerSnapshotRef.current = data;
     }
+    // Đang có thao tác ghi của chính mình → chờ, khi xong sẽ áp snapshot mới nhất (tránh giật lùi UI optimistic)
+    if (pendingWritesRef.current > 0) return;
+    const snap = latestServerSnapshotRef.current;
+    const snapVersion = Number(snap.version) || 0;
+    if (snapVersion > 0 && (opts?.force ? snapVersion < lastAppliedVersionRef.current : snapVersion <= lastAppliedVersionRef.current)) return;
+    lastAppliedVersionRef.current = snapVersion;
+
+    // Giữ tombstones server để lọc các sự kiện optimistic đến muộn
+    if (snap.tombstones && typeof snap.tombstones === 'object') {
+      for (const [k, v] of Object.entries(snap.tombstones)) {
+        const t = Number(v) || 0;
+        if (t > (cartTombstonesRef.current.get(k) || 0)) {
+          cartTombstonesRef.current.set(k, t);
+        }
+      }
+    }
+    if (Array.isArray(snap.draft_cart)) {
+      const serverCart = snap.draft_cart;
+      cartItemsRef.current = serverCart;
+      setCartItems(prev => (JSON.stringify(prev) === JSON.stringify(serverCart) ? prev : serverCart));
+    }
+    if (Array.isArray(snap.pregen_places) && snap.pregen_places.length > 0) {
+      const serverPlaces = snap.pregen_places;
+      setPregenPlaces(prev => (JSON.stringify(prev) === JSON.stringify(serverPlaces) ? prev : serverPlaces));
+    }
+    const remoteStage = snap.workspace_stage;
+    if ((remoteStage === 'collecting' || remoteStage === 'scheduling') && remoteStage !== workspaceStageRef.current) {
+      workspaceStageRef.current = remoteStage;
+      setWorkspaceStage(remoteStage);
+      if (!opts?.silent) {
+        showGroupToast(remoteStage === 'scheduling'
+          ? '🚀 Trưởng nhóm đã chuyển sang bước Xếp lịch trình!'
+          : '📝 Trưởng nhóm đã quay lại bước Chọn thêm địa điểm!', 3500);
+      }
+    }
+  };
+
+  // Lấy lại giỏ hàng chuẩn từ server (resync khi kết nối lại / quay lại app / poll dự phòng)
+  const fetchSharedCart = async (tripId: string | null = draftTripIdRef.current, opts?: { silent?: boolean }) => {
+    if (!tripId) return;
+    try {
+      const res: any = await api.get(`/trips/${tripId}/shared-cart`, {
+        params: params.token ? { invite_token: params.token } : undefined,
+        headers: params.token ? { 'x-invite-token': params.token } : undefined,
+      });
+      if (draftTripIdRef.current !== tripId) return;
+      applyServerSnapshot(res.data, { ...opts, force: true });
+    } catch (e) {
+      // Im lặng khi resync
+    }
+  };
+
+  // Ghi thao tác giỏ hàng lên server — xếp hàng tuần tự để giữ đúng thứ tự và tránh tự xung đột ghi
+  const persistSharedCart = (body: Record<string, any>) => {
+    const tripId = draftTripIdRef.current;
+    if (!tripId) return;
+    pendingWritesRef.current += 1;
+    writeQueueRef.current = writeQueueRef.current.then(async () => {
+      let failed = false;
+      try {
+        const res: any = await api.put(`/trips/${tripId}/shared-cart`, body);
+        if (draftTripIdRef.current === tripId) applyServerSnapshot(res?.data);
+      } catch (err: any) {
+        failed = true;
+        console.warn('Failed to update shared-cart:', err?.message);
+        if (err?.response?.status === 403 && draftTripIdRef.current === tripId) {
+          setErrorMsg(parseErrorMessage(err, 'Bạn chưa có quyền chỉnh sửa giỏ hàng nhóm này.'));
+        }
+      } finally {
+        pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
+      }
+      if (pendingWritesRef.current === 0 && draftTripIdRef.current === tripId) {
+        // Lỗi → lấy lại bản chuẩn để gỡ thay đổi optimistic sai; thành công → áp snapshot mới nhất đã nhận
+        if (failed) await fetchSharedCart(tripId);
+        else applyServerSnapshot(latestServerSnapshotRef.current);
+      }
+    });
+  };
+
+  // Ghi thay đổi (lịch/ngày/giờ/chi phí/thêm hàng loạt) lên server: item đã có → update_items, item mới → add
+  const syncCartToDraft = (prevCart: typeof cartItems, updatedCart: typeof cartItems) => {
+    if (!draftTripIdRef.current) return;
+    const prevKeys = new Set(prevCart.flatMap(it => getPlaceKeys(it)));
+    const added = updatedCart.filter(it => !getPlaceKeys(it).some(k => prevKeys.has(k)));
+    // Chỉ gửi item thực sự đổi để không ghi đè thay đổi đồng thời của người khác trên item khác
+    const prevById = new Map(prevCart.map(it => [it.place?.id, it]));
+    const changed = updatedCart.filter(it => {
+      if (added.includes(it) || prevCart.includes(it)) return false;
+      const before = prevById.get(it.place?.id);
+      return !before || JSON.stringify({ ...before, updated_at: 0 }) !== JSON.stringify({ ...it, updated_at: 0 });
+    });
+    if (added.length > 1) {
+      // Thêm hàng loạt: 1 request (legacy body chỉ chứa item mới, action 'add') — server giữ nguyên phần giỏ còn lại
+      persistSharedCart({ draft_cart: added, action: 'add' });
+    } else if (added.length === 1) {
+      persistSharedCart({ op: { type: 'add', item: added[0] } });
+    }
+    if (changed.length > 0) persistSharedCart({ op: { type: 'update_items', items: changed } });
+  };
+
+  // Cập nhật giỏ hàng cục bộ (sửa ngày/thứ tự/chi phí...) và ghi lên server khi đang ở phòng nhóm
+  const updateCartItems = (mutator: (prev: typeof cartItems) => typeof cartItems) => {
+    const prevCart = cartItemsRef.current;
+    const next = mutator(prevCart);
+    if (next === prevCart) return;
+    cartItemsRef.current = next;
+    setCartItems(next);
+    syncCartToDraft(prevCart, next);
   };
 
   const fetchPregenPlaces = async (overrideProvider?: any) => {
@@ -778,17 +817,8 @@ export default function TripWizard() {
       if (finalPlaces.length > 0) {
         setPregenPlaces(finalPlaces);
         if (draftTripId) {
-          api.put(`/trips/${draftTripId}/shared-cart`, {
-            workspace_stage: workspaceStage,
-            pregen_places: finalPlaces,
-          }).catch(() => {});
-          if (draftChannelRef.current) {
-            draftChannelRef.current.send({
-              type: 'broadcast',
-              event: 'pregen_places_updated',
-              payload: { places: finalPlaces },
-            }).catch(() => {});
-          }
+          persistSharedCart({ pregen_places: finalPlaces });
+          draftSendRef.current('pregen_places_updated', { places: finalPlaces });
         }
       }
       setLoadingPregen(false);
@@ -801,67 +831,68 @@ export default function TripWizard() {
     const addedByName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Tôi';
     const addedById = user?.id;
 
-    setCartItems(prev => {
-      const match = prev.find(item =>
-        item.place.id === place.id ||
-        (normalizePlaceKey(item.place.name) === normalizePlaceKey(place.name) && item.place.category === place.category)
-      );
-      if (match) {
-        const delTime = Date.now();
-        const delKeys = getPlaceKeys(match);
-        delKeys.forEach(k => cartTombstonesRef.current.set(k, delTime));
+    // Tính trên giỏ mới nhất (ref) và gửi broadcast/ghi server NGOÀI updater của setState
+    // (updater có thể chạy 2 lần ở StrictMode → gửi trùng)
+    const prev = cartItemsRef.current;
+    const match = prev.find(item =>
+      item.place.id === place.id ||
+      (normalizePlaceKey(item.place.name) === normalizePlaceKey(place.name) && item.place.category === place.category)
+    );
+    if (match) {
+      const delTime = Date.now();
+      const delKeys = getPlaceKeys(match);
+      delKeys.forEach(k => cartTombstonesRef.current.set(k, delTime));
 
-        const updated = prev.filter(item => item !== match);
-        broadcastCartAction({
-          type: 'cart_item_removed',
-          placeId: match.place.id,
-          placeName: match.place.name,
-          deletedKeys: delKeys,
-          deleted_at: delTime,
-          updatedCart: updated,
-        });
-        return updated;
-      } else {
-        const now = Date.now();
-        const addKeys = getPlaceKeys(place);
-        addKeys.forEach(k => cartTombstonesRef.current.delete(k));
+      const updated = prev.filter(item => item !== match);
+      cartItemsRef.current = updated;
+      setCartItems(updated);
+      broadcastCartAction({
+        type: 'cart_item_removed',
+        placeId: match.place.id,
+        placeName: match.place.name,
+        deletedKeys: delKeys,
+        deleted_at: delTime,
+      });
+    } else {
+      const now = Date.now();
+      const addKeys = getPlaceKeys(place);
+      addKeys.forEach(k => cartTombstonesRef.current.delete(k));
 
-        const newItem = {
-          place,
-          pricing_option: option,
-          custom_cost: finalCost,
-          day_number: 0,
-          order_index: prev.length + 1,
-          added_by_name: addedByName,
-          added_by_id: addedById,
-          updated_at: now,
-        };
-        const updated = [...prev, newItem];
-        broadcastCartAction({
-          type: 'cart_item_added',
-          item: newItem,
-          placeId: place.id,
-          updatedCart: updated,
-        });
-        return updated;
-      }
-    });
+      const newItem = {
+        place,
+        pricing_option: option,
+        custom_cost: finalCost,
+        day_number: 0,
+        order_index: prev.length + 1,
+        added_by_name: addedByName,
+        added_by_id: addedById,
+        updated_at: now,
+      };
+      const updated = [...prev, newItem];
+      cartItemsRef.current = updated;
+      setCartItems(updated);
+      broadcastCartAction({
+        type: 'cart_item_added',
+        item: newItem,
+        placeId: place.id,
+      });
+    }
   };
 
   const handleClearCart = () => {
     const now = Date.now();
     const allDeletedKeys: string[] = [];
-    cartItems.forEach(it => {
+    cartItemsRef.current.forEach(it => {
       getPlaceKeys(it).forEach(k => {
         cartTombstonesRef.current.set(k, now);
         allDeletedKeys.push(k);
       });
     });
+    cartItemsRef.current = [];
     setCartItems([]);
     broadcastCartAction({
       type: 'cart_cleared',
       deletedKeys: allDeletedKeys,
-      updatedCart: [],
     });
   };
 
@@ -905,17 +936,26 @@ export default function TripWizard() {
     setPregenPlaces([]);
 
     setDraftTripId(draftId);
+    draftTripIdRef.current = draftId;
     setStep(4);
     setUseProWorkspace(true);
     setWorkspaceStage('collecting');
+    workspaceStageRef.current = 'collecting';
 
+    let cancelled = false;
     const joinAndFetchDraft = async () => {
       if (params.token) {
         setDraftShareToken(params.token);
         try {
+          // Server trả 200 { already_member } cho cả chủ chuyến đi / người đã là thành viên
           await api.put(`/trips/join/${params.token}`);
-        } catch (e) {}
+        } catch (e: any) {
+          if (cancelled) return;
+          setErrorMsg(parseErrorMessage(e, 'Không thể tham gia nhóm chọn giỏ hàng. Link mời không hợp lệ hoặc đã hết hạn.'));
+          return;
+        }
       }
+      if (cancelled) return;
 
       try {
         const res: any = await api.get(`/trips/${draftId}`);
@@ -937,36 +977,17 @@ export default function TripWizard() {
           const remoteStage = t.workspace_stage || t.preferences?.workspace_stage;
           if (remoteStage === 'scheduling' || remoteStage === 'collecting') {
             setWorkspaceStage(remoteStage);
+            workspaceStageRef.current = remoteStage;
           }
           setHydratedDraftId(draftId);
         }
       } catch (e) {}
 
-      try {
-        const cartRes: any = await api.get(`/trips/${draftId}/shared-cart`, {
-          params: params.token ? { invite_token: params.token } : undefined,
-          headers: params.token ? { 'x-invite-token': params.token } : undefined,
-        });
-        if (cartRes.data?.tombstones) {
-          for (const [k, v] of Object.entries(cartRes.data.tombstones)) {
-            cartTombstonesRef.current.set(k, Number(v) || Date.now());
-          }
-        }
-        if (cartRes.data?.draft_cart && Array.isArray(cartRes.data.draft_cart)) {
-          const filteredDraftCart = cartRes.data.draft_cart.filter((it: any) => {
-            const itKeys = getPlaceKeys(it);
-            const maxTombTime = Math.max(0, ...itKeys.map(k => cartTombstonesRef.current.get(k) || 0));
-            const itemTime = Number(it.updated_at || 0);
-            return maxTombTime === 0 || itemTime > maxTombTime;
-          });
-          setCartItems(filteredDraftCart);
-        }
-        if (cartRes.data?.pregen_places && Array.isArray(cartRes.data.pregen_places) && cartRes.data.pregen_places.length > 0) {
-          setPregenPlaces(cartRes.data.pregen_places);
-        }
-      } catch (e) {}
+      // Giỏ hàng chuẩn (có version + tombstones) từ server
+      if (!cancelled) await fetchSharedCart(draftId, { silent: true });
     };
     joinAndFetchDraft();
+    return () => { cancelled = true; };
   }, [params.draft_id, params.token]);
 
   // Tự động lấy danh sách gợi ý địa điểm nếu vào Pro Workspace và chưa có địa điểm
@@ -977,15 +998,35 @@ export default function TripWizard() {
     }
   }, [useProWorkspace, canAccessWorkspace, destinationCity, isGroupMember, params.token, params.draft_id, hydratedDraftId, pregenPlaces.length]);
 
-  // Realtime Channel đồng bộ giỏ hàng và danh sách thành viên online
-  useEffect(() => {
-    if (!draftTripId) return;
-    const channel = supabase.channel(`draft-cart:${draftTripId}`);
-    draftChannelRef.current = channel;
+  // Realtime: topic cố định draft-cart:${draftTripId} — presence theo user.id, broadcast tức thì giữa các thành viên
+  // và shared_cart_synced do server phát sau mỗi lần ghi giỏ hàng thành công (server là nguồn chuẩn)
+  const myDraftPresence = useMemo(() => (user?.id ? {
+    user_id: user.id,
+    display_name: user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Thành viên',
+    avatar_url: user?.user_metadata?.avatar_url || null,
+  } : undefined), [user?.id, user?.user_metadata?.display_name, user?.user_metadata?.full_name, user?.user_metadata?.avatar_url, user?.email]);
 
-    channel
-      .on('broadcast', { event: 'cart_item_added' }, (msg: any) => {
-        const payload = msg?.payload;
+  const { send: draftSend } = useRealtimeChannel(draftTripId ? draftCartTopic(draftTripId) : null, {
+    presenceKey: user?.id,
+    presenceState: myDraftPresence,
+    onPresence: (members) => {
+      // Đếm theo người (user_id), không theo số kết nối/tab
+      const seen = new Set<string>();
+      const unique: any[] = [];
+      for (const m of members) {
+        const uid = m?.user_id || m?.presence_key;
+        if (uid && !seen.has(uid)) {
+          seen.add(uid);
+          unique.push(m);
+        }
+      }
+      setOnlineMembers(unique);
+    },
+    onResync: () => {
+      fetchSharedCart();
+    },
+    onBroadcast: {
+      cart_item_added: (payload: any) => {
         if (payload?.item && payload.senderId !== user?.id) {
           getPlaceKeys(payload.item).forEach(k => cartTombstonesRef.current.delete(k));
 
@@ -998,12 +1039,10 @@ export default function TripWizard() {
             return [...prev, payload.item];
           });
           const sender = payload.senderName || 'Thành viên';
-          setGroupToastMsg(`👥 ${sender} vừa thêm "${payload.item.place?.name || 'địa điểm'}" vào giỏ hàng!`);
-          setTimeout(() => setGroupToastMsg(null), 3000);
+          showGroupToast(`👥 ${sender} vừa thêm "${payload.item.place?.name || 'địa điểm'}" vào giỏ hàng!`);
         }
-      })
-      .on('broadcast', { event: 'cart_item_removed' }, (msg: any) => {
-        const payload = msg?.payload;
+      },
+      cart_item_removed: (payload: any) => {
         if ((payload?.placeId || payload?.deletedKeys) && payload.senderId !== user?.id) {
           const delTime = payload.deleted_at || Date.now();
           if (Array.isArray(payload.deletedKeys)) {
@@ -1023,261 +1062,125 @@ export default function TripWizard() {
           }));
           const sender = payload.senderName || 'Thành viên';
           const pName = payload.placeName || 'địa điểm';
-          setGroupToastMsg(`👥 ${sender} vừa bỏ "${pName}" khỏi giỏ hàng!`);
-          setTimeout(() => setGroupToastMsg(null), 3000);
+          showGroupToast(`👥 ${sender} vừa bỏ "${pName}" khỏi giỏ hàng!`);
         }
-      })
-      .on('broadcast', { event: 'cart_cleared' }, (msg: any) => {
-        const payload = msg?.payload;
+      },
+      cart_cleared: (payload: any) => {
         if (payload?.senderId !== user?.id) {
           const now = Date.now();
-          setCartItems(prev => {
-            prev.forEach(it => {
-              getPlaceKeys(it).forEach(k => cartTombstonesRef.current.set(k, now));
-            });
-            return [];
+          cartItemsRef.current.forEach(it => {
+            getPlaceKeys(it).forEach(k => cartTombstonesRef.current.set(k, now));
           });
-          const sender = payload.senderName || 'Thành viên';
-          setGroupToastMsg(`👥 ${sender} đã làm trống giỏ hàng!`);
-          setTimeout(() => setGroupToastMsg(null), 3000);
+          setCartItems([]);
+          const sender = payload?.senderName || 'Thành viên';
+          showGroupToast(`👥 ${sender} đã làm trống giỏ hàng!`);
         }
-      })
-      .on('broadcast', { event: 'calendar_delta' }, (msg: any) => {
-        const payload = msg?.payload;
+      },
+      calendar_delta: (payload: any) => {
         if (payload?.delta && payload.updated_by !== user?.id) {
           setExternalDelta({ ...payload.delta });
         }
-      })
-      .on('broadcast', { event: 'cart_updated' }, (msg: any) => {
-        const payload = msg?.payload;
-        if (payload?.cartItems && payload.senderId !== user?.id) {
-          setCartItems(prev => {
-            const incomingItems: any[] = payload.cartItems;
-            const validIncoming = incomingItems.filter(it => {
-              const itKeys = getPlaceKeys(it);
-              const maxTombTime = Math.max(0, ...itKeys.map(k => cartTombstonesRef.current.get(k) || 0));
-              const itemTime = Number(it.updated_at || 0);
-              return maxTombTime === 0 || itemTime > maxTombTime;
-            });
-
-            if (!prev || prev.length === 0) return validIncoming;
-
-            const prevMap = new Map(prev.map(it => [it.place.id, it]));
-            const merged: typeof prev = [];
-
-            for (const incoming of validIncoming) {
-              const local = prevMap.get(incoming.place?.id);
-              if (!local) {
-                merged.push(incoming);
-              } else {
-                const incomingTime = Number(incoming.updated_at || 0);
-                const localTime = Number(local.updated_at || 0);
-                if (incomingTime >= localTime) {
-                  merged.push({ ...local, ...incoming });
-                } else {
-                  merged.push(local);
-                }
-                prevMap.delete(incoming.place?.id);
-              }
-            }
-
-            for (const remaining of prevMap.values()) {
-              const remKeys = getPlaceKeys(remaining);
-              const maxTombTime = Math.max(0, ...remKeys.map(k => cartTombstonesRef.current.get(k) || 0));
-              const localTime = Number(remaining.updated_at || 0);
-              const isTombstoned = maxTombTime > 0 && maxTombTime >= localTime;
-              if (isTombstoned) continue;
-
-              merged.push(remaining);
-            }
-            return merged;
-          });
-          const sender = payload.senderName || 'Thành viên';
-          setGroupToastMsg(`👥 ${sender} vừa cập nhật giỏ hàng chung!`);
-          setTimeout(() => setGroupToastMsg(null), 3500);
-        }
-      })
-      .on('broadcast', { event: 'calendar_updated' }, (msg: any) => {
-        const payload = msg?.payload;
-        if (payload?.cartItems && payload.senderId !== user?.id) {
-          setCartItems(prev => {
-            const incomingItems: any[] = payload.cartItems;
-            const validIncoming = incomingItems.filter(it => {
-              const itKeys = getPlaceKeys(it);
-              const maxTombTime = Math.max(0, ...itKeys.map(k => cartTombstonesRef.current.get(k) || 0));
-              const itemTime = Number(it.updated_at || 0);
-              return maxTombTime === 0 || itemTime > maxTombTime;
-            });
-
-            if (!prev || prev.length === 0) return validIncoming;
-
-            const prevMap = new Map(prev.map(it => [it.place.id, it]));
-            const merged: typeof prev = [];
-
-            for (const incoming of validIncoming) {
-              const local = prevMap.get(incoming.place?.id);
-              if (!local) {
-                merged.push(incoming);
-              } else {
-                const incomingTime = Number(incoming.updated_at || 0);
-                const localTime = Number(local.updated_at || 0);
-                if (incomingTime >= localTime) {
-                  merged.push({ ...local, ...incoming });
-                } else {
-                  merged.push(local);
-                }
-                prevMap.delete(incoming.place?.id);
-              }
-            }
-
-            for (const remaining of prevMap.values()) {
-              const remKeys = getPlaceKeys(remaining);
-              const maxTombTime = Math.max(0, ...remKeys.map(k => cartTombstonesRef.current.get(k) || 0));
-              const localTime = Number(remaining.updated_at || 0);
-              const isTombstoned = maxTombTime > 0 && maxTombTime >= localTime;
-              if (isTombstoned) continue;
-
-              merged.push(remaining);
-            }
-            return merged;
-          });
-          const sender = payload.senderName || 'Thành viên';
-          setGroupToastMsg(`📅 ${sender} vừa cập nhật lịch trình!`);
-          setTimeout(() => setGroupToastMsg(null), 3000);
-        }
-      })
-      .on('broadcast', { event: 'pregen_places_updated' }, (msg: any) => {
-        const payload = msg?.payload || msg;
+      },
+      pregen_places_updated: (payload: any) => {
         if (payload?.places && Array.isArray(payload.places) && payload.places.length > 0) {
           setPregenPlaces(payload.places);
         }
-      })
-      .on('broadcast', { event: 'stage_changed' }, (msg: any) => {
-        const payload = msg?.payload;
-        if (payload?.stage) {
-          setWorkspaceStage(payload.stage);
-          if (payload.stage === 'scheduling') {
-            setGroupToastMsg(`🚀 ${payload.senderName || 'Trưởng nhóm'} đã chuyển sang bước Xếp lịch trình!`);
-            setTimeout(() => setGroupToastMsg(null), 3500);
-          } else if (payload.stage === 'collecting') {
-            setGroupToastMsg(`📝 ${payload.senderName || 'Trưởng nhóm'} đã quay lại bước Chọn thêm địa điểm!`);
-            setTimeout(() => setGroupToastMsg(null), 3500);
+      },
+      stage_changed: (payload: any) => {
+        const stage = payload?.stage;
+        if ((stage === 'scheduling' || stage === 'collecting') && stage !== workspaceStageRef.current) {
+          workspaceStageRef.current = stage;
+          setWorkspaceStage(stage);
+          if (stage === 'scheduling') {
+            showGroupToast(`🚀 ${payload.senderName || 'Trưởng nhóm'} đã chuyển sang bước Xếp lịch trình!`, 3500);
+          } else {
+            showGroupToast(`📝 ${payload.senderName || 'Trưởng nhóm'} đã quay lại bước Chọn thêm địa điểm!`, 3500);
           }
         }
-      })
-      .on('broadcast', { event: 'trip_finalized' }, (msg: any) => {
-        const payload = msg?.payload;
+      },
+      trip_finalized: (payload: any) => {
         if (payload?.tripId) {
-          setGroupToastMsg('🎉 Trưởng nhóm đã chốt lịch trình! Đang cùng bạn chuyển sang chuyến đi...');
-          setTimeout(() => {
+          showGroupToast('🎉 Trưởng nhóm đã chốt lịch trình! Đang cùng bạn chuyển sang chuyến đi...');
+          // Dùng ref để có thể cancel khi component unmount (tránh navigate sau khi unmount)
+          finalizeNavTimerRef.current = setTimeout(() => {
             const redirectUrl = payload.redirectUrl || APP_ROUTES.TRIP_DETAIL(payload.tripId);
             router.replace(redirectUrl as any);
           }, 800);
         }
-      })
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        const count = Object.keys(state).length;
-        if (count > 0) setCollaboratorCount(count);
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED' && user?.id) {
-          await channel.track({
-            user_id: user.id,
-            online_at: new Date().toISOString(),
-          });
+      },
+      // Server: giỏ hàng chuẩn (có version) sau mỗi lần ghi thành công của bất kỳ ai
+      shared_cart_synced: (payload: any) => {
+        if (payload?.tripId && payload.tripId !== draftTripIdRef.current) return;
+        applyServerSnapshot(payload);
+      },
+    },
+  });
+  draftSendRef.current = draftSend;
+
+  // Server: thông báo khi có thành viên tham gia / rời nhóm
+  useRealtimeChannel(draftTripId ? tripTopic(draftTripId) : null, {
+    onBroadcast: {
+      members_updated: (data: any) => {
+        if (!data || (data.user_id && data.user_id === user?.id)) return;
+        const name = data.display_name || 'Một thành viên';
+        if (data.reason === 'joined') {
+          showGroupToast(`👥 ${name} vừa tham gia nhóm`, 3500);
+        } else if (data.reason === 'left' || data.reason === 'removed') {
+          // Gỡ ngay khỏi danh sách online, không chờ presence sync
+          if (data.user_id) {
+            setOnlineMembers(prev => prev.filter(m => (m?.user_id || m?.presence_key) !== data.user_id));
+          }
+          showGroupToast(`👋 ${name} đã rời nhóm`, 3500);
         }
-      });
+      },
+    },
+  });
 
-    return () => {
-      draftChannelRef.current = null;
-      supabase.removeChannel(channel);
-    };
-  }, [draftTripId, user?.id]);
+  // Đổi phòng → reset trạng thái đồng bộ của phòng cũ
+  useEffect(() => {
+    lastAppliedVersionRef.current = 0;
+    latestServerSnapshotRef.current = null;
+    setOnlineMembers([]);
+  }, [draftTripId]);
 
-  // Polling nhẹ mỗi 4 giây khi đang ở phòng chọn giỏ hàng chung để đảm bảo đồng bộ 100%
+  // Dự phòng: đồng bộ lại chậm mỗi 20 giây khi đang ở phòng chọn chung (realtime là kênh chính)
   useEffect(() => {
     if (!draftTripId || step !== 4) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await api.get(`/trips/${draftTripId}/shared-cart`);
-        if (res.data?.tombstones) {
-          for (const [k, v] of Object.entries(res.data.tombstones)) {
-            const t = Number(v) || 0;
-            if (t > (cartTombstonesRef.current.get(k) || 0)) {
-              cartTombstonesRef.current.set(k, t);
-            }
-          }
-        }
-        const remoteCart = res.data?.draft_cart;
-        if (Array.isArray(remoteCart)) {
-          setCartItems((prev) => {
-            const itemMap = new Map<string, any>();
-
-            // 1. Giữ các item local nếu chưa bị tombstone đánh dấu xóa
-            for (const local of prev) {
-              const locKeys = getPlaceKeys(local);
-              const maxTomb = Math.max(0, ...locKeys.map(k => cartTombstonesRef.current.get(k) || 0));
-              const locTime = Number(local.updated_at || 0);
-              if (maxTomb === 0 || locTime > maxTomb) {
-                itemMap.set(local.place.id, local);
-              }
-            }
-
-            // 2. Hợp nhất với remoteCart từ backend
-            for (const remote of remoteCart) {
-              const remKeys = getPlaceKeys(remote);
-              const maxTomb = Math.max(0, ...remKeys.map(k => cartTombstonesRef.current.get(k) || 0));
-              const remTime = Number(remote.updated_at || 0);
-              if (maxTomb === 0 || remTime > maxTomb) {
-                const pId = remote.place?.id || remote.id;
-                const existing = itemMap.get(pId);
-                if (!existing || Number(remote.updated_at || 0) >= Number(existing.updated_at || 0)) {
-                  itemMap.set(pId, remote);
-                }
-              }
-            }
-
-            const mergedList = Array.from(itemMap.values());
-            if (JSON.stringify(prev) !== JSON.stringify(mergedList)) {
-              return mergedList;
-            }
-            return prev;
-          });
-        }
-        const remotePregen = res.data?.pregen_places;
-        if (Array.isArray(remotePregen) && remotePregen.length > 0) {
-          setPregenPlaces(remotePregen);
-        }
-        const remoteStage = res.data?.workspace_stage;
-        if (remoteStage && (remoteStage === 'collecting' || remoteStage === 'scheduling')) {
-          setWorkspaceStage((prev) => {
-            if (prev !== remoteStage) {
-              if (remoteStage === 'scheduling') {
-                setGroupToastMsg('🚀 Trưởng nhóm đã chuyển sang bước Xếp lịch trình!');
-                setTimeout(() => setGroupToastMsg(null), 3500);
-              } else if (remoteStage === 'collecting') {
-                setGroupToastMsg('📝 Trưởng nhóm đã quay lại bước Chọn thêm địa điểm!');
-                setTimeout(() => setGroupToastMsg(null), 3500);
-              }
-              return remoteStage;
-            }
-            return prev;
-          });
-        }
-      } catch (e) {
-        // Im lặng khi polling
-      }
-    }, 4000);
-
+    fetchSharedCart(draftTripId, { silent: true });
+    const interval = setInterval(() => {
+      fetchSharedCart(draftTripId);
+    }, 20000);
     return () => clearInterval(interval);
   }, [draftTripId, step]);
 
   // Mở modal tạo nhóm / mời bạn bè cùng chọn giỏ hàng
+  // Tạo link mời cho phòng nhóm; lỗi → hiện trong modal kèm nút Thử lại (không hiện link hỏng)
+  const createDraftInvite = async (tripId: string) => {
+    setInviteError(null);
+    setIsCreatingInvite(true);
+    try {
+      const collabRes = await api.post(`/trips/${tripId}/collaborators`);
+      const token = collabRes.data?.invite_token;
+      if (typeof token !== 'string' || !token.trim()) {
+        throw new Error('Máy chủ chưa trả mã mời. Vui lòng thử lại.');
+      }
+      setDraftShareToken(token);
+    } catch (err: any) {
+      // Thông báo thân thiện; chỉ dùng chi tiết từ server nếu đủ ý nghĩa
+      const fallback = 'Không thể tạo link mời. Vui lòng thử lại.';
+      const parsed = parseErrorMessage(err, fallback);
+      setInviteError(parsed.trim().length < 4 ? fallback : parsed);
+    } finally {
+      setIsCreatingInvite(false);
+    }
+  };
+
   const handleOpenDraftGroupModal = async () => {
     if (draftTripId) {
       setShowGroupModal(true);
+      if (!draftShareToken && !isCreatingInvite && isGroupDraftOwner) {
+        createDraftInvite(draftTripId);
+      }
       return;
     }
 
@@ -1326,23 +1229,26 @@ export default function TripWizard() {
         throw new Error('Máy chủ chưa trả mã chuyến đi. Vui lòng kiểm tra danh sách chuyến đi trước khi thử tạo lại.');
       }
       setDraftTripId(tripId);
+      draftTripIdRef.current = tripId;
       setDraftOwnerId(newTrip.user_id || user?.id || null);
 
-      let token = newTrip.share_token;
-      try {
-        const collabRes = await api.post(`/trips/${tripId}/collaborators`);
-        if (collabRes.data?.invite_token) {
-          token = collabRes.data.invite_token;
-        }
-      } catch (e) {}
-
-      setDraftShareToken(token || tripId);
       setShowGroupModal(true);
+      await createDraftInvite(tripId);
     } catch (err: any) {
       setErrorMsg(parseErrorMessage(err, 'Không thể khởi tạo nhóm lúc này. Vui lòng kiểm tra lại ngân sách hoặc thông tin!'));
     } finally {
       setIsCreatingDraftGroup(false);
     }
+  };
+
+  // Đồng bộ bước làm việc (4A/4B) cho cả nhóm: broadcast tức thì + ghi stage lên server (không đụng giỏ hàng)
+  const syncWorkspaceStage = (stage: 'collecting' | 'scheduling') => {
+    workspaceStageRef.current = stage;
+    setWorkspaceStage(stage);
+    if (!draftTripIdRef.current) return;
+    const senderName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Trưởng nhóm';
+    draftSendRef.current('stage_changed', { stage, senderName });
+    persistSharedCart({ workspace_stage: stage });
   };
 
   // Đội trưởng chuyển bước sang Xếp lịch trình 4B và đồng bộ cho cả nhóm
@@ -1352,83 +1258,12 @@ export default function TripWizard() {
       return;
     }
     setErrorMsg('');
-    setWorkspaceStage('scheduling');
-
-    const senderName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Trưởng nhóm';
-    const payload = { stage: 'scheduling', senderName };
-
-    if (draftTripId) {
-      try {
-        if (draftChannelRef.current) {
-          draftChannelRef.current.send({
-            type: 'broadcast',
-            event: 'stage_changed',
-            payload,
-          }).catch(() => {});
-        } else {
-          const channel = supabase.channel(`draft-cart:${draftTripId}`);
-          channel.send({
-            type: 'broadcast',
-            event: 'stage_changed',
-            payload,
-          }).catch(() => {});
-        }
-      } catch (e) {}
-
-      const tombstonesObj: Record<string, number> = {};
-      cartTombstonesRef.current.forEach((val, key) => {
-        tombstonesObj[key] = val;
-      });
-
-      api.put(`/trips/${draftTripId}/shared-cart`, {
-        draft_cart: cartItems,
-        deleted_place_ids: [],
-        tombstones: tombstonesObj,
-        workspace_stage: 'scheduling',
-      }).catch((err) => {
-        console.warn('Failed to update workspace_stage to scheduling:', err?.message);
-      });
-    }
+    syncWorkspaceStage('scheduling');
   };
 
   // Đội trưởng quay lại bước Chọn địa điểm 4A và đồng bộ cho cả nhóm
   const handleBackToCollecting = () => {
-    setWorkspaceStage('collecting');
-    const senderName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Trưởng nhóm';
-    const payload = { stage: 'collecting', senderName };
-
-    if (draftTripId) {
-      try {
-        if (draftChannelRef.current) {
-          draftChannelRef.current.send({
-            type: 'broadcast',
-            event: 'stage_changed',
-            payload,
-          }).catch(() => {});
-        } else {
-          const channel = supabase.channel(`draft-cart:${draftTripId}`);
-          channel.send({
-            type: 'broadcast',
-            event: 'stage_changed',
-            payload,
-          }).catch(() => {});
-        }
-      } catch (e) {}
-
-      const tombstonesObj: Record<string, number> = {};
-      cartTombstonesRef.current.forEach((val, key) => {
-        tombstonesObj[key] = val;
-      });
-
-      api.put(`/trips/${draftTripId}/shared-cart`, {
-        draft_cart: cartItems,
-        deleted_place_ids: [],
-        tombstones: tombstonesObj,
-        workspace_stage: 'collecting',
-      }).catch((err) => {
-        console.warn('Failed to update workspace_stage to collecting:', err?.message);
-      });
-    }
+    syncWorkspaceStage('collecting');
   };
 
   // ── LẮNG NGHE SỰ KIỆN CLICK THÊM GIỎ TỪ BẢN ĐỒ BƯỚC 4A ──
@@ -1662,7 +1497,7 @@ export default function TripWizard() {
   };
 
   const handleAutoDistributeDays = () => {
-    setCartItems(prev => {
+    updateCartItems(prev => {
       return prev.map((item, idx) => ({
         ...item,
         day_number: (idx % daysCount) + 1,
@@ -1672,7 +1507,7 @@ export default function TripWizard() {
   };
 
   const handleReorderScheduleDayPlaces = (newWaypoints: RouteWaypoint[]) => {
-    setCartItems(prev => {
+    updateCartItems(prev => {
       const updated = [...prev];
       newWaypoints.forEach((wp, newIdx) => {
         const foundIdx = updated.findIndex(
@@ -1690,7 +1525,7 @@ export default function TripWizard() {
   };
 
   const handleUpdateItemNights = (placeId: string, delta: number) => {
-    setCartItems(prev => prev.map(item => {
+    updateCartItems(prev => prev.map(item => {
       if (item.place.id === placeId) {
         const currentNights = item.nights || 1;
         const newNights = Math.max(1, Math.min(currentNights + delta, Math.max(1, nightsCount)));
@@ -1736,7 +1571,7 @@ export default function TripWizard() {
   };
 
   const handleMoveItemDay = (placeId: string, newDay: number) => {
-    setCartItems(prev => {
+    updateCartItems(prev => {
       const targetDayItems = prev.filter(it => it.day_number === newDay && it.place.id !== placeId);
       return prev.map(it => {
         if (it.place.id === placeId) {
@@ -1748,48 +1583,43 @@ export default function TripWizard() {
   };
 
   const handleReorderItem = (placeId: string, direction: 'up' | 'down') => {
-    setCartItems(prev => {
+    updateCartItems(prev => {
       const item = prev.find(it => it.place.id === placeId);
       if (!item) return prev;
       const sameDayItems = prev.filter(it => it.day_number === item.day_number).sort((a, b) => a.order_index - b.order_index);
       const idx = sameDayItems.findIndex(it => it.place.id === placeId);
-      if (direction === 'up' && idx > 0) {
-        const prevItem = sameDayItems[idx - 1];
-        const temp = item.order_index;
-        item.order_index = prevItem.order_index;
-        prevItem.order_index = temp;
-      } else if (direction === 'down' && idx < sameDayItems.length - 1) {
-        const nextItem = sameDayItems[idx + 1];
-        const temp = item.order_index;
-        item.order_index = nextItem.order_index;
-        nextItem.order_index = temp;
-      }
-      return [...prev];
+      const other = direction === 'up' ? sameDayItems[idx - 1] : sameDayItems[idx + 1];
+      if (!other) return prev;
+      // Hoán đổi order_index bằng object mới (không mutate state cũ)
+      return prev.map(it => {
+        if (it === item) return { ...it, order_index: other.order_index };
+        if (it === other) return { ...it, order_index: item.order_index };
+        return it;
+      });
     });
   };
 
   const handleRemoveFromCart = (placeId: string) => {
-    setCartItems(prev => {
-      const match = prev.find(item => item.place.id === placeId);
-      if (!match) return prev;
-      const delTime = Date.now();
-      const delKeys = getPlaceKeys(match);
-      delKeys.forEach(k => cartTombstonesRef.current.set(k, delTime));
-      const updated = prev.filter(item => item !== match);
-      broadcastCartAction({
-        type: 'cart_item_removed',
-        placeId: match.place.id,
-        placeName: match.place.name,
-        deletedKeys: delKeys,
-        deleted_at: delTime,
-        updatedCart: updated,
-      });
-      return updated;
+    const prev = cartItemsRef.current;
+    const match = prev.find(item => item.place.id === placeId);
+    if (!match) return;
+    const delTime = Date.now();
+    const delKeys = getPlaceKeys(match);
+    delKeys.forEach(k => cartTombstonesRef.current.set(k, delTime));
+    const updated = prev.filter(item => item !== match);
+    cartItemsRef.current = updated;
+    setCartItems(updated);
+    broadcastCartAction({
+      type: 'cart_item_removed',
+      placeId: match.place.id,
+      placeName: match.place.name,
+      deletedKeys: delKeys,
+      deleted_at: delTime,
     });
   };
 
   const handleUpdateItemCost = (placeId: string, newCost: number) => {
-    setCartItems(prev => prev.map(item => item.place.id === placeId ? { ...item, custom_cost: newCost, pricing_option: 'manual' } : item));
+    updateCartItems(prev => prev.map(item => item.place.id === placeId ? { ...item, custom_cost: newCost, pricing_option: 'manual' } : item));
     setEditingCostPlaceId(null);
   };
 
@@ -1855,7 +1685,7 @@ export default function TripWizard() {
   }, [cartItems]);
 
   const handleCalendarEventsChange = (updatedEvents: CalendarEventItem[]) => {
-    setCartItems(prev => {
+    updateCartItems(prev => {
       const now = Date.now();
       const updated = prev.map(item => {
         const found = updatedEvents.find(e => e.placeId === item.place.id || e.id === `ev-${item.place.id}`);
@@ -1904,26 +1734,7 @@ export default function TripWizard() {
         }
       });
 
-      if (draftTripId) {
-        const senderName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Thành viên';
-        draftChannelRef.current?.send({
-          type: 'broadcast',
-          event: 'calendar_updated',
-          payload: { cartItems: updated, senderId: user?.id, senderName },
-        }).catch(() => {});
-        const tombstonesObj: Record<string, number> = {};
-        cartTombstonesRef.current.forEach((val, key) => {
-          tombstonesObj[key] = val;
-        });
-
-        api.put(`/trips/${draftTripId}/shared-cart`, {
-          draft_cart: updated,
-          deleted_place_ids: [],
-          tombstones: tombstonesObj,
-          workspace_stage: 'scheduling',
-        }).catch(() => {});
-      }
-
+      // Thành viên khác nhận thay đổi tức thì qua calendar_delta, bản chuẩn qua shared_cart_synced
       return updated;
     });
   };
@@ -1970,8 +1781,7 @@ export default function TripWizard() {
       }
     });
 
-    setCartItems(updated);
-    syncCartToDraft(updated);
+    updateCartItems(() => updated);
     await handleProScheduleSubmit('manual', updated);
   };
 
@@ -2842,6 +2652,11 @@ export default function TripWizard() {
                                 ? `🟢 Phòng chọn chung đang hoạt động · ${collaboratorCount} thành viên trực tuyến`
                                 : 'Chọn địa điểm vào giỏ hoặc mời bạn bè cùng chọn đồng bộ tức thì'}
                             </Text>
+                            {draftTripId && onlineMembers.length > 0 && (
+                              <Text testID="draft-online-members" numberOfLines={1} className="text-[11px] font-bold text-emerald-700">
+                                {`👥 ${onlineMemberNames}`}
+                              </Text>
+                            )}
                           </View>
                         </View>
 
@@ -3058,7 +2873,7 @@ export default function TripWizard() {
                                         onPress={() => {
                                           const addedByName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Tôi';
                                           const addedById = user?.id;
-                                          setCartItems((prev) => {
+                                          updateCartItems((prev) => {
                                             let updated = [...prev];
                                             filteredPoolPlaces.forEach((p) => {
                                               const match = updated.find(
@@ -3079,7 +2894,6 @@ export default function TripWizard() {
                                                 });
                                               }
                                             });
-                                            syncCartToDraft(updated);
                                             return updated;
                                           });
                                         }}
@@ -4503,40 +4317,74 @@ export default function TripWizard() {
               <Text style={{ fontSize: 12, color: '#3F4F45', lineHeight: 18 }}>
                 👥 Bất kỳ ai có đường link dưới đây đều có thể tham gia vào phòng chọn giỏ hàng này. Mọi thao tác thêm/bớt địa điểm sẽ tức thì hiển thị trên màn hình của nhau!
               </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#E5DFD3' }}>
-                <LinkIcon size={14} color="#6E7B70" />
-                <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: '#1B2420' }}>
-                  {`${getBaseUrl()}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`}
-                </Text>
-              </View>
+              {draftShareToken ? (
+                <>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#E5DFD3' }}>
+                    <LinkIcon size={14} color="#6E7B70" />
+                    <Text testID="draft-invite-link" numberOfLines={1} style={{ flex: 1, fontSize: 12, color: '#1B2420' }}>
+                      {`${getBaseUrl()}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken}`}
+                    </Text>
+                  </View>
 
-              <Pressable
-                onPress={async () => {
-                  const shareUrl = `${getBaseUrl()}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`;
-                  try {
-                    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-                      await navigator.clipboard.writeText(shareUrl);
-                      setCopiedLink(true);
-                      setTimeout(() => setCopiedLink(false), 2500);
-                    }
-                  } catch (e) {}
-                }}
-                style={{ paddingVertical: 11, backgroundColor: copiedLink ? '#059669' : BRAND_COLORS.primary, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
-              >
-                {copiedLink ? <Check size={15} color="#FFFFFF" /> : <Copy size={15} color="#FFFFFF" />}
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
-                  {copiedLink ? 'Đã sao chép link mời!' : 'Sao chép link gửi bạn bè'}
-                </Text>
-              </Pressable>
+                  <Pressable
+                    onPress={async () => {
+                      const shareUrl = `${getBaseUrl()}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken}`;
+                      try {
+                        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                          await navigator.clipboard.writeText(shareUrl);
+                          setCopiedLink(true);
+                          setTimeout(() => setCopiedLink(false), 2500);
+                        }
+                      } catch (e) {}
+                    }}
+                    style={{ paddingVertical: 11, backgroundColor: copiedLink ? '#059669' : BRAND_COLORS.primary, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
+                  >
+                    {copiedLink ? <Check size={15} color="#FFFFFF" /> : <Copy size={15} color="#FFFFFF" />}
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+                      {copiedLink ? 'Đã sao chép link mời!' : 'Sao chép link gửi bạn bè'}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : isCreatingInvite ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10 }}>
+                  <ActivityIndicator size="small" color={BRAND_COLORS.primary} />
+                  <Text style={{ fontSize: 12, color: '#6E7B70' }}>Đang tạo link mời...</Text>
+                </View>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  <Text testID="draft-invite-error" style={{ fontSize: 12, color: '#DC2626', lineHeight: 18 }}>
+                    {inviteError || (isGroupDraftOwner ? 'Chưa có link mời cho nhóm này.' : 'Chỉ trưởng nhóm mới tạo được link mời.')}
+                  </Text>
+                  {isGroupDraftOwner && draftTripId && (
+                    <Pressable
+                      testID="btn-retry-draft-invite"
+                      onPress={() => createDraftInvite(draftTripId)}
+                      style={{ paddingVertical: 11, backgroundColor: BRAND_COLORS.primary, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Thử lại tạo link mời</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
             </View>
 
+            {/* Thành viên đang online trong phòng chọn chung */}
+            {draftTripId && onlineMembers.length > 0 && (
+              <View testID="draft-online-members-modal" style={{ gap: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#1B2420' }}>
+                  {`🟢 Đang online (${onlineMembers.length})`}
+                </Text>
+                <Text style={{ fontSize: 12, color: '#3F4F45', lineHeight: 18 }}>{onlineMemberNames}</Text>
+              </View>
+            )}
+
             {/* QR Code preview */}
-            {draftTripId && (
+            {draftTripId && draftShareToken && (
               <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 8, gap: 6 }}>
                 <Image
                   source={{
                     uri: `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-                      `${getBaseUrl()}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken || ''}`
+                      `${getBaseUrl()}/chuyen-di/moi?draft_id=${draftTripId}&token=${draftShareToken}`
                     )}`,
                   }}
                   style={{ width: 130, height: 130, borderRadius: 12 }}
