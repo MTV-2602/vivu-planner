@@ -15,7 +15,6 @@ import {
   RefreshCw,
 } from 'lucide-react-native';
 import { BRAND_COLORS } from '../../constants';
-import { supabase } from '../../lib/supabase';
 import { describePlan, formatVND } from '../../lib/plans';
 import {
   PageHeader,
@@ -86,25 +85,6 @@ export default function AdminPackagesPage() {
   const saveMutation = useSaveAdminPlans();
   const deleteMutation = useDeleteAdminPlan();
 
-  const broadcastRealtimeUpdate = () => {
-    try {
-      const channel = supabase.channel('pricing_realtime');
-      channel.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          channel
-            .send({
-              type: 'broadcast',
-              event: 'plans_updated',
-              payload: { timestamp: Date.now() },
-            })
-            .then(() => {
-              supabase.removeChannel(channel);
-            });
-        }
-      });
-    } catch (_) {}
-  };
-
   const handleOpenAdd = () => {
     setPackageType('per_turn');
     setFormData({
@@ -154,7 +134,6 @@ export default function AdminPackagesPage() {
             `Đã ${updatedStatus ? 'bật hiển thị' : 'ẩn'} gói "${plan.label}"`,
             'success'
           );
-          broadcastRealtimeUpdate();
           refetchPlans();
         },
         onError: (err: any) => {
@@ -223,7 +202,6 @@ export default function AdminPackagesPage() {
           'success'
         );
         setIsModalOpen(false);
-        broadcastRealtimeUpdate();
         refetchPlans();
       },
       onError: (err: any) => {
@@ -249,7 +227,6 @@ export default function AdminPackagesPage() {
       onSuccess: () => {
         showToast(`Đã xóa gói "${planToDelete.label}" thành công!`, 'success');
         setPlanToDelete(null);
-        broadcastRealtimeUpdate();
         refetchPlans();
       },
       onError: (err: any) => {

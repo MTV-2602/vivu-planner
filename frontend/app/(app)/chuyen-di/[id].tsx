@@ -34,7 +34,7 @@ import AppToast, { AppToastMessage } from '../../../components/AppToast';
 import AvatarStack from '../../../components/AvatarStack';
 import ShareTripModal from '../../../components/ShareTripModal';
 import ActivityFeed from '../../../components/ActivityFeed';
-import { supabase } from '../../../lib/supabase';
+import { useRealtimeChannel, tripTopic } from '../../../lib/realtime';
 import { usePaymentStatus } from '../../../hooks/usePaymentStatus';
 import { formatHeaderChip } from '../../../lib/plans';
 
@@ -266,9 +266,8 @@ export default function TripDetail() {
   const [onlineMembers, setOnlineMembers] = useState<any[]>([]);
   const [shareTripModalVisible, setShareTripModalVisible] = useState(false);
   const [activityFeedVisible, setActivityFeedVisible] = useState(false);
-  const [presenceChannel, setPresenceChannel] = useState<any>(null);
-  const presenceChannelRef = useRef<any>(null);
-  const channelSubscribedRef = useRef(false);
+  // Hàm gửi broadcast lên topic trip:${id} (gán sau khi khởi tạo useRealtimeChannel bên dưới)
+  const tripSendRef = useRef<(event: string, payload: any) => Promise<void>>(async () => {});
   const refetchRef = useRef<(() => any) | null>(null);
   const userIdRef = useRef(user?.id);
   userIdRef.current = user?.id;
@@ -289,42 +288,27 @@ export default function TripDetail() {
   }, [lockedItems]);
 
   const handleEventDelta = useCallback((delta: CalendarDeltaAction) => {
-    const activeChannel = presenceChannelRef.current || presenceChannel;
-    const currentUserId = userIdRef.current || user?.id;
-    if (activeChannel && currentUserId) {
-      activeChannel.send({
-        type: 'broadcast',
-        event: 'calendar_delta',
-        payload: {
-          delta,
-          updated_by: currentUserId,
-          timestamp: Date.now(),
-        }
-      }).catch((err: any) => {
-        console.warn('[ViVu Sync] calendar_delta broadcast error:', err);
+    const currentUserId = userIdRef.current;
+    if (currentUserId) {
+      tripSendRef.current('calendar_delta', {
+        delta,
+        updated_by: currentUserId,
+        timestamp: Date.now(),
       });
     }
-  }, [presenceChannel, user?.id]);
+  }, []);
 
   const handleEventsChange = useCallback((newEvents: CalendarEventItem[]) => {
     // Broadcast toàn bộ events hiện tại cho members khác
-    const activeChannel = presenceChannelRef.current || presenceChannel;
-    const now = Date.now();
-    const currentUserId = userIdRef.current || user?.id;
-    if (activeChannel && currentUserId) {
-      activeChannel.send({
-        type: 'broadcast',
-        event: 'events_patch',
-        payload: {
-          events: newEvents,
-          updated_by: currentUserId,
-          timestamp: now,
-        }
-      }).catch((err: any) => {
-        console.warn('[ViVu Sync] Broadcast error:', err);
+    const currentUserId = userIdRef.current;
+    if (currentUserId) {
+      tripSendRef.current('events_patch', {
+        events: newEvents,
+        updated_by: currentUserId,
+        timestamp: Date.now(),
       });
     }
-  }, [presenceChannel, user?.id]);
+  }, []);
 
   // New features state
   const [showMapView, setShowMapView] = useState(true);
@@ -448,86 +432,65 @@ export default function TripDetail() {
     }
   }, [id, fetchCollaborators]);
 
-  useEffect(() => {
-    if (!tripData?.id || !user?.id) return;
+  // Realtime: 1 topic cố định trip:${id} cho presence + broadcast giữa các thành viên + sự kiện từ server
+  const CURSOR_COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#3B82F6'];
+  const myDisplayName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Thành viên';
+  // Presence chỉ chứa dữ liệu ổn định (không có current_action) → không re-track mỗi thao tác.
+  // Hành động hiện tại được truyền qua broadcast user_action. Màu cursor cố định theo hash user.id.
+  const myPresenceState = useMemo(() => {
+    if (!user?.id) return undefined;
+    let hash = 0;
+    for (let i = 0; i < user.id.length; i++) hash = (hash * 31 + user.id.charCodeAt(i)) | 0;
+    return {
+      user_id: user.id,
+      display_name: myDisplayName,
+      avatar_url: user?.user_metadata?.avatar_url || null,
+      cursor_color: CURSOR_COLORS[Math.abs(hash) % CURSOR_COLORS.length],
+    };
+  }, [user?.id, myDisplayName, user?.user_metadata?.avatar_url]);
 
-    const CURSOR_COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#3B82F6'];
-    // Assign màu theo thứ tự join
-    const myColor = CURSOR_COLORS[collaborators.length % CURSOR_COLORS.length];
-
-    // Dọn dẹp sạch toàn bộ channel cũ có topic trip-presence trước khi khởi tạo channel mới
-    const existingChannels = supabase.getChannels().filter(c =>
-      c.topic === `realtime:trip-presence:${tripData.id}` ||
-      c.topic.startsWith(`realtime:trip-presence:${tripData.id}`) ||
-      c.topic === `trip-presence:${tripData.id}` ||
-      c.topic.startsWith(`trip-presence:${tripData.id}`)
-    );
-    for (const c of existingChannels) {
-      supabase.removeChannel(c);
-    }
-
-    const channelName = `trip-presence:${tripData.id}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const channel = supabase.channel(channelName, {
-      config: { presence: { key: user.id } }
-    });
-
-    presenceChannelRef.current = channel;
-    setPresenceChannel(channel);
-
-    channel
-      // Presence sync — ai đang online
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState<{
-          user_id: string;
-          display_name: string;
-          avatar_url: string;
-          current_action: string;
-          cursor_color: string;
-        }>();
-        const rawMembers = Object.values(state).flat() as any[];
-        const seen = new Set();
-        const finalMembers: any[] = [];
-        for (const m of rawMembers) {
-          if (m?.user_id && !seen.has(m.user_id)) {
-            seen.add(m.user_id);
-            finalMembers.push(m);
-          }
+  const { send: tripSend } = useRealtimeChannel(tripData?.id && user?.id ? tripTopic(tripData.id) : null, {
+    presenceKey: user?.id,
+    presenceState: myPresenceState,
+    // Presence sync — ai đang online (hub đã gộp theo presence key = user.id)
+    onPresence: (members) => {
+      const seen = new Set();
+      const finalMembers: any[] = [];
+      for (const m of members) {
+        if (m?.user_id && !seen.has(m.user_id)) {
+          seen.add(m.user_id);
+          finalMembers.push(m);
         }
-        setOnlineMembers(finalMembers);
-      })
-      // Presence join
-      .on('presence', { event: 'join' }, ({ newPresences }) => {
-        // Log vào activity khi ai đó join
-        // (tự động qua backend khi join_trip, không cần broadcast thêm)
-      })
-      // Presence leave
-      .on('presence', { event: 'leave' }, ({ leftPresences }: any) => {
-        if (leftPresences && Array.isArray(leftPresences)) {
-          const leftIds = new Set(leftPresences.map((p: any) => p?.user_id));
-          setLockedItems(prev => {
-            const next = { ...prev };
-            Object.keys(next).forEach(k => {
-              if (leftIds.has(next[k])) delete next[k];
-            });
-            return next;
-          });
-        }
-      })
-      // Broadcast — nhận delta realtime từ member khác (không ghi đè toàn bộ)
-      .on('broadcast', { event: 'calendar_delta' }, (msg: any) => {
-        const payload = msg?.payload || msg;
-        const myId = userIdRef.current || user?.id;
-        console.log('[ViVu Sync] Received calendar_delta from:', payload?.updated_by, 'type:', payload?.delta?.type, 'applying:', payload?.updated_by !== myId);
-        if (payload?.updated_by !== myId && payload?.delta) {
+      }
+      // Presence không mang current_action → giữ lại hành động gần nhất (từ user_action) của từng member
+      setOnlineMembers(prev => finalMembers.map((m) => {
+        const old = prev.find((p) => p.user_id === m.user_id);
+        return old?.current_action ? { ...m, current_action: old.current_action } : m;
+      }));
+      // Gỡ lock của những người đã rời phòng
+      const onlineIds = new Set(finalMembers.map((m) => m.user_id));
+      setLockedItems(prev => {
+        const keys = Object.keys(prev).filter(k => !onlineIds.has(prev[k]));
+        if (keys.length === 0) return prev;
+        const next = { ...prev };
+        keys.forEach(k => delete next[k]);
+        return next;
+      });
+    },
+    onResync: () => {
+      refetchRef.current?.();
+      fetchCollaborators();
+    },
+    onBroadcast: {
+      // Nhận delta realtime từ member khác (không ghi đè toàn bộ)
+      calendar_delta: (payload: any) => {
+        if (payload?.updated_by !== userIdRef.current && payload?.delta) {
           setExternalDelta({ ...payload.delta });
         }
-      })
-      // Broadcast — nhận patch realtime từ member khác (không refetch, không re-mount)
-      .on('broadcast', { event: 'events_patch' }, (msg: any) => {
-        const payload = msg?.payload || msg;
-        const myId = userIdRef.current || user?.id;
-        console.log('[ViVu Sync] Received events_patch from:', payload?.updated_by, 'events:', payload?.events?.length, 'applying:', payload?.updated_by !== myId);
-        if (payload?.updated_by !== myId && Array.isArray(payload?.events) && payload.events.length > 0) {
+      },
+      // Nhận patch realtime từ member khác (không refetch, không re-mount)
+      events_patch: (payload: any) => {
+        if (payload?.updated_by !== userIdRef.current && Array.isArray(payload?.events) && payload.events.length > 0) {
           patchCounterRef.current += 1;
           // Tạo array mới để đảm bảo React detect thay đổi reference
           setPatchedEvents([...payload.events]);
@@ -541,10 +504,9 @@ export default function TripDetail() {
             return next;
           });
         }
-      })
-      // Broadcast — nhận activity từ member khác
-      .on('broadcast', { event: 'user_action' }, (msg: any) => {
-        const payload = msg?.payload || msg;
+      },
+      // Nhận activity từ member khác
+      user_action: (payload: any) => {
         // Cập nhật hoặc thêm member đó trong onlineMembers kèm display_name
         setOnlineMembers(prev => {
           const exists = prev.some(m => m.user_id === payload?.user_id);
@@ -575,7 +537,7 @@ export default function TripDetail() {
         const lockTitle = payload?.item_title ? String(payload.item_title) : undefined;
         const lockKey = lockId || lockTitle;
 
-        if (payload?.action_type === 'drag_item' && lockKey && payload?.user_id !== (userIdRef.current || user?.id)) {
+        if (payload?.action_type === 'drag_item' && lockKey && payload?.user_id !== userIdRef.current) {
           setLockedItems(prev => {
             const next = { ...prev };
             if (lockId) next[lockId] = payload.user_id;
@@ -591,107 +553,95 @@ export default function TripDetail() {
             return next;
           });
         }
-      })
-      // Broadcast — nhận schedule_updated từ member khác để tự động refetch
-      .on('broadcast', { event: 'schedule_updated' }, (payload: any) => {
-        const data = payload?.payload || payload;
+      },
+      // Nhận schedule_updated từ member khác để tự động refetch
+      schedule_updated: (data: any) => {
         // Chỉ refetch nếu người khác lưu (không phải mình)
-        if (data?.updated_by && data.updated_by !== (userIdRef.current || user?.id)) {
-          const fetchPromise = refetchRef.current ? refetchRef.current() : refetch();
-          Promise.resolve(fetchPromise).then(() => {
+        if (data?.updated_by && data.updated_by !== userIdRef.current) {
+          Promise.resolve(refetchRef.current?.()).then(() => {
             // Force re-mount GoogleCalendarWorkspace để reset isInitializedRef
             setWorkspaceKey(k => k + 1);
           });
         }
-      })
-      .subscribe(async (status) => {
-        console.log('[ViVu Sync] Channel status:', status);
-        if (status === 'SUBSCRIBED') {
-          channelSubscribedRef.current = true;
-          // Track presence của user hiện tại
-          await channel.track({
-            user_id: user.id,
-            display_name: user.email?.split('@')[0] || 'Thành viên',
-            avatar_url: null,
-            current_action: 'Đang xem lịch trình',
-            cursor_color: myColor,
+      },
+      // Server: thành viên tham gia / rời / bị xóa khỏi chuyến đi
+      members_updated: (data: any) => {
+        const isGone = data?.reason === 'left' || data?.reason === 'removed';
+        const isMe = !!data?.user_id && data.user_id === userIdRef.current;
+        if (isMe && isGone) {
+          // Mình đã mất quyền truy cập → không gọi fetchCollaborators (sẽ 403)
+          if (data.reason === 'removed') {
+            setAppToast({ text: 'Bạn đã bị xóa khỏi chuyến đi này', type: 'info' });
+            router.replace(APP_ROUTES.TRIPS as any);
+          }
+          return;
+        }
+        if (isGone && data?.user_id) {
+          // Gỡ ngay member đã rời khỏi danh sách online + lock, không chờ presence sync
+          setOnlineMembers(prev => prev.filter(m => m.user_id !== data.user_id));
+          setLockedItems(prev => {
+            const keys = Object.keys(prev).filter(k => prev[k] === data.user_id);
+            if (keys.length === 0) return prev;
+            const next = { ...prev };
+            keys.forEach(k => delete next[k]);
+            return next;
           });
         }
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-      presenceChannelRef.current = null;
-      channelSubscribedRef.current = false;
-      setPresenceChannel(null);
-    };
-  }, [tripData?.id, user?.id]);
+        fetchCollaborators();
+        if (isMe) return;
+        const name = data?.display_name || 'Một thành viên';
+        if (data?.reason === 'joined') {
+          setAppToast({ text: `👥 ${name} vừa tham gia chuyến đi`, type: 'info' });
+        } else if (data?.reason === 'left') {
+          setAppToast({ text: `👋 ${name} đã rời chuyến đi`, type: 'info' });
+        }
+      },
+      // Server: dữ liệu chuyến đi thay đổi (vd. chi tiêu) → refetch ngầm
+      trip_updated: () => {
+        refetchRef.current?.();
+      },
+    },
+  });
+  tripSendRef.current = tripSend;
 
   const broadcastAction = useCallback(async (actionLabel: string, actionType: string, itemTitle?: string, itemId?: string) => {
     try {
-      const activeChannel = presenceChannelRef.current || presenceChannel;
       const finalTitle = itemTitle || itemId || null;
       const finalId = itemId || itemTitle || null;
-      const currentUserId = userIdRef.current || user?.id;
+      const currentUserId = userIdRef.current;
       // Broadcast đến các member khác
-      if (activeChannel) {
-        await activeChannel.send({
-          type: 'broadcast',
-          event: 'user_action',
-          payload: {
-            user_id: currentUserId,
-            display_name: user?.email?.split('@')[0] || 'Thành viên',
-            action_label: actionLabel,
-            action_type: actionType,
-            item_title: finalTitle,
-            item_id: finalId,
-            timestamp: new Date().toISOString(),
-          }
-        });
-      }
+      await tripSend('user_action', {
+        user_id: currentUserId,
+        display_name: myDisplayName,
+        action_label: actionLabel,
+        action_type: actionType,
+        item_title: finalTitle,
+        item_id: finalId,
+        timestamp: new Date().toISOString(),
+      });
 
-      // Cập nhật presence của chính mình
-      if (activeChannel && currentUserId) {
-        await activeChannel.track({
-          user_id: currentUserId,
-          display_name: user?.email?.split('@')[0] || 'Thành viên',
-          avatar_url: null,
-          current_action: actionLabel,
-          cursor_color: '#7C3AED',
-        });
-      }
+      // Hiển thị hành động hiện tại của chính mình (presence không còn mang current_action)
+      setOnlineMembers(prev => prev.map(m => (m.user_id === currentUserId ? { ...m, current_action: actionLabel } : m)));
 
-      // Ghi log vào DB (fire-and-forget) + broadcast qua ActivityFeed channel
-      if (tripData?.id && actionType !== 'view_trip' && actionType !== 'drag_end') {
+      // Ghi log vào DB (fire-and-forget) — server tự broadcast new_activity cho cả nhóm.
+      // Bỏ qua các action mà route backend đã tự ghi log trong cùng luồng (tránh trùng activity):
+      // - save_schedule: PUT /trips/:id đã logActivity('save_schedule')
+      // - record_expense: POST /trips/:id/expenses đã logActivity('add_item')
+      const SERVER_LOGGED_ACTIONS = ['view_trip', 'drag_end', 'save_schedule', 'record_expense'];
+      if (tripData?.id && !SERVER_LOGGED_ACTIONS.includes(actionType)) {
         api.post(`/trips/${tripData.id}/activity`, {
           action_type: actionType,
           item_title: itemTitle || null,
-        }).then((res) => {
-          const logItem = res.data;
-          if (logItem) {
-            supabase.channel(`trip-activity-${tripData.id}`).send({
-              type: 'broadcast',
-              event: 'new_activity',
-              payload: logItem,
-            }).catch(() => {});
-          }
         }).catch(() => {}); // silent fail
       }
     } catch {
       // silent fail
     }
-  }, [presenceChannel, user?.id, tripData?.id]);
+  }, [tripSend, myDisplayName, tripData?.id]);
 
   const notifyScheduleUpdated = useCallback(() => {
-    const activePresenceChannel = presenceChannelRef?.current || presenceChannel;
-    if (activePresenceChannel) {
-      activePresenceChannel.send({
-        type: 'broadcast',
-        event: 'schedule_updated',
-        payload: { updated_by: user?.id, trip_id: id }
-      });
-    }
-  }, [presenceChannel, user?.id, id]);
+    tripSend('schedule_updated', { updated_by: user?.id, trip_id: id });
+  }, [tripSend, user?.id, id]);
 
   useEffect(() => {
     registerPreviewTrigger((adaptedItinerary, diff, previousSnapshot) => {

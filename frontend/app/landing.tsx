@@ -8,7 +8,7 @@ import {
 } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { supabase } from '../lib/supabase';
+import { useRealtimeChannel } from '../lib/realtime';
 import { useAuth } from '../hooks/useAuth';
 import { normalizePlans, describePlan, getPlanBadge, getPlanDescription, formatVND } from '../lib/plans';
 import Reveal from '../components/Reveal';
@@ -166,33 +166,10 @@ export default function Landing() {
     staleTime: 10000,
   });
 
-  useEffect(() => {
-    let channel: any = null;
-    try {
-      const channelName = `pricing_realtime_landing_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      channel = supabase
-        .channel(channelName)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'pricing_plans' },
-          () => {
-            refetchPlans();
-          }
-        )
-        .on('broadcast', { event: 'plans_updated' }, () => {
-          refetchPlans();
-        })
-        .subscribe();
-    } catch (err) {
-      console.warn('[Realtime] Landing subscribe failed:', err);
-    }
-
-    return () => {
-      try {
-        if (channel) supabase.removeChannel(channel);
-      } catch (err) {}
-    };
-  }, []);
+  // Lắng nghe server broadcast plans_updated trên topic pricing_realtime để cập nhật bảng giá
+  useRealtimeChannel('pricing_realtime', {
+    onBroadcast: { plans_updated: () => { refetchPlans(); } },
+  });
 
   const plans = useMemo(() => {
     return normalizePlans(plansData).filter((p) => p.is_active !== false);

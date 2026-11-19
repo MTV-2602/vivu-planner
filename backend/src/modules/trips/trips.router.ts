@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { requireAuth } from '../../middleware/requireAuth';
 import { createRateLimiter } from '../../middleware/rateLimiter';
 import { getSupabaseUserClient, supabaseAdmin } from '../../config/supabase';
+import { broadcastRealtime } from '../../utils/realtime';
 import { getCityCoordinates, searchPlaces, PlaceCandidate, fetchCandidatePlacesForCity } from '../places/places.service';
 import { getDefaultPlacesForCity } from '../places/defaultPlaces';
 import { geocodeOnline } from '../places/geocoding.service';
@@ -130,15 +131,114 @@ export async function rollbackTripQuota(userId: string, isAiPro: boolean, tripId
   if (error) console.error('[RollbackQuota] Không thể hoàn lượt nguyên tử; giữ dấu trừ lượt để đối soát:', error.message, { tripId });
   return !error;
 }
+// Chuẩn hoá jsonb về object thuần (cột preferences có default '[]'::jsonb nên có thể là mảng/null)
+export function asObject(value: any): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+// Lấy tên hiển thị + avatar của user cho payload realtime/activity
+async function getProfileDisplay(userId: string | null | undefined): Promise<{ display_name: string | null; avatar_url: string | null }> {
+  if (!userId) return { display_name: null, avatar_url: null };
+  try {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('full_name, email, avatar_url')
+      .eq('id', userId)
+      .maybeSingle();
+    return {
+      display_name: profile?.full_name || profile?.email?.split('@')[0] || 'Thành viên',
+      avatar_url: profile?.avatar_url || null,
+    };
+  } catch (_) {
+    return { display_name: 'Thành viên', avatar_url: null };
+  }
+}
+
+// Phát sự kiện thay đổi thành viên trên kênh trip:${tripId} (không bao giờ throw)
+async function broadcastMembersUpdated(
+  tripId: string,
+  reason: 'joined' | 'left' | 'removed' | 'invite_created',
+  userId: string | null
+) {
+  const { display_name } = await getProfileDisplay(userId);
+  await broadcastRealtime(`trip:${tripId}`, 'members_updated', {
+    tripId,
+    reason,
+    user_id: userId || null,
+    display_name,
+    at: Date.now(),
+  });
+}
+
+/**
+ * Cập nhật bản ghi trips với optimistic concurrency theo cột updated_at (trigger set now() mỗi lần update).
+ * compute() nhận bản ghi mới đọc và trả về patch cần ghi; nếu có người khác ghi chen giữa thì đọc lại & tính lại.
+ */
+export async function updateTripOptimistic<T = undefined>(
+  tripId: string,
+  columns: string,
+  compute: (trip: any) => { patch: Record<string, any>; result?: T },
+  opts: { initialTrip?: any; maxRetries?: number } = {}
+): Promise<{ ok: true; trip: any; result?: T } | { ok: false; reason: 'not_found' | 'conflict' }> {
+  const maxRetries = opts.maxRetries ?? 6;
+  let trip: any = opts.initialTrip && opts.initialTrip.updated_at !== undefined ? opts.initialTrip : null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (!trip) {
+      const { data, error } = await supabaseAdmin
+        .from('trips')
+        .select(columns.includes('updated_at') ? columns : `${columns}, updated_at`)
+        .eq('id', tripId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return { ok: false, reason: 'not_found' };
+      trip = data;
+    }
+
+    const { patch, result } = compute(trip);
+    let query: any = supabaseAdmin
+      .from('trips')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', tripId);
+    query = trip.updated_at ? query.eq('updated_at', trip.updated_at) : query.is('updated_at', null);
+    const { data: updatedRows, error: updateErr } = await query.select('id');
+    if (updateErr) throw updateErr;
+    if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+      return { ok: true, trip, result };
+    }
+
+    // Xung đột ghi đồng thời: chờ ngắn có jitter rồi đọc lại
+    trip = null;
+    if (attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, 15 + Math.floor(Math.random() * 40) * (attempt + 1)));
+    }
+  }
+  return { ok: false, reason: 'conflict' };
+}
+
+// Ghi activity log + broadcast new_activity. Không bao giờ throw — không để lỗi log break main flow.
 const logActivity = async (tripId: string, userId: string, actionType: string, itemTitle?: string | null, itemId?: string | null, detail?: any) => {
   try {
-    await supabaseAdmin.from('trip_activity_log').insert({
-      trip_id: tripId,
-      user_id: userId,
-      action_type: actionType,
-      item_title: itemTitle || null,
-      item_id: itemId || null,
-      detail: detail || null,
+    const [insertRes, profile] = await Promise.all([
+      supabaseAdmin
+        .from('trip_activity_log')
+        .insert({
+          trip_id: tripId,
+          user_id: userId,
+          action_type: actionType,
+          item_title: itemTitle || null,
+          item_id: itemId || null,
+          detail: detail || null,
+        })
+        .select('id, trip_id, user_id, action_type, item_title, item_id, detail, created_at')
+        .single(),
+      getProfileDisplay(userId),
+    ]);
+    if (insertRes.error || !insertRes.data) return;
+    // Không await broadcast để không làm chậm response
+    void broadcastRealtime(`trip:${tripId}`, 'new_activity', {
+      ...insertRes.data,
+      display_name: profile.display_name,
+      avatar_url: profile.avatar_url,
     });
   } catch (e) {
     // silent fail — không để lỗi log break main flow
@@ -270,25 +370,51 @@ router.put('/join/:token', requireAuth, async (req: any, res: Response) => {
     const token = req.params.token;
     const userId = req.user!.id;
 
-    // 1. Tìm trip có pending_invites chứa :token
-    const { data: trips, error: tripsError } = await supabaseAdmin
-      .from('trips')
-      .select('id, user_id, preferences');
+    // 1. Tìm trip có pending_invites chứa :token (truy vấn jsonb containment thay vì quét toàn bảng)
+    const tokenStr = String(token || '').trim();
+    if (!tokenStr) {
+      return res.status(404).json({ error: 'Link mời không hợp lệ hoặc đã hết hạn' });
+    }
 
-    if (tripsError || !trips) {
+    const { data: inviteTrip, error: tripsError } = await supabaseAdmin
+      .from('trips')
+      .select('id, user_id, preferences')
+      .contains('preferences', { pending_invites: [{ invite_token: tokenStr }] })
+      .limit(1)
+      .maybeSingle();
+
+    if (tripsError) {
       return res.status(500).json({ error: 'Lỗi truy vấn dữ liệu chuyến đi' });
     }
 
-    let foundTrip: any = null;
+    let foundTrip: any = inviteTrip || null;
     let foundInvite: any = null;
 
-    for (const t of trips) {
-      const pending = Array.isArray(t.preferences?.pending_invites) ? t.preferences.pending_invites : [];
-      const inv = pending.find((p: any) => p.invite_token === token);
-      if (inv) {
-        foundTrip = t;
-        foundInvite = inv;
-        break;
+    if (foundTrip) {
+      const pending = Array.isArray(asObject(foundTrip.preferences).pending_invites) ? asObject(foundTrip.preferences).pending_invites : [];
+      foundInvite = pending.find((p: any) => p.invite_token === tokenStr) || null;
+    } else {
+      // Hỗ trợ token chia sẻ cấp chuyến đi (preferences.invite_token) — GET shared-cart cũng chấp nhận token này
+      const { data: sharedTokenTrip, error: sharedErr } = await supabaseAdmin
+        .from('trips')
+        .select('id, user_id, preferences')
+        .eq('preferences->>invite_token', tokenStr)
+        .limit(1)
+        .maybeSingle();
+      if (sharedErr) {
+        return res.status(500).json({ error: 'Lỗi truy vấn dữ liệu chuyến đi' });
+      }
+      if (sharedTokenTrip) {
+        const sharedPrefs = asObject(sharedTokenTrip.preferences);
+        foundTrip = sharedTokenTrip;
+        foundInvite = {
+          invite_token: tokenStr,
+          role: 'editor',
+          invited_by: sharedTokenTrip.user_id,
+          // Token chia sẻ không có hạn riêng trừ khi preferences khai báo invite_expires_at
+          expires_at: sharedPrefs.invite_expires_at || '9999-12-31T23:59:59.000Z',
+          is_shared_token: true
+        };
       }
     }
 
@@ -313,9 +439,9 @@ router.put('/join/:token', requireAuth, async (req: any, res: Response) => {
 
     const tripId = foundTrip.id;
 
-    // 3. Check user không phải owner
+    // 3. Owner mở link mời của chính mình: trả 200 để frontend điều hướng bình thường
     if (foundTrip.user_id === userId) {
-      return res.status(400).json({ error: 'Bạn là chủ chuyến đi này' });
+      return res.json({ already_member: true, is_owner: true, trip_id: tripId, message: 'Bạn là chủ chuyến đi này' });
     }
 
     // 4. Check user chưa là member
@@ -355,23 +481,23 @@ router.put('/join/:token', requireAuth, async (req: any, res: Response) => {
     if (insertError) throw insertError;
 
     // 7. Xóa invite_token đã dùng khỏi pending_invites nếu chuyến đi đã đủ 5 người (4 collaborators)
-    if ((acceptedCount ?? 0) + 1 >= 4) {
-      const updatedInvites = (foundTrip.preferences?.pending_invites || []).filter(
-        (inv: any) => inv.invite_token !== token
-      );
-      await supabaseAdmin
-        .from('trips')
-        .update({
-          preferences: {
-            ...(foundTrip.preferences || {}),
-            pending_invites: updatedInvites
-          }
-        })
-        .eq('id', tripId);
+    if ((acceptedCount ?? 0) + 1 >= 4 && !foundInvite.is_shared_token) {
+      try {
+        await updateTripOptimistic(tripId, 'id, preferences, updated_at', (fresh) => {
+          const freshPrefs = asObject(fresh.preferences);
+          const updatedInvites = (Array.isArray(freshPrefs.pending_invites) ? freshPrefs.pending_invites : []).filter(
+            (inv: any) => inv.invite_token !== tokenStr
+          );
+          return { patch: { preferences: { ...freshPrefs, pending_invites: updatedInvites } } };
+        });
+      } catch (e: any) {
+        console.warn('[JoinTrip] Không thể xóa invite_token đã dùng:', e.message);
+      }
     }
 
-    // Auto-log activity
+    // Auto-log activity + báo cho các thành viên đang mở chuyến đi
     await logActivity(tripId, userId, 'join_trip', null, null, { role: foundInvite.role || 'editor' });
+    await broadcastMembersUpdated(tripId, 'joined', userId);
 
     // 8. Return
     return res.json({
@@ -423,9 +549,7 @@ router.post('/:id/collaborators', requireAuth, requirePremium, async (req: any, 
 
     if (countError) throw countError;
 
-    const currentInvites = Array.isArray(trip.preferences?.pending_invites) ? trip.preferences.pending_invites : [];
     const now = new Date();
-    const activeInvites = currentInvites.filter((inv: any) => new Date(inv.expires_at) > now);
 
     if ((acceptedCount ?? 0) >= 4) {
       return res.status(400).json({ error: 'Chuyến đi đã đạt số lượng thành viên tối đa (5 người bao gồm chủ chuyến đi)' });
@@ -443,18 +567,20 @@ router.post('/:id/collaborators', requireAuth, requirePremium, async (req: any, 
       expires_at
     };
 
-    // 5. Cập nhật vào trip.preferences.pending_invites
-    const { error: updateError } = await supabaseAdmin
-      .from('trips')
-      .update({
-        preferences: {
-          ...(trip.preferences || {}),
-          pending_invites: [...activeInvites, newInvite]
-        }
-      })
-      .eq('id', tripId);
+    // 5. Cập nhật vào trip.preferences.pending_invites (merge trên bản đọc mới nhất, chống ghi đè đồng thời)
+    const inviteUpdate = await updateTripOptimistic(tripId, 'id, preferences, updated_at', (fresh) => {
+      const freshPrefs = asObject(fresh.preferences);
+      const currentInvites = Array.isArray(freshPrefs.pending_invites) ? freshPrefs.pending_invites : [];
+      const activeInvites = currentInvites.filter((inv: any) => new Date(inv.expires_at) > now);
+      return { patch: { preferences: { ...freshPrefs, pending_invites: [...activeInvites, newInvite] } } };
+    });
+    if (!inviteUpdate.ok) {
+      return res.status(inviteUpdate.reason === 'not_found' ? 404 : 409).json({
+        error: inviteUpdate.reason === 'not_found' ? 'Trip not found' : 'Chuyến đi đang được cập nhật đồng thời, vui lòng thử lại'
+      });
+    }
 
-    if (updateError) throw updateError;
+    await broadcastMembersUpdated(tripId, 'invite_created', userId);
 
     // 6. Return
     const frontendBaseUrl = (process.env.FRONTEND_URL || 'https://vivu-planner.vercel.app').replace(/\/+$/, '');
@@ -553,7 +679,8 @@ router.get('/:id/collaborators', requireAuth, async (req: any, res: Response) =>
 
     // 4. Lấy pending invites từ preferences
     const now = new Date();
-    const currentInvites = Array.isArray(trip.preferences?.pending_invites) ? trip.preferences.pending_invites : [];
+    const tripPrefs = asObject(trip.preferences);
+    const currentInvites = Array.isArray(tripPrefs.pending_invites) ? tripPrefs.pending_invites : [];
     const pendingMembers = currentInvites
       .filter((inv: any) => new Date(inv.expires_at) > now)
       .map((inv: any) => ({
@@ -604,23 +731,24 @@ router.delete('/:id/collaborators/:uid', requireAuth, async (req: any, res: Resp
     const isSelf = targetUid === currentUserId;
 
     // Check nếu targetUid là invite_token trong pending_invites
-    const currentInvites = Array.isArray(trip.preferences?.pending_invites) ? trip.preferences.pending_invites : [];
+    const tripPrefs = asObject(trip.preferences);
+    const currentInvites = Array.isArray(tripPrefs.pending_invites) ? tripPrefs.pending_invites : [];
     const matchInvite = currentInvites.find((inv: any) => inv.invite_token === targetUid);
 
     if (matchInvite) {
       if (!isOwner && !isAdmin) {
         return res.status(403).json({ error: 'Chỉ chủ chuyến đi mới có quyền hủy link mời' });
       }
-      const updatedInvites = currentInvites.filter((inv: any) => inv.invite_token !== targetUid);
-      await supabaseAdmin
-        .from('trips')
-        .update({
-          preferences: {
-            ...(trip.preferences || {}),
-            pending_invites: updatedInvites
-          }
-        })
-        .eq('id', tripId);
+      const revokeResult = await updateTripOptimistic(tripId, 'id, preferences, updated_at', (fresh) => {
+        const freshPrefs = asObject(fresh.preferences);
+        const freshInvites = Array.isArray(freshPrefs.pending_invites) ? freshPrefs.pending_invites : [];
+        return { patch: { preferences: { ...freshPrefs, pending_invites: freshInvites.filter((inv: any) => inv.invite_token !== targetUid) } } };
+      });
+      if (!revokeResult.ok) {
+        return res.status(revokeResult.reason === 'not_found' ? 404 : 409).json({
+          error: revokeResult.reason === 'not_found' ? 'Trip not found' : 'Chuyến đi đang được cập nhật đồng thời, vui lòng thử lại'
+        });
+      }
 
       return res.json({ message: 'Đã hủy link mời' });
     }
@@ -630,17 +758,29 @@ router.delete('/:id/collaborators/:uid', requireAuth, async (req: any, res: Resp
       return res.status(403).json({ error: 'Bạn không có quyền thực hiện thao tác này' });
     }
 
+    // Chặn ký tự đặc biệt để không chèn được điều kiện vào bộ lọc .or() của PostgREST
+    if (!/^[A-Za-z0-9-]+$/.test(String(targetUid))) {
+      return res.status(400).json({ error: 'Mã thành viên không hợp lệ' });
+    }
+
     // 3. DELETE FROM trip_collaborators WHERE trip_id = :id AND (user_id = :uid OR id = :uid)
-    const { error: deleteError } = await supabaseAdmin
+    const { data: deletedRows, error: deleteError } = await supabaseAdmin
       .from('trip_collaborators')
       .delete()
       .eq('trip_id', tripId)
-      .or(`user_id.eq.${targetUid},id.eq.${targetUid}`);
+      .or(`user_id.eq.${targetUid},id.eq.${targetUid}`)
+      .select('user_id');
 
     if (deleteError) throw deleteError;
 
-    // Auto-log activity
-    await logActivity(tripId, currentUserId, 'leave_trip');
+    const removedUserId: string | null = (deletedRows && deletedRows[0]?.user_id) || null;
+    const isSelfLeave = isSelf || removedUserId === currentUserId;
+
+    if (deletedRows && deletedRows.length > 0) {
+      // Auto-log activity + báo cho các thành viên
+      await logActivity(tripId, currentUserId, 'leave_trip', null, null, isSelfLeave ? null : { removed_user_id: removedUserId });
+      await broadcastMembersUpdated(tripId, isSelfLeave ? 'left' : 'removed', removedUserId || targetUid);
+    }
 
     // 4. Return
     return res.json({ message: 'Đã xóa thành viên' });
@@ -661,6 +801,12 @@ router.post('/:id/activity', requireAuth, async (req: any, res: Response) => {
     if (!VALID_ACTIONS.includes(action_type)) {
       return res.status(400).json({ error: 'Invalid action_type' });
     }
+
+    // Chỉ owner/collaborator/admin mới được ghi log (log được broadcast tới cả nhóm)
+    const isAdmin = req.isAdmin === true || req.user?.role === 'admin';
+    const access = await verifyTripAccess(tripId, userId, isAdmin);
+    if (!access.trip) return res.status(404).json({ error: 'Trip not found' });
+    if (!access.hasAccess) return res.status(403).json({ error: 'Bạn không có quyền ghi hoạt động cho chuyến đi này' });
 
     // Lấy display_name của user
     const { data: profile } = await supabaseAdmin
@@ -687,11 +833,15 @@ router.post('/:id/activity', requireAuth, async (req: any, res: Response) => {
 
     if (error) throw error;
 
-    return res.json({
+    const activityRow = {
       ...log,
       display_name: displayName,
       avatar_url: profile?.avatar_url || null,
-    });
+    };
+    // Server phát new_activity cho cả nhóm (client không cần tự relay)
+    void broadcastRealtime(`trip:${tripId}`, 'new_activity', activityRow);
+
+    return res.json(activityRow);
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to log activity', details: err.message });
   }
@@ -702,6 +852,11 @@ router.get('/:id/activity', requireAuth, async (req: any, res: Response) => {
   try {
     const tripId = req.params.id;
     const limit = Math.min(Number(req.query.limit) || 50, 100);
+
+    const isAdmin = req.isAdmin === true || req.user?.role === 'admin';
+    const access = await verifyTripAccess(tripId, req.user!.id, isAdmin);
+    if (!access.trip) return res.status(404).json({ error: 'Trip not found' });
+    if (!access.hasAccess) return res.status(403).json({ error: 'Bạn không có quyền xem hoạt động của chuyến đi này' });
 
     const { data: logs, error } = await supabaseAdmin
       .from('trip_activity_log')
@@ -1006,8 +1161,25 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
 
     const isFreeTier = priorTripsCount <= 3;
 
+    // Lấy profile thành viên (trước đây đọc c.profiles nhưng không hề join nên luôn undefined)
+    const collabUserIds = (collaborators || []).map((c: any) => c.user_id).filter(Boolean);
+    const collabProfileMap = new Map<string, any>();
+    if (collabUserIds.length > 0) {
+      const { data: collabProfiles } = await supabaseAdmin
+        .from('profiles')
+        .select('id, full_name, avatar_url, is_premium')
+        .in('id', collabUserIds);
+      (collabProfiles || []).forEach((p: any) => collabProfileMap.set(p.id, p));
+    }
+
+    // Người xem công khai (không phải owner/admin/thành viên) không được thấy token mời
+    const responsePrefs = (!isOwner && !isAdmin && !isCollaborator && trip.preferences && typeof trip.preferences === 'object' && !Array.isArray(trip.preferences))
+      ? (({ pending_invites: _pi, invite_token: _it, ...rest }: any) => rest)(trip.preferences)
+      : trip.preferences;
+
     return res.json({
       ...trip,
+      preferences: responsePrefs,
       is_ai_pro: isTripPro,
       days: daysWithItems,
       revisions: revisions || [],
@@ -1017,9 +1189,9 @@ router.get('/:id', requireAuth, async (req: any, res: Response) => {
         user_id: c.user_id,
         role: c.role,
         accepted_at: c.created_at,
-        display_name: c.profiles?.display_name || c.profiles?.full_name,
-        avatar_url: c.profiles?.avatar_url,
-        is_premium: c.profiles?.is_premium,
+        display_name: collabProfileMap.get(c.user_id)?.full_name || 'Thành viên',
+        avatar_url: collabProfileMap.get(c.user_id)?.avatar_url || null,
+        is_premium: collabProfileMap.get(c.user_id)?.is_premium,
       })),
       is_shared: (collaborators || []).length > 0,
       member_count: (collaborators || []).length + 1, // +1 cho owner
@@ -3826,7 +3998,7 @@ export function sanitizeBudgetBreakdown(raw: any, logs: ExpenseLogItem[]) {
 export async function verifyTripAccess(tripId: string, userId: string, isAdmin = false) {
   const { data: trip, error: tripErr } = await supabaseAdmin
     .from('trips')
-    .select('id, user_id, destination_city, destination_province, destination_lat, destination_lng, preferences, budget_breakdown')
+    .select('id, user_id, destination_city, destination_province, destination_lat, destination_lng, preferences, budget_breakdown, updated_at')
     .eq('id', tripId)
     .maybeSingle();
 
@@ -3859,7 +4031,7 @@ export async function verifyTripAccess(tripId: string, userId: string, isAdmin =
   };
 }
 
-// Helper broadcast realtime cho chi tiêu và đồng bộ chuyến đi
+// Helper broadcast realtime cho chi tiêu và đồng bộ chuyến đi (gộp về kênh trip:${tripId})
 export async function broadcastExpenseChange(
   tripId: string,
   action: 'add' | 'edit' | 'delete' | 'clear',
@@ -3867,38 +4039,22 @@ export async function broadcastExpenseChange(
   logId?: string,
   budgetBreakdown?: any
 ) {
-  try {
-    const expenseChannel = supabaseAdmin.channel(`trip-expenses:${tripId}`);
-    await expenseChannel.send({
-      type: 'broadcast',
-      event: 'expenses_updated',
-      payload: {
-        action,
-        log: log || null,
-        logId: logId || '',
-      },
-    });
-  } catch (e: any) {
-    console.warn(`[TripRealtime] Error broadcasting to trip-expenses:${tripId}:`, e.message);
-  }
-
-  try {
-    const tripChannel = supabaseAdmin.channel(`trip:${tripId}`);
-    await tripChannel.send({
-      type: 'broadcast',
-      event: 'trip_updated',
-      payload: {
-        tripId,
-        action: `expense_${action}`,
-        budget_breakdown: budgetBreakdown,
-        log: log || null,
-        logId: logId || '',
-        timestamp: Date.now(),
-      },
-    });
-  } catch (e: any) {
-    console.warn(`[TripRealtime] Error broadcasting to trip:${tripId}:`, e.message);
-  }
+  const topic = `trip:${tripId}`;
+  await Promise.all([
+    broadcastRealtime(topic, 'expenses_updated', {
+      action,
+      log: log || null,
+      logId: logId || '',
+    }),
+    broadcastRealtime(topic, 'trip_updated', {
+      tripId,
+      action: `expense_${action}`,
+      budget_breakdown: budgetBreakdown,
+      log: log || null,
+      logId: logId || '',
+      timestamp: Date.now(),
+    }),
+  ]);
 }
 
 // GET /api/trips/:id/expenses — lấy danh sách expense log của trip từ budget_breakdown
@@ -4123,7 +4279,7 @@ router.delete('/:id/expenses/:logId', requireAuth, async (req: any, res: Respons
   }
 });
 
-function getCartItemKeys(item: any): string[] {
+export function getCartItemKeys(item: any): string[] {
   const keys: string[] = [];
   if (item?.place?.id) keys.push(String(item.place.id));
   if (item?.id) keys.push(String(item.id));
@@ -4135,6 +4291,246 @@ function getCartItemKeys(item: any): string[] {
     if (norm) keys.push(`name_${norm}`);
   }
   return keys;
+}
+
+// Chuẩn hoá 1 item giỏ hàng (id ổn định, người thêm, thời điểm) — dùng chung cho legacy & op
+function normalizeCartItem(item: any, idx: number, userId: string, now: number): any {
+  const placeName = item.place?.name || item.name || item.title || '';
+  const category = item.place?.category || item.category || 'attraction';
+  const deterministicFallbackId = placeName ? generateDeterministicPlaceId('', category, placeName, idx) : `cart_item_${idx}`;
+  return {
+    ...item,
+    id: item.id || item.google_place_id || item.place_id || deterministicFallbackId,
+    added_by: item.added_by || userId,
+    added_at: item.added_at || new Date(now).toISOString(),
+    updated_at: item.updated_at || now
+  };
+}
+
+export type SharedCartOp =
+  | { type: 'add'; item: any }
+  | { type: 'remove'; keys: string[] }
+  | { type: 'clear' }
+  | { type: 'update_items'; items: any[] };
+
+// Kiểm tra op hợp lệ; trả về thông báo lỗi hoặc null
+export function validateSharedCartOp(op: any): string | null {
+  if (!op || typeof op !== 'object' || Array.isArray(op)) return 'op không hợp lệ';
+  switch (op.type) {
+    case 'add':
+      if (!op.item || typeof op.item !== 'object' || Array.isArray(op.item)) return 'op add cần trường item';
+      return null;
+    case 'remove':
+      if (!Array.isArray(op.keys) || op.keys.filter((k: any) => k !== null && k !== undefined && String(k) !== '').length === 0) return 'op remove cần mảng keys';
+      return null;
+    case 'clear':
+      return null;
+    case 'update_items':
+      if (!Array.isArray(op.items)) return 'op update_items cần mảng items';
+      return null;
+    default:
+      return 'op.type không được hỗ trợ';
+  }
+}
+
+/**
+ * Áp dụng 1 thao tác (op) lên giỏ hàng HIỆN TẠI trong DB — hàm thuần, không I/O.
+ * - add: xoá tombstone theo key của item, upsert (thay item trùng bất kỳ key nào, giữ vị trí cũ)
+ * - remove: đặt tombstone cho các key, xoá mọi item có chung key
+ * - clear: tombstone toàn bộ key của các item hiện có, làm trống giỏ
+ * - update_items: chỉ merge vào item đang tồn tại; không hồi sinh item đã xoá
+ */
+export function applySharedCartOp(
+  currentCart: any[],
+  tombstones: Record<string, number>,
+  op: SharedCartOp,
+  now: number,
+  userId = ''
+): { cart: any[]; tombstones: Record<string, number> } {
+  const cart = Array.isArray(currentCart) ? [...currentCart] : [];
+  const nextTombstones: Record<string, number> = { ...(tombstones || {}) };
+  const sharesKey = (it: any, keys: string[]) => getCartItemKeys(it).some(k => keys.includes(k));
+
+  switch (op.type) {
+    case 'add': {
+      const incomingKeys = getCartItemKeys(op.item);
+      const firstMatchIdx = incomingKeys.length > 0 ? cart.findIndex(it => sharesKey(it, incomingKeys)) : -1;
+      const existing = firstMatchIdx >= 0 ? cart[firstMatchIdx] : null;
+      const normalized = normalizeCartItem(
+        {
+          ...op.item,
+          added_by: op.item.added_by || existing?.added_by,
+          added_at: op.item.added_at || existing?.added_at
+        },
+        firstMatchIdx >= 0 ? firstMatchIdx : cart.length,
+        userId,
+        now
+      );
+      normalized.updated_at = now;
+      const keys = Array.from(new Set([...incomingKeys, ...getCartItemKeys(normalized)]));
+      keys.forEach(k => { delete nextTombstones[k]; });
+      const rest = cart.filter(it => !sharesKey(it, keys));
+      if (firstMatchIdx >= 0) {
+        // Giữ vị trí cũ của item trong giỏ
+        const insertAt = cart.slice(0, firstMatchIdx).filter(it => !sharesKey(it, keys)).length;
+        rest.splice(insertAt, 0, normalized);
+      } else {
+        rest.push(normalized);
+      }
+      return { cart: rest, tombstones: nextTombstones };
+    }
+    case 'remove': {
+      const keys = op.keys.filter(k => k !== null && k !== undefined && String(k) !== '').map(String);
+      keys.forEach(k => { nextTombstones[k] = now; });
+      const kept: any[] = [];
+      for (const it of cart) {
+        if (sharesKey(it, keys)) {
+          // Tombstone toàn bộ key của item bị xoá để client cũ không gửi lại bằng key khác
+          getCartItemKeys(it).forEach(k => { nextTombstones[k] = now; });
+        } else {
+          kept.push(it);
+        }
+      }
+      return { cart: kept, tombstones: nextTombstones };
+    }
+    case 'clear': {
+      for (const it of cart) {
+        getCartItemKeys(it).forEach(k => { nextTombstones[k] = now; });
+      }
+      return { cart: [], tombstones: nextTombstones };
+    }
+    case 'update_items': {
+      const next = [...cart];
+      for (const inc of op.items || []) {
+        if (!inc || typeof inc !== 'object') continue;
+        const incKeys = getCartItemKeys(inc);
+        if (incKeys.length === 0) continue;
+        const idx = next.findIndex(it => sharesKey(it, incKeys));
+        if (idx < 0) continue; // không hồi sinh item đã bị xoá / không tồn tại
+        next[idx] = { ...next[idx], ...inc, updated_at: now };
+      }
+      return { cart: next, tombstones: nextTombstones };
+    }
+  }
+  return { cart, tombstones: nextTombstones };
+}
+
+/**
+ * Logic hợp nhất legacy (client gửi cả giỏ) — giữ nguyên hành vi LWW-Element-Set + tombstones cũ.
+ */
+export function applyLegacySharedCartBody(
+  currentCart: any[],
+  existingTombstones: Record<string, number>,
+  rawItems: any[],
+  body: any,
+  now: number,
+  userId: string
+): { cart: any[]; tombstones: Record<string, number> } {
+  const items = rawItems.map((item: any, idx: number) => normalizeCartItem(item, idx, userId, now));
+
+  const incomingDeletedKeys: string[] = Array.isArray(body?.deleted_place_ids)
+    ? body.deleted_place_ids.map(String).filter(Boolean)
+    : (body?.deleted_place_id ? [String(body.deleted_place_id)].filter(Boolean) : []);
+
+  const updatedTombstones: Record<string, number> = { ...existingTombstones };
+  for (const delKey of incomingDeletedKeys) {
+    if (delKey) updatedTombstones[delKey] = now;
+  }
+
+  if (body?.tombstones && typeof body.tombstones === 'object') {
+    for (const [k, v] of Object.entries(body.tombstones)) {
+      const t = Number(v) || now;
+      if (t > (updatedTombstones[k] || 0)) {
+        updatedTombstones[k] = t;
+      }
+    }
+  }
+
+  const isExplicitAdd = body?.action === 'add';
+  if (isExplicitAdd) {
+    for (const inc of items) {
+      const keys = getCartItemKeys(inc);
+      keys.forEach(k => {
+        delete updatedTombstones[k];
+      });
+    }
+  }
+
+  const mergedMap = new Map<string, any>();
+  // 1. Giữ các item hiện tại trong DB nếu chưa bị tombstone đánh dấu xóa
+  for (const it of currentCart) {
+    const keys = getCartItemKeys(it);
+    const primaryKey = keys[0] || '';
+    if (!primaryKey) continue;
+
+    const itemTime = Number(it.updated_at || 0);
+    const isTombstoned = keys.some(k => {
+      const t = updatedTombstones[k] || 0;
+      return t >= itemTime && t > 0;
+    });
+    if (isTombstoned) {
+      continue;
+    }
+    mergedMap.set(primaryKey, it);
+  }
+
+  // 2. Xử lý các item mới gửi lên
+  for (const incoming of items) {
+    const keys = getCartItemKeys(incoming);
+    const primaryKey = keys[0] || '';
+    if (!primaryKey) continue;
+
+    const incomingTime = Number(incoming.updated_at || now);
+    const maxTombstoneTime = Math.max(0, ...keys.map(k => updatedTombstones[k] || 0));
+
+    if (!isExplicitAdd && maxTombstoneTime >= incomingTime && maxTombstoneTime > 0) {
+      // Item này nằm trong danh sách đã bị xóa và không có timestamp mới hơn -> loại bỏ khỏi giỏ
+      mergedMap.delete(primaryKey);
+      continue;
+    }
+
+    // Người dùng cố ý thêm lại hoặc gửi item hợp lệ: xóa tombstone cũ
+    keys.forEach(k => {
+      delete updatedTombstones[k];
+    });
+
+    const existing = mergedMap.get(primaryKey);
+    if (!existing) {
+      mergedMap.set(primaryKey, incoming);
+    } else {
+      const existingTime = Number(existing.updated_at || 0);
+      if (incomingTime >= existingTime) {
+        mergedMap.set(primaryKey, { ...existing, ...incoming });
+      } else {
+        mergedMap.set(primaryKey, existing);
+      }
+    }
+  }
+
+  // 3. Xóa dứt điểm các key trong deleted_place_ids khỏi mergedMap (nếu có yêu cầu xóa rõ ràng)
+  for (const delKey of incomingDeletedKeys) {
+    mergedMap.delete(delKey);
+    for (const [mKey, item] of mergedMap.entries()) {
+      const itemKeys = getCartItemKeys(item);
+      if (itemKeys.includes(delKey)) {
+        mergedMap.delete(mKey);
+      }
+    }
+  }
+
+  // 4. Nếu action là 'clear': làm trống hoàn toàn
+  if (body?.action === 'clear') {
+    mergedMap.clear();
+  }
+
+  return { cart: Array.from(mergedMap.values()), tombstones: updatedTombstones };
+}
+
+// Đọc giỏ hàng hiện tại từ preferences (ưu tiên draft_cart, rồi shared_cart)
+function readPrefsCart(prefs: Record<string, any>): any[] {
+  return Array.isArray(prefs.draft_cart)
+    ? prefs.draft_cart
+    : (Array.isArray(prefs.shared_cart) ? prefs.shared_cart : []);
 }
 
 // GET /api/trips/:id/shared-cart — lấy danh sách địa điểm trong giỏ hàng chung
@@ -4152,14 +4548,16 @@ router.get('/:id/shared-cart', requireAuth, async (req: any, res: Response) => {
     if (!access.hasAccess && inviteToken) {
       const tripData = access.trip || (await supabaseAdmin
         .from('trips')
-        .select('id, user_id, destination_city, destination_province, destination_lat, destination_lng, preferences, budget_breakdown')
+        .select('id, user_id, destination_city, destination_province, destination_lat, destination_lng, preferences, budget_breakdown, updated_at')
         .eq('id', id)
         .maybeSingle()).data;
 
       if (tripData) {
-        const pending = Array.isArray(tripData.preferences?.pending_invites) ? tripData.preferences.pending_invites : [];
-        const matchedInvite = pending.find((p: any) => p.invite_token === inviteToken);
-        const isSharedToken = tripData.preferences?.invite_token === inviteToken;
+        const tripPrefs = asObject(tripData.preferences);
+        const pending = Array.isArray(tripPrefs.pending_invites) ? tripPrefs.pending_invites : [];
+        // Bỏ qua link mời đã hết hạn (đồng bộ với PUT /join/:token)
+        const matchedInvite = pending.find((p: any) => p.invite_token === inviteToken && !(p.expires_at && new Date(p.expires_at) < new Date()));
+        const isSharedToken = !!tripPrefs.invite_token && tripPrefs.invite_token === inviteToken;
         if (matchedInvite || isSharedToken) {
           access.trip = tripData;
           access.hasAccess = true;
@@ -4171,33 +4569,20 @@ router.get('/:id/shared-cart', requireAuth, async (req: any, res: Response) => {
     if (!access.hasAccess) return res.status(403).json({ error: 'Bạn không có quyền xem giỏ hàng chung của chuyến đi này' });
 
     const trip = access.trip;
-    const prefDraftCart = (trip.preferences && typeof trip.preferences === 'object' && !Array.isArray(trip.preferences))
-      ? trip.preferences.draft_cart
-      : null;
-    const prefSharedCart = (trip.preferences && typeof trip.preferences === 'object' && !Array.isArray(trip.preferences))
-      ? trip.preferences.shared_cart
-      : null;
-    const breakdownCart = (trip.budget_breakdown && typeof trip.budget_breakdown === 'object' && !Array.isArray(trip.budget_breakdown))
-      ? (trip.budget_breakdown.draft_cart || trip.budget_breakdown.shared_cart)
-      : null;
+    const prefs = asObject(trip.preferences);
+    const breakdown = asObject(trip.budget_breakdown);
+    const breakdownCart = breakdown.draft_cart || breakdown.shared_cart;
 
-    const sharedCart = Array.isArray(prefDraftCart)
-      ? prefDraftCart
-      : (Array.isArray(prefSharedCart)
-        ? prefSharedCart
+    const sharedCart = Array.isArray(prefs.draft_cart)
+      ? prefs.draft_cart
+      : (Array.isArray(prefs.shared_cart)
+        ? prefs.shared_cart
         : (Array.isArray(breakdownCart) ? breakdownCart : []));
 
-    const workspaceStage = (trip.preferences && typeof trip.preferences === 'object' && !Array.isArray(trip.preferences))
-      ? (trip.preferences.workspace_stage || 'collecting')
-      : 'collecting';
-
-    const pregenPlaces = (trip.preferences && typeof trip.preferences === 'object' && !Array.isArray(trip.preferences))
-      ? (trip.preferences.pregen_places || [])
-      : [];
-
-    const tombstones = (trip.preferences && typeof trip.preferences === 'object')
-      ? (trip.preferences.cart_tombstones || {})
-      : {};
+    const workspaceStage = prefs.workspace_stage || 'collecting';
+    const pregenPlaces = prefs.pregen_places || [];
+    const tombstones = asObject(prefs.cart_tombstones);
+    const version = Number(prefs.cart_version) || 0;
 
     return res.json({
       success: true,
@@ -4207,7 +4592,8 @@ router.get('/:id/shared-cart', requireAuth, async (req: any, res: Response) => {
       count: sharedCart.length,
       workspace_stage: workspaceStage,
       pregen_places: pregenPlaces,
-      tombstones
+      tombstones,
+      version
     });
   } catch (e: any) {
     return res.status(500).json({ error: e.message });
@@ -4215,10 +4601,13 @@ router.get('/:id/shared-cart', requireAuth, async (req: any, res: Response) => {
 });
 
 // PUT /api/trips/:id/shared-cart — cập nhật danh sách địa điểm trong giỏ hàng chung (Owner & Collaborators)
+// Body mới (ưu tiên): { op?: SharedCartOp, workspace_stage?, pregen_places? } — op áp lên giỏ hiện tại trong DB.
+// Body legacy: { draft_cart | shared_cart | items, action?, deleted_place_ids?, tombstones?, workspace_stage?, pregen_places? }
 router.put('/:id/shared-cart', requireAuth, async (req: any, res: Response) => {
   const { id } = req.params;
   const user = req.user!;
   const isAdmin = Boolean(req.isAdmin === true || user.role === 'admin');
+  const body = req.body;
 
   try {
     const access = await verifyTripAccess(id, user.id, isAdmin);
@@ -4231,8 +4620,7 @@ router.put('/:id/shared-cart', requireAuth, async (req: any, res: Response) => {
       return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa giỏ hàng của chuyến đi này' });
     }
 
-    const trip = access.trip;
-    const isTripPro = isTripProEntitled(trip);
+    const isTripPro = isTripProEntitled(access.trip);
     if (!isTripPro && !isAdmin) {
       return res.status(403).json({
         error: 'Tính năng giỏ hàng chỉ dành cho chuyến đi Pro',
@@ -4241,180 +4629,116 @@ router.put('/:id/shared-cart', requireAuth, async (req: any, res: Response) => {
       });
     }
 
-    const currentPrefs = (trip.preferences && typeof trip.preferences === 'object' && !Array.isArray(trip.preferences))
-      ? trip.preferences
-      : {};
+    // Xác định kiểu yêu cầu: op | legacy cả giỏ | chỉ cập nhật stage/pregen
+    const hasOp = !Array.isArray(body) && body?.op !== undefined && body?.op !== null;
+    if (hasOp) {
+      const opError = validateSharedCartOp(body.op);
+      if (opError) return res.status(400).json({ error: `Thao tác giỏ hàng không hợp lệ: ${opError}` });
+    }
 
-    const rawItems = Array.isArray(req.body)
-      ? req.body
-      : (Array.isArray(req.body?.draft_cart)
-        ? req.body.draft_cart
-        : (Array.isArray(req.body?.shared_cart)
-          ? req.body.shared_cart
-          : (Array.isArray(req.body?.items)
-            ? req.body.items
-            : (req.body?.pregen_places !== undefined ? (currentPrefs.draft_cart || currentPrefs.shared_cart || []) : null))));
+    const legacyItems: any[] | null = hasOp
+      ? null
+      : (Array.isArray(body)
+        ? body
+        : (Array.isArray(body?.draft_cart)
+          ? body.draft_cart
+          : (Array.isArray(body?.shared_cart)
+            ? body.shared_cart
+            : (Array.isArray(body?.items) ? body.items : null))));
 
-    if (!rawItems) {
+    const hasStage = !Array.isArray(body) && body?.workspace_stage !== undefined;
+    const hasPregen = !Array.isArray(body) && body?.pregen_places !== undefined;
+
+    if (!hasOp && !legacyItems && !hasStage && !hasPregen) {
       return res.status(400).json({ error: 'Dữ liệu giỏ hàng không hợp lệ. Vui lòng cung cấp draft_cart hoặc shared_cart.' });
     }
 
-    const items = rawItems.map((item: any, idx: number) => {
-      const placeName = item.place?.name || item.name || item.title || '';
-      const category = item.place?.category || item.category || 'attraction';
-      const deterministicFallbackId = placeName ? generateDeterministicPlaceId('', category, placeName, idx) : `cart_item_${idx}`;
-      return {
-        ...item,
-        id: item.id || item.google_place_id || item.place_id || deterministicFallbackId,
-        added_by: item.added_by || user.id,
-        added_at: item.added_at || new Date().toISOString(),
-        updated_at: item.updated_at || Date.now()
-      };
+    const reqStage = hasStage ? body.workspace_stage : undefined;
+
+    type CartWriteResult = {
+      mergedCart: any[];
+      tombstones: Record<string, number>;
+      workspaceStage: string;
+      pregenPlaces: any[];
+      version: number;
+    };
+
+    const writeResult = await updateTripOptimistic<CartWriteResult>(
+      id,
+      'id, preferences, budget_breakdown, updated_at',
+      (fresh) => {
+        const currentPrefs = asObject(fresh.preferences);
+        const currentCart = readPrefsCart(currentPrefs);
+        const existingTombstones: Record<string, number> = asObject(currentPrefs.cart_tombstones);
+        const now = Date.now();
+
+        let next: { cart: any[]; tombstones: Record<string, number> };
+        if (hasOp) {
+          next = applySharedCartOp(currentCart, existingTombstones, body.op as SharedCartOp, now, user.id);
+        } else if (legacyItems) {
+          next = applyLegacySharedCartBody(currentCart, existingTombstones, legacyItems, body, now, user.id);
+        } else {
+          // Chỉ cập nhật workspace_stage / pregen_places: không đụng tới giỏ hàng
+          next = { cart: currentCart, tombstones: { ...existingTombstones } };
+        }
+
+        const workspaceStage = (reqStage === 'collecting' || reqStage === 'scheduling')
+          ? reqStage
+          : (reqStage || currentPrefs.workspace_stage || 'collecting');
+
+        const version = (Number(currentPrefs.cart_version) || 0) + 1;
+
+        const updatedPreferences = {
+          ...currentPrefs,
+          draft_cart: next.cart,
+          shared_cart: next.cart,
+          cart_tombstones: next.tombstones,
+          workspace_stage: workspaceStage,
+          cart_version: version,
+          ...(hasPregen ? { pregen_places: body.pregen_places } : {})
+        };
+
+        const currentBreakdown = asObject(fresh.budget_breakdown);
+        const updatedBreakdown = {
+          ...currentBreakdown,
+          draft_cart: next.cart,
+          shared_cart: next.cart
+        };
+
+        return {
+          patch: { preferences: updatedPreferences, budget_breakdown: updatedBreakdown },
+          result: {
+            mergedCart: next.cart,
+            tombstones: next.tombstones,
+            workspaceStage,
+            pregenPlaces: Array.isArray(updatedPreferences.pregen_places) ? updatedPreferences.pregen_places : [],
+            version
+          }
+        };
+      },
+      { initialTrip: access.trip }
+    );
+
+    if (!writeResult.ok) {
+      if (writeResult.reason === 'not_found') return res.status(404).json({ error: 'Trip not found' });
+      return res.status(409).json({ error: 'Giỏ hàng đang được nhiều người cập nhật cùng lúc, vui lòng thử lại', code: 'CART_CONFLICT' });
+    }
+
+    const { mergedCart, tombstones, workspaceStage, pregenPlaces, version } = writeResult.result!;
+
+    // Đồng bộ realtime cho cả nhóm (không await để không làm chậm response)
+    void broadcastRealtime(`draft-cart:${id}`, 'shared_cart_synced', {
+      tripId: id,
+      version,
+      draft_cart: mergedCart,
+      workspace_stage: workspaceStage,
+      ...(hasPregen ? { pregen_places: pregenPlaces } : {}),
+      tombstones,
+      updated_by: user.id,
+      at: Date.now()
     });
 
-    // LWW-Element-Set with explicit Deletion Tracking & Tombstones:
-    const now = Date.now();
-    const existingTombstones: Record<string, number> = (currentPrefs.cart_tombstones && typeof currentPrefs.cart_tombstones === 'object')
-      ? currentPrefs.cart_tombstones
-      : {};
-
-    const incomingDeletedKeys: string[] = Array.isArray(req.body?.deleted_place_ids)
-      ? req.body.deleted_place_ids.map(String).filter(Boolean)
-      : (req.body?.deleted_place_id ? [String(req.body.deleted_place_id)].filter(Boolean) : []);
-
-    const updatedTombstones: Record<string, number> = { ...existingTombstones };
-    for (const delKey of incomingDeletedKeys) {
-      if (delKey) updatedTombstones[delKey] = now;
-    }
-
-    if (req.body?.tombstones && typeof req.body.tombstones === 'object') {
-      for (const [k, v] of Object.entries(req.body.tombstones)) {
-        const t = Number(v) || now;
-        if (t > (updatedTombstones[k] || 0)) {
-          updatedTombstones[k] = t;
-        }
-      }
-    }
-
-    const isExplicitAdd = req.body?.action === 'add';
-    if (isExplicitAdd) {
-      for (const inc of items) {
-        const keys = getCartItemKeys(inc);
-        keys.forEach(k => {
-          delete updatedTombstones[k];
-        });
-      }
-    }
-
-    const currentCart = Array.isArray(currentPrefs.draft_cart)
-      ? currentPrefs.draft_cart
-      : (Array.isArray(currentPrefs.shared_cart) ? currentPrefs.shared_cart : []);
-
-    const mergedMap = new Map<string, any>();
-    // 1. Giữ các item hiện tại trong DB nếu chưa bị tombstone đánh dấu xóa
-    for (const it of currentCart) {
-      const keys = getCartItemKeys(it);
-      const primaryKey = keys[0] || '';
-      if (!primaryKey) continue;
-
-      const itemTime = Number(it.updated_at || 0);
-      const isTombstoned = keys.some(k => {
-        const t = updatedTombstones[k] || 0;
-        return t >= itemTime && t > 0;
-      });
-      if (isTombstoned) {
-        continue;
-      }
-      mergedMap.set(primaryKey, it);
-    }
-
-    // 2. Xử lý các item mới gửi lên
-    for (const incoming of items) {
-      const keys = getCartItemKeys(incoming);
-      const primaryKey = keys[0] || '';
-      if (!primaryKey) continue;
-
-      const incomingTime = Number(incoming.updated_at || now);
-      const maxTombstoneTime = Math.max(0, ...keys.map(k => updatedTombstones[k] || 0));
-
-      if (!isExplicitAdd && maxTombstoneTime >= incomingTime && maxTombstoneTime > 0) {
-        // Item này nằm trong danh sách đã bị xóa và không có timestamp mới hơn -> loại bỏ khỏi giỏ
-        mergedMap.delete(primaryKey);
-        continue;
-      }
-
-      // Người dùng cố ý thêm lại hoặc gửi item hợp lệ: xóa tombstone cũ
-      keys.forEach(k => {
-        delete updatedTombstones[k];
-      });
-
-      const existing = mergedMap.get(primaryKey);
-      if (!existing) {
-        mergedMap.set(primaryKey, incoming);
-      } else {
-        const existingTime = Number(existing.updated_at || 0);
-        if (incomingTime >= existingTime) {
-          mergedMap.set(primaryKey, { ...existing, ...incoming });
-        } else {
-          mergedMap.set(primaryKey, existing);
-        }
-      }
-    }
-
-    // 3. Xóa dứt điểm các key trong deleted_place_ids khỏi mergedMap (nếu có yêu cầu xóa rõ ràng)
-    for (const delKey of incomingDeletedKeys) {
-      mergedMap.delete(delKey);
-      for (const [mKey, item] of mergedMap.entries()) {
-        const itemKeys = getCartItemKeys(item);
-        if (itemKeys.includes(delKey)) {
-          mergedMap.delete(mKey);
-        }
-      }
-    }
-
-    // 4. Nếu action là 'clear': làm trống hoàn toàn
-    if (req.body?.action === 'clear') {
-      mergedMap.clear();
-    }
-
-    const mergedCart = Array.from(mergedMap.values());
-
-    const reqStage = req.body?.workspace_stage;
-    const workspaceStage = (reqStage === 'collecting' || reqStage === 'scheduling')
-      ? reqStage
-      : (reqStage || currentPrefs.workspace_stage || 'collecting');
-
-    const updatedPreferences = {
-      ...currentPrefs,
-      draft_cart: mergedCart,
-      shared_cart: mergedCart,
-      cart_tombstones: updatedTombstones,
-      workspace_stage: workspaceStage,
-      ...(req.body?.pregen_places !== undefined ? { pregen_places: req.body.pregen_places } : {})
-    };
-
-    const currentBreakdown = (trip.budget_breakdown && typeof trip.budget_breakdown === 'object' && !Array.isArray(trip.budget_breakdown))
-      ? trip.budget_breakdown
-      : {};
-
-    const updatedBreakdown = {
-      ...currentBreakdown,
-      draft_cart: mergedCart,
-      shared_cart: mergedCart
-    };
-
-    const { error: updateErr } = await supabaseAdmin
-      .from('trips')
-      .update({
-        preferences: updatedPreferences,
-        budget_breakdown: updatedBreakdown,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id);
-
-    if (updateErr) throw updateErr;
-
-    await logActivity(id, user.id, 'edit_item', 'Giỏ hàng nhóm', null, {
+    void logActivity(id, user.id, 'edit_item', 'Giỏ hàng nhóm', null, {
       items_count: mergedCart.length
     });
 
@@ -4426,8 +4750,9 @@ router.put('/:id/shared-cart', requireAuth, async (req: any, res: Response) => {
       items: mergedCart,
       count: mergedCart.length,
       workspace_stage: workspaceStage,
-      tombstones: updatedTombstones,
-      pregen_places: updatedPreferences.pregen_places || []
+      tombstones,
+      pregen_places: pregenPlaces,
+      version
     });
   } catch (e: any) {
     return res.status(500).json({ error: e.message });

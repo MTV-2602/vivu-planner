@@ -782,18 +782,6 @@ export default function AuthScreen({ mode }: Props) {
             <View style={{ gap: 7 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={{ fontFamily: F.semiBold, fontSize: 13, color: '#1B2420' }}>Email</Text>
-                {Boolean(__DEV__) && (
-                  <Pressable
-                    testID="btn-fill-test-pro"
-                    onPress={() => {
-                      setEmail('test_pro@vivuplanner.com');
-                      setPassword('Password123@');
-                    }}
-                    style={{ paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#E8F5E9', borderRadius: 6 }}
-                  >
-                    <Text style={{ fontSize: 11, color: '#0f4c5c', fontWeight: 'bold' }}>⚡ Test PRO</Text>
-                  </Pressable>
-                )}
               </View>
               <TextInput
                 style={fieldStyle('email')}

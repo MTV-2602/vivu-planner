@@ -46,7 +46,7 @@ import {
 } from 'lucide-react-native';
 import { BRAND_COLORS } from '../../constants';
 import { api } from '../../lib/api';
-import { supabase } from '../../lib/supabase';
+import { useRealtimeChannel, tripTopic } from '../../lib/realtime';
 import { getCityCenterCoords } from '../map/CuratedMap';
 import { getCuratedPlacesForCity } from '../../constants/curatedPlaces';
 
@@ -535,30 +535,10 @@ export default function GoogleCalendarWorkspace({
     }
   }, [budgetBreakdown?.expense_logs]);
 
-  // Broadcast thay đổi chi tiêu tới các thành viên khác trong chuyến đi qua Supabase Realtime
-  const broadcastExpenseChange = (
-    action: 'add' | 'edit' | 'delete' | 'clear',
-    log?: ExpenseLogItem,
-    logId?: string
-  ) => {
-    if (!tripId) return;
-    try {
-      const channel = supabase.channel(`trip-expenses:${tripId}`);
-      channel.send({
-        type: 'broadcast',
-        event: 'expenses_updated',
-        payload: { action, log, logId },
-      }).catch(() => {});
-    } catch (e) {}
-  };
-
-  // Lắng nghe broadcast chi tiêu thời gian thực từ các thành viên khác
-  useEffect(() => {
-    if (!tripId) return;
-    const channel = supabase.channel(`trip-expenses:${tripId}`);
-    channel
-      .on('broadcast', { event: 'expenses_updated' }, (msg: any) => {
-        const payload = msg?.payload;
+  // Lắng nghe broadcast chi tiêu thời gian thực trên topic trip:${tripId} (server cũng phát sau mỗi lần ghi DB)
+  const { send: tripSend } = useRealtimeChannel(tripId ? tripTopic(tripId) : null, {
+    onBroadcast: {
+      expenses_updated: (payload: any) => {
         if (!payload) return;
         if (payload.action === 'add' && payload.log) {
           const mapped = normalizeExpenseLogItem(payload.log);
@@ -574,13 +554,19 @@ export default function GoogleCalendarWorkspace({
         } else if (payload.action === 'clear') {
           setExpenseLogs([]);
         }
-      })
-      .subscribe();
+      },
+    },
+  });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [tripId]);
+  // Broadcast thay đổi chi tiêu tới các thành viên khác trong chuyến đi qua Supabase Realtime
+  const broadcastExpenseChange = (
+    action: 'add' | 'edit' | 'delete' | 'clear',
+    log?: ExpenseLogItem,
+    logId?: string
+  ) => {
+    if (!tripId) return;
+    tripSend('expenses_updated', { action, log, logId });
+  };
 
   // Load chi tiêu từ DB API khi tripId có (đồng bộ đa người dùng trong chuyến đi)
   useEffect(() => {

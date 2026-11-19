@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 import { X, Activity } from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
 import { api } from '../lib/api';
+import { useRealtimeChannel, tripTopic } from '../lib/realtime';
 import { BRAND_COLORS } from '../constants';
 
 export interface ActivityLogItem {
@@ -149,84 +150,24 @@ export default function ActivityFeed({
     }
   }, [visible, tripId, fetchActivities]);
 
-  // 2. Subscribe postgres_changes và broadcast trên channel
-  useEffect(() => {
-    if (!tripId) return;
-
-    // Hủy bỏ toàn bộ channel cũ có topic trùng để tránh lỗi cannot add callbacks after subscribe
-    const existingChannels = supabase.getChannels().filter(
-      (c) => c.topic === `realtime:trip-activity-${tripId}` || c.topic.startsWith(`realtime:trip-activity-${tripId}`)
-    );
-    for (const c of existingChannels) {
-      supabase.removeChannel(c);
-    }
-
-    const channelName = `trip-activity-${tripId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'trip_activity_log',
-          filter: `trip_id=eq.${tripId}`,
-        },
-        (payload) => {
-          if (payload?.new) {
-            const newLog = payload.new as ActivityLogItem;
-            setLogs((prev) => {
-              if (prev.some((item) => item.id === newLog.id)) return prev;
-              return [newLog, ...prev].slice(0, 50);
-            });
-          }
-        }
-      )
-      .on('broadcast', { event: 'new_activity' }, (payload: any) => {
-        const data = payload?.payload || payload;
-        if (data) {
-          const newLog = data as ActivityLogItem;
-          setLogs((prev) => {
-            if (prev.some((item) => item.id === newLog.id)) return prev;
-            return [newLog, ...prev].slice(0, 50);
-          });
-        }
-      })
-      .on('broadcast', { event: 'user_action' }, (payload: any) => {
-        const data = payload?.payload || payload;
-        if (data) {
-          const newLog: ActivityLogItem = {
-            id: data.id || `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            trip_id: tripId,
-            user_id: data.user_id,
-            display_name: data.display_name,
-            action: data.action_type || data.action,
-            action_type: data.action_type || data.action,
-            item_title: data.item_title,
-            created_at: data.timestamp || new Date().toISOString(),
-          };
-          setLogs((prev) => {
-            if (prev.some((item) => item.id === newLog.id)) return prev;
-            return [newLog, ...prev].slice(0, 50);
-          });
-        }
-      })
-      .on('broadcast', { event: 'activity' }, (payload: any) => {
-        const data = payload?.payload || payload;
-        if (data) {
-          const newLog = data as ActivityLogItem;
-          setLogs((prev) => {
-            if (prev.some((item) => item.id === newLog.id)) return prev;
-            return [newLog, ...prev].slice(0, 50);
-          });
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [tripId]);
+  // 2. Nhận new_activity do server broadcast trên topic trip:${tripId} (qua realtime hub dùng chung)
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  useRealtimeChannel(tripId ? tripTopic(tripId) : null, {
+    onBroadcast: {
+      new_activity: (data: any) => {
+        if (!data?.id) return;
+        const newLog = data as ActivityLogItem;
+        setLogs((prev) => {
+          if (prev.some((item) => item.id === newLog.id)) return prev;
+          return [newLog, ...prev].slice(0, 50);
+        });
+      },
+    },
+    onResync: () => {
+      if (visibleRef.current) fetchActivities();
+    },
+  });
 
   if (!visible) return null;
 

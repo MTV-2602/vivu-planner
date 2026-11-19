@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../../middleware/requireAuth';
 import { requireAdmin } from '../../middleware/requireAdmin';
 import { supabaseAdmin, isDbMocked } from '../../config/supabase';
+import { broadcastRealtime } from '../../utils/realtime';
 
 import { autoCancelExpiredOrders, loadPlansFromDb, activatePremiumForUser } from '../payment/payment.router';
 import * as paymentRouter from '../payment/payment.router';
@@ -77,7 +78,7 @@ async function callActivateOrderById(
     return { activated: false, reason: 'already_completed' };
   }
 
-  await activatePremiumForUser(order.user_id, order.plan || 'monthly');
+  await activatePremiumForUser(order.user_id, order.plan || 'monthly', order);
   return {
     activated: true,
     reason: 'admin_force_activated',
@@ -915,16 +916,7 @@ const handleUpdateUserCredits = async (req: Request, res: Response) => {
     );
 
     // 4. Phát Realtime broadcast
-    try {
-      const channel = supabaseAdmin.channel(`user_channel_${userId}`);
-      await channel.send({
-        type: 'broadcast',
-        event: 'user_updated',
-        payload: { userId, timestamp: Date.now() },
-      });
-    } catch (e: any) {
-      console.warn('[Admin] Realtime broadcast error:', e.message);
-    }
+    await broadcastRealtime(`user_channel_${userId}`, 'user_updated', { userId, timestamp: Date.now() });
 
     // 5. Trả về cùng shape 1 item của GET /users
     const [tripsCountRes, ordersRes] = await Promise.all([
@@ -1080,14 +1072,7 @@ router.delete('/plans/:id', async (req: Request, res: Response) => {
     await loadPlansFromDb();
 
     // Phát broadcast Realtime
-    try {
-      const channel = supabaseAdmin.channel('pricing_realtime');
-      await channel.send({
-        type: 'broadcast',
-        event: 'plans_updated',
-        payload: { timestamp: Date.now() },
-      });
-    } catch (_) {}
+    await broadcastRealtime('pricing_realtime', 'plans_updated', { timestamp: Date.now() });
 
     return res.json({
       success: true,
@@ -1293,14 +1278,7 @@ router.put('/users/:id', async (req: Request, res: Response) => {
       });
     }
 
-    try {
-      const channel = supabaseAdmin.channel(`user_channel_${userId}`);
-      await channel.send({
-        type: 'broadcast',
-        event: 'user_updated',
-        payload: { userId, timestamp: Date.now() },
-      });
-    } catch (_) {}
+    await broadcastRealtime(`user_channel_${userId}`, 'user_updated', { userId, timestamp: Date.now() });
 
     return res.json({
       success: true,
@@ -1367,14 +1345,7 @@ router.put('/users/:id/toggle-ban', async (req: Request, res: Response) => {
     });
     if (updateError) throw updateError;
 
-    try {
-      const channel = supabaseAdmin.channel(`user_channel_${userId}`);
-      await channel.send({
-        type: 'broadcast',
-        event: 'user_updated',
-        payload: { userId, isBanned: !isBanned, timestamp: Date.now() },
-      });
-    } catch (_) {}
+    await broadcastRealtime(`user_channel_${userId}`, 'user_updated', { userId, isBanned: !isBanned, timestamp: Date.now() });
 
     return res.json({
       success: true,
@@ -1427,14 +1398,7 @@ router.put('/users/:id/role', async (req: Request, res: Response) => {
 
     if (error) throw error;
 
-    try {
-      const channel = supabaseAdmin.channel(`user_channel_${userId}`);
-      await channel.send({
-        type: 'broadcast',
-        event: 'user_updated',
-        payload: { userId, role, timestamp: Date.now() },
-      });
-    } catch (_) {}
+    await broadcastRealtime(`user_channel_${userId}`, 'user_updated', { userId, role, timestamp: Date.now() });
 
     return res.json({
       success: true,
@@ -1533,14 +1497,7 @@ router.put('/users/:id/package', async (req: Request, res: Response) => {
     }
     const { data: updatedProfile } = await supabaseAdmin.from('profiles').select('*').eq('id', userId).maybeSingle();
 
-    try {
-      const channel = supabaseAdmin.channel(`user_channel_${userId}`);
-      await channel.send({
-        type: 'broadcast',
-        event: 'user_updated',
-        payload: { userId, timestamp: Date.now() },
-      });
-    } catch (_) {}
+    await broadcastRealtime(`user_channel_${userId}`, 'user_updated', { userId, timestamp: Date.now() });
 
     return res.json({ success: true, message: 'Cập nhật gói người dùng thành công', data: updatedProfile });
   } catch (err: any) {
@@ -1723,22 +1680,7 @@ router.post('/plans', async (req: Request, res: Response) => {
       .select('*')
       .order('sort_order', { ascending: true });
 
-    try {
-      const realtimeChannel = supabaseAdmin.channel('pricing_realtime');
-      realtimeChannel.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          realtimeChannel
-            .send({
-              type: 'broadcast',
-              event: 'plans_updated',
-              payload: { timestamp: Date.now() },
-            })
-            .then(() => {
-              supabaseAdmin.removeChannel(realtimeChannel);
-            });
-        }
-      });
-    } catch (_) {}
+    await broadcastRealtime('pricing_realtime', 'plans_updated', { timestamp: Date.now() });
 
     return res.json({
       success: true,
