@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, Pressable, Alert, Platform, ActivityIndicator, Image, useWindowDimensions,
+  View, Text, ScrollView, Pressable, Platform, ActivityIndicator, Image, useWindowDimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Compass, Plus, LogOut, Calendar, MapPin, Wallet, DollarSign,
@@ -17,12 +17,15 @@ import { getCache, setCache, clearCache } from '../../../lib/cache';
 import Reveal from '../../../components/Reveal';
 import SystemClock from '../../../components/SystemClock';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import TripListSkeleton from '../../../components/loading/TripListSkeleton';
 import { BRAND_COLORS, APP_ROUTES } from '../../../constants';
 import PremiumModal from '../../../components/PremiumModal';
 import ConfirmModal from '../../../components/ConfirmModal';
 import ProfileModal from '../../../components/ProfileModal';
+import JoinTripByCodeModal from '../../../components/JoinTripByCodeModal';
 import { usePaymentStatus } from '../../../hooks/usePaymentStatus';
 import { formatHeaderChip } from '../../../lib/plans';
+import notify from '../../../lib/notify';
 
 interface Trip {
   id: string;
@@ -103,11 +106,18 @@ export default function Dashboard() {
   const userEmail = user?.email || '';
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
+  // Navbar quá hẹp (<380px): ẩn text, chỉ giữ icon để tránh tràn
+  const isNarrow = width < 380;
+  // Tham số ?paid=1 từ success.tsx (đã verify ở server, không cần gọi lại)
+  const { paid } = useLocalSearchParams<{ paid?: string }>();
+  // Chỉ hiện banner db warning 1 lần để tránh spam
+  const dbWarnShownRef = useRef(false);
 
   const [cachedTrips, setCachedTrips] = useState<Trip[] | null>(null);
   const [fromCache, setFromCache] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
     visible: boolean;
     title: string;
@@ -131,23 +141,35 @@ export default function Dashboard() {
   const [paymentSuccessMsg, setPaymentSuccessMsg] = useState('');
 
 
+  // Xử lý banner thanh toán thành công: paid=1 (từ success.tsx, đã verify) hoặc tham số gateway cũ
   useEffect(() => {
+    // Trường hợp 1: paid=1 — success.tsx đã gọi verify rồi, chỉ cần hiện banner
+    if (paid === '1') {
+      setPaymentSuccessMsg('🎉 Thanh toán thành công! Gói dịch vụ đã được kích hoạt thành công, mở khóa toàn bộ tính năng Bản đồ & Tải PDF cho tài khoản của bạn.');
+      refetchStatus();
+      // Xóa tham số paid khỏi URL để không hiện lại khi refresh
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.history?.replaceState) {
+        window.history.replaceState({}, typeof document !== 'undefined' ? document.title : '', window.location?.pathname || '');
+      }
+      return;
+    }
+    // Trường hợp 2: tham số gateway cũ (payment=success, resultCode=0, code=00) đổ thẳng vào /chuyen-di
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.search) {
       const search = window.location.search;
       if (search && (search.includes('payment=success') || search.includes('resultCode=0') || search.includes('code=00'))) {
-        // Clean the URL immediately so user doesn't see ugly query params
-        if (typeof window !== 'undefined' && window.history && typeof window.history.replaceState === 'function') {
-          window.history.replaceState({}, (typeof document !== 'undefined' ? document.title : ''), window.location?.pathname || '');
+        // Dọn URL ngay trước khi gọi API
+        if (window.history?.replaceState) {
+          window.history.replaceState({}, typeof document !== 'undefined' ? document.title : '', window.location?.pathname || '');
         }
         api.get(`/payment/verify-return${search}`).then(() => {
-            setPaymentSuccessMsg('🎉 Thanh toán thành công! Gói dịch vụ đã được kích hoạt thành công, mở khóa toàn bộ tính năng Bản đồ & Tải PDF cho tài khoản của bạn.');
-            refetchStatus();
+          setPaymentSuccessMsg('🎉 Thanh toán thành công! Gói dịch vụ đã được kích hoạt thành công, mở khóa toàn bộ tính năng Bản đồ & Tải PDF cho tài khoản của bạn.');
+          refetchStatus();
         }).catch(() => {});
       }
     }
-  }, []);
+  }, [paid]);
 
-  const { data: trips, isLoading, isError, refetch } = useQuery<Trip[]>({
+  const { data: trips, isLoading, isError, isFetching, isSuccess, refetch } = useQuery<Trip[]>({
     queryKey: ['trips'],
     queryFn: async () => {
       const res = await api.get('/trips');
@@ -162,16 +184,19 @@ export default function Dashboard() {
 
   const { paymentStatus, refetch: refetchStatus } = usePaymentStatus();
 
+  // Ẩn banner offline khi query đã lấy dữ liệu mới thành công
   useEffect(() => {
-    if (paymentStatus?.dbWarning) {
-      if (Platform.OS === 'web') {
-        alert('⚠️ LỖI CƠ SỞ DỮ LIỆU SUPABASE:\n\n' + paymentStatus.dbWarning);
-      } else {
-        Alert.alert(
-          '⚠️ Lỗi Cơ Sở Dữ Liệu (Supabase)',
-          paymentStatus.dbWarning,
-          [{ text: 'Đồng ý' }]
-        );
+    if (isSuccess && !isFetching) setFromCache(false);
+  }, [isSuccess, isFetching]);
+
+  useEffect(() => {
+    if (paymentStatus?.dbWarning && !dbWarnShownRef.current) {
+      dbWarnShownRef.current = true;
+      // Log cảnh báo DB, không popup cho người dùng thông thường
+      console.warn('[DB Warning]', paymentStatus.dbWarning);
+      // Admin thấy toast thông báo để theo dõi
+      if (isAdmin) {
+        notify.info('Cảnh báo cơ sở dữ liệu: ' + paymentStatus.dbWarning);
       }
     }
   }, [paymentStatus?.dbWarning]);
@@ -184,7 +209,7 @@ export default function Dashboard() {
       refetch();
       refetchStatus();
     },
-    onError: (err: any) => Alert.alert('Lỗi xóa chuyến đi', err.response?.data?.error || err.message),
+    onError: (err: any) => notify.error('Lỗi xóa chuyến đi: ' + (err.response?.data?.error || err.message)),
   });
 
   const handleDeleteTrip = (tripId: string, title: string) => {
@@ -266,15 +291,17 @@ export default function Dashboard() {
             {/* CỤM BÊN TRÁI: Logo ViVu Planner */}
             <Pressable
               onPress={() => router.push(APP_ROUTES.LANDING as any)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1, minWidth: 0 }}
             >
-              <Compass size={20} color="#FFFFFF" />
+              <Compass size={20} color="#FFFFFF" style={{ flexShrink: 0 }} />
               <Text
+                numberOfLines={1}
                 style={{
                   fontFamily: 'Lora_700Bold',
                   fontWeight: 'bold',
                   fontSize: 15,
                   color: '#FFFFFF',
+                  flexShrink: 1,
                 }}
               >
                 ViVu Planner
@@ -283,7 +310,32 @@ export default function Dashboard() {
 
             {/* CỤM BÊN PHẢI: Bảng tin + Pro + Profile + Đăng xuất */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-              {/* Nút 🌟 Bảng Tin */}
+              {/* Nút 🔗 Nhập mã — ẩn text khi màn hình < 380px để tránh tràn */}
+              <Pressable
+                testID="btn-open-join-trip-modal-header"
+                onPress={() => setShowJoinModal(true)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 3,
+                  paddingHorizontal: 6,
+                  paddingVertical: 4,
+                  borderRadius: 10,
+                  backgroundColor: 'rgba(255,255,255,0.12)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.2)',
+                  cursor: 'pointer' as any,
+                }}
+              >
+                <Text style={{ fontSize: 10.5 }}>🔗</Text>
+                {!isNarrow && (
+                  <Text style={{ color: '#FFFFFF', fontSize: 10.5, fontWeight: '700' }}>
+                    Nhập mã
+                  </Text>
+                )}
+              </Pressable>
+
+              {/* Nút 🌟 Bảng Tin — ẩn text khi màn hình < 380px để tránh tràn */}
               <Pressable
                 testID="nav-link-feed"
                 onPress={() => router.push((APP_ROUTES.FEED || '/bang-tin') as any)}
@@ -301,9 +353,11 @@ export default function Dashboard() {
                 }}
               >
                 <Text style={{ fontSize: 10.5 }}>🌟</Text>
-                <Text style={{ color: '#FFFFFF', fontSize: 10.5, fontWeight: '700' }}>
-                  Bảng tin
-                </Text>
+                {!isNarrow && (
+                  <Text style={{ color: '#FFFFFF', fontSize: 10.5, fontWeight: '700' }}>
+                    Bảng tin
+                  </Text>
+                )}
               </Pressable>
 
               {/* Nút Pro / Nâng cấp */}
@@ -551,6 +605,21 @@ export default function Dashboard() {
 
           <View className="flex-row gap-3 flex-wrap">
             <Pressable
+              testID="btn-open-join-trip-modal"
+              onPress={() => setShowJoinModal(true)}
+              className="flex-row items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl border"
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderColor: '#0f4c5c',
+                borderWidth: 1.5,
+                boxShadow: '0 2px 8px rgba(15, 76, 92, 0.08)' as any,
+                cursor: 'pointer' as any,
+              }}
+            >
+              <Text style={{ color: '#0f4c5c', fontWeight: '700', fontSize: 13 }}>🔗 Nhập mã tham gia</Text>
+            </Pressable>
+
+            <Pressable
               onPress={() => router.push(APP_ROUTES.NEW_TRIP as any)}
               className="flex-row items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl"
               style={{
@@ -577,20 +646,7 @@ export default function Dashboard() {
 
         {/* Trip list */}
         {isLoading && !cachedTrips ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: isMobile ? 10 : 20 }}>
-            {[1, 2, 3, 4].map(i => (
-              <View
-                key={i}
-                className="rounded-2xl h-48"
-                style={{
-                  width: isMobile ? '48.5%' : 320,
-                  backgroundColor: '#FFFFFF',
-                  borderWidth: 1,
-                  borderColor: 'rgba(15, 76, 92, 0.08)',
-                }}
-              />
-            ))}
-          </View>
+          <TripListSkeleton />
         ) : isError && !cachedTrips ? (
           <View className="p-8 rounded-2xl border border-brand-danger/30 bg-brand-danger/5 items-center gap-4">
             <Text className="text-brand-danger font-semibold">Lỗi tải danh sách chuyến đi</Text>
@@ -781,6 +837,7 @@ export default function Dashboard() {
                               )}
                             </View>
                             <Pressable
+                              testID={`btn-delete-trip-${trip.id}`}
                               onPress={(e) => {
                                 // @ts-ignore
                                 if (e.stopPropagation) e.stopPropagation();
@@ -864,6 +921,7 @@ export default function Dashboard() {
                               );
                             })()}
                             <Pressable
+                              testID={`btn-delete-trip-${trip.id}`}
                               onPress={(e) => {
                                 // @ts-ignore
                                 if (e.stopPropagation) e.stopPropagation();
@@ -942,6 +1000,15 @@ export default function Dashboard() {
     <ProfileModal
       visible={showProfileModal}
       onClose={() => setShowProfileModal(false)}
+    />
+    <JoinTripByCodeModal
+      visible={showJoinModal}
+      onClose={() => setShowJoinModal(false)}
+      onJoined={(tripId) => {
+        setShowJoinModal(false);
+        refetch();
+        router.push(`/chuyen-di/${tripId}` as any);
+      }}
     />
     <ConfirmModal
       visible={!!confirmModal?.visible}

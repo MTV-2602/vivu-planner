@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { View, Text, Pressable, Image, Linking, Platform, TextInput } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { X, ExternalLink, Plus, MapPin, Clock, DollarSign, Sparkles } from 'lucide-react-native';
 
 export interface PlaceItem {
@@ -41,6 +42,7 @@ interface PlacePopupProps {
 }
 
 export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupProps) {
+  const insets = useContext(SafeAreaInsetsContext) ?? { top: 0, bottom: 0, left: 0, right: 0 };
   const [pricingOption, setPricingOption] = useState<'auto' | 'manual'>('auto');
   const [customCost, setCustomCost] = useState<string>('');
 
@@ -88,7 +90,7 @@ export default function PlacePopup({ place, onClose, onAddToCart }: PlacePopupPr
     <View
       style={{
         position: 'absolute',
-        bottom: 20,
+        bottom: 20 + insets.bottom,
         left: 20,
         right: 20,
         maxWidth: 420,

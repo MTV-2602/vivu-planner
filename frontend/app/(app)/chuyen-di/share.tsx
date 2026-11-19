@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import { Platform, View, Text, ScrollView, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { api } from '../../../lib/api';
 import InteractiveMap, { MapItem } from '../../../components/InteractiveMap';
 import GoogleMapsRoutePlanner from '../../../components/map/GoogleMapsRoutePlanner';
-import { BRAND_COLORS } from '../../../constants';
+import { BRAND_COLORS, SITE_URL } from '../../../constants';
+import PageSkeleton from '../../../components/loading/PageSkeleton';
 
 interface ItineraryItem {
   id: string; item_type: string; title: string; description: string;
@@ -39,7 +40,10 @@ function formatCost(c?: number | null) {
 }
 
 export default function ShareTripPage() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string }>();
+  // Trên web dùng window.location.search làm fallback khi hook chưa phân giải kịp
+  const searchStr = Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.search ? window.location.search : '';
+  const id = params.id || (searchStr ? new URLSearchParams(searchStr).get('id') : '') || '';
   const [trip, setTrip] = useState<TripData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -47,7 +51,12 @@ export default function ShareTripPage() {
   const [selectedShareDay, setSelectedShareDay] = useState<number>(1);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      // Không có ID → dừng loading và hiển thị lỗi thay vì spinner vô tận
+      setLoading(false);
+      setError('Link chia sẻ không hợp lệ');
+      return;
+    }
     api.get(`/trips/${id}/public`)
       .then(({ data }) => setTrip(data))
       .catch(() => setError('Không tìm thấy chuyến đi hoặc chuyến đi này không được chia sẻ công khai.'))
@@ -55,12 +64,7 @@ export default function ShareTripPage() {
   }, [id]);
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FBF5EA' }}>
-        <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-        <Text style={{ color: '#888', marginTop: 12 }}>Đang tải lịch trình...</Text>
-      </View>
-    );
+    return <PageSkeleton rows={4} fullScreen label="Đang tải lịch trình" testID="skeleton-share" />;
   }
 
   if (error || !trip) {
@@ -268,7 +272,7 @@ export default function ShareTripPage() {
             Lịch trình được lập kế hoạch bởi AI thông minh
           </Text>
           <Text style={{ color: BRAND_COLORS.primary, fontSize: 13, fontWeight: '600', marginTop: 4 }}>
-            vivu-planner.vercel.app
+            {SITE_URL.replace(/^https?:\/\//, '')}
           </Text>
         </View>
       </View>

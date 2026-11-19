@@ -8,8 +8,8 @@ import {
   Image,
   TextInput,
   Platform,
-  Alert,
   Modal,
+  Share,
   Linking,
   useWindowDimensions,
 } from 'react-native';
@@ -58,8 +58,13 @@ import {
   APP_ROUTES,
   VIETNAM_PROVINCES,
   POST_CATEGORIES,
+  getSiteOrigin,
 } from '../../../constants';
+import { notify } from '../../../lib/notify';
+import { parseErrorMessage } from '../../../lib/error';
+import { pickImageNative } from '../../../lib/pickImage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import FeedSkeleton from '../../../components/loading/FeedSkeleton';
 
 const FB_REACTIONS: { id: string; label: string; emoji: string; color: string }[] = [
   { id: 'like', label: 'Thích', emoji: '👍', color: '#1877F2' },
@@ -373,7 +378,7 @@ export default function CommunityFeedScreen() {
       setPostToDelete(null);
     },
     onError: (err: any) => {
-      Alert.alert('Lỗi', err.response?.data?.error || 'Không thể xóa bài viết');
+      notify.error(parseErrorMessage(err, 'Không thể xóa bài viết, vui lòng thử lại.'));
       setPostToDelete(null);
     },
   });
@@ -430,7 +435,7 @@ export default function CommunityFeedScreen() {
           queryClient.setQueryData(key, val);
         });
       }
-      Alert.alert('Lỗi', err.response?.data?.error || 'Không thể tương tác cảm xúc');
+      notify.error(parseErrorMessage(err, 'Không thể thả cảm xúc, vui lòng thử lại.'));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
@@ -479,7 +484,7 @@ export default function CommunityFeedScreen() {
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
     },
     onError: (err: any) => {
-      Alert.alert('Lỗi', err.response?.data?.error || 'Không thể đăng bình luận');
+      notify.error(parseErrorMessage(err, 'Không thể đăng bình luận, vui lòng thử lại.'));
     },
   });
 
@@ -503,7 +508,7 @@ export default function CommunityFeedScreen() {
             setExpandedComments((prev) => ({ ...prev, [postId]: true }));
           }
         } catch (err: any) {
-          Alert.alert('Lỗi', err.response?.data?.error || 'Không thể tải ảnh đính kèm');
+          notify.error(parseErrorMessage(err, 'Không thể tải ảnh đính kèm lên.'));
         } finally {
           setIsUploadingCommentMedia((prev) => ({ ...prev, [postId]: false }));
         }
@@ -527,7 +532,30 @@ export default function CommunityFeedScreen() {
       };
       input.click();
     } else {
-      Alert.alert('Thông báo', 'Tính năng chọn ảnh từ thiết bị hỗ trợ trên trình duyệt web');
+      // Native: chọn ảnh bằng expo-image-picker rồi gửi cùng endpoint base64 như web
+      (async () => {
+        try {
+          const picked = await pickImageNative();
+          if (!picked) return;
+          setIsUploadingCommentMedia((prev) => ({ ...prev, [postId]: true }));
+          const res = await api.post('/posts/upload-media', {
+            fileName: picked.fileName,
+            fileType: picked.fileType,
+            base64: picked.base64,
+          });
+          if (res.data?.url) {
+            setCommentMediaAttachments((prev) => ({
+              ...prev,
+              [postId]: { type: 'image', url: res.data.url },
+            }));
+            setExpandedComments((prev) => ({ ...prev, [postId]: true }));
+          }
+        } catch (err: any) {
+          notify.error(parseErrorMessage(err, 'Không thể tải ảnh đính kèm lên.'));
+        } finally {
+          setIsUploadingCommentMedia((prev) => ({ ...prev, [postId]: false }));
+        }
+      })();
     }
   };
 
@@ -554,7 +582,7 @@ export default function CommunityFeedScreen() {
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
     },
     onError: (err: any) => {
-      Alert.alert('Lỗi', err.response?.data?.error || 'Không thể xóa bình luận');
+      notify.error(parseErrorMessage(err, 'Không thể xóa bình luận, vui lòng thử lại.'));
     },
   });
 
@@ -569,17 +597,33 @@ export default function CommunityFeedScreen() {
     });
   };
 
-  const handleSharePost = (p: any) => {
-    if (Platform.OS === 'web') {
-      const shareHref = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.href)
-        ? window.location.href
-        : 'https://vivu-planner.vercel.app/bang-tin';
-      if (typeof navigator !== 'undefined' && navigator.clipboard) {
-        navigator.clipboard.writeText(shareHref);
+  const handleSharePost = async (p: any) => {
+    // Chưa có route chi tiết bài viết → dùng URL bảng tin kèm ?post=<id>
+    const shareUrl = `${getSiteOrigin()}${APP_ROUTES.FEED}?post=${encodeURIComponent(p.id)}`;
+    const title = p.place_name ? `Bài viết "${p.place_name}" trên ViVu Planner` : 'Bài viết trên ViVu Planner';
+    try {
+      if (Platform.OS !== 'web') {
+        await Share.share({ message: `${title}\n${shareUrl}` });
+        return;
       }
-      Alert.alert('Chia sẻ thành công', `Đã sao chép liên kết bài viết "${p.place_name}" vào khay nhớ tạm!`);
-    } else {
-      Alert.alert('Chia sẻ', `Chia sẻ bài viết "${p.place_name}"`);
+      const nav: any = typeof navigator !== 'undefined' ? navigator : null;
+      if (nav?.share) {
+        try {
+          await nav.share({ title, url: shareUrl });
+          return;
+        } catch (e: any) {
+          // Người dùng hủy hộp chia sẻ → không báo lỗi
+          if (e?.name === 'AbortError') return;
+        }
+      }
+      if (nav?.clipboard?.writeText) {
+        await nav.clipboard.writeText(shareUrl);
+        notify.success('Đã sao chép liên kết bài viết');
+      } else {
+        notify.info(`Liên kết bài viết: ${shareUrl}`);
+      }
+    } catch (err: any) {
+      notify.error(parseErrorMessage(err, 'Không thể chia sẻ bài viết.'));
     }
   };
 
@@ -646,7 +690,7 @@ export default function CommunityFeedScreen() {
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           {/* Logo & Navigation */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 8 : 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 8 : 14, flexShrink: 1, minWidth: 0 }}>
             <Pressable
               onPress={() => router.push(APP_ROUTES.TRIPS as any)}
               style={({ pressed }) => [{
@@ -668,13 +712,15 @@ export default function CommunityFeedScreen() {
               </Text>
             </Pressable>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 5 : 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 5 : 8, flexShrink: 1, minWidth: 0 }}>
               <Compass size={isMobile ? 19 : 24} color="#FFFFFF" />
               <Text
+                numberOfLines={1}
                 style={{
                   fontFamily: 'Lora_700Bold',
                   fontSize: isMobile ? 15 : 18,
                   color: '#FFFFFF',
+                  flexShrink: 1,
                 }}
               >
                 Bảng Tin ViVu
@@ -1093,12 +1139,7 @@ export default function CommunityFeedScreen() {
           </View>
 
           {isLoading ? (
-            <View style={{ padding: 40, alignItems: 'center', gap: 12 }}>
-              <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-              <Text style={{ fontSize: 13, color: BRAND_COLORS.textMuted }}>
-                Đang tải các bài đánh giá mới nhất...
-              </Text>
-            </View>
+            <FeedSkeleton />
           ) : posts.length === 0 ? (
             <View
               style={{
@@ -1544,7 +1585,7 @@ export default function CommunityFeedScreen() {
                           onTouchEnd={() => {
                             if (hoveredReactionEmoji) {
                               if (!user) {
-                                Alert.alert('Thông báo', 'Vui lòng đăng nhập để thả cảm xúc.');
+                                notify.info('Vui lòng đăng nhập để thả cảm xúc.');
                               } else {
                                 reactMutation.mutate({ postId: post.id, reaction: hoveredReactionEmoji });
                               }
@@ -1596,7 +1637,7 @@ export default function CommunityFeedScreen() {
                                   onMouseLeave={() => setHoveredReactionEmoji(null)}
                                   onPress={() => {
                                     if (!user) {
-                                      Alert.alert('Thông báo', 'Vui lòng đăng nhập để thả cảm xúc.');
+                                      notify.info('Vui lòng đăng nhập để thả cảm xúc.');
                                       return;
                                     }
                                     setHoverReactionPostId(null);
@@ -1635,7 +1676,7 @@ export default function CommunityFeedScreen() {
                             testID={`btn-react-${post.id}`}
                             onPress={() => {
                               if (!user) {
-                                Alert.alert('Thông báo', 'Vui lòng đăng nhập để thả cảm xúc.');
+                                notify.info('Vui lòng đăng nhập để thả cảm xúc.');
                                 return;
                               }
                               const reactToSend = userReaction ? userReaction : 'like';

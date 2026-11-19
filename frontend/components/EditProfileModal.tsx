@@ -9,10 +9,12 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { X, Camera, Plus, Check, User, AlertCircle, CheckCircle2 } from 'lucide-react-native';
 import { api } from '../lib/api';
 import { parseErrorMessage } from '../lib/error';
+import { pickImageNative } from '../lib/pickImage';
 import { PREFERENCE_OPTIONS, BRAND_COLORS } from '../constants';
 
 interface EditProfileModalProps {
@@ -116,6 +118,37 @@ export default function EditProfileModal({
     }
   };
 
+  // Chọn ảnh đại diện: web dùng <input type="file">, native dùng expo-image-picker
+  const openAvatarPicker = async () => {
+    if (Platform.OS === 'web') {
+      fileInputRef.current?.click();
+      return;
+    }
+    try {
+      const picked = await pickImageNative();
+      if (!picked) return;
+      if (picked.size > 10 * 1024 * 1024) {
+        setErrorMsg('Kích thước ảnh tối đa là 10MB.');
+        return;
+      }
+      setUploadingAvatar(true);
+      setErrorMsg('');
+      // Cùng endpoint và định dạng base64 data URL như nhánh web
+      const res = await api.post('/auth/upload-avatar', {
+        fileName: picked.fileName,
+        fileType: picked.fileType,
+        base64: picked.base64,
+      });
+      if (res.data?.url) {
+        setAvatarUrl(res.data.url);
+      }
+    } catch (err: any) {
+      setErrorMsg(parseErrorMessage(err, 'Lỗi khi tải ảnh lên máy chủ.'));
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!fullName.trim()) {
       setErrorMsg('Vui lòng nhập họ và tên của bạn.');
@@ -147,6 +180,8 @@ export default function EditProfileModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {/* Edge-to-edge (SDK 56): cửa sổ không tự co khi bàn phím mở → KeyboardAvoidingView tự né */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View
         style={{
           flex: 1,
@@ -208,7 +243,7 @@ export default function EditProfileModal({
             </Pressable>
           </View>
 
-          <ScrollView
+          <ScrollView keyboardShouldPersistTaps="handled"
             style={{ flex: 1, paddingHorizontal: 24, paddingVertical: 18 }}
             contentContainerStyle={{ gap: 16, paddingBottom: 28 }}
           >
@@ -283,7 +318,7 @@ export default function EditProfileModal({
                 {/* Edit Badge Button */}
                 <Pressable
                   testID="btn-change-avatar-badge"
-                  onPress={() => fileInputRef.current?.click()}
+                  onPress={openAvatarPicker}
                   style={{
                     position: 'absolute',
                     bottom: 0,
@@ -316,7 +351,7 @@ export default function EditProfileModal({
 
               <Pressable
                 testID="btn-choose-avatar-file"
-                onPress={() => fileInputRef.current?.click()}
+                onPress={openAvatarPicker}
                 disabled={uploadingAvatar}
                 style={{
                   flexDirection: 'row',
@@ -561,6 +596,7 @@ export default function EditProfileModal({
           </View>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

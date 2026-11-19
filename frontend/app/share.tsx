@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Platform, Pressable, Linking } from 'react-native';
+import { View, Text, ScrollView, Platform, Pressable, Linking } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { api } from '../lib/api';
 import InteractiveMap, { MapItem } from '../components/InteractiveMap';
 import GoogleMapsRoutePlanner from '../components/map/GoogleMapsRoutePlanner';
-import { BRAND_COLORS } from '../constants';
+import { BRAND_COLORS, SITE_URL } from '../constants';
+import PageSkeleton from '../components/loading/PageSkeleton';
 
 interface ItineraryItem {
   id: string; item_type: string; title: string; description: string;
@@ -51,7 +52,12 @@ export default function PublicShareTripPage() {
   const [selectedShareDay, setSelectedShareDay] = useState<number>(1);
 
   useEffect(() => {
-    if (!tripId) return;
+    if (!tripId) {
+      // Không có ID → dừng loading và hiển thị lỗi thay vì spinner vô tận
+      setLoading(false);
+      setError('Link chia sẻ không hợp lệ');
+      return;
+    }
     api.get(`/trips/${tripId}/public`)
       .then(({ data }) => setTrip(data))
       .catch(() => setError('Không tìm thấy chuyến đi hoặc chuyến đi này không được chia sẻ công khai.'))
@@ -59,12 +65,7 @@ export default function PublicShareTripPage() {
   }, [tripId]);
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FBF5EA', minHeight: 400 }}>
-        <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-        <Text style={{ color: '#888', marginTop: 12 }}>Đang tải lịch trình...</Text>
-      </View>
-    );
+    return <PageSkeleton rows={4} fullScreen label="Đang tải lịch trình" testID="skeleton-share" />;
   }
 
   if (error || !trip) {
@@ -283,7 +284,7 @@ export default function PublicShareTripPage() {
             Lịch trình được lập kế hoạch bởi AI thông minh
           </Text>
           <Text style={{ color: BRAND_COLORS.primary, fontSize: 13, fontWeight: '600', marginTop: 4 }}>
-            vivu-planner.vercel.app
+            {SITE_URL.replace(/^https?:\/\//, '')}
           </Text>
         </View>
       </View>

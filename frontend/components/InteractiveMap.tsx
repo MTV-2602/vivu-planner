@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, Linking } from 'react-native';
 import { Map, MapPin } from 'lucide-react-native';
-import { BRAND_COLORS } from '../constants';
+import { BRAND_COLORS, SITE_URL } from '../constants';
 
 let WebView: any = null;
 if (Platform.OS !== 'web') {
@@ -214,7 +214,7 @@ export default function InteractiveMap({ items, centerLat = 10.8231, centerLng =
           <View style={{ backgroundColor: '#f8f4ec', borderRadius: 16, padding: 24, alignItems: 'center', gap: 8 }}>
             <Map size={32} color={BRAND_COLORS.primary} />
             <Text style={{ fontWeight: '700', color: '#1B3A2D', textAlign: 'center' }}>Bản đồ Google Maps tương tác</Text>
-            <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>Mở vivu-planner.vercel.app để xem bản đồ Google Maps đầy đủ.</Text>
+            <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>Mở {SITE_URL.replace(/^https?:\/\//, '')} để xem bản đồ Google Maps đầy đủ.</Text>
           </View>
         )
       ) : (

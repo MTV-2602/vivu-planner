@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, Pressable, Modal, Platform, Image, Share } from 'react-native';
 import { X, Link, Copy, Check } from 'lucide-react-native';
-import { BRAND_COLORS } from '../constants';
+import { BRAND_COLORS, getSiteOrigin } from '../constants';
 
 interface ShareModalProps {
   visible: boolean;
@@ -12,13 +12,16 @@ interface ShareModalProps {
 
 export default function ShareModal({ visible, onClose, tripId, tripTitle }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const getOrigin = () => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-      return window.location.origin;
-    }
-    return 'https://vivu-planner.vercel.app';
-  };
+  // Dọn timer khi unmount
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
+
+  const getOrigin = () => getSiteOrigin();
   const shareUrl = `${getOrigin()}/share?id=${tripId}`;
 
   const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareUrl)}&color=0f4c5c&bgcolor=FFFFFF&qzone=2&format=png`;
@@ -34,8 +37,12 @@ export default function ShareModal({ visible, onClose, tripId, tripTitle }: Shar
           url: shareUrl,
         });
       }
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      copiedTimerRef.current = setTimeout(() => {
+        setCopied(false);
+        copiedTimerRef.current = null;
+      }, 2500);
     } catch (err) {
       // Graceful fallback
     }

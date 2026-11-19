@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useContext } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { CheckCircle2, AlertCircle, ShoppingBag, X, Sparkles } from 'lucide-react-native';
 
 export interface AppToastMessage {
@@ -13,6 +14,7 @@ interface AppToastProps {
 }
 
 export default function AppToast({ toast, onClose }: AppToastProps) {
+  const insets = useContext(SafeAreaInsetsContext) ?? { top: 0, bottom: 0, left: 0, right: 0 };
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => {
@@ -46,7 +48,7 @@ export default function AppToast({ toast, onClose }: AppToastProps) {
     <View
       style={{
         position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
-        top: 20,
+        top: insets.top + 12,
         left: 20,
         right: 20,
         maxWidth: 480,

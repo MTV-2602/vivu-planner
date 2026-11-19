@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Pressable, TextInput, Image, Platform, Modal } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Image, Platform, Modal } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import {
@@ -25,6 +25,7 @@ import {
   AlertTriangle,
 } from 'lucide-react-native';
 import { BRAND_COLORS, APP_ROUTES, VIETNAM_PROVINCES, POST_CATEGORIES } from '../../constants';
+import PageSkeleton from '../../components/loading/PageSkeleton';
 import { api } from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
 import AdminNav from '../../components/admin/AdminNav';
@@ -614,10 +615,7 @@ export default function AdminPosts() {
 
         {/* Posts Table / List */}
         {isLoading ? (
-          <View style={{ paddingVertical: 60, alignItems: 'center', gap: 12 }}>
-            <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-            <Text style={{ fontSize: 13, color: BRAND_COLORS.textMuted }}>Đang tải danh sách bài đăng...</Text>
-          </View>
+          <PageSkeleton rows={4} showHeader={false} label="Đang tải danh sách bài đăng" testID="skeleton-admin-posts" />
         ) : filteredPosts.length === 0 ? (
           <View
             style={{

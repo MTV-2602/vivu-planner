@@ -7,6 +7,7 @@ import {
   useWindowDimensions,
   Platform,
 } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
 import {
   LayoutDashboard,
@@ -56,6 +57,7 @@ export default function AdminShell({ children }: AdminShellProps) {
   const pathname = usePathname();
   const { user, profile, signOut } = useAuth();
   const { width } = useWindowDimensions();
+  const insets = useContext(SafeAreaInsetsContext) ?? { top: 0, bottom: 0, left: 0, right: 0 };
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
   const isDesktop = width >= 1024;
@@ -214,7 +216,7 @@ export default function AdminShell({ children }: AdminShellProps) {
           {/* ======================================================== */}
           {!isDesktop && (
             <View className="bg-white border-b border-brand-line/40 shrink-0">
-              <View className="px-4 py-3 flex-row items-center justify-between">
+              <View className="px-4 py-3 flex-row items-center justify-between" style={{ paddingTop: (insets.top || 0) + 12 }}>
                 <Pressable
                   onPress={() => setMobileDrawerOpen(true)}
                   className="p-2 rounded-xl hover:bg-slate-100 border border-brand-line/40"

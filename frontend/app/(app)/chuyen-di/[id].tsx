@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useContext, useMemo, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  Modal, Alert, ActivityIndicator, Platform, Linking, Share,
-  useWindowDimensions,
+  Modal, ActivityIndicator, Platform, Linking, Share,
+  useWindowDimensions, KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -34,9 +34,12 @@ import AppToast, { AppToastMessage } from '../../../components/AppToast';
 import AvatarStack from '../../../components/AvatarStack';
 import ShareTripModal from '../../../components/ShareTripModal';
 import ActivityFeed from '../../../components/ActivityFeed';
+import TripDetailSkeleton from '../../../components/loading/TripDetailSkeleton';
 import { useRealtimeChannel, tripTopic } from '../../../lib/realtime';
 import { usePaymentStatus } from '../../../hooks/usePaymentStatus';
 import { formatHeaderChip } from '../../../lib/plans';
+import { notify } from '../../../lib/notify';
+import { parseErrorMessage } from '../../../lib/error';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ItineraryItem {
@@ -147,15 +150,18 @@ function TimeInput({ value, onChange }: { value: string; onChange: (v: string) =
 function ModalShell({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: React.ReactNode }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable
-        className="flex-1 bg-brand-bgDark/60 items-center justify-center p-6"
-        style={{ backgroundColor: 'rgba(20,32,27,0.6)' }}
-        onPress={onClose}
-      >
-        <Pressable onPress={e => e.stopPropagation()} className="w-full max-w-lg">
-          {children}
+      {/* Edge-to-edge (SDK 56) khiến adjustResize không còn co cửa sổ → tự né bàn phím trên cả iOS lẫn Android */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <Pressable
+          className="flex-1 bg-brand-bgDark/60 items-center justify-center p-6"
+          style={{ backgroundColor: 'rgba(20,32,27,0.6)' }}
+          onPress={onClose}
+        >
+          <Pressable onPress={e => e.stopPropagation()} className="w-full max-w-lg">
+            {children}
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -725,7 +731,7 @@ export default function TripDetail() {
       setPreviewOpen(true);
       setQuestionAnswers({});
     },
-    onError: (err: any) => Alert.alert('Lỗi phân tích sự cố', err.response?.data?.error || err.message),
+    onError: (err: any) => notify.error(`Lỗi phân tích sự cố: ${parseErrorMessage(err)}`),
   });
 
   const applyMutation = useMutation({
@@ -742,7 +748,7 @@ export default function TripDetail() {
       notifyScheduleUpdated();
       refetch();
     },
-    onError: (err: any) => Alert.alert('Lỗi áp dụng lịch trình', err.response?.data?.error || err.message),
+    onError: (err: any) => notify.error(`Lỗi áp dụng lịch trình: ${parseErrorMessage(err)}`),
   });
 
   const editMutation = useMutation({
@@ -756,7 +762,7 @@ export default function TripDetail() {
       notifyScheduleUpdated();
       refetch();
     },
-    onError: (err: any) => Alert.alert('Lỗi cập nhật', err.response?.data?.error || err.message),
+    onError: (err: any) => notify.error(`Lỗi cập nhật: ${parseErrorMessage(err)}`),
   });
 
   const addItemMutation = useMutation({
@@ -771,7 +777,7 @@ export default function TripDetail() {
       notifyScheduleUpdated();
       refetch();
     },
-    onError: (err: any) => Alert.alert('Lỗi thêm hoạt động', err.response?.data?.error || err.message),
+    onError: (err: any) => notify.error(`Lỗi thêm hoạt động: ${parseErrorMessage(err)}`),
   });
 
   const aiReplaceMutation = useMutation({
@@ -786,7 +792,7 @@ export default function TripDetail() {
       notifyScheduleUpdated();
       refetch();
     },
-    onError: (err: any) => Alert.alert('Lỗi áp dụng gợi ý AI', err.response?.data?.error || err.message),
+    onError: (err: any) => notify.error(`Lỗi áp dụng gợi ý AI: ${parseErrorMessage(err)}`),
   });
 
   const deleteMutation = useMutation({
@@ -795,7 +801,7 @@ export default function TripDetail() {
       notifyScheduleUpdated();
       refetch();
     },
-    onError: (err: any) => Alert.alert('Lỗi xóa hoạt động', err.response?.data?.error || err.message),
+    onError: (err: any) => notify.error(`Lỗi xóa hoạt động: ${parseErrorMessage(err)}`),
   });
 
   const deleteTripMutation = useMutation({
@@ -803,7 +809,7 @@ export default function TripDetail() {
     onSuccess: () => {
       router.replace(isAdmin ? (APP_ROUTES.ADMIN as any) : (APP_ROUTES.TRIPS as any));
     },
-    onError: (err: any) => Alert.alert('Lỗi xóa chuyến đi', err.response?.data?.error || err.message),
+    onError: (err: any) => notify.error(`Lỗi xóa chuyến đi: ${parseErrorMessage(err)}`),
   });
 
   const handleConfirmDeleteTrip = () => {
@@ -878,7 +884,7 @@ export default function TripDetail() {
     const answersStr = (proposedItinerary?.missing_info_questions || [])
       .map((q: string, i: number) => questionAnswers[i]?.trim() ? `- Q: ${q}\n  A: ${questionAnswers[i].trim()}` : '')
       .filter(Boolean).join('\n');
-    if (!answersStr) { Alert.alert('', 'Vui lòng điền câu trả lời trước khi gửi lại.'); return; }
+    if (!answersStr) { notify.info('Vui lòng điền câu trả lời trước khi gửi lại.'); return; }
     previewMutation.mutate({
       disruption_type: disruptionType,
       description: `${disruptionDesc}\n\n[Thông tin bổ sung]:\n${answersStr}`,
@@ -1032,12 +1038,7 @@ export default function TripDetail() {
 
   // ── Loading / Error states ────────────────────────────────────────────────
   if (isLoading) {
-    return (
-      <View className="flex-1 bg-brand-bg items-center justify-center gap-4">
-        <ActivityIndicator size="large" color={BRAND_COLORS.primary} />
-        <Text className="text-sm font-semibold text-brand-textSoft">Đang tải lịch trình...</Text>
-      </View>
-    );
+    return <TripDetailSkeleton />;
   }
   if (isError || !trip) {
     return (
@@ -1125,17 +1126,12 @@ export default function TripDetail() {
             text: '🎉 Đã nâng cấp chuyến đi lên AI Pro thành công!',
             type: 'success',
           });
-          if (Platform.OS !== 'web') {
-            Alert.alert('Thành công', '🎉 Đã nâng cấp chuyến đi lên AI Pro thành công!');
-          }
         } catch (upgradeErr: any) {
           const status = upgradeErr.response?.status;
           const msg = upgradeErr.response?.data?.error || upgradeErr.message || 'Không thể nâng cấp chuyến đi';
           setAppToast({ text: msg, type: 'error' });
           if (status === 403 || upgradeErr.response?.data?.code === 'requires_premium') {
             setShowPremiumModal(true);
-          } else {
-            Alert.alert('Lỗi', msg);
           }
         }
         setConfirmModal(null);
@@ -1301,7 +1297,7 @@ export default function TripDetail() {
           title: `Lịch trình chuyến đi ${trip.title}`,
         });
       } catch (error: any) {
-        Alert.alert('Lỗi chia sẻ', error.message);
+        notify.error(`Không thể chia sẻ lịch trình: ${parseErrorMessage(error)}`);
       }
     }
   };
@@ -1347,13 +1343,14 @@ export default function TripDetail() {
           <View className="flex-row justify-between items-center">
             <Pressable
               onPress={() => router.push(isAdmin ? (APP_ROUTES.ADMIN_TRIPS as any) : (APP_ROUTES.TRIPS as any))}
-              className="flex-row items-center gap-1.5 shrink-0"
-              style={{ cursor: 'pointer' as any }}
+              className="flex-row items-center gap-1.5"
+              style={{ cursor: 'pointer' as any, flexShrink: 1, minWidth: 0 }}
             >
               <ArrowLeft size={16} color="#FFFFFF" />
               <Text
                 className="text-xs font-bold"
-                style={{ color: '#FFFFFF' }}
+                numberOfLines={1}
+                style={{ color: '#FFFFFF', flexShrink: 1 }}
               >
                 {isAdmin ? 'Quản lý Chuyến đi' : 'Bảng điều khiển'}
               </Text>
@@ -1410,11 +1407,12 @@ export default function TripDetail() {
                   </Pressable>
                 );
               })()}
-              <View className="hidden md:flex flex-row items-center gap-2">
+              <View className="hidden md:flex flex-row items-center gap-2" style={{ flexShrink: 1, minWidth: 0 }}>
                 <Compass size={24} color="#FFFFFF" />
                 <Text
                   className="font-display font-extrabold text-lg"
-                  style={{ color: '#FFFFFF' }}
+                  numberOfLines={1}
+                  style={{ color: '#FFFFFF', flexShrink: 1 }}
                 >
                   ViVu Planner
                 </Text>
@@ -1654,11 +1652,13 @@ export default function TripDetail() {
                           onConfirm: async () => {
                             try {
                               await api.delete(`/trips/${id}/collaborators/${user?.id}`);
+                              setConfirmModal(null);
                               router.replace(APP_ROUTES.TRIPS as any);
                             } catch (e) {
-                              Alert.alert('Lỗi', 'Không thể rời chuyến đi');
+                              // Đóng hộp xác nhận trước rồi báo lỗi rõ ràng, tránh trông như đã rời thành công
+                              setConfirmModal(null);
+                              notify.error(`Không thể rời chuyến đi: ${parseErrorMessage(e, 'vui lòng thử lại')}`);
                             }
-                            setConfirmModal(null);
                           }
                         })}
                         className="flex-row items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-red-200 bg-red-50"
@@ -2430,7 +2430,7 @@ export default function TripDetail() {
                           const r = await api.post(`/trips/items/${aiReplaceItem.id}/ai-replace`, { user_requirement: aiRequirement });
                           setAiAlternatives(r.data.alternatives || []);
                         } catch (err: any) {
-                          Alert.alert('Lỗi', err.response?.data?.error || err.message);
+                          notify.error(`Không tải được gợi ý thay thế: ${parseErrorMessage(err)}`);
                         } finally { setFetchingAlts(false); }
                       }}
                       disabled={fetchingAlts}

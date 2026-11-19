@@ -31,7 +31,7 @@ import { PlaceItem, isProLocalPlace } from '../../../components/map/PlacePopup';
 import { getCuratedPlacesForCity } from '../../../constants/curatedPlaces';
 import {
   VIETNAMESE_CITIES, TRAVELER_TYPES, PREFERENCE_OPTIONS, BRAND_COLORS,
-  BUDGET_ESTIMATION_CONFIG, APP_ROUTES, TravelerType,
+  BUDGET_ESTIMATION_CONFIG, APP_ROUTES, TravelerType, getSiteOrigin,
 } from '../../../constants';
 
 const LOADING_STAGES = [
@@ -85,12 +85,7 @@ const parseErrorMessage = (error: any, fallback = 'Có lỗi xảy ra khi tạo 
   }
 };
 
-const getBaseUrl = () => {
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-    return window.location.origin;
-  }
-  return 'https://vivu-planner.vercel.app';
-};
+const getBaseUrl = () => getSiteOrigin();
 
 function getTodayString() {
   const today = new Date();
@@ -305,6 +300,8 @@ export default function TripWizard() {
   const [errorMsg, setErrorMsg] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
   const mainScrollViewRef = useRef<ScrollView | null>(null);
+  // Ref cho timer chuyển hướng trip_finalized để có thể cancel khi unmount
+  const finalizeNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleCancelLoading = () => {
     abortControllerRef.current?.abort();
@@ -324,6 +321,13 @@ export default function TripWizard() {
       router.replace(APP_ROUTES.ADMIN as any);
     }
   }, [isAdmin]);
+
+  // Dọn timer finalize khi component bị unmount
+  useEffect(() => {
+    return () => {
+      if (finalizeNavTimerRef.current) clearTimeout(finalizeNavTimerRef.current);
+    };
+  }, []);
 
   const [selectedAiProvider, setSelectedAiProvider] = useState<'gemini' | 'custom_openai'>('gemini');
   const [showPremiumModal, setShowPremiumModal] = useState(false);
@@ -1097,7 +1101,8 @@ export default function TripWizard() {
       trip_finalized: (payload: any) => {
         if (payload?.tripId) {
           showGroupToast('🎉 Trưởng nhóm đã chốt lịch trình! Đang cùng bạn chuyển sang chuyến đi...');
-          setTimeout(() => {
+          // Dùng ref để có thể cancel khi component unmount (tránh navigate sau khi unmount)
+          finalizeNavTimerRef.current = setTimeout(() => {
             const redirectUrl = payload.redirectUrl || APP_ROUTES.TRIP_DETAIL(payload.tripId);
             router.replace(redirectUrl as any);
           }, 800);

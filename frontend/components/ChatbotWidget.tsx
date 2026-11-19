@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useContext } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  ActivityIndicator, Platform, Dimensions
+  ActivityIndicator, Platform, useWindowDimensions
 } from 'react-native';
 import { MessageSquare, Send, Sparkles, X, Bot, User, Crown, Zap, Lock } from 'lucide-react-native';
 import { useRouter, usePathname } from 'expo-router';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useChatbot } from '../context/ChatbotContext';
 import { useAuth } from '../hooks/useAuth';
 import PremiumModal from './PremiumModal';
@@ -26,6 +27,8 @@ export function ChatbotWidget() {
   const { tripId, triggerPreview, isOpen, setIsOpen } = useChatbot();
   const { isPremium, isAdmin } = useAuth();
   const router = useRouter();
+  const { width: w, height: h } = useWindowDimensions();
+  const insets = useContext(SafeAreaInsetsContext) ?? { top: 0, bottom: 0, left: 0, right: 0 };
   const [selectedAi, setSelectedAi] = useState<'gemini' | 'custom_openai'>('gemini');
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -281,7 +284,7 @@ export function ChatbotWidget() {
           height: 56,
           borderRadius: 28,
           position: 'absolute',
-          bottom: 24,
+          bottom: 24 + insets.bottom,
           right: 24,
           zIndex: 1000,
           shadowColor: '#000',
@@ -296,16 +299,21 @@ export function ChatbotWidget() {
     );
   }
 
+  // Kích thước panel thích ứng màn hình: giới hạn chiều rộng và chiều cao theo safe area
+  const panelWidth = w < 420 ? Math.min(360, w - 32) : 360;
+  const panelRight = w < 420 ? 16 : 24;
+  const panelMaxHeight = Math.min(500, h - insets.top - insets.bottom - 96);
+
   return (
     <View
       className="bg-brand-bgDark border border-brand-line/50 flex-col shadow-2xl"
       style={{
-        width: Platform.OS === 'web' ? 360 : Dimensions.get('window').width * 0.9,
-        height: 500,
+        width: Platform.OS === 'web' ? panelWidth : w * 0.9,
+        height: panelMaxHeight,
         borderRadius: 24,
         position: 'absolute',
-        bottom: 24,
-        right: Platform.OS === 'web' ? 24 : Dimensions.get('window').width * 0.05,
+        bottom: 24 + insets.bottom,
+        right: Platform.OS === 'web' ? panelRight : w * 0.05,
         zIndex: 1000,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 8 },

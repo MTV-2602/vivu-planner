@@ -53,6 +53,7 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
   const [errorMessage, setErrorMessage] = useState('');
   const [timeLeft, setTimeLeft] = useState(900); // 15 phút đếm ngược (khớp PayOS & MoMo)
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleCopy = async (text: string, field: string) => {
     try {
@@ -64,8 +65,12 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
           title: 'Sao chép thông tin thanh toán',
         });
       }
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
       setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 2000);
+      copiedTimerRef.current = setTimeout(() => {
+        setCopiedField(null);
+        copiedTimerRef.current = null;
+      }, 2000);
     } catch {}
   };
 
@@ -97,6 +102,13 @@ export default function PremiumModal({ visible, onClose, onActivated, onSuccess 
   const plans = useMemo<PricingPlan[]>(() => {
     return normalizePlans(rawPlansData).filter((p) => p.is_active !== false);
   }, [rawPlansData]);
+
+  // Dọn timer copy khi unmount
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
 
   // Tự động chọn plan đầu tiên nếu chưa chọn hoặc plan đang chọn không tồn tại trong danh sách
   useEffect(() => {

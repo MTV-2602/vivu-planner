@@ -25,7 +25,10 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "lang": "vi",
+      "themeColor": "#0f4c5c",
+      "description": "Lên kế hoạch chuyến đi thông minh cùng AI"
     },
     "plugins": [
       "expo-router",

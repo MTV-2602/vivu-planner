@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
-import { View, ActivityIndicator, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
+import BrandSplash from '../../components/loading/BrandSplash';
 
 export default function PremiumIndexRedirect() {
   const router = useRouter();
@@ -10,9 +11,5 @@ export default function PremiumIndexRedirect() {
     router.replace((`/chuyen-di${search || ''}`) as any);
   }, []);
 
-  return (
-    <View style={{ flex: 1, backgroundColor: '#f8fafc', justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator size="large" color="#059669" />
-    </View>
-  );
+  return <BrandSplash message="Đang chuyển đến trang chuyến đi" />;
 }
